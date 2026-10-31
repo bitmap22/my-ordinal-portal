@@ -1,0 +1,2092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SENTINEL_IDEAS // REVIEW DECK + INSPECTOR GUARD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cyan:        #00e5ff;
+      --cyan-dim:    rgba(0,229,255,.10);
+      --cyan-mid:    rgba(0,229,255,.35);
+      --amber:       #ffab40;
+      --amber-dim:   rgba(255,171,64,.10);
+      --green:       #69ff9a;
+      --red:         #ff4d6a;
+      --yellow:      #ffe566;
+      --white:       #e8f4f8;
+      --muted:       rgba(232,244,248,.54);
+      --faint:       rgba(232,244,248,.24);
+      --border:      rgba(0,229,255,.16);
+      --border-hi:   rgba(0,229,255,.40);
+      --surface:     rgba(3,12,22,.85);
+      --panel-bg:    rgba(2,8,16,.97);
+      --navy:        #020810;
+      --ff-mono:     'Space Mono', 'Courier New', monospace;
+      --ff-sans:     'DM Sans', system-ui, sans-serif;
+      --r-sm:        8px;
+      --r-md:        14px;
+      --r-lg:        22px;
+      --r-xl:        28px;
+    }
+
+    html, body {
+      width: 100%; min-height: 100%;
+      background: var(--navy);
+      color: var(--white);
+      font-family: var(--ff-sans);
+      font-size: 13px;
+      line-height: 1.55;
+      overflow-x: hidden;
+    }
+    body {
+      padding: 20px 14px 44px;
+      background:
+        radial-gradient(ellipse 55% 35% at 8%   0%, rgba(0,229,255,.06) 0%, transparent 70%),
+        radial-gradient(ellipse 45% 30% at 92% 100%, rgba(255,171,64,.05) 0%, transparent 70%),
+        #020810;
+    }
+    body::before {
+      content: "";
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,.025) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: radial-gradient(ellipse 75% 75% at center, #000 0%, transparent 100%);
+    }
+
+    @keyframes scan {
+      0%   { transform: translateY(-100%); opacity: 0; }
+      12%  { opacity: .5; }
+      88%  { opacity: .5; }
+      100% { transform: translateY(1200%); opacity: 0; }
+    }
+    @keyframes flicker {
+      0%,100%{ opacity:1; } 48%{ opacity:.94; } 50%{ opacity:.68; } 52%{ opacity:1; }
+    }
+    @keyframes pulseText {
+      0%,100%{ opacity:1; } 50%{ opacity:.55; }
+    }
+    @keyframes borderPulse {
+      0%,100%{ border-color: rgba(0,229,255,.45); box-shadow: 0 0 22px rgba(0,229,255,.16), inset 0 0 10px rgba(0,229,255,.04); }
+      50%     { border-color: rgba(0,229,255,.72); box-shadow: 0 0 38px rgba(0,229,255,.28), inset 0 0 18px rgba(0,229,255,.08); }
+    }
+    @keyframes fadeIn {
+      from { opacity:0; transform:translateY(5px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ─── Shell ─────────────────────────────────────── */
+    .app-shell {
+      width: min(1100px, 100%);
+      margin: 0 auto;
+      display: flex; flex-direction: column;
+      gap: 16px; align-items: center;
+      position: relative; z-index: 2;
+    }
+
+    /* ─── Top strip ──────────────────────────────────── */
+    .top-strip {
+      width: min(960px, 100%);
+      display: flex; justify-content: space-between;
+      align-items: center; gap: 12px; padding: 0 4px;
+    }
+    .brand {
+      font-family: var(--ff-mono);
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 2.5px; text-transform: uppercase;
+      color: var(--cyan);
+      text-shadow: 0 0 14px rgba(0,229,255,.45);
+      white-space: nowrap;
+    }
+    .brand span { color: var(--muted); font-weight: 400; }
+    .top-readouts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .readout {
+      font-family: var(--ff-mono);
+      font-size: 9px; font-weight: 700;
+      letter-spacing: 1.2px; text-transform: uppercase;
+      border: 1px solid var(--border);
+      background: var(--cyan-dim);
+      color: var(--cyan); border-radius: 999px; padding: 4px 11px;
+    }
+    .readout.hot { color: var(--amber); border-color: rgba(255,171,64,.22); background: var(--amber-dim); }
+
+    /* ─── Stage ──────────────────────────────────────── */
+    .stage {
+      width: min(1100px, calc(100vw - 28px));
+      display: grid;
+      grid-template-columns: 76px minmax(0, 860px) 76px;
+      align-items: center; justify-content: center;
+      justify-items: center; gap: 14px;
+    }
+    .viewer-stack {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 12px;
+      width: 100%; max-width: 860px;
+    }
+
+    /* ─── Nav arrows ─────────────────────────────────── */
+    .nav-arrow {
+      width: 76px; height: 154px;
+      border: 1px solid rgba(0,229,255,.38);
+      border-radius: var(--r-lg);
+      background: rgba(2,10,20,.82);
+      color: var(--cyan);
+      font-family: var(--ff-mono);
+      font-size: 26px; font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      user-select: none;
+      transition: all .14s ease;
+      box-shadow: inset 0 0 16px rgba(0,229,255,.04), 0 0 14px rgba(0,229,255,.07);
+      position: relative; overflow: hidden;
+    }
+    .nav-arrow::before {
+      content: "";
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(0,229,255,.05) 0%, transparent 55%);
+      pointer-events: none;
+    }
+    .nav-arrow:hover:not([disabled]) {
+      background: rgba(0,229,255,.10);
+      border-color: rgba(0,229,255,.80);
+      box-shadow: 0 0 28px rgba(0,229,255,.30), inset 0 0 18px rgba(0,229,255,.07);
+      transform: scale(1.03); color: #fff;
+    }
+    .nav-arrow:active:not([disabled]) { transform: scale(.97); }
+    .nav-arrow[disabled] { opacity: .20; cursor: default; filter: grayscale(.8); }
+
+    /* ─── Device frame ───────────────────────────────── */
+    #device-frame {
+      position: relative;
+      width: 100%; max-width: 860px;
+      height: clamp(540px, 67vh, 820px);
+      border: 2px solid rgba(0,229,255,.48);
+      border-radius: var(--r-xl);
+      background: #000; overflow: hidden;
+      animation: borderPulse 7s ease-in-out infinite;
+      z-index: 5;
+      transition: height .2s ease;
+    }
+    /* Height controls */
+    .height-controls {
+      display: flex; align-items: center; gap: 6px;
+      justify-content: center;
+    }
+    .height-controls span {
+      font-family: var(--ff-mono);
+      font-size: 8px; letter-spacing: 1px;
+      color: var(--faint); text-transform: uppercase;
+    }
+    .h-btn {
+      width: 32px; height: 28px; padding: 0;
+      font-size: 16px; font-weight: 700;
+      border-color: var(--border-hi);
+      color: var(--cyan); background: transparent;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .h-btn:hover { background: var(--cyan); color: #001018; }
+    #viewer-container {
+      position: relative; width: 100%; height: 100%;
+      background: #000; overflow: visible;
+    }
+
+    /* HUD */
+    #internal-hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      z-index: 36;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 18px;
+      background: linear-gradient(to bottom, rgba(0,0,0,.72) 0%, transparent 100%);
+      font-family: var(--ff-mono);
+      font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+      pointer-events: none;
+    }
+    #os-tag     { color: rgba(255,255,255,.40); }
+    #status-tag { color: var(--cyan); animation: pulseText 3s ease-in-out infinite; }
+    #mode-tag   { color: var(--amber); }
+
+    /* iframe */
+    #viewport-lock {
+      position: absolute; inset: 0; z-index: 1;
+      overflow: hidden;
+      background: #000;
+    }
+    iframe#target {
+      width: 100%; height: 100%;
+      border: 0; display: none; background: #000; z-index: 5;
+    }
+
+    /* Static face */
+    #sentinel-static {
+      position: absolute; inset: 0; z-index: 2;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: radial-gradient(ellipse 58% 48% at 50% 44%, rgba(0,229,255,.04), transparent 70%);
+      transition: opacity .30s ease;
+      animation: flicker 5s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .face-row { display: flex; gap: 44px; margin-bottom: 20px; }
+    .eye-socket {
+      width: 44px; height: 44px; background: #fff;
+      border-radius: 50%; position: relative; overflow: hidden;
+      box-shadow: 0 0 16px rgba(255,255,255,.32);
+    }
+    .pupil {
+      width: 17px; height: 17px; background: #000; border-radius: 50%;
+      position: absolute; top: 50%; left: 50%; margin: -8.5px 0 0 -8.5px;
+      will-change: transform; transition: transform .08s linear;
+    }
+    .smile {
+      width: 46px;
+      height: 24px;
+      border-bottom: 4px solid #fff;
+      border-radius: 0 0 46px 46px;
+      color: transparent;
+      font-size: 0;
+      font-weight: 900;
+      box-shadow: 0 10px 16px rgba(255,255,255,.16);
+    }
+    #idle-copy {
+      position: absolute; bottom: 90px; left: 20px; right: 20px;
+      text-align: center;
+      font-family: var(--ff-mono);
+      color: rgba(232,244,248,.38);
+      font-size: 9px; line-height: 1.8;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+
+    /* Screen overlays */
+    #screen-vignette, #screen-scanline { position: absolute; inset: 0; pointer-events: none; }
+    #screen-vignette {
+      z-index: 28;
+      background: radial-gradient(ellipse 88% 88% at center, transparent 38%, rgba(0,0,0,.55) 100%);
+    }
+    #screen-scanline {
+      z-index: 29; opacity: .07;
+      background: repeating-linear-gradient(to bottom, rgba(255,255,255,.2) 0, rgba(255,255,255,.2) 1px, transparent 2px, transparent 4px);
+    }
+
+    /* ─── Controls under viewer ──────────────────────── */
+    #internal-ui {
+      width: min(860px, 94vw);
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      background: rgba(3,12,22,.78);
+      backdrop-filter: blur(4px);
+    }
+    .micro-bar {
+      display: flex; justify-content: space-between;
+      align-items: center; gap: 8px;
+      font-family: var(--ff-mono);
+      font-size: 9px; letter-spacing: .8px; text-transform: uppercase;
+    }
+    .micro-id { color: var(--cyan); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 64%; }
+    .micro-count { color: var(--amber); }
+    .control-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
+
+    /* ─── Form elements ──────────────────────────────── */
+    input, textarea, select {
+      min-width: 0;
+      background: rgba(0,0,0,.62);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--r-sm);
+      color: var(--white);
+      padding: 9px 11px;
+      font-size: 11px;
+      font-family: var(--ff-mono);
+      outline: none;
+      transition: border-color .14s, box-shadow .14s;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 2px rgba(0,229,255,.10);
+    }
+    input::placeholder, textarea::placeholder { color: rgba(232,244,248,.26); font-size: 10px; }
+    textarea { resize: vertical; line-height: 1.5; }
+    select { cursor: pointer; }
+
+    /* ─── Tabs ───────────────────────────────────────── */
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+      gap: 4px;
+      overflow: visible;
+      padding: 2px;
+      align-items: stretch;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tabs button {
+      flex: initial;
+      width: 100%;
+      min-width: 0;
+      font-family: var(--ff-mono);
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .9px; text-transform: uppercase;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      background: transparent;
+      color: var(--muted); cursor: pointer; white-space: nowrap;
+      transition: all .12s;
+    }
+    .tabs button:hover, .tabs button.active {
+      border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim);
+    }
+
+    /* ─── Buttons ────────────────────────────────────── */
+    button {
+      font-family: var(--ff-mono);
+      font-size: 10px; font-weight: 700;
+      letter-spacing: .8px; text-transform: uppercase;
+      border-radius: var(--r-sm);
+      padding: 9px 14px; cursor: pointer; white-space: nowrap;
+      border: 1px solid var(--amber);
+      color: var(--amber); background: transparent;
+      transition: all .12s;
+    }
+    button:hover, button.active { background: var(--amber); color: #0a0600; }
+    button:active { transform: scale(.97); }
+    button.primary { border-color: var(--cyan); color: var(--cyan); }
+    button.primary:hover, button.primary.active { background: var(--cyan); color: #001018; }
+    button.danger { border-color: var(--red); color: var(--red); }
+    button.danger:hover { background: var(--red); color: #0a0004; }
+    button.green  { border-color: var(--green); color: var(--green); }
+    button.green:hover, button.green.active { background: var(--green); color: #010f05; }
+    button.yellow { border-color: var(--yellow); color: var(--yellow); }
+    button.yellow:hover, button.yellow.active { background: var(--yellow); color: #100e00; }
+    #live-toggle.live { border-color: var(--red); color: var(--red); }
+    #live-toggle.live:hover { background: var(--red); color: #100003; }
+
+    .icon-btn {
+      width: 44px; height: 40px; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 17px; border-radius: var(--r-sm);
+    }
+    .icon-btn.favorite { border-color: rgba(255,229,102,.40); color: var(--yellow); }
+    .icon-btn.favorite:hover, .icon-btn.favorite.active {
+      background: var(--yellow); color: #130f00;
+      box-shadow: 0 0 14px rgba(255,229,102,.32);
+    }
+    .icon-btn.bin { border-color: rgba(255,77,106,.40); color: var(--red); }
+    .icon-btn.bin:hover { background: var(--red); color: #100007; }
+
+    /* ─── Jump + mark row ────────────────────────────── */
+    .external-actions {
+      display: flex; flex-wrap: wrap;
+      justify-content: center; align-items: center;
+      gap: 10px;
+      width: min(860px, 94vw);
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      background: rgba(3,12,22,.72);
+    }
+    .jump-cluster, .mark-cluster {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      background: rgba(0,0,0,.28);
+    }
+    .jump-cluster { flex: 1 1 400px; flex-wrap: wrap; }
+    .mark-cluster { flex: 0 0 auto; }
+    .tool-label {
+      font-family: var(--ff-mono);
+      font-size: 8px; letter-spacing: 1.4px;
+      color: var(--faint); text-transform: uppercase; white-space: nowrap;
+    }
+    .jump-input {
+      width: 80px; text-align: center;
+      color: var(--amber) !important;
+      border-color: rgba(255,171,64,.36) !important;
+    }
+
+    /* ─── Panel ──────────────────────────────────────── */
+    #panel {
+      position: absolute; inset: 0; z-index: 54;
+      display: none; flex-direction: column;
+      padding: 18px;
+      background: var(--panel-bg);
+      border-radius: 26px;
+      overflow: hidden;
+      animation: fadeIn .16s ease;
+    }
+    #panel.active { display: flex; }
+    #panel-header {
+      position: relative; z-index: 2;
+      display: flex; align-items: center;
+      justify-content: space-between; gap: 10px;
+      padding-bottom: 12px; margin-bottom: 14px;
+      border-bottom: 1px solid rgba(255,171,64,.25);
+    }
+    #panel-title {
+      font-family: var(--ff-mono);
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.6px; color: var(--amber);
+    }
+    #panel-back {
+      font-size: 9px; padding: 5px 10px;
+      border-color: var(--border); color: var(--muted); background: transparent;
+    }
+    #panel-back:hover { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); }
+    #panel-content {
+      position: relative; z-index: 2;
+      height: 100%; overflow-y: auto;
+      padding-right: 2px; padding-bottom: 56px;
+      font-size: 11px; line-height: 1.65;
+    }
+    #panel-content::-webkit-scrollbar { width: 4px; }
+    #panel-content::-webkit-scrollbar-track { background: transparent; }
+    #panel-content::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 10px; }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 12px 14px; margin-bottom: 10px;
+      background: rgba(0,16,28,.44);
+    }
+    .card h3 {
+      font-family: var(--ff-mono);
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 1.6px; text-transform: uppercase;
+      color: var(--amber); margin-bottom: 8px;
+    }
+    .card p { margin-bottom: 6px; color: var(--muted); }
+    .card p:last-child { margin-bottom: 0; }
+    .muted { color: var(--muted); }
+    .mono { font-family: var(--ff-mono); word-break: break-all; font-size: 10px; }
+    .pill {
+      display: inline-block;
+      font-family: var(--ff-mono);
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 8px; font-weight: 700; letter-spacing: 1px;
+      margin: 2px 3px 2px 0; border: 1px solid currentColor;
+    }
+    .safe    { color: #69ff9a; }
+    .notice  { color: var(--cyan); }
+    .careful { color: var(--yellow); }
+    .stop    { color: var(--red); }
+    .flag { border-left: 4px solid currentColor; }
+    .flag.safe { background: rgba(105,255,154,.07); }
+    .flag.notice { background: rgba(0,229,255,.09); }
+    .flag.careful { background: rgba(255,229,102,.09); }
+    .flag.stop { background: rgba(255,77,106,.11); }
+    .decision-keep  { color: #69ff9a; }
+    .decision-maybe { color: var(--yellow); }
+    .decision-skip  { color: var(--red); }
+    .small-list { margin-left: 16px; }
+    .small-list li { margin: 4px 0; color: var(--muted); }
+    pre {
+      white-space: pre-wrap; word-break: break-word;
+      font-family: var(--ff-mono); font-size: 9px; line-height: 1.65;
+      color: var(--muted);
+    }
+
+    /* ─── Toast ──────────────────────────────────────── */
+    #toast {
+      position: absolute; left: 50%; bottom: 84px;
+      transform: translateX(-50%); z-index: 90;
+      display: none;
+      background: rgba(0,0,0,.92);
+      color: var(--cyan);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--r-sm);
+      padding: 8px 14px;
+      font-family: var(--ff-mono); font-size: 10px; letter-spacing: .4px;
+      text-align: center;
+      box-shadow: 0 0 16px rgba(0,229,255,.28);
+      max-width: 82%; backdrop-filter: blur(4px);
+    }
+
+    /* ─── Paste console ──────────────────────────────── */
+    .paste-console {
+      width: min(960px, 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 16px;
+      background: rgba(3,12,22,.72);
+      display: grid; gap: 12px;
+    }
+    .console-head {
+      display: flex; justify-content: space-between;
+      align-items: center; gap: 10px;
+    }
+    .console-head strong {
+      font-family: var(--ff-mono);
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--amber);
+    }
+    #parseSummary { font-size: 11px; color: var(--muted); }
+    #pasteBox {
+      width: 100%; min-height: 88px; max-height: 200px;
+      border-color: var(--border-hi);
+      color: var(--white); font-size: 11px;
+      background: rgba(0,0,0,.52);
+    }
+    .console-actions {
+      display: flex; flex-wrap: wrap;
+      gap: 8px; align-items: center; justify-content: space-between;
+    }
+    .left-actions, .right-actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+    .mini-select {
+      font-family: var(--ff-mono); font-size: 10px; letter-spacing: .4px;
+      color: var(--amber); border-color: rgba(255,171,64,.32);
+      background: rgba(0,0,0,.52); padding: 8px 10px; max-width: 180px;
+    }
+
+    /* ─── Decision strip ─────────────────────────────── */
+    .decision-strip {
+      width: min(960px, 100%);
+      display: grid;
+      grid-template-columns: minmax(170px, .82fr) minmax(260px, 1.22fr) minmax(210px, .96fr);
+      gap: 10px; align-items: stretch;
+    }
+    .decision-card {
+      border: 1px solid var(--border);
+      border-radius: var(--r-md); padding: 14px;
+      background: rgba(3,12,22,.68);
+    }
+    .decision-card h3 {
+      font-family: var(--ff-mono);
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 1.6px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 10px;
+    }
+    .decision-buttons { display: flex; gap: 7px; flex-wrap: wrap; }
+    #noteBox {
+      width: 100%; min-height: 52px;
+      color: var(--white);
+      border-color: rgba(255,171,64,.24);
+      font-size: 11px; background: rgba(0,0,0,.42);
+    }
+    .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+    .stat {
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm); padding: 7px 6px;
+      font-size: 10px; text-align: center;
+      color: var(--muted); background: rgba(0,0,0,.28);
+    }
+    .stat b {
+      display: block;
+      font-family: var(--ff-mono); font-size: 16px;
+      color: var(--cyan); font-weight: 700; margin-bottom: 2px;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ─── Responsive ─────────────────────────────────── */
+    @media (max-width: 780px) {
+      body { padding: 12px 8px 30px; }
+      .top-strip { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .stage { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .viewer-stack { grid-column: 1 / -1; grid-row: 1; width: 100%; max-width: 100%; }
+      #device-frame { width: 100%; height: min(62vh, 650px); min-height: 490px; }
+      .nav-arrow { grid-row: 2; width: 100%; height: 50px; font-size: 22px; border-radius: var(--r-md); }
+      #prevBtn { grid-column: 1; } #nextBtn { grid-column: 2; }
+      .decision-strip { grid-template-columns: 1fr; }
+      .jump-cluster { flex: 1 1 100%; }
+      .external-actions, #internal-ui { width: 100%; }
+    }
+    @media (max-width: 440px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .tabs { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+      .tabs button { font-size: 8px; padding: 6px 7px; letter-spacing: .4px; }
+    }
+  </style>
+</head>
+<body>
+<main class="app-shell">
+
+  <div class="top-strip" aria-label="App status">
+    <div class="brand">SENTINEL_IDEAS <span>// REVIEW DECK + INSPECTOR GUARD</span></div>
+    <div class="top-readouts">
+      <span class="readout" id="loadedReadout">LOADED: 0</span>
+      <span class="readout hot" id="currentReadout">NO ID</span>
+      <span class="readout" id="savedReadout">SAVED: 0</span>
+    </div>
+  </div>
+
+  <section class="stage" aria-label="Inscription viewer stage">
+    <button class="nav-arrow" id="prevBtn" type="button" aria-label="Previous">&lt;</button>
+
+    <div class="viewer-stack">
+      <div id="device-frame">
+        <div id="viewer-container">
+          <div id="internal-hud">
+            <span id="os-tag">SENTINEL_IDEAS</span>
+            <span id="status-tag">IDLE</span>
+            <span id="mode-tag">SAFE VIEW</span>
+          </div>
+          <div id="viewport-lock">
+            <iframe id="target" sandbox="allow-same-origin" scrolling="auto" title="Inscription preview"></iframe>
+          </div>
+          <div id="sentinel-static">
+            <div class="face-row">
+              <div class="eye-socket"><div class="pupil"></div></div>
+              <div class="eye-socket"><div class="pupil"></div></div>
+            </div>
+            <div class="smile" aria-hidden="true">&nbsp;</div>
+            <div id="idle-copy">Paste inscription IDs below.<br>Move through them one by one.<br>Scan controls before playing.</div>
+          </div>
+          <div id="panel">
+            <div id="panel-header">
+              <button id="panel-back" type="button">← Back</button>
+              <span id="panel-title">SENTINEL</span>
+            </div>
+            <div id="panel-content"></div>
+          </div>
+          <div id="toast"></div>
+          <div id="screen-vignette"></div>
+          <div id="screen-scanline"></div>
+        </div>
+      </div>
+
+      <div class="height-controls">
+        <span>Window size</span>
+        <button class="h-btn" id="heightDown" type="button" title="Shrink viewer">−</button>
+        <button class="h-btn" id="heightReset" type="button" title="Reset viewer height" style="font-size:11px;width:auto;padding:0 8px;">Reset</button>
+        <button class="h-btn" id="heightUp" type="button" title="Grow viewer">+</button>
+      </div>
+
+      <div id="internal-ui">
+        <div class="micro-bar">
+          <span class="micro-id" id="miniId">NO INSCRIPTION LOADED</span>
+          <span class="micro-count" id="miniCount">0 / 0</span>
+        </div>
+        <div class="control-row">
+          <input id="quickId" type="text" placeholder="Paste a single inscription ID…" autocomplete="off" autocapitalize="off" spellcheck="false" />
+          <button id="quickLoad" class="primary" type="button">Open</button>
+          <button id="live-toggle" type="button">Live</button>
+        </div>
+        <div class="tabs">
+          <button data-tab="play"     type="button">Controls</button>
+          <button data-tab="about"    type="button">About</button>
+          <button data-tab="warnings" type="button">Warnings</button>
+          <button data-tab="secrets"  type="button">Secrets</button>
+          <button data-tab="inside"   type="button">Inside</button>
+          <button data-tab="parts"    type="button">Parts</button>
+          <button data-tab="family"   type="button">Family</button>
+          <button data-tab="location" type="button">Location</button>
+          <button data-tab="history"  type="button">History</button>
+          <button data-tab="source"   type="button">Source</button>
+          <button data-tab="report"   type="button">Report</button>
+          <button data-tab="safety"   type="button">Safety</button>
+          <button data-tab="links"    type="button">Links</button>
+        </div>
+      </div>
+
+      <div class="external-actions" aria-label="Navigation and mark actions">
+        <div class="jump-cluster">
+          <span class="tool-label">Jump to #</span>
+          <input id="jumpIndex" class="jump-input" type="number" min="1" step="1" placeholder="1" inputmode="numeric" />
+          <button id="jumpBtn" class="primary" type="button">Go</button>
+          <button id="nextOpenBtn" type="button">Next Open</button>
+        </div>
+        <div class="mark-cluster">
+          <span class="tool-label">Mark</span>
+          <button id="favoriteBtn" class="icon-btn favorite" type="button" aria-label="Favorite">☆</button>
+          <button id="binBtn"      class="icon-btn bin"      type="button" aria-label="Bin">🗑</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="nav-arrow" id="nextBtn" type="button" aria-label="Next">&gt;</button>
+  </section>
+
+  <section class="paste-console" aria-label="Paste IDs">
+    <div class="console-head">
+      <strong>Paste IDs</strong>
+      <span id="parseSummary">Drop inscription IDs here — messy lists are fine.</span>
+    </div>
+    <textarea id="pasteBox" placeholder="Paste inscription IDs here, one per line or all mixed together…&#10;Example: abc123...i0&#10;Duplicates are removed automatically."></textarea>
+    <div class="console-actions">
+      <div class="left-actions">
+        <button id="loadIds"    class="primary" type="button">Load IDs</button>
+        <button id="scanCurrent"               type="button">Scan Controls</button>
+        <button id="scanAll"                   type="button">Scan All</button>
+      </div>
+      <div class="right-actions">
+        <select id="gatewaySelect" class="mini-select" title="Preview gateway">
+          <option value="ordinals">ordinals.com</option>
+          <option value="ordiscan">ordiscan.com</option>
+          <option value="ordinalsbot">ordinalsbot.com</option>
+        </select>
+        <button id="exportCsv" type="button">Export CSV</button>
+        <button id="clearAll" class="danger" type="button">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="decision-strip" aria-label="Decision and notes">
+    <div class="decision-card">
+      <h3>Decision</h3>
+      <div class="decision-buttons">
+        <button id="keepBtn"  class="green"  type="button">Keep</button>
+        <button id="maybeBtn" class="yellow" type="button">Maybe</button>
+        <button id="skipBtn"  class="danger" type="button">Skip</button>
+      </div>
+    </div>
+    <div class="decision-card">
+      <h3>Note</h3>
+      <textarea id="noteBox" placeholder="Add a note for this inscription…"></textarea>
+    </div>
+    <div class="decision-card">
+      <h3>Session stats</h3>
+      <div class="stat-grid">
+        <div class="stat"><b id="statKeep">0</b>Keep</div>
+        <div class="stat"><b id="statMaybe">0</b>Maybe</div>
+        <div class="stat"><b id="statSkip">0</b>Skip</div>
+        <div class="stat"><b id="statFavorite">0</b>Fav</div>
+        <div class="stat"><b id="statBinned">0</b>Bin</div>
+        <div class="stat"><b id="statScanned">0</b>Scanned</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+"use strict";
+
+const STORAGE_KEY       = "sentinelIdeasReviewDeck_v3";
+const INSCRIPTION_ID_RE = /\b[a-f0-9]{64}i\d+\b/gi;
+const MAX_SOURCE_CHARS  = 900000;
+const PARSE_CHUNK_SIZE  = 220000;
+const STORAGE_SOFT_LIMIT = 4300000;
+const MAX_LIST_ITEMS = 80;
+
+const el = {
+  frame:          document.getElementById("device-frame"),
+  target:         document.getElementById("target"),
+  staticFace:     document.getElementById("sentinel-static"),
+  pupils:         Array.from(document.querySelectorAll(".pupil")),
+  statusTag:      document.getElementById("status-tag"),
+  modeTag:        document.getElementById("mode-tag"),
+  miniId:         document.getElementById("miniId"),
+  miniCount:      document.getElementById("miniCount"),
+  quickId:        document.getElementById("quickId"),
+  quickLoad:      document.getElementById("quickLoad"),
+  jumpIndex:      document.getElementById("jumpIndex"),
+  jumpBtn:        document.getElementById("jumpBtn"),
+  nextOpenBtn:    document.getElementById("nextOpenBtn"),
+  liveToggle:     document.getElementById("live-toggle"),
+  favoriteBtn:    document.getElementById("favoriteBtn"),
+  binBtn:         document.getElementById("binBtn"),
+  prevBtn:        document.getElementById("prevBtn"),
+  nextBtn:        document.getElementById("nextBtn"),
+  pasteBox:       document.getElementById("pasteBox"),
+  parseSummary:   document.getElementById("parseSummary"),
+  loadIds:        document.getElementById("loadIds"),
+  scanCurrent:    document.getElementById("scanCurrent"),
+  scanAll:        document.getElementById("scanAll"),
+  gatewaySelect:  document.getElementById("gatewaySelect"),
+  exportCsv:      document.getElementById("exportCsv"),
+  clearAll:       document.getElementById("clearAll"),
+  keepBtn:        document.getElementById("keepBtn"),
+  maybeBtn:       document.getElementById("maybeBtn"),
+  skipBtn:        document.getElementById("skipBtn"),
+  noteBox:        document.getElementById("noteBox"),
+  loadedReadout:  document.getElementById("loadedReadout"),
+  currentReadout: document.getElementById("currentReadout"),
+  savedReadout:   document.getElementById("savedReadout"),
+  statKeep:       document.getElementById("statKeep"),
+  statMaybe:      document.getElementById("statMaybe"),
+  statSkip:       document.getElementById("statSkip"),
+  statFavorite:   document.getElementById("statFavorite"),
+  statBinned:     document.getElementById("statBinned"),
+  statScanned:    document.getElementById("statScanned"),
+  panel:          document.getElementById("panel"),
+  panelTitle:     document.getElementById("panel-title"),
+  panelContent:   document.getElementById("panel-content"),
+  panelBack:      document.getElementById("panel-back"),
+  toast:          document.getElementById("toast"),
+  tabButtons:     Array.from(document.querySelectorAll(".tabs button")),
+};
+
+const state = {
+  ids: [], binnedIds: [], index: 0,
+  liveView: false, gateway: "ordinals",
+  records: {}, lastTab: "play",
+  scanningAll: false, loadingIds: false,
+  storageLimited: false, lastActiveId: "",
+};
+
+let saveTimer = 0;
+
+function defaultRecord(id) {
+  return {
+    id,
+    decision: "",
+    favorite: false,
+    binned: false,
+    note: "",
+    scannedAt: "",
+    scanStatus: "NOT SCANNED",
+    controls: [],
+    instructions: [],
+    warnings: [],
+    sourcePreview: "",
+    sourceUrl: "",
+    sourceIsText: false,
+    sourceTooLarge: false,
+    contentType: "",
+    contentLength: "",
+    contentSize: 0,
+    error: "",
+    guardStatus: "NOT SCANNED",
+    guardLevel: null,
+    guardFlags: [],
+    guardSummary: "",
+    externalUrls: [],
+    contentRefs: [],
+    recursiveRefs: [],
+    inscriptionIds: [],
+    hiddenEvidence: [],
+    activeEvidence: [],
+    inputEvidence: [],
+    fileSignature: null,
+    meta: null,
+    ordMetadata: null,
+    parents: null,
+    children: null,
+    sat: null,
+    utxo: null,
+    block: null
+  };
+}
+function currentId()     { return state.ids[state.index] || ""; }
+function currentRecord() {
+  const id = currentId(); if (!id) return null;
+  if (!state.records[id]) state.records[id] = defaultRecord(id);
+  return state.records[id];
+}
+function isReviewedRecord(rec) {
+  return !!(rec && (rec.decision || rec.favorite || rec.note || rec.scanStatus === "SCANNED"));
+}
+function firstUnreviewedIndex(ids = state.ids) {
+  for (let i = 0; i < ids.length; i++) if (!isReviewedRecord(state.records[ids[i]])) return i;
+  return -1;
+}
+
+function saveState() { clearTimeout(saveTimer); saveTimer = setTimeout(saveStateNow, 360); }
+function saveStateNow() {
+  try {
+    const payload = JSON.stringify({
+      ids: state.ids, binnedIds: state.binnedIds, index: state.index,
+      lastActiveId: currentId() || state.lastActiveId || "",
+      liveView: state.liveView, gateway: state.gateway,
+      records: compactRecordsForStorage(),
+    });
+    if (payload.length > STORAGE_SOFT_LIMIT) { state.storageLimited = true; return; }
+    localStorage.setItem(STORAGE_KEY, payload);
+    state.storageLimited = false;
+  } catch (err) { state.storageLimited = true; }
+}
+function compactRecordsForStorage() {
+  const out = {};
+  const keepIds = new Set([...state.ids, ...state.binnedIds]);
+  for (const [id, rec] of Object.entries(state.records)) {
+    if (!keepIds.has(id) && !rec.favorite && !rec.decision && !rec.note && rec.scanStatus === "NOT SCANNED") continue;
+    out[id] = compactRecordForStorage(rec);
+  }
+  return out;
+}
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY); if (!raw) return;
+    const data = JSON.parse(raw);
+    state.ids      = Array.isArray(data.ids)       ? data.ids      : [];
+    state.binnedIds= Array.isArray(data.binnedIds) ? data.binnedIds: [];
+    state.index    = Number.isInteger(data.index)  ? Math.max(0, Math.min(data.index, Math.max(0, state.ids.length - 1))) : 0;
+    state.lastActiveId = typeof data.lastActiveId === "string" ? data.lastActiveId : "";
+    if (state.lastActiveId && state.ids.includes(state.lastActiveId)) state.index = state.ids.indexOf(state.lastActiveId);
+    state.liveView = !!data.liveView;
+    state.gateway  = data.gateway || "ordinals";
+    state.records  = data.records && typeof data.records === "object" ? data.records : {};
+    el.pasteBox.value = state.ids.length && state.ids.length <= 1500 ? state.ids.join("\n") : "";
+    el.gatewaySelect.value = state.gateway;
+  } catch (err) {}
+}
+
+function htmlEscape(v) {
+  return String(v ?? "")
+    .replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+function shortId(id) {
+  if (!id) return "NO ID";
+  return id.length > 18 ? `${id.slice(0,8)}…${id.slice(-6)}` : id;
+}
+function showToast(msg) {
+  el.toast.textContent = msg; el.toast.style.display = "block";
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { el.toast.style.display = "none"; }, 2400);
+}
+function setStatus(text, color) {
+  el.statusTag.textContent = text;
+  el.statusTag.style.color = color || "var(--cyan)";
+}
+function isInscriptionId(id) {
+  return /^[a-f0-9]{64}i\d+$/i.test(String(id || "").trim());
+}
+
+async function parseIdsChunked(text, onProgress) {
+  const input = String(text || "");
+  const seen = new Set(); const out = []; let carry = "";
+  for (let pos = 0; pos < input.length; pos += PARSE_CHUNK_SIZE) {
+    const chunk = carry + input.slice(pos, pos + PARSE_CHUNK_SIZE);
+    const re = new RegExp(INSCRIPTION_ID_RE.source, "gi");
+    let m;
+    while ((m = re.exec(chunk))) {
+      const id = m[0].toLowerCase();
+      if (!seen.has(id)) { seen.add(id); out.push(id); }
+    }
+    carry = chunk.slice(-96);
+    if (onProgress) onProgress(out.length, Math.min(input.length, pos + PARSE_CHUNK_SIZE), input.length);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  return out;
+}
+
+/* ─── Gateway URLs ───────────────────────────────────── */
+function buildContentUrl(id) {
+  const c = encodeURIComponent(id);
+  if (state.gateway === "ordiscan")    return `https://ordiscan.com/content/${c}`;
+  if (state.gateway === "ordinalsbot") return `https://ordinalsbot.com/content/${c}`;
+  return `https://ordinals.com/content/${c}`;
+}
+function buildInscriptionUrl(id) {
+  const c = encodeURIComponent(id);
+  if (state.gateway === "ordiscan")    return `https://ordiscan.com/inscription/${c}`;
+  if (state.gateway === "ordinalsbot") return `https://ordinalsbot.com/inscription/${c}`;
+  return `https://ordinals.com/inscription/${c}`;
+}
+
+function showStatic(show) {
+  if (show) {
+    el.target.style.display = "none"; el.target.removeAttribute("src");
+    el.staticFace.style.display = "flex";
+    setTimeout(() => { el.staticFace.style.opacity = "1"; }, 10);
+    setStatus("IDLE");
+  } else {
+    el.staticFace.style.opacity = "0";
+    setTimeout(() => { if (el.staticFace.style.opacity === "0") el.staticFace.style.display = "none"; }, 340);
+  }
+}
+
+function updateViewer() {
+  const id = currentId(); const rec = currentRecord(); closePanel(false);
+  if (!id) {
+    showStatic(true); el.quickId.value = ""; el.noteBox.value = "";
+    el.miniId.textContent = "NO INSCRIPTION LOADED"; el.miniCount.textContent = "0 / 0";
+    el.currentReadout.textContent = "NO ID";
+    if (el.jumpIndex) { el.jumpIndex.value = ""; el.jumpIndex.removeAttribute("max"); }
+    setActiveDecision(""); updateCurrentActionIcons(null); updateStats(); saveState(); return;
+  }
+  showStatic(false); state.lastActiveId = id;
+  el.target.style.display = "block";
+  el.target.sandbox = state.liveView ? "allow-scripts allow-forms allow-same-origin" : "allow-same-origin";
+  el.target.src = buildContentUrl(id);
+  el.quickId.value = id; el.noteBox.value = rec?.note || "";
+  el.miniId.textContent = shortId(id);
+  el.miniCount.textContent = `${state.index + 1} / ${state.ids.length}`;
+  el.currentReadout.textContent = `${state.index + 1}/${state.ids.length}`;
+  if (el.jumpIndex) { el.jumpIndex.max = String(state.ids.length); el.jumpIndex.value = String(state.index + 1); }
+  el.modeTag.textContent = state.liveView ? "LIVE VIEW" : "SAFE VIEW";
+  el.liveToggle.classList.toggle("live", state.liveView);
+  el.prevBtn.disabled = state.index <= 0;
+  el.nextBtn.disabled = state.index >= state.ids.length - 1;
+  setActiveDecision(rec?.decision || ""); updateCurrentActionIcons(rec);
+  setStatus(rec?.scanStatus === "SCANNED" ? "SCANNED" : "OPEN");
+  updateStats(); saveState();
+}
+
+function updateStats() {
+  const total = state.ids.length;
+  let keep = 0, maybe = 0, skip = 0, scanned = 0, favorite = 0;
+  for (const id of state.ids) {
+    const r = state.records[id]; if (!r) continue;
+    if (r.decision === "KEEP")    keep++;
+    if (r.decision === "MAYBE")   maybe++;
+    if (r.decision === "SKIP")    skip++;
+    if (r.scanStatus === "SCANNED") scanned++;
+    if (r.favorite)               favorite++;
+  }
+  const binned = state.binnedIds.length;
+  el.loadedReadout.textContent = `LOADED: ${total}`;
+  el.savedReadout.textContent  = `SAVED: ${keep + maybe + skip + favorite}`;
+  el.statKeep.textContent      = keep;  el.statMaybe.textContent   = maybe;
+  el.statSkip.textContent      = skip;  el.statFavorite.textContent= favorite;
+  el.statBinned.textContent    = binned;el.statScanned.textContent = scanned;
+  if (!state.loadingIds) {
+    const saveNote  = state.storageLimited ? " Large session — autosave limited." : "";
+    const openIndex = firstUnreviewedIndex();
+    const openText  = openIndex >= 0 ? ` Next open: #${openIndex + 1}.` : " All marked.";
+    el.parseSummary.textContent = total
+      ? `${total} loaded · ${scanned} scanned · ${favorite} fav · ${binned} binned.${openText}${saveNote}`
+      : "Drop inscription IDs here — messy lists are fine.";
+  }
+  el.prevBtn.disabled = state.index <= 0;
+  el.nextBtn.disabled = !total || state.index >= total - 1;
+}
+
+function setActiveDecision(d) {
+  el.keepBtn.classList.toggle("active",  d === "KEEP");
+  el.maybeBtn.classList.toggle("active", d === "MAYBE");
+  el.skipBtn.classList.toggle("active",  d === "SKIP");
+}
+function updateCurrentActionIcons(rec) {
+  const active = !!rec;
+  el.favoriteBtn.disabled = !active; el.binBtn.disabled = !active;
+  el.favoriteBtn.classList.toggle("active", !!rec?.favorite);
+  el.favoriteBtn.textContent = rec?.favorite ? "★" : "☆";
+}
+function setDecision(decision) {
+  const rec = currentRecord(); if (!rec) { showToast("Load an inscription ID first."); return; }
+  rec.decision = decision; setActiveDecision(decision);
+  const cols = { KEEP: "var(--green)", MAYBE: "var(--yellow)", SKIP: "var(--red)" };
+  setStatus(decision, cols[decision]); updateStats(); saveState();
+}
+function toggleFavorite() {
+  const rec = currentRecord(); if (!rec) { showToast("Load an inscription ID first."); return; }
+  rec.favorite = !rec.favorite; updateCurrentActionIcons(rec); updateStats();
+  setStatus(rec.favorite ? "FAVORITE" : "OPEN", rec.favorite ? "var(--yellow)" : "var(--cyan)");
+  showToast(rec.favorite ? "Added to favorites." : "Removed from favorites."); saveState();
+}
+function binCurrent() {
+  const id = currentId(); if (!id) { showToast("Load an inscription ID first."); return; }
+  const rec = currentRecord() || defaultRecord(id);
+  rec.binned = true; rec.decision = rec.decision || "BIN"; state.records[id] = rec;
+  if (!state.binnedIds.includes(id)) state.binnedIds.push(id);
+  state.ids = state.ids.filter(x => x !== id);
+  if (state.index >= state.ids.length) state.index = Math.max(0, state.ids.length - 1);
+  showToast("Moved to bin."); updateViewer(); saveStateNow();
+}
+
+async function loadIdsFromPaste() {
+  if (state.loadingIds) return;
+  state.loadingIds = true; el.loadIds.disabled = true;
+  el.loadIds.textContent = "Loading…"; setStatus("PARSING", "var(--amber)");
+  try {
+    const ids = await parseIdsChunked(el.pasteBox.value, (count, done, total) => {
+      const pct = total ? Math.round((done / total) * 100) : 100;
+      el.parseSummary.textContent = `Parsing… ${pct}% — found ${count} IDs`;
+    });
+    if (!ids.length) { showToast("No valid inscription IDs found."); return; }
+    for (const oldBin of state.binnedIds) { if (state.records[oldBin]) state.records[oldBin].binned = false; }
+    const previousId = currentId() || state.lastActiveId || "";
+    state.ids = ids; state.binnedIds = [];
+    const previousIndex = previousId ? ids.indexOf(previousId) : -1;
+    if (previousIndex >= 0) {
+      state.index = previousIndex;
+      showToast(`${ids.length} IDs loaded. Resumed at #${previousIndex + 1}.`);
+    } else {
+      const openIndex = firstUnreviewedIndex(ids);
+      state.index = openIndex >= 0 ? openIndex : 0;
+      showToast(openIndex >= 0 ? `${ids.length} IDs loaded. Jumped to #${openIndex + 1}.` : `${ids.length} IDs loaded.`);
+    }
+    updateViewer(); saveStateNow();
+  } finally {
+    state.loadingIds = false; el.loadIds.disabled = false;
+    el.loadIds.textContent = "Load IDs"; updateStats();
+  }
+}
+
+function openQuickId() {
+  const id = el.quickId.value.trim().toLowerCase();
+  if (!id) { showToast("Paste one inscription ID first."); return; }
+  if (!isInscriptionId(id)) showToast("ID format looks unusual — opening anyway.");
+  if (!state.ids.includes(id)) state.ids.push(id);
+  state.binnedIds = state.binnedIds.filter(x => x !== id);
+  if (!state.records[id]) state.records[id] = defaultRecord(id);
+  state.records[id].binned = false;
+  state.index = state.ids.indexOf(id);
+  if (state.ids.length <= 1500) el.pasteBox.value = state.ids.join("\n");
+  updateViewer();
+}
+function move(delta) {
+  if (!state.ids.length) return;
+  const next = Math.max(0, Math.min(state.ids.length - 1, state.index + delta));
+  if (next === state.index) return;
+  state.index = next; updateViewer();
+}
+function jumpToTypedIndex() {
+  if (!state.ids.length) { showToast("Load IDs first."); return; }
+  const number = Number.parseInt(String(el.jumpIndex?.value || "").trim(), 10);
+  if (!Number.isFinite(number)) { showToast("Type the list number first."); return; }
+  const clamped = Math.max(1, Math.min(state.ids.length, number));
+  state.index = clamped - 1; updateViewer();
+  showToast(`Jumped to ${clamped} / ${state.ids.length}.`);
+}
+function jumpToNextOpen() {
+  if (!state.ids.length) { showToast("Load IDs first."); return; }
+  for (let step = 1; step <= state.ids.length; step++) {
+    const idx = (state.index + step) % state.ids.length;
+    if (!isReviewedRecord(state.records[state.ids[idx]])) {
+      state.index = idx; updateViewer();
+      showToast(`Next open: ${idx + 1} / ${state.ids.length}.`); return;
+    }
+  }
+  showToast("No open IDs left.");
+}
+
+
+function compactForStorage(value, maxChars = 7000) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    if (text.length <= maxChars) return value;
+    return { truncated: true, preview: text.slice(0, maxChars) };
+  } catch {
+    return { truncated: true, preview: String(value).slice(0, maxChars) };
+  }
+}
+function compactRecordForStorage(rec) {
+  const out = { ...rec };
+  out.sourcePreview = rec.sourcePreview ? String(rec.sourcePreview).slice(0, 2600) : "";
+  out.guardFlags = Array.isArray(rec.guardFlags) ? rec.guardFlags.slice(0, 40).map(flag => ({
+    level: flag.level,
+    title: flag.title,
+    human: flag.human,
+    evidence: Array.isArray(flag.evidence) ? flag.evidence.slice(0, 16) : []
+  })) : [];
+  out.externalUrls = (rec.externalUrls || []).slice(0, 60);
+  out.contentRefs = (rec.contentRefs || []).slice(0, 60);
+  out.recursiveRefs = (rec.recursiveRefs || []).slice(0, 60);
+  out.inscriptionIds = (rec.inscriptionIds || []).slice(0, 80);
+  out.hiddenEvidence = (rec.hiddenEvidence || []).slice(0, 60);
+  out.activeEvidence = (rec.activeEvidence || []).slice(0, 60);
+  out.inputEvidence = (rec.inputEvidence || []).slice(0, 60);
+  out.meta = compactForStorage(rec.meta, 8000);
+  out.ordMetadata = compactForStorage(rec.ordMetadata, 6000);
+  out.parents = compactForStorage(rec.parents, 6000);
+  out.children = compactForStorage(rec.children, 6000);
+  out.sat = compactForStorage(rec.sat, 6000);
+  out.utxo = compactForStorage(rec.utxo, 8000);
+  out.block = compactForStorage(rec.block, 6000);
+  return out;
+}
+
+function gatewayBase(name = state.gateway) {
+  if (name === "ordiscan") return "https://ordiscan.com";
+  if (name === "ordinalsbot") return "https://ordinalsbot.com";
+  return "https://ordinals.com";
+}
+function gatewayBases() {
+  return Array.from(new Set([gatewayBase(state.gateway), "https://ordinals.com", "https://ordiscan.com", "https://ordinalsbot.com"]));
+}
+function buildGatewayPathUrl(path, base = gatewayBase(state.gateway)) {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+async function fetchJson(paths) {
+  const urls = [];
+  for (const path of paths) {
+    if (/^https?:\/\//i.test(path)) urls.push(path);
+    else for (const base of gatewayBases()) urls.push(buildGatewayPathUrl(path, base));
+  }
+  let lastError = "";
+  for (const url of Array.from(new Set(urls))) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        cache: "no-store",
+        headers: { Accept: "application/json,text/plain,*/*" }
+      });
+      clearTimeout(timeout);
+      if (!res.ok) { lastError = `HTTP ${res.status} from ${url}`; continue; }
+      const text = await res.text();
+      try { return { ok: true, data: JSON.parse(text), path: url }; }
+      catch { return { ok: true, data: text, path: url }; }
+    } catch (err) {
+      lastError = err?.name === "AbortError" ? `Timed out: ${url}` : `${err?.message || err}`;
+    }
+  }
+  return { ok: false, data: null, path: paths[0], error: lastError };
+}
+
+async function fetchContentPacket(id) {
+  const urls = [
+    buildContentUrl(id),
+    `https://ordinals.com/content/${encodeURIComponent(id)}`,
+    `https://ordiscan.com/content/${encodeURIComponent(id)}`,
+    `https://ordinalsbot.com/content/${encodeURIComponent(id)}`
+  ];
+  let lastError = "";
+  for (const url of Array.from(new Set(urls))) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(url, { signal: controller.signal, cache: "no-store" });
+      clearTimeout(timeout);
+      if (!res.ok) { lastError = `HTTP ${res.status} from ${url}`; continue; }
+      const contentType = res.headers.get("content-type") || "";
+      const length = res.headers.get("content-length") || "";
+      const buffer = await res.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const signature = detectFileSignature(bytes, contentType);
+      const sourceIsText = shouldDecodeSource(contentType, signature, bytes.length);
+      const sourceTooLarge = bytes.length > MAX_SOURCE_CHARS;
+      let text = "";
+      if (sourceIsText) {
+        text = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, MAX_SOURCE_CHARS));
+      }
+      return {
+        ok: true,
+        url,
+        text,
+        bytes,
+        size: bytes.length,
+        length: String(bytes.length || length || ""),
+        contentType: contentType || "unknown",
+        signature,
+        sourceIsText,
+        sourceTooLarge
+      };
+    } catch (err) {
+      lastError = err?.name === "AbortError" ? `Timed out: ${url}` : `${err?.message || err}`;
+    }
+  }
+  return { ok: false, error: `Could not read content. Last error: ${lastError}` };
+}
+async function fetchSource(id) {
+  const packet = await fetchContentPacket(id);
+  if (!packet.ok) return packet;
+  return {
+    ok: true,
+    text: packet.text,
+    contentType: packet.contentType,
+    length: packet.length,
+    sourceIsText: packet.sourceIsText,
+    sourceTooLarge: packet.sourceTooLarge,
+    url: packet.url
+  };
+}
+function shouldDecodeSource(contentType, signature, size) {
+  const t = String(contentType || "").toLowerCase();
+  if (/text|html|json|javascript|svg|xml|css|plain|markdown/.test(t)) return true;
+  if (/HTML|SVG|JSON|TEXT|XML/i.test(signature?.kind || "")) return true;
+  if (size < 160000 && !/PNG|JPEG|GIF|PDF|ZIP|GLB|3D/i.test(signature?.kind || "")) return true;
+  return false;
+}
+function detectFileSignature(bytes, declared) {
+  const hex = Array.from(bytes.slice(0, 16)).map(b => b.toString(16).padStart(2, "0").toUpperCase()).join(" ");
+  const ascii = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 180)).trimStart();
+  let kind = "Unknown";
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) kind = "PNG image";
+  else if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) kind = "JPEG image";
+  else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) kind = "GIF image";
+  else if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) kind = "PDF document";
+  else if (bytes[0] === 0x50 && bytes[1] === 0x4B) kind = "ZIP-like file";
+  else if (bytes[0] === 0x67 && bytes[1] === 0x6C && bytes[2] === 0x54 && bytes[3] === 0x46) kind = "GLB / 3D model";
+  else if (/^<!doctype html/i.test(ascii) || /^<html/i.test(ascii)) kind = "HTML page";
+  else if (/^<svg/i.test(ascii) || ascii.includes("<svg")) kind = "SVG image";
+  else if (/^[{[]/.test(ascii)) kind = "JSON or text data";
+  else if (declared && /text/i.test(declared)) kind = "Text";
+  const declaredSimple = (declared || "unknown").split(";")[0].toLowerCase();
+  const mismatch = declaredSimple !== "unknown" && (
+    (kind.includes("PNG") && !declaredSimple.includes("png")) ||
+    (kind.includes("JPEG") && !declaredSimple.includes("jpeg") && !declaredSimple.includes("jpg")) ||
+    (kind.includes("GIF") && !declaredSimple.includes("gif")) ||
+    (kind.includes("HTML") && !declaredSimple.includes("html")) ||
+    (kind.includes("SVG") && !declaredSimple.includes("svg")) ||
+    (kind.includes("PDF") && !declaredSimple.includes("pdf"))
+  );
+  return { hex, ascii: ascii.slice(0, 180), kind, mismatch };
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n < 0) return "Unknown";
+  if (n < 1024) return `${n} bytes`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(2)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+function formatTime(t) {
+  const n = Number(t);
+  if (!Number.isFinite(n)) return "Unknown";
+  const d = new Date(n * 1000);
+  return Number.isNaN(d.getTime()) ? String(t) : `${d.toISOString().replace("T", " ").replace(".000Z", " UTC")}`;
+}
+function value(v) {
+  if (v === undefined || v === null || v === "") return "None found";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "None found";
+  if (typeof v === "object") return JSON.stringify(v, null, 2);
+  return String(v);
+}
+function smallList(items) {
+  if (!items || !items.length) return `<p class="muted">Nothing found.</p>`;
+  return `<ul class="small-list">${items.slice(0, MAX_LIST_ITEMS).map(x => `<li class="mono">${htmlEscape(x)}</li>`).join("")}${items.length > MAX_LIST_ITEMS ? `<li>...and ${items.length - MAX_LIST_ITEMS} more</li>` : ""}</ul>`;
+}
+
+function addFlag(flags, level, title, human, evidence = []) {
+  const cleanEvidence = [...new Set((evidence || []).map(x => String(x)).filter(Boolean))].slice(0, 40);
+  flags.push({ level, title, human, evidence: cleanEvidence });
+}
+function matches(text, tests) {
+  const found = [];
+  for (const t of tests) {
+    const regex = t.regex || new RegExp(t.pattern, "ig");
+    const m = String(text || "").match(regex);
+    if (m) found.push(t.label || t.pattern);
+  }
+  return found;
+}
+function uniqueMatches(text, regex, limit = 120) {
+  const out = new Set();
+  let m;
+  const source = String(text || "");
+  regex.lastIndex = 0;
+  while ((m = regex.exec(source)) && out.size < limit) out.add(m[0]);
+  return [...out];
+}
+
+function analyzeControls(source, sourceInfo) {
+  const text = String(source || "");
+  const lower = text.toLowerCase();
+  const controls = new Map();
+  const warnings = [];
+  const instructions = [];
+  function addControl(name, why) {
+    const key = name.toUpperCase();
+    if (!controls.has(key)) controls.set(key, { name: key, evidence: [] });
+    if (why && controls.get(key).evidence.length < 5) controls.get(key).evidence.push(why);
+  }
+  function addWarning(msg) { if (!warnings.includes(msg)) warnings.push(msg); }
+  if (!text) {
+    if (sourceInfo?.sourceIsText === false) addWarning("Binary/image content — no readable controls to scan.");
+    else addWarning("No readable source text was available.");
+  }
+  const simpleChecks = [
+    [/arrowleft|keycode\s*={0,2}\s*37|which\s*={0,2}\s*37|case\s+37\b|\bleft\b/g, "← LEFT", "Left key"],
+    [/arrowright|keycode\s*={0,2}\s*39|which\s*={0,2}\s*39|case\s+39\b|\bright\b/g, "→ RIGHT", "Right key"],
+    [/arrowup|keycode\s*={0,2}\s*38|which\s*={0,2}\s*38|case\s+38\b|\bup\b/g, "↑ UP", "Up key"],
+    [/arrowdown|keycode\s*={0,2}\s*40|which\s*={0,2}\s*40|case\s+40\b|\bdown\b/g, "↓ DOWN", "Down key"],
+    [/\bkeyw\b|code\s*={0,2}\s*["']keyw["']|key\s*={0,2}\s*["']w["']|\bwasd\b/g, "W", "W/WASD"],
+    [/\bkeya\b|code\s*={0,2}\s*["']keya["']|key\s*={0,2}\s*["']a["']|\bwasd\b/g, "A", "A/WASD"],
+    [/\bkeys\b|code\s*={0,2}\s*["']keys["']|key\s*={0,2}\s*["']s["']|\bwasd\b/g, "S", "S/WASD"],
+    [/\bkeyd\b|code\s*={0,2}\s*["']keyd["']|key\s*={0,2}\s*["']d["']|\bwasd\b/g, "D", "D/WASD"],
+    [/spacebar|\bspace\b|code\s*={0,2}\s*["']space["']|keycode\s*={0,2}\s*32|which\s*={0,2}\s*32|case\s+32\b/g, "SPACE", "Space key"],
+    [/enter|return|keycode\s*={0,2}\s*13|which\s*={0,2}\s*13|case\s+13\b/g, "ENTER", "Enter"],
+    [/escape|\besc\b|keycode\s*={0,2}\s*27|which\s*={0,2}\s*27|case\s+27\b/g, "ESC", "Escape"],
+    [/shift|keycode\s*={0,2}\s*16/g, "SHIFT", "Shift"],
+    [/controlleft|controlright|ctrlkey|\bctrl\b|keycode\s*={0,2}\s*17/g, "CTRL", "Ctrl"],
+    [/altkey|\balt\b|keycode\s*={0,2}\s*18/g, "ALT", "Alt"],
+    [/mousedown|mouseup|mousemove|onclick|click\(|addEventListener\(["']click/g, "MOUSE CLICK", "Click handler"],
+    [/drag|pointermove|mousemove|touchmove/g, "DRAG / MOVE", "Drag handler"],
+    [/wheel|mousewheel|deltaY|scroll/g, "SCROLL WHEEL", "Scroll wheel"],
+    [/touchstart|touchend|touchmove|pointerdown|pointerup|tap/g, "TOUCH / TAP", "Touch handler"],
+    [/swipe/g, "SWIPE", "Swipe"],
+    [/gamepad|getGamepads|button\s*\.pressed|axes\[/g, "GAMEPAD", "Gamepad API"]
+  ];
+  for (const [regex, name, why] of simpleChecks) { regex.lastIndex = 0; if (regex.test(lower)) addControl(name, why); }
+  for (const match of [...text.matchAll(/(?:key|code)\s*(?:===|==|=|:|\))\s*["'`]([A-Za-z0-9 _\-+]{1,18})["'`]/g)].slice(0, 80)) {
+    const raw = match[1].trim();
+    const norm = normalizeKey(raw);
+    if (norm) addControl(norm, `Key: ${raw}`);
+  }
+  const keyCodes = { 8:"BACKSPACE",9:"TAB",13:"ENTER",16:"SHIFT",17:"CTRL",18:"ALT",27:"ESC",32:"SPACE",37:"← LEFT",38:"↑ UP",39:"→ RIGHT",40:"↓ DOWN",65:"A",68:"D",83:"S",87:"W",88:"X",90:"Z" };
+  for (const m of [...text.matchAll(/(?:keyCode|which|case)\D{0,10}(\d{1,3})/g)].slice(0,80)) {
+    const key = keyCodes[Number(m[1])];
+    if (key) addControl(key, `KeyCode ${m[1]}`);
+  }
+  for (const line of extractInstructionSentences(text).slice(0,12)) instructions.push(line);
+  if (lower.includes("addeventlistener") && !controls.size) addWarning("Event listeners found, but exact controls weren't obvious from static scan.");
+  if (lower.includes("eval(") || lower.includes("setinterval") || lower.includes("requestanimationframe")) addWarning("Active code detected. Use SAFE VIEW first; LIVE VIEW only if you trust this inscription.");
+  if (sourceInfo?.sourceTooLarge) addWarning("Only part of a large source file was scanned.");
+  if (sourceInfo?.url) instructions.unshift(`Scanned from: ${sourceInfo.url}`);
+  return { controls: Array.from(controls.values()), instructions: unique(instructions).slice(0,14), warnings: unique(warnings).slice(0,12) };
+}
+
+function analyzeGuardSource(text, content, rec) {
+  const flags = [];
+  const externalUrls = uniqueMatches(text, /https?:\/\/[^\s"'<>\\)]+/gi);
+  const contentRefs = uniqueMatches(text, /\/content\/[a-f0-9]{64}i\d+/gi);
+  const recursiveRefs = uniqueMatches(text, /\/r\/[a-z0-9_\-\/]+/gi);
+  const inscriptionIds = uniqueMatches(text, /[a-f0-9]{64}i\d+/gi);
+
+  const active = matches(text, [
+    { regex: /<script\b/gi, label: "script tag" },
+    { regex: /javascript:/gi, label: "javascript: link" },
+    { regex: /addEventListener/gi, label: "event listener" },
+    { regex: /\bon[a-z]+\s*=/gi, label: "inline event action" },
+    { regex: /setTimeout|setInterval|requestAnimationFrame/gi, label: "timer / animation loop" },
+    { regex: /document\.write|innerHTML/gi, label: "writes into page" }
+  ]);
+  if (active.length) addFlag(flags, "careful", "This can run code", "This inscription is not just a still image. It can react when opened, clicked, typed into, or played.", active);
+
+  const inputs = matches(text, [
+    { regex: /<form\b/gi, label: "form" },
+    { regex: /<input\b/gi, label: "input box" },
+    { regex: /<textarea\b/gi, label: "text area" },
+    { regex: /<select\b/gi, label: "dropdown" },
+    { regex: /contenteditable/gi, label: "editable area" },
+    { regex: /seed phrase|private key|password|wallet/gi, label: "sensitive words" }
+  ]);
+  if (inputs.length) addFlag(flags, "stop", "It has places where you can type", "Never type seed words, private keys, passwords, wallet details, or personal information into an inscription.", inputs);
+
+  const external = matches(text, [
+    { regex: /fetch\s*\(/gi, label: "fetch" },
+    { regex: /XMLHttpRequest/gi, label: "web request" },
+    { regex: /WebSocket/gi, label: "websocket" },
+    { regex: /sendBeacon/gi, label: "send beacon" },
+    { regex: /<script[^>]+src=/gi, label: "outside script" },
+    { regex: /<link[^>]+href=/gi, label: "outside stylesheet/link" },
+    { regex: /<img[^>]+src=/gi, label: "image source" },
+    { regex: /<iframe\b/gi, label: "iframe" }
+  ]);
+  if (externalUrls.length || external.length) addFlag(flags, "careful", "It may load things from outside Bitcoin", "Part of what you see may come from another website or service, not only from the inscription itself.", [...external, ...externalUrls.slice(0, 12)]);
+
+  const nav = matches(text, [
+    { regex: /window\.open/gi, label: "opens new window" },
+    { regex: /location\.href|location\.assign|location\.replace/gi, label: "redirect" },
+    { regex: /target=["']_blank["']/gi, label: "new tab link" }
+  ]);
+  if (nav.length) addFlag(flags, "careful", "It may open another page", "This inscription may try to move you somewhere else or open a new tab.", nav);
+
+  const storage = matches(text, [
+    { regex: /localStorage/gi, label: "local storage" },
+    { regex: /sessionStorage/gi, label: "session storage" },
+    { regex: /document\.cookie/gi, label: "cookies" },
+    { regex: /indexedDB/gi, label: "browser database" },
+    { regex: /caches\.open/gi, label: "browser cache" }
+  ]);
+  if (storage.length) addFlag(flags, "careful", "It may save data in your browser", "This is not automatically bad. It means the inscription can change something stored in this browser.", storage);
+
+  const clipboard = matches(text, [
+    { regex: /navigator\.clipboard/gi, label: "clipboard API" },
+    { regex: /execCommand\(['"]copy/gi, label: "copy command" },
+    { regex: /execCommand\(['"]paste/gi, label: "paste command" }
+  ]);
+  if (clipboard.length) addFlag(flags, "careful", "It may use your clipboard", "Be careful if you recently copied a wallet address, password, private key, or seed words.", clipboard);
+
+  const hidden = matches(text, [
+    { regex: /display\s*:\s*none/gi, label: "hidden by display:none" },
+    { regex: /visibility\s*:\s*hidden/gi, label: "hidden by visibility" },
+    { regex: /opacity\s*:\s*0(?!\.)/gi, label: "fully transparent" },
+    { regex: /\bhidden\b/gi, label: "hidden word/attribute" },
+    { regex: /aria-hidden/gi, label: "aria-hidden" },
+    { regex: /left\s*:\s*-\d{3,}/gi, label: "moved off-screen" },
+    { regex: /id=["'][^"']*(secret|unlock|modal|screen|menu|panel|hidden|door|gate|admin|debug)[^"']*["']/gi, label: "secret-looking id" },
+    { regex: /class=["'][^"']*(secret|unlock|modal|screen|menu|panel|hidden|door|gate|admin|debug)[^"']*["']/gi, label: "secret-looking class" },
+    { regex: /keydown|keypress|keyup|click|dblclick|touchstart|pointerdown|hashchange|location\.hash/gi, label: "hidden action trigger" },
+    { regex: /konami|cheat|easter|unlock|secret|password|debug|admin/gi, label: "secret-like words" }
+  ]);
+  if (hidden.length) addFlag(flags, "notice", "Hidden parts or secret actions may exist", "This does not prove there is a secret. It means the file contains signs of hidden screens, menus, keyboard tricks, or unlockable areas.", hidden);
+
+  const obfuscated = matches(text, [
+    { regex: /eval\s*\(/gi, label: "eval" },
+    { regex: /new Function\s*\(/gi, label: "new Function" },
+    { regex: /atob\s*\(/gi, label: "base64 decoder" },
+    { regex: /fromCharCode/gi, label: "character-code builder" },
+    { regex: /unescape\s*\(/gi, label: "unescape" },
+    { regex: /[A-Za-z0-9+/]{240,}={0,2}/g, label: "long encoded-looking text" }
+  ]);
+  const longLines = String(text || "").split(/\n/).filter(l => l.length > 2000).length;
+  if (obfuscated.length || longLines > 0) addFlag(flags, "careful", "Some code may be hard to read", "The inscription may contain packed, encoded, or minified code. That makes static review less clean.", [...obfuscated, longLines ? `${longLines} very long line(s)` : ""].filter(Boolean));
+
+  if (contentRefs.length || recursiveRefs.length) addFlag(flags, "notice", "It uses other inscription or ord data", "This may be built from other pieces on Bitcoin. That can be normal for recursive art.", [...contentRefs.slice(0, 20), ...recursiveRefs.slice(0, 20)]);
+
+  if (content?.signature?.mismatch) addFlag(flags, "careful", "File type looks unusual", "The file label and the file header do not fully match. That may be harmless, but it is worth checking.", [`Declared: ${content.contentType}`, `Looks like: ${content.signature.kind}`]);
+  if (content?.size > 2 * 1024 * 1024) addFlag(flags, "careful", "This is a large inscription", "It may load slowly or behave badly on older phones.", [`Size: ${formatBytes(content.size)}`]);
+  else if (content?.size > 500 * 1024) addFlag(flags, "notice", "This inscription is not tiny", "It may take a moment to load on mobile.", [`Size: ${formatBytes(content.size)}`]);
+
+  if (rec?.meta?.delegate) addFlag(flags, "careful", "Visible content may come from another inscription", "The inscription appears to use delegated content.", [String(rec.meta.delegate)]);
+  if (rec?.meta?.parents?.length) addFlag(flags, "notice", "It belongs to a family", "This inscription has parent inscriptions, which may mean it is part of a collection or hierarchy.", rec.meta.parents);
+  if (rec?.meta?.children?.length) addFlag(flags, "notice", "It has children", "Other inscriptions may be linked under this one.", rec.meta.children);
+
+  if (!flags.length) addFlag(flags, "safe", "Nothing obvious found in the static scan", "SENTINEL did not find obvious scripts, forms, outside links, hidden screens, or suspicious browser features in the readable content.", []);
+
+  return { flags, externalUrls, contentRefs, recursiveRefs, inscriptionIds, hiddenEvidence: hidden, activeEvidence: active, inputEvidence: inputs };
+}
+function overallLevel(flags) {
+  const f = Array.isArray(flags) ? flags : [];
+  if (f.some(x => x.level === "stop")) return { label: "STOP AND CHECK", cls: "stop" };
+  if (f.some(x => x.level === "careful")) return { label: "BE CAREFUL", cls: "careful" };
+  if (f.some(x => x.level === "notice")) return { label: "TAKE A LOOK", cls: "notice" };
+  return { label: "LOOKS OK", cls: "safe" };
+}
+function colorForLevel(cls) {
+  if (cls === "stop") return "var(--red)";
+  if (cls === "careful") return "var(--yellow)";
+  if (cls === "safe") return "var(--green)";
+  return "var(--cyan)";
+}
+async function fetchExtraDataForRecord(rec) {
+  const id = rec.id;
+  const jobs = [];
+  jobs.push(fetchJson([`/r/metadata/${encodeURIComponent(id)}`]).then(r => { rec.ordMetadata = r.ok ? r.data : null; }));
+  jobs.push(fetchJson([`/r/parents/${encodeURIComponent(id)}/inscriptions`, `/r/parents/${encodeURIComponent(id)}`]).then(r => { rec.parents = r.ok ? r.data : null; }));
+  jobs.push(fetchJson([`/r/children/${encodeURIComponent(id)}/inscriptions`, `/r/children/${encodeURIComponent(id)}`]).then(r => { rec.children = r.ok ? r.data : null; }));
+  if (rec.meta?.sat !== undefined && rec.meta?.sat !== null) jobs.push(fetchJson([`/r/sat/${encodeURIComponent(rec.meta.sat)}`]).then(r => { rec.sat = r.ok ? r.data : null; }));
+  if (rec.meta?.output) jobs.push(fetchJson([`/r/utxo/${encodeURIComponent(rec.meta.output)}`, `/output/${encodeURIComponent(rec.meta.output)}`]).then(r => { rec.utxo = r.ok ? r.data : null; }));
+  if (rec.meta?.height !== undefined && rec.meta?.height !== null) jobs.push(fetchJson([`/r/blockinfo/${encodeURIComponent(rec.meta.height)}`, `/block/${encodeURIComponent(rec.meta.height)}`]).then(r => { rec.block = r.ok ? r.data : null; }));
+  await Promise.allSettled(jobs);
+
+  if (!Array.isArray(rec.guardFlags)) rec.guardFlags = [];
+  if (rec.ordMetadata) {
+    addFlag(rec.guardFlags, "notice", "Extra metadata found", "This inscription appears to have extra on-chain metadata.", [typeof rec.ordMetadata === "string" ? rec.ordMetadata.slice(0, 80) : JSON.stringify(rec.ordMetadata).slice(0, 80)]);
+  }
+  if (rec.sat?.ids?.length > 1) {
+    addFlag(rec.guardFlags, "notice", "More than one inscription on the same sat", "This may be a re-inscription stack or a sat with multiple layers.", rec.sat.ids);
+  }
+  const utxoIns = Array.isArray(rec.utxo?.inscriptions) ? rec.utxo.inscriptions : [];
+  if (utxoIns.length > 1) {
+    addFlag(rec.guardFlags, "notice", "Other inscriptions live in the same Bitcoin place", "This inscription shares its Bitcoin output with other inscriptions.", utxoIns);
+  }
+  if (rec.utxo?.runes && JSON.stringify(rec.utxo.runes) !== "null" && JSON.stringify(rec.utxo.runes) !== "{}") {
+    addFlag(rec.guardFlags, "notice", "Runes may be in the same Bitcoin place", "The output connected to this inscription may also hold rune data.", [JSON.stringify(rec.utxo.runes).slice(0, 200)]);
+  }
+}
+
+function normalizeKey(raw) {
+  const k = String(raw||"").trim();
+  const lower = k.toLowerCase();
+  const map = { arrowleft:"← LEFT",left:"← LEFT",keyleft:"← LEFT",arrowright:"→ RIGHT",right:"→ RIGHT",
+    arrowup:"↑ UP",up:"↑ UP",arrowdown:"↓ DOWN",down:"↓ DOWN"," ":"SPACE",space:"SPACE",spacebar:"SPACE",
+    enter:"ENTER",return:"ENTER",escape:"ESC",esc:"ESC",shift:"SHIFT",control:"CTRL",ctrl:"CTRL",alt:"ALT",
+    keyw:"W",keya:"A",keys:"S",keyd:"D" };
+  if (map[lower]) return map[lower];
+  if (/^[a-z0-9]$/i.test(k)) return k.toUpperCase();
+  if (/^key[a-z]$/i.test(k)) return k.slice(3).toUpperCase();
+  if (/^digit\d$/i.test(k)) return k.slice(-1);
+  return "";
+}
+
+function extractInstructionSentences(text) {
+  const cleaned = String(text||"")
+    .replace(/<script[\s\S]*?<\/script>/gi," ")
+    .replace(/<style[\s\S]*?<\/style>/gi," ")
+    .replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,220000);
+  const words = ["control","controls","how to play","move","jump","shoot","start","press","use","arrow","wasd","space","enter","click","tap","swipe","drag"];
+  const useful = [];
+  for (const s of cleaned.split(/(?<=[.!?])\s+|\n+/).map(x=>x.trim()).filter(Boolean)) {
+    if (s.length > 220) continue;
+    if (words.some(w => s.toLowerCase().includes(w))) useful.push(s);
+  }
+  return useful;
+}
+function unique(list) {
+  const out = [];
+  const seen = new Set();
+  for (const item of list) {
+    const clean = String(item||"").trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (!seen.has(key)) { seen.add(key); out.push(clean); }
+  }
+  return out;
+}
+
+async function scanOne(id, quiet) {
+  if (!id) { showToast("Load an inscription ID first."); return null; }
+  const rec = state.records[id] || defaultRecord(id);
+  state.records[id] = { ...defaultRecord(id), ...rec };
+  const r = state.records[id];
+
+  r.scanStatus = "SCANNING";
+  r.guardStatus = "SCANNING";
+  r.error = "";
+  r.scannedAt = "";
+  r.controls = [];
+  r.instructions = [];
+  r.warnings = [];
+  r.guardFlags = [];
+  if (!quiet) setStatus("SCANNING", "var(--amber)");
+  updateStats();
+  saveState();
+
+  const metaRes = await fetchJson([`/r/inscription/${encodeURIComponent(id)}`, `/inscription/${encodeURIComponent(id)}`]);
+  r.meta = metaRes.ok ? metaRes.data : null;
+  if (!metaRes.ok) r.warnings.push("Could not load main inscription facts from gateway metadata.");
+
+  const source = await fetchContentPacket(id);
+  if (!source.ok) {
+    r.scanStatus = "BLOCKED";
+    r.guardStatus = "BLOCKED";
+    r.scannedAt = new Date().toISOString();
+    r.controls = [];
+    r.instructions = [];
+    r.warnings.push("Scan blocked. Preview may still open, but source could not be read.");
+    r.sourcePreview = "";
+    r.sourceUrl = "";
+    r.contentType = r.meta?.content_type || r.meta?.effective_content_type || "";
+    r.contentLength = r.meta?.content_length ? String(r.meta.content_length) : "";
+    r.contentSize = Number(r.meta?.content_length || 0);
+    r.error = source.error || "Source scan failed.";
+    const guard = analyzeGuardSource("", null, r);
+    Object.assign(r, {
+      guardFlags: guard.flags,
+      externalUrls: guard.externalUrls,
+      contentRefs: guard.contentRefs,
+      recursiveRefs: guard.recursiveRefs,
+      inscriptionIds: guard.inscriptionIds,
+      hiddenEvidence: guard.hiddenEvidence,
+      activeEvidence: guard.activeEvidence,
+      inputEvidence: guard.inputEvidence
+    });
+    r.guardLevel = overallLevel(r.guardFlags);
+    r.guardSummary = plainEnglishSummary(r);
+    if (!quiet) { setStatus("BLOCKED","var(--red)"); openTab("report"); showToast("Scan blocked by browser/gateway."); }
+    updateStats(); saveState(); return r;
+  }
+
+  const controls = analyzeControls(source.text, source);
+  const guard = analyzeGuardSource(source.text || "", source, r);
+  r.scanStatus = "SCANNED";
+  r.guardStatus = "SCANNED";
+  r.scannedAt = new Date().toISOString();
+  r.controls = controls.controls;
+  r.instructions = controls.instructions;
+  r.warnings = unique([...r.warnings, ...controls.warnings]);
+  r.sourcePreview = String(source.text || "").slice(0, 3600);
+  r.sourceUrl = source.url || "";
+  r.sourceIsText = !!source.sourceIsText;
+  r.sourceTooLarge = !!source.sourceTooLarge;
+  r.contentType = source.contentType || r.meta?.content_type || r.meta?.effective_content_type || "Unknown";
+  r.contentLength = source.length || String(r.meta?.content_length || "") || "Unknown";
+  r.contentSize = source.size || Number(r.meta?.content_length || 0);
+  r.fileSignature = source.signature || null;
+  r.error = "";
+  Object.assign(r, {
+    guardFlags: guard.flags,
+    externalUrls: guard.externalUrls,
+    contentRefs: guard.contentRefs,
+    recursiveRefs: guard.recursiveRefs,
+    inscriptionIds: guard.inscriptionIds,
+    hiddenEvidence: guard.hiddenEvidence,
+    activeEvidence: guard.activeEvidence,
+    inputEvidence: guard.inputEvidence
+  });
+
+  await fetchExtraDataForRecord(r);
+  r.guardLevel = overallLevel(r.guardFlags);
+  r.guardSummary = plainEnglishSummary(r);
+
+  if (!quiet) {
+    setStatus(r.guardLevel.label, colorForLevel(r.guardLevel.cls));
+    openTab("report");
+    showToast(r.controls.length ? `Scan complete. ${r.controls.length} control clue(s) found.` : "Scan complete. No obvious controls found.");
+  }
+  updateStats();
+  saveState();
+  return r;
+}
+
+async function scanCurrent() {
+  const id = currentId();
+  if (!id) { showToast("Load IDs first."); return; }
+  await scanOne(id, false);
+}
+async function scanAllLoaded() {
+  if (!state.ids.length) { showToast("Load IDs first."); return; }
+  if (state.scanningAll) return;
+  state.scanningAll = true;
+  el.scanAll.textContent = "Scanning…";
+  const origIdx = state.index;
+  try {
+    for (let i = 0; i < state.ids.length; i++) {
+      setStatus(`${i + 1}/${state.ids.length}`, "var(--amber)");
+      el.parseSummary.textContent = `Scanning ${i + 1} of ${state.ids.length}…`;
+      await scanOne(state.ids[i], true);
+      if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    state.index = Math.min(origIdx, Math.max(0, state.ids.length - 1));
+    setStatus("DONE","var(--green)");
+    openTab("report");
+    showToast("Scan all finished.");
+    saveStateNow();
+  } finally {
+    state.scanningAll = false;
+    el.scanAll.textContent = "Scan All";
+    state.index = Math.min(origIdx, Math.max(0, state.ids.length - 1));
+    updateViewer();
+  }
+}
+
+function openTab(name) {
+  const rec = currentRecord();
+  el.panel.classList.add("active");
+  state.lastTab = name;
+  el.tabButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.tab === name));
+  const titles = {
+    play:"CONTROLS",
+    about:"ABOUT",
+    warnings:"WARNINGS",
+    secrets:"SECRETS",
+    inside:"INSIDE",
+    parts:"PARTS",
+    family:"FAMILY",
+    location:"LOCATION",
+    history:"HISTORY",
+    source:"SOURCE",
+    report:"REPORT",
+    safety:"SAFETY",
+    links:"LINKS"
+  };
+  el.panelTitle.textContent = `SENTINEL // ${titles[name] || name.toUpperCase()}`;
+  if (!rec) {
+    el.panelContent.innerHTML = card("No ID loaded", "<p>Paste IDs into the box below, then press Load IDs.</p>");
+    return;
+  }
+  const renderers = {
+    play: renderPlay,
+    about: renderAbout,
+    warnings: renderWarnings,
+    secrets: renderSecrets,
+    inside: renderInside,
+    parts: renderParts,
+    family: renderFamily,
+    location: renderLocation,
+    history: renderHistory,
+    source: renderSource,
+    report: renderReport,
+    safety: renderSafety,
+    links: renderLinks
+  };
+  el.panelContent.innerHTML = (renderers[name] || renderReport)(rec);
+  saveState();
+}
+function closePanel(clearActive = true) {
+  el.panel.classList.remove("active");
+  if (clearActive) el.tabButtons.forEach(btn => btn.classList.remove("active"));
+}
+function card(title, body, cls="") { return `<div class="card ${cls}"><h3>${htmlEscape(title)}</h3>${body}</div>`; }
+function pill(text, cls="notice") { return `<span class="pill ${cls}">${htmlEscape(text)}</span>`; }
+
+function simpleType(type) {
+  const t = String(type || "").toLowerCase();
+  if (t.includes("html")) return "Web page";
+  if (t.includes("svg")) return "SVG image";
+  if (t.includes("image")) return "Image";
+  if (t.includes("audio")) return "Sound";
+  if (t.includes("video")) return "Video";
+  if (t.includes("json")) return "Data file";
+  if (t.includes("text")) return "Text";
+  if (t.includes("model") || t.includes("gltf") || t.includes("glb")) return "3D file";
+  if (t.includes("pdf")) return "PDF document";
+  if (t.includes("zip")) return "ZIP-like file";
+  return "Unknown file";
+}
+function plainEnglishSummary(rec) {
+  if (!rec || rec.guardStatus === "NOT SCANNED") return "Scan this inscription first.";
+  const bits = [];
+  const type = simpleType(rec.meta?.effective_content_type || rec.meta?.content_type || rec.contentType);
+  bits.push(`This appears to be a ${type.toLowerCase()}.`);
+  if (rec.activeEvidence?.length) bits.push("It can run or react to code.");
+  if (rec.inputEvidence?.length) bits.push("It has places where a person can type.");
+  if (rec.hiddenEvidence?.length) bits.push("It may contain hidden screens or secret actions.");
+  if (rec.contentRefs?.length || rec.recursiveRefs?.length) bits.push("It uses other inscription or ord data.");
+  if (rec.meta?.parents?.length || rec.parents?.ids?.length || rec.parents?.parents?.length) bits.push("It appears to have a parent/family connection.");
+  if (rec.meta?.delegate) bits.push("Its visible content may come from another inscription.");
+  if (rec.error) bits.push("The source scan hit a gateway/browser block.");
+  return bits.join(" ");
+}
+
+function renderPlay(rec) {
+  const status = rec.scanStatus || "NOT SCANNED";
+  const headerClass = status==="SCANNED" ? "safe" : status==="BLOCKED" ? "stop" : "notice";
+  let html = card("Scan status", `<p>${pill(status, headerClass)} ${rec.guardLevel ? pill(rec.guardLevel.label, rec.guardLevel.cls) : ""}</p><p class="muted">Static scan now checks controls plus Sentinel guard signals: code, forms, outside links, hidden actions, file headers, family, location, and history metadata.</p><p><button onclick="window.SentinelIdeas.scanCurrentFromPanel()" class="primary" type="button">Scan this ID</button></p>`);
+  if (rec.controls && rec.controls.length) {
+    html += card("Controls found", `<p>${rec.controls.map(c => pill(c.name,"notice")).join(" ")}</p>${rec.controls.map(c => `<p><b>${htmlEscape(c.name)}</b><br><span class="muted">${htmlEscape((c.evidence||[]).join("; ")||"Detected in source.")}</span></p>`).join("")}`);
+  } else {
+    html += card("Controls found", `<p>${pill("NONE OBVIOUS", status==="SCANNED"?"careful":"notice")}</p><p class="muted">Scan this ID first. If already scanned, no obvious controls were visible in readable source.</p>`);
+  }
+  if (rec.instructions && rec.instructions.length) {
+    html += card("Written instructions", `<ul class="small-list">${rec.instructions.map(x => `<li>${htmlEscape(x)}</li>`).join("")}</ul>`);
+  } else {
+    html += card("Written instructions", `<p>${pill("NONE FOUND","careful")}</p><p class="muted">May still be playable — no plain text directions found in readable source.</p>`);
+  }
+  if (rec.warnings && rec.warnings.length) {
+    html += card("Scan warnings", `<ul class="small-list">${rec.warnings.map(x=>`<li>${htmlEscape(x)}</li>`).join("")}</ul>`, status==="BLOCKED"?"stop":"careful");
+  }
+  return html;
+}
+function renderAbout(rec) {
+  const m = rec.meta || {};
+  const type = m.effective_content_type || m.content_type || rec.contentType || "Unknown";
+  const simple = simpleType(type);
+  return [
+    card("What is this?", `<p>This looks like: ${pill(simple, simple === "Web page" ? "careful" : "notice")}</p><p class="muted">SENTINEL checks what the inscription says it is, then looks inside the file when possible.</p>`),
+    card("Basic facts", `<p><b>ID:</b> <span class="mono">${htmlEscape(rec.id)}</span></p><p><b>Number:</b> ${htmlEscape(value(m.number))}</p><p><b>Type:</b> ${htmlEscape(type)}</p><p><b>Size:</b> ${htmlEscape(formatBytes(m.content_length ?? rec.contentSize ?? rec.contentLength))}</p><p><b>Block:</b> ${htmlEscape(value(m.height))}</p><p><b>Made:</b> ${htmlEscape(formatTime(m.timestamp))}</p>`),
+    card("Plain English", `<p>${htmlEscape(plainEnglishSummary(rec))}</p>`)
+  ].join("");
+}
+function renderWarnings(rec) {
+  const flags = Array.isArray(rec.guardFlags) ? rec.guardFlags : [];
+  const overall = rec.guardLevel || overallLevel(flags);
+  const header = card("SENTINEL says", `<p>${pill(overall.label, overall.cls)}</p><p class="muted">These warnings come from metadata and static source checks. They are not a promise of safety.</p>`, overall.cls);
+  const advice = card("Simple safety advice", `<ul class="small-list"><li>Use SAFE VIEW first.</li><li>Do not type seed words.</li><li>Do not type private keys.</li><li>Do not type passwords.</li><li>Do not connect or trust wallet prompts from random inscriptions.</li><li>Use LIVE VIEW only when you trust what you are opening.</li></ul>`, "stop");
+  const body = flags.length ? flags.map(f => card(f.title, `<p>${htmlEscape(f.human)}</p>${f.evidence?.length ? `<p class="muted">Evidence found:</p>${smallList(f.evidence)}` : ""}`, `flag ${f.level}`)).join("") : card("Not scanned", `<p>${pill("SCAN FIRST","notice")}</p>`);
+  return header + advice + body;
+}
+function renderSecrets(rec) {
+  const found = rec.hiddenEvidence || [];
+  return [
+    card("Hidden / unlock scan", found.length ? `<p>${pill("POSSIBLE HIDDEN ACTIONS","notice")}</p><p>SENTINEL found clues that this inscription may have hidden screens, menus, keyboard tricks, click actions, or unlockable areas.</p>${smallList(found)}` : `<p>${pill("NO OBVIOUS HIDDEN CLUES","safe")}</p><p class="muted">Static scan did not find obvious hidden screens or secret-action words.</p>`),
+    card("What this means", `<p>This does not prove a secret exists. It only means the file contains real clues like hidden elements, keyboard listeners, click handlers, screen/menu names, or secret-looking words.</p>`)
+  ].join("");
+}
+function renderInside(rec) {
+  const sig = rec.fileSignature || {};
+  return [
+    card("Inside the file", `<p><b>Label says:</b> ${htmlEscape(rec.contentType || rec.meta?.content_type || "Unknown")}</p><p><b>Header looks like:</b> ${htmlEscape(sig.kind || "Unknown")}</p><p><b>Size:</b> ${htmlEscape(formatBytes(rec.contentSize || rec.meta?.content_length || rec.contentLength))}</p><p><b>First bytes:</b> <span class="mono">${htmlEscape(sig.hex || "Unknown")}</span></p>${sig.mismatch ? `<p>${pill("FILE TYPE LOOKS UNUSUAL","careful")}</p>` : `<p>${pill("FILE TYPE CHECK OK","safe")}</p>`}`),
+    card("Things SENTINEL counted", `<p>${pill(`Outside links: ${rec.externalUrls?.length || 0}`, rec.externalUrls?.length ? "careful" : "safe")}${pill(`Other inscription refs: ${rec.contentRefs?.length || 0}`, rec.contentRefs?.length ? "notice" : "safe")}${pill(`Ord endpoint refs: ${rec.recursiveRefs?.length || 0}`, rec.recursiveRefs?.length ? "notice" : "safe")}${pill(`Inscription IDs seen: ${rec.inscriptionIds?.length || 0}`, rec.inscriptionIds?.length ? "notice" : "safe")}</p>`),
+    card("Tiny preview", `<pre>${htmlEscape(sig.ascii || "No readable preview.")}</pre>`)
+  ].join("");
+}
+function renderParts(rec) {
+  return [
+    card("Other pieces used", rec.contentRefs?.length || rec.recursiveRefs?.length ? `<p>This inscription appears to use other inscription or ord data.</p><h3>/content references</h3>${smallList(rec.contentRefs)}<h3>/r references</h3>${smallList(rec.recursiveRefs)}` : `<p>${pill("NO PARTS FOUND","safe")}</p><p class="muted">Static scan did not find obvious /content or /r references.</p>`),
+    card("Why this matters", `<p>Some inscriptions are built from other pieces: code, images, traits, styles, sounds, or data. That can be normal. SENTINEL shows the parts so people know what they are looking at.</p>`)
+  ].join("");
+}
+function renderFamily(rec) {
+  const m = rec.meta || {};
+  const parentIds = m.parents || rec.parents?.ids || (rec.parents?.parents || []).map(x => x.id) || [];
+  const childIds = m.children || rec.children?.ids || (rec.children?.children || []).map(x => x.id) || [];
+  return [
+    card("Family", `<p>${pill(`Parents: ${parentIds.length}`, parentIds.length ? "notice" : "safe")}${pill(`Children: ${childIds.length}`, childIds.length ? "notice" : "safe")}</p><p class="muted">Parents and children can show collection or provenance structure.</p>`),
+    card("Parents", smallList(parentIds)),
+    card("Children", smallList(childIds)),
+    card("More detail", `<pre>${htmlEscape(JSON.stringify({ parents: rec.parents, children: rec.children }, null, 2))}</pre>`)
+  ].join("");
+}
+function renderLocation(rec) {
+  const m = rec.meta || {};
+  return [
+    card("Where it lives", `<p><b>Sat:</b> <span class="mono">${htmlEscape(value(m.sat))}</span></p><p><b>Satpoint:</b> <span class="mono">${htmlEscape(value(m.satpoint))}</span></p><p><b>Output:</b> <span class="mono">${htmlEscape(value(m.output))}</span></p><p><b>Address from metadata:</b> <span class="mono">${htmlEscape(value(m.address))}</span></p><p class="muted">This is location data from the inscription, not a wallet scan.</p>`),
+    card("Same Bitcoin place", rec.utxo ? `<pre>${htmlEscape(JSON.stringify(rec.utxo, null, 2))}</pre>` : `<p class="muted">No output/UTXO data found, or this server does not support it.</p>`),
+    card("Same sat", rec.sat ? `<pre>${htmlEscape(JSON.stringify(rec.sat, null, 2))}</pre>` : `<p class="muted">No sat stack data found, or the server may not have sat indexing enabled.</p>`)
+  ].join("");
+}
+function renderHistory(rec) {
+  const m = rec.meta || {};
+  return [
+    card("When it was made", `<p><b>Block:</b> ${htmlEscape(value(m.height))}</p><p><b>Time:</b> ${htmlEscape(formatTime(m.timestamp))}</p><p><b>Inscription number:</b> ${htmlEscape(value(m.number))}</p><p><b>Fee:</b> ${htmlEscape(value(m.fee))} sats</p><p><b>Value:</b> ${htmlEscape(value(m.value))} sats</p>`),
+    card("Block details", rec.block ? `<pre>${htmlEscape(JSON.stringify(rec.block, null, 2))}</pre>` : `<p class="muted">No block details found, or this server does not support block info.</p>`),
+    card("Previous / next", `<p><b>Previous:</b> <span class="mono">${htmlEscape(value(m.previous))}</span></p><p><b>Next:</b> <span class="mono">${htmlEscape(value(m.next))}</span></p>`)
+  ].join("");
+}
+function renderSource(rec) {
+  const preview = rec.sourcePreview ? htmlEscape(rec.sourcePreview) : "No readable source stored. Press Scan Controls.";
+  return [
+    card("Source facts", `<p><b>Type:</b> ${htmlEscape(rec.contentType || "Unknown")}</p><p><b>Size:</b> ${htmlEscape(formatBytes(rec.contentSize || rec.contentLength))}</p><p><b>Readable:</b> ${rec.sourceIsText ? pill("YES","notice") : pill("NO / UNKNOWN","careful")}</p><p><b>Preview only:</b> ${rec.sourceTooLarge ? pill("YES","careful") : pill("NO","safe")}</p><p><b>Scanned:</b> ${htmlEscape(rec.scannedAt || "Never")}</p><p><b>Source URL:</b> <span class="mono">${htmlEscape(rec.sourceUrl || "None")}</span></p><p><b>Error:</b> ${htmlEscape(rec.error || "None")}</p>`),
+    card("Readable preview", `<pre>${preview}</pre>`),
+    card("Extra on-chain metadata", rec.ordMetadata ? `<pre>${htmlEscape(JSON.stringify(rec.ordMetadata, null, 2))}</pre>` : `<p class="muted">No extra /r/metadata result found.</p>`),
+    card("Raw inscription facts", `<pre>${htmlEscape(JSON.stringify(rec.meta || {}, null, 2))}</pre>`)
+  ].join("");
+}
+function renderReport(rec) {
+  const dCls = rec.decision==="KEEP"?"decision-keep":rec.decision==="MAYBE"?"decision-maybe":rec.decision==="SKIP"?"decision-skip":"notice";
+  const controls = rec.controls?.map(c=>c.name).join(", ")||"None found";
+  const flags = Array.isArray(rec.guardFlags) ? rec.guardFlags : [];
+  const o = rec.guardLevel || overallLevel(flags);
+  const danger = flags.filter(f => f.level === "stop").length;
+  const careful = flags.filter(f => f.level === "careful").length;
+  const notice = flags.filter(f => f.level === "notice").length;
+  const safe = flags.filter(f => f.level === "safe").length;
+  return [
+    card("Inscription", `<p><b>ID:</b> <span class="mono">${htmlEscape(rec.id)}</span></p><p><b>Position:</b> ${state.index+1} / ${state.ids.length}</p><p>${pill(rec.decision||"NO DECISION",dCls)} ${rec.favorite?pill("FAVORITE","careful"):""} ${pill(o.label,o.cls)}</p>`),
+    card("Scan report", `<p><b>Type:</b> ${htmlEscape(simpleType(rec.meta?.effective_content_type || rec.meta?.content_type || rec.contentType))}</p><p><b>Size:</b> ${htmlEscape(formatBytes(rec.meta?.content_length ?? rec.contentSize ?? rec.contentLength))}</p><p>${pill(`STOP: ${danger}`, danger ? "stop" : "safe")}${pill(`CAREFUL: ${careful}`, careful ? "careful" : "safe")}${pill(`NOTICE: ${notice}`, notice ? "notice" : "safe")}${pill(`SAFE: ${safe}`, "safe")}</p>`),
+    card("Controls summary", `<p><b>Controls:</b> ${htmlEscape(controls)}</p><p><b>Scan status:</b> ${htmlEscape(rec.scanStatus||"NOT SCANNED")}</p>`),
+    card("SENTINEL summary", `<p>${htmlEscape(plainEnglishSummary(rec))}</p>`),
+    card("Top things found", flags.length ? flags.slice(0, 8).map(f => `<p>${pill(f.level.toUpperCase(), f.level)} <b>${htmlEscape(f.title)}</b><br><span class="muted">${htmlEscape(f.human)}</span></p>`).join("") : `<p class="muted">Scan first.</p>`),
+    card("Note", `<p>${htmlEscape(rec.note||"No note yet.")}</p>`),
+    card("Copyable report", `<pre>SENTINEL_IDEAS SCAN REPORT\n\nID: ${htmlEscape(rec.id)}\nSTATUS: ${htmlEscape(o.label)}\nTYPE: ${htmlEscape(simpleType(rec.meta?.effective_content_type || rec.meta?.content_type || rec.contentType))}\nSIZE: ${htmlEscape(formatBytes(rec.meta?.content_length ?? rec.contentSize ?? rec.contentLength))}\nCONTROLS: ${htmlEscape(controls)}\nCAN RUN CODE: ${rec.activeEvidence?.length ? "YES" : "NO OBVIOUS SIGN"}\nTYPE-IN BOXES: ${rec.inputEvidence?.length ? "YES" : "NO OBVIOUS SIGN"}\nHIDDEN CLUES: ${rec.hiddenEvidence?.length ? "YES" : "NO OBVIOUS SIGN"}\nUSES OTHER PARTS: ${rec.contentRefs?.length || rec.recursiveRefs?.length ? "YES" : "NO OBVIOUS SIGN"}\nPARENT/FAMILY: ${rec.meta?.parents?.length || rec.parents?.ids?.length || rec.parents?.parents?.length ? "YES" : "NO OBVIOUS SIGN"}\n\nADVICE: Use SAFE VIEW first. Do not type seed words, private keys, passwords, wallet details, or personal information.</pre>`),
+    card("All decisions", renderDecisionList())
+  ].join("");
+}
+function renderDecisionList() {
+  if (!state.ids.length && !state.binnedIds.length) return "<p>No IDs loaded.</p>";
+  const active = state.ids.slice(0,250).map((id,idx) => {
+    const r = state.records[id] || defaultRecord(id);
+    const level = r.guardLevel?.label || r.scanStatus || "not scanned";
+    return `<li><span class="mono">${htmlEscape(shortId(id))}</span>${r.favorite?" ★":""} — ${htmlEscape(r.decision||"open")} — ${htmlEscape(level)}</li>`;
+  }).join("");
+  const more = state.ids.length>250 ? `<li class="muted">+ ${state.ids.length-250} more (see CSV export)</li>` : "";
+  const bin = state.binnedIds.slice(0,80).map(id=>`<li><span class="mono">${htmlEscape(shortId(id))}</span> — BIN</li>`).join("");
+  return `<p class="muted">Summary view. CSV export has full IDs.</p><ol class="small-list">${active}${more}</ol>${state.binnedIds.length?`<h3>BIN</h3><ol class="small-list">${bin}</ol>`:""}`;
+}
+function renderSafety(rec) {
+  return [
+    card("Safe view", `<p>${pill("DEFAULT","safe")} Loads without script permission. Safer for first checks — some interactive inscriptions need Live View to function.</p>`),
+    card("Live view", `<p>${pill("USE CAREFULLY","careful")} Allows scripts and forms. Never type seed words, private keys, passwords, or wallet details inside the viewer.</p>`),
+    card("Scan limitations", `<ul class="small-list"><li>Can find obvious controls and guard signals in readable source.</li><li>May miss controls or risks in minified code, child inscriptions, delegated content, binary files, or gateway-blocked files.</li><li>Does not prove an inscription is safe to interact with.</li></ul>`)
+  ].join("");
+}
+function renderLinks(rec) {
+  const content = buildContentUrl(rec.id);
+  const page = buildInscriptionUrl(rec.id);
+  const ordPage = `https://ordinals.com/inscription/${encodeURIComponent(rec.id)}`;
+  return [
+    card("Open externally", `<p><a href="${htmlEscape(content)}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">Open content page ↗</a></p><p><a href="${htmlEscape(page)}" target="_blank" rel="noopener noreferrer" style="color:var(--amber)">Open selected gateway page ↗</a></p><p><a href="${htmlEscape(ordPage)}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">Open ordinals.com page ↗</a></p>`),
+    card("Full ID", `<pre>${htmlEscape(rec.id)}</pre>`)
+  ].join("");
+}
+
+
+function exportCsv() {
+  const exportIds = [...state.ids, ...state.binnedIds.filter(id => !state.ids.includes(id))];
+  if (!exportIds.length) { showToast("Nothing to export."); return; }
+  const headers = [
+    "position","id","favorite","binned","decision","note",
+    "scan_status","guard_status","guard_level","controls","instructions","warnings","guard_flags",
+    "external_urls_count","content_refs_count","recursive_refs_count","inscription_ids_count",
+    "hidden_evidence_count","active_evidence_count","input_evidence_count",
+    "content_type","content_length","file_signature","file_type_mismatch",
+    "inscription_number","block_height","timestamp","sat","satpoint","output","address",
+    "scanned_at","content_url","inscription_url","source_url"
+  ];
+  const rows = exportIds.map((id,idx) => {
+    const r = state.records[id] || defaultRecord(id);
+    const m = r.meta || {};
+    const flags = (r.guardFlags || []).map(f => `${f.level.toUpperCase()}: ${f.title}`).join(" | ");
+    return [
+      idx + 1,
+      id,
+      r.favorite ? "YES" : "",
+      r.binned || state.binnedIds.includes(id) ? "YES" : "",
+      r.decision || "",
+      r.note || "",
+      r.scanStatus || "",
+      r.guardStatus || "",
+      r.guardLevel?.label || "",
+      (r.controls || []).map(c => c.name).join(" | "),
+      (r.instructions || []).join(" | "),
+      (r.warnings || []).join(" | "),
+      flags,
+      (r.externalUrls || []).length,
+      (r.contentRefs || []).length,
+      (r.recursiveRefs || []).length,
+      (r.inscriptionIds || []).length,
+      (r.hiddenEvidence || []).length,
+      (r.activeEvidence || []).length,
+      (r.inputEvidence || []).length,
+      r.contentType || "",
+      r.contentLength || "",
+      r.fileSignature?.kind || "",
+      r.fileSignature?.mismatch ? "YES" : "",
+      m.number ?? "",
+      m.height ?? "",
+      m.timestamp ?? "",
+      m.sat ?? "",
+      m.satpoint ?? "",
+      m.output ?? "",
+      m.address ?? "",
+      r.scannedAt || "",
+      buildContentUrl(id),
+      buildInscriptionUrl(id),
+      r.sourceUrl || ""
+    ];
+  });
+  const csv = [headers,...rows].map(row=>row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url;
+  a.download=`sentinel-ideas-guard-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  showToast("CSV exported.");
+}
+function csvEscape(v) { const s=String(v??""); return /[",\n]/.test(s)?`"${s.replaceAll('"','""')}"`  :s; }
+function clearAll() {
+  if (!confirm("Clear all loaded IDs, notes, decisions, and scans from this browser?")) return;
+  state.ids=[]; state.binnedIds=[]; state.index=0; state.lastActiveId=""; state.records={};
+  el.pasteBox.value=""; localStorage.removeItem(STORAGE_KEY);
+  updateViewer(); showToast("Cleared.");
+}
+
+function handleMouseMove(e) {
+  const rect = el.frame.getBoundingClientRect();
+  const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+  const dx=Math.max(-1,Math.min(1,(e.clientX-cx)/(rect.width/2)));
+  const dy=Math.max(-1,Math.min(1,(e.clientY-cy)/(rect.height/2)));
+  for (const pupil of el.pupils) pupil.style.transform=`translate(${dx*10}px,${dy*10}px)`;
+}
+function resetTilt() {
+  for (const pupil of el.pupils) pupil.style.transform="translate(0,0)";
+}
+
+/* ─── Events ─────────────────────────────────────────── */
+el.loadIds.addEventListener("click", loadIdsFromPaste);
+el.quickLoad.addEventListener("click", openQuickId);
+el.quickId.addEventListener("keydown", e => { if (e.key==="Enter") openQuickId(); });
+el.jumpBtn.addEventListener("click", jumpToTypedIndex);
+el.nextOpenBtn.addEventListener("click", jumpToNextOpen);
+el.jumpIndex.addEventListener("keydown", e => { if (e.key==="Enter") { e.preventDefault(); jumpToTypedIndex(); } });
+el.prevBtn.addEventListener("click", () => move(-1));
+el.nextBtn.addEventListener("click", () => move(1));
+el.favoriteBtn.addEventListener("click", toggleFavorite);
+el.binBtn.addEventListener("click", binCurrent);
+el.scanCurrent.addEventListener("click", scanCurrent);
+el.scanAll.addEventListener("click", scanAllLoaded);
+el.exportCsv.addEventListener("click", exportCsv);
+el.clearAll.addEventListener("click", clearAll);
+el.keepBtn.addEventListener("click", () => setDecision("KEEP"));
+el.maybeBtn.addEventListener("click", () => setDecision("MAYBE"));
+el.skipBtn.addEventListener("click", () => setDecision("SKIP"));
+el.noteBox.addEventListener("input", () => { const rec=currentRecord(); if (rec) { rec.note=el.noteBox.value; saveState(); } });
+el.gatewaySelect.addEventListener("change", () => { state.gateway=el.gatewaySelect.value; updateViewer(); showToast(`Gateway: ${state.gateway}`); });
+el.liveToggle.addEventListener("click", () => {
+  if (!state.liveView) { if (!confirm("LIVE VIEW allows scripts and forms. Never type seed words, private keys, or wallet details inside the viewer. Continue?")) return; }
+  state.liveView=!state.liveView; updateViewer(); showToast(state.liveView ? "Live View on." : "Safe View on.");
+});
+el.panelBack.addEventListener("click", () => closePanel(true));
+el.tabButtons.forEach(btn => btn.addEventListener("click", () => openTab(btn.dataset.tab)));
+
+document.addEventListener("keydown", e => {
+  const tag=(document.activeElement?.tagName||"").toLowerCase();
+  if (tag==="input"||tag==="textarea"||tag==="select") return;
+  if (e.key==="ArrowLeft")       { e.preventDefault(); move(-1); }
+  if (e.key==="ArrowRight")      { e.preventDefault(); move(1); }
+  if (e.key.toLowerCase()==="g") { e.preventDefault(); el.jumpIndex.focus(); el.jumpIndex.select(); }
+  if (e.key.toLowerCase()==="o") { e.preventDefault(); jumpToNextOpen(); }
+  if (e.key.toLowerCase()==="k") setDecision("KEEP");
+  if (e.key.toLowerCase()==="m") setDecision("MAYBE");
+  if (e.key.toLowerCase()==="f") toggleFavorite();
+  if (e.key.toLowerCase()==="b") binCurrent();
+  if (e.key.toLowerCase()==="s") scanCurrent();
+  if (e.key==="Escape") closePanel(true);
+});
+document.addEventListener("mousemove", handleMouseMove);
+document.addEventListener("mouseleave", resetTilt);
+window.addEventListener("beforeunload", saveStateNow);
+
+window.SentinelIdeas = { scanCurrentFromPanel: scanCurrent };
+
+
+
+// ─── Viewer height controls ───────────────────────────
+const FRAME_STEP = 120;
+const FRAME_DEFAULT = null; // CSS-driven default
+document.getElementById("heightUp").addEventListener("click", () => {
+  const cur = el.frame.getBoundingClientRect().height;
+  el.frame.style.height = Math.min(window.innerHeight * 0.97, cur + FRAME_STEP) + "px";
+});
+document.getElementById("heightDown").addEventListener("click", () => {
+  const cur = el.frame.getBoundingClientRect().height;
+  el.frame.style.height = Math.max(300, cur - FRAME_STEP) + "px";
+});
+document.getElementById("heightReset").addEventListener("click", () => {
+  el.frame.style.height = "";
+});
+
+loadState();
+updateViewer();
+</script>
+</body>
+</html>
