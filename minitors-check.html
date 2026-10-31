@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Minitor bitmap check test</title>
+<style>
+:root { --bg: #e9ebee; --card: #f7f8fa; --ink: #16191d; --soft: #5b6470; --line: #d5d9de; --ok: #1f7a4d; --bad: #b3261e; --wait: #8a6d00; --btn: #f2c230; }
+@media (prefers-color-scheme: dark) { :root { --bg: #111418; --card: #1a1e24; --ink: #eef1f4; --soft: #9aa4b0; --line: #2c323a; --ok: #4fc58a; --bad: #ff8a80; --wait: #e8c547; --btn: #f2c230; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 28px; line-height: 1.15; margin: 0 0 8px; }
+p { margin: 0 0 12px; color: var(--soft); }
+button { font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 14px 20px; background: var(--btn); color: #16191d; cursor: pointer; width: 100%; }
+button:disabled { opacity: .55; cursor: default; }
+button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+#sum { font-size: 20px; font-weight: 700; margin: 18px 0 10px; min-height: 30px; }
+ol { list-style: none; padding: 0; margin: 0; }
+li { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0 0 8px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+.name { font-weight: 700; }
+.note { color: var(--soft); font-size: 14px; grid-column: 1; }
+.res { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-weight: 700; font-size: 15px; text-align: right; }
+.res[data-s=ok] { color: var(--ok); } .res[data-s=bad] { color: var(--bad); } .res[data-s=run] { color: var(--wait); } .res[data-s=wait] { color: var(--soft); font-weight: 400; }
+.small { font-size: 13px; color: var(--soft); margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Minitor bitmap check test</h1>
+<p>This runs the robot’s own “is this the real bitmap?” check against live Bitcoin (ordinals.com), using bitmaps whose real inscription is already known.</p>
+<p>It downloads about 15 MB, so Wi-Fi is best. It takes about a minute.</p>
+<button id="go">Run the check</button>
+<div id="sum" role="status" aria-live="polite"></div>
+<ol id="list"></ol>
+<p class="small">Nothing here touches your wallet. The check code in this page is copied straight out of the Minitor robot file.</p>
+</main>
+<script>
+var ORD = 'https://ordinals.com';
+function getJSON(u) { return fetch(ORD + u).then(function (r) { if (!r.ok) throw new Error('no data'); return r.json(); }); }
+function getText(u) { return fetch(ORD + u).then(function (r) { if (!r.ok) throw new Error('no data'); return r.text(); }); }
+// ---- copied from the robot ----
+// Is that bitmap the REAL one: the first valid "<block>.bitmap" ever inscribed, by bop's LiveOCI rules?
+//   Below block 942,000: the bitmap On-Chain Index (OCI), the same inscribed pages LiveOCI reads.
+//   From 942,000 up: read the blocks from <block> onward; the first valid claim wins (LiveOCI rule 1).
+// A Minitor is only called a fake when an EARLIER valid claim is found and ord confirms it.
+// If the index can't be reached or takes too long, the Minitor is drawn anyway.
+var OCI_LIMIT = 942000, WALK_MAX = 6, CHECK_MS = 30000;
+var OCI_PAGES = ['01bba6c58af39d7f199aa2bceeaaba1ba91b23d2663bc4ef079a4b5e442dbf74i0',
+  'bb01dfa977a5cd0ee6e900f1d1f896b5ec4b1e3c7b18f09c952f25af6591809fi0', 'bb02e94f3062facf6aa2e47eeed348d017fd31c97614170dddb58fc59da304efi0',
+  'bb037ec98e6700e8415f95d1f5ca1fe1ba23a3f0c5cb7284d877e9ac418d0d32i0', 'bb9438f4345f223c6f4f92adf6db12a82c45d1724019ecd7b6af4fcc3f5786cei0',
+  'bb0542d4606a9e7eb4f31051e91f7696040db06ca1383dff98505618c34d7df7i0', 'bb06a4dffba42b6b513ddee452b40a67688562be4a1345127e4d57269e6b2ab6i0',
+  'bb076934c1c22007b315dd1dc0f8c4a2f9d52f348320cfbadc7c0bd99eaa5e18i0', 'bb986a1208380ec7db8df55a01c88c73a581069a51b5a2eb2734b41ba10b65c2i0',
+  'b907b51a239e3a37f29f8222fb274f828c6ebf7b93ce501a55b7171daaa75758i0', 'b942b6477c7da9090edb9751429ba9c3ba01b39ab972fc888d481f528e3e03c3i0'];
+// Bitmaps below 840,000 that are not the first inscription on their sat (from the OCI module, credited there to @_lefrog).
+var OCI_SATIDX = { 92871: 1, 92970: 1, 123132: 1, 365518: 1, 700181: 1, 826151: 1, 827151: 1, 828151: 1, 828239: 1, 828661: 1,
+  829151: 1, 830151: 1, 832104: 2, 832249: 2, 832252: 2, 832385: 4, 833067: 1, 833101: 3, 833105: 4, 833109: 4, 833121: 8,
+  834030: 2, 834036: 2, 834051: 17, 834073: 4, 836151: 1, 837115: 2, 837120: 2, 837151: 1, 837183: 3, 837188: 2, 838058: 5,
+  838068: 2, 838076: 2, 838096: 1, 838151: 1, 838821: 1, 839151: 1, 839377: 1, 839378: 2, 839382: 2, 839397: 1 };
+function ociPageNo(n) { return n >= 907000 ? 10 : n >= 840000 ? 9 : Math.floor(n / 100000); }
+function ociPos(n) { return n >= 907000 ? n - 907000 : n >= 840000 ? n - 840000 : n % 100000; }
+// Read one OCI page the way the OCI module itself does, quirks included.
+function ociDecode(p, text) {
+  var d, full = [], sats = [];
+  function pi(v) { return parseInt(String(v)); }
+  function undelta(list, out) { list.forEach(function (s, i) { out.push(i ? pi(out[i - 1]) + pi(s) : pi(s)); }); }
+  if (p >= 9) { d = JSON.parse(text); undelta(d.deltaEncodedSats, sats); return { sats: sats, map: d.satIndexMap || {} }; }
+  if (p === 2 || p === 3) { d = JSON.parse('[' + text + ']'); d = [d.slice(0, 99999), d.slice(100000, 199999)]; }
+  else {
+    d = text;
+    try { d = JSON.parse(d.split('\\n  ').join('')); } catch (e) {}
+    if (typeof d === 'string') try { d = JSON.parse(d.split('  ').join('')); } catch (e) {}
+  }
+  undelta(d[0], full);
+  d[1].forEach(function (pos, i) { sats[pos] = full[i]; });
+  return { sats: sats, map: null };
+}
+var ociPages = {};
+function ociFirst(n) {
+  var p = ociPageNo(n);
+  if (!ociPages[p]) ociPages[p] = getText('/content/' + OCI_PAGES[p]).then(function (t) { return ociDecode(p, t); });
+  return ociPages[p].then(function (pg) {
+    var sat = pg.sats[ociPos(n)], at = n >= 840000 ? (pg.map[String(n)] || 0) : (OCI_SATIDX[n] || 0);
+    if (typeof sat !== 'number' || !(sat > 0) || sat % 1 || sat > 9007199254740991) return null;
+    return getJSON('/r/sat/' + sat + '/at/' + at).then(function (j) { return (j && j.id) || null; });
+  });
+}
+
+// From 942,000 up: Bitcoin's own blocks, read straight from ord, in Bitcoin order (transaction, input, envelope).
+function hexBytes(h) {
+  var n = h.length >> 1, b = new Uint8Array(n), i, a, c;
+  for (i = 0; i < n; i++) { a = h.charCodeAt(2 * i); c = h.charCodeAt(2 * i + 1); b[i] = ((a & 15) + (a > 57 ? 9 : 0)) << 4 | ((c & 15) + (c > 57 ? 9 : 0)); }
+  return b;
+}
+// The script parts of an ord envelope: pushes (OP_1NEGATE and OP_1..OP_16 count as pushes), or a bare opcode. null = broken script.
+function scriptParts(s) {
+  var out = [], i = 0, op, k;
+  while (i < s.length) {
+    op = s[i++]; k = -1;
+    if (op <= 0x4b) k = op;
+    else if (op === 0x4c) { if (i + 1 > s.length) return null; k = s[i]; i += 1; }
+    else if (op === 0x4d) { if (i + 2 > s.length) return null; k = s[i] | s[i + 1] << 8; i += 2; }
+    else if (op === 0x4e) { if (i + 4 > s.length) return null; k = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+    if (k >= 0) { if (i + k > s.length) return null; out.push({ d: s.subarray(i, i + k) }); i += k; }
+    else if (op === 0x4f) out.push({ d: new Uint8Array([0x81]), num: 1 });
+    else if (op >= 0x51 && op <= 0x60) out.push({ d: new Uint8Array([op - 0x50]), num: 1 });
+    else out.push({ op: op });
+  }
+  return out;
+}
+// Each finished envelope (OP_FALSE OP_IF "ord" ... OP_ENDIF) in a script, as its list of pushes.
+function envelopes(s) {
+  var t = scriptParts(s), out = [], i = 0, x, y, pay, end;
+  if (!t) return out;
+  while (i < t.length) {
+    x = t[i++];
+    if (!x.d || x.d.length || x.num) continue;
+    y = t[i];
+    if (!y || y.op !== 0x63) continue;
+    i++; y = t[i];
+    if (!y || !y.d || y.d.length !== 3 || y.d[0] !== 0x6f || y.d[1] !== 0x72 || y.d[2] !== 0x64) continue;
+    i++; pay = []; end = 0;
+    while (i < t.length) { y = t[i++]; if (y.op !== undefined) { end = y.op === 0x68 ? 1 : 2; break; } pay.push(y.d); }
+    if (end === 1) out.push(pay);
+  }
+  return out;
+}
+// LiveOCI's test: the body is exactly "<n>.bitmap", no compression tag, no delegate tag.
+function isClaim(pay, want) {
+  var at = -1, i, j, o = 0, len = 0, enc = null, del = null;
+  for (i = 0; i < pay.length; i += 2) if (!pay[i].length) { at = i; break; }
+  if (at < 0) return false;
+  for (i = 0; i + 1 < at; i += 2) {
+    if (pay[i].length === 1 && pay[i][0] === 9 && enc === null) enc = pay[i + 1];
+    if (pay[i].length === 1 && pay[i][0] === 11 && del === null) del = pay[i + 1];
+  }
+  if ((enc && enc.length) || (del && del.length)) return false;
+  for (i = at + 1; i < pay.length; i++) len += pay[i].length;
+  if (len !== want.length) return false;
+  for (i = at + 1; i < pay.length; i++) for (j = 0; j < pay[i].length; j++) if (pay[i][j] !== want.charCodeAt(o++)) return false;
+  return true;
+}
+// The first claim in one block: which transaction, and its inscription number inside that transaction.
+function blockClaim(b, want) {
+  var p = 80, t, i, j, k, l, nin, nout, items, w, wits, start, mid, seg, idx, s, env, count;
+  function vi() {
+    var x = b[p++];
+    if (x < 253) return x;
+    if (x === 253) { x = b[p] | b[p + 1] << 8; p += 2; return x; }
+    if (x === 254) { x = (b[p] | b[p + 1] << 8 | b[p + 2] << 16 | b[p + 3] << 24) >>> 0; p += 4; return x; }
+    throw new Error('bad block');
+  }
+  count = vi();
+  for (t = 0; t < count; t++) {
+    start = p; seg = b[p + 4] === 0 && b[p + 5] !== 0;
+    p += seg ? 6 : 4; mid = p;
+    nin = vi();
+    for (i = 0; i < nin; i++) { p += 36; l = vi(); p += l + 4; }
+    nout = vi();
+    for (i = 0; i < nout; i++) { p += 8; l = vi(); p += l; }
+    wits = { mid: mid, end: p };
+    w = [];
+    if (seg) for (i = 0; i < nin; i++) { items = vi(); s = []; for (j = 0; j < items; j++) { l = vi(); s.push(b.subarray(p, p + l)); p += l; } w.push(s); }
+    p += 4;
+    if (p > b.length) throw new Error('bad block');
+    idx = 0;
+    for (i = 0; i < w.length; i++) {
+      s = w[i]; l = s.length;
+      s = l >= 2 && s[l - 1].length && s[l - 1][0] === 0x50 ? (l >= 3 ? s[l - 3] : null) : (l >= 2 ? s[l - 2] : null);
+      if (!s || !hasOrd(s)) continue;
+      env = envelopes(s);
+      for (k = 0; k < env.length; k++) {
+        if (isClaim(env[k], want)) return { b: b, start: start, mid: wits.mid, endOut: wits.end, end: p, seg: seg, index: idx };
+        idx++;
+      }
+    }
+  }
+  return null;
+}
+function hasOrd(s) { for (var i = 0; i + 2 < s.length; i++) if (s[i] === 0x6f && s[i + 1] === 0x72 && s[i + 2] === 0x64) return true; return false; }
+// A transaction's id: double SHA-256 of it without its witness data, shown back to front.
+function txidOf(c) {
+  var sub = window.crypto && window.crypto.subtle, b = c.b, raw;
+  if (!sub) return Promise.reject(new Error('no hash'));
+  if (c.seg) {
+    raw = new Uint8Array(8 + c.endOut - c.mid);
+    raw.set(b.subarray(c.start, c.start + 4), 0); raw.set(b.subarray(c.mid, c.endOut), 4); raw.set(b.subarray(c.end - 4, c.end), 4 + c.endOut - c.mid);
+  } else raw = b.slice(c.start, c.end);
+  return sub.digest('SHA-256', raw).then(function (h) { return sub.digest('SHA-256', h); }).then(function (h) {
+    var a = new Uint8Array(h), s = '', i;
+    for (i = 31; i >= 0; i--) s += (a[i] < 16 ? '0' : '') + a[i].toString(16);
+    return s;
+  });
+}
+function walkFirst(n, last) {
+  var want = n + '.bitmap';
+  function step(h) {
+    if (h > last) return Promise.resolve(null);
+    return getJSON('/r/block/' + h).then(function (hex) {
+      var c = blockClaim(hexBytes(hex), want);
+      return c ? txidOf(c).then(function (id) { return id + 'i' + c.index; }) : step(h + 1);
+    });
+  }
+  return step(n);
+}
+// ord confirms the other inscription is a valid "<n>.bitmap" claim made in an earlier block than this Minitor's bitmap.
+function earlierClaim(id, n, info) {
+  var want = n + '.bitmap';
+  return Promise.all([getJSON('/r/inscription/' + id), getText('/content/' + id)]).then(function (a) {
+    var o = a[0];
+    return a[1] === want && !o.delegate && (typeof o.content_length !== 'number' || o.content_length === want.length) &&
+      o.height >= n && o.height < info.height;
+  });
+}
+function within(pr, ms) {
+  return new Promise(function (ok, no) {
+    var t = setTimeout(function () { no(new Error('slow')); }, ms);
+    pr.then(function (v) { clearTimeout(t); ok(v); }, function (e) { clearTimeout(t); no(e); });
+  });
+}
+// 'real', 'fake' or 'unknown'
+function realCheck(n, pid, info) {
+  var first = n < OCI_LIMIT ? ociFirst(n) : walkFirst(n, Math.min(info.height, n + WALK_MAX - 1));
+  return within(first.then(function (id) {
+    if (!id) return 'unknown';
+    if (id === pid) return 'real';
+    return earlierClaim(id, n, info).then(function (yes) { return yes ? 'fake' : 'unknown'; });
+  }), CHECK_MS).catch(function () { return 'unknown'; });
+}
+
+
+// ---- end of robot code ----
+var CASES = [{"n": 388067, "id": "6aa65f3daf72ebbefb18b7a211983d28d84e272d313a220224630ab82d96eb3bi0", "note": "Your bitmap", "want": "real"}, {"n": 0, "id": "86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732i0", "note": "Index page 0", "want": "real"}, {"n": 275798, "id": "d98e14628284e7ca993ba15dec8492f952d63b4dbc1aaeffc527b1be2b097dd2i0", "note": "Index page 2 (no brackets)", "want": "real"}, {"n": 614347, "id": "6b91079d99a80312e8cbae1effb5ac15d610d4d28d81580ee8cee18b3d18f3d9i0", "note": "Index page 6", "want": "real"}, {"n": 840000, "id": "05f8584cf4dbe34ef677f8f316fcac9e6e4ccb0e298d53fd21edaac7787660eei0", "note": "Index page 9 (halving block)", "want": "real"}, {"n": 935550, "id": "2c3ed0f170276e4bb9897f2dececc2383bed5369ef58949cbeb07794aae9453di0", "note": "Index page 10", "want": "real"}, {"n": 969788, "id": "2db4fa238b2dd2bef8349b751325abf39e1ae7665411d833203cdd5a9b2682b9i0", "note": "Above 942,000: reads the block", "want": "real"}, {"n": 0, "id": "pretend-copy", "note": "A pretend copy of 0.bitmap made today", "want": "fake"}, {"n": 388067, "id": "pretend-copy", "note": "A pretend copy of 388067.bitmap made today", "want": "fake"}];
+var WORDS = { real: 'Real bitmap', fake: 'Caught the copy', unknown: 'Could not check' };
+var list = document.getElementById('list');
+CASES.forEach(function (c, i) {
+  var li = document.createElement('li');
+  li.innerHTML = '<span class="name">' + c.n + '.bitmap</span><span class="note"></span><span class="res" data-s="wait">Waiting</span>';
+  li.querySelector('.note').textContent = c.note;
+  list.appendChild(li); c.el = li.querySelector('.res');
+});
+function runOne(c) {
+  c.el.dataset.s = 'run'; c.el.textContent = 'Checking…';
+  var t0 = Date.now();
+  var info = c.id === 'pretend-copy' ? Promise.resolve({ height: 99999999 }) : getJSON('/r/inscription/' + c.id);
+  return info.then(function (inf) { return realCheck(c.n, c.id, inf); })
+    .catch(function () { return 'unknown'; })
+    .then(function (got) {
+      var good = got === c.want;
+      c.el.dataset.s = good ? 'ok' : 'bad';
+      c.el.textContent = (good ? '✓ ' : '✗ ') + WORDS[got] + ' · ' + ((Date.now() - t0) / 1000).toFixed(1) + 's';
+      return good;
+    });
+}
+document.getElementById('go').addEventListener('click', function () {
+  var btn = this, i = 0, passed = 0, sum = document.getElementById('sum');
+  btn.disabled = true; sum.textContent = 'Running…';
+  (function next() {
+    if (i >= CASES.length) {
+      sum.textContent = passed === CASES.length ? '✓ All ' + passed + ' checks passed' : '✗ ' + (CASES.length - passed) + ' of ' + CASES.length + ' did not match. Screenshot this and send it to Claude.';
+      btn.disabled = false; btn.textContent = 'Run again'; return;
+    }
+    runOne(CASES[i++]).then(function (g) { if (g) passed++; sum.textContent = 'Running… ' + i + ' of ' + CASES.length; next(); });
+  })();
+});
+</script>
+</body>
+</html>
