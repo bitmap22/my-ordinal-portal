@@ -615,6 +615,35 @@
             }
         }
 
+        .card-note {
+            margin: -6px 0 18px;
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .tips-row {
+            margin: 56px auto 0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 10px 14px;
+        }
+
+        .tips-address {
+            font-family: "Courier New", Courier, monospace;
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 0.9rem;
+            overflow-wrap: anywhere;
+        }
+
+        .tips-copied {
+            color: var(--neon-blue);
+            font-size: 0.8rem;
+            min-width: 7em;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             *,
             *::before,
@@ -650,6 +679,7 @@
                     <button type="button" class="filter-button active" data-filter="all">All</button>
                     <button type="button" class="filter-button" data-filter="games">Games</button>
                     <button type="button" class="filter-button" data-filter="creative">Creative</button>
+                    <button type="button" class="filter-button" data-filter="mint">Mint</button>
                     <button type="button" class="random-button" id="random-button">Random Launch</button>
                 </div>
             </div>
@@ -678,6 +708,21 @@
                     <iframe class="viewer-frame" id="viewer-frame" src="" allowfullscreen></iframe>
                 </div>
             </div>
+        </div>
+
+        <h2 class="section-title" data-section="mint">Mint</h2>
+        <div class="gallery" data-gallery="mint">
+
+            <div class="card" data-category="mint" data-title="Minitors" data-url="minitors-mint.html">
+                <div class="card-top"><span class="card-number">#034</span><span class="card-tag">Mint</span></div>
+                <h3>Minitors</h3>
+                <p class="card-note">Bitmap holders: mint the robot drawn from your block's own data. One per bitmap.</p>
+                <div class="button-row">
+                    <a href="minitors-mint.html">Mint a Minitor</a>
+                    <a href="minitors-blog.html" target="_blank" rel="noopener noreferrer">Blog</a>
+                </div>
+            </div>
+
         </div>
 
         <h2 class="section-title" data-section="games">Games</h2>
@@ -993,6 +1038,12 @@
             No projects found. Try another search or select All.
         </div>
 
+        <div class="tips-row">
+            <button type="button" class="random-button" id="tips-button">Tips</button>
+            <span class="tips-address" id="tips-address">bc1q3ahp09vdva46ggwfu32uepml39kk9jz02l7qyp</span>
+            <span class="tips-copied" id="tips-copied" role="status"></span>
+        </div>
+
         <div class="footer">
             Inscribed Portal // Bitcoin Archive // Use Escape to close the viewer
         </div>
@@ -1211,6 +1262,7 @@
             let visibleCount = 0;
             let visibleGames = 0;
             let visibleCreative = 0;
+            let visibleMint = 0;
 
             for (let i = 0; i < cards.length; i++) {
                 const card = cards[i];
@@ -1231,6 +1283,10 @@
                     if (category === "creative") {
                         visibleCreative++;
                     }
+
+                    if (category === "mint") {
+                        visibleMint++;
+                    }
                 } else {
                     card.style.display = "none";
                 }
@@ -1245,6 +1301,10 @@
 
                 if (section === "creative") {
                     sectionTitles[s].style.display = visibleCreative > 0 ? "" : "none";
+                }
+
+                if (section === "mint") {
+                    sectionTitles[s].style.display = visibleMint > 0 ? "" : "none";
                 }
             }
 
@@ -1270,7 +1330,7 @@
             const visibleCards = [];
 
             for (let i = 0; i < cards.length; i++) {
-                if (cards[i].style.display !== "none") {
+                if (cards[i].style.display !== "none" && cards[i].getAttribute("data-category") !== "mint") {
                     visibleCards.push(cards[i]);
                 }
             }
@@ -1295,6 +1355,39 @@
         document.getElementById("random-button").addEventListener("click", launchRandomVisibleProject);
 
         applyFilters();
+    </script>
+
+    <script>
+        // Tips button: copies the tip address
+        (function () {
+            const tipsButton = document.getElementById("tips-button");
+            const tipsAddress = document.getElementById("tips-address");
+            const tipsCopied = document.getElementById("tips-copied");
+
+            tipsButton.addEventListener("click", function () {
+                const address = tipsAddress.textContent.trim();
+
+                function done(message) {
+                    tipsCopied.textContent = message;
+                    setTimeout(function () { tipsCopied.textContent = ""; }, 2500);
+                }
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(address).then(function () { done("Address copied"); }, function () { selectAddress(); });
+                } else {
+                    selectAddress();
+                }
+
+                function selectAddress() {
+                    const range = document.createRange();
+                    range.selectNodeContents(tipsAddress);
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    done("Selected: copy it");
+                }
+            });
+        })();
     </script>
 
     <script data-goatcounter="https://bitmap22portal.goatcounter.com/count"
