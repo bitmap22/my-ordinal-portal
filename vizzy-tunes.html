@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Vizzy Tunes</title>
+<style>
+:root{
+  --panel:rgba(14,14,20,.74);
+  --line:rgba(255,255,255,.10);
+  --text:#f3f3f6;
+  --dim:rgba(243,243,246,.58);
+  --accent:#8ff3ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+body.hide-ui{cursor:none}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.glass{background:var(--panel);border:1px solid var(--line);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+
+#start{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(400px,calc(100% - 32px));padding:28px 24px 22px;border-radius:18px;text-align:center}
+#start.off{display:none}
+#start h1{font-size:20px;font-weight:600}
+#start .drop{margin:16px 0 14px;padding:20px 12px;border:1.5px dashed rgba(255,255,255,.22);border-radius:12px;color:var(--dim);font-size:13px}
+#start .drop b{display:block;color:var(--text);font-weight:600;font-size:15px;margin-bottom:2px}
+#start .or{color:var(--dim);font-size:12.5px;margin-bottom:10px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px 14px;border-radius:11px;background:#fff;color:#000;font-weight:600}
+.btn.ghost{background:rgba(255,255,255,.09);color:var(--text);margin-top:8px}
+.btn:hover{filter:brightness(.9)}
+.btn svg{width:18px;height:18px;fill:currentColor}
+#start .hint{margin-top:12px;font-size:12px;color:var(--dim)}
+#start .x{position:absolute;right:10px;top:10px;width:30px;height:30px;border-radius:50%;display:none;place-items:center}
+#start .x svg{width:18px;height:18px;fill:currentColor}
+#start.over .x{display:grid}
+
+#bar{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(720px,calc(100% - 24px));border-radius:16px;padding:6px 10px 8px;display:none;transition:opacity .35s}
+#bar.on{display:block}
+body.hide-ui #bar,body.hide-ui #list{opacity:0;pointer-events:none}
+#prog{height:14px;margin:0 4px 2px;cursor:pointer;position:relative}
+#prog::before{content:"";position:absolute;left:0;right:0;top:6px;height:3px;border-radius:2px;background:rgba(255,255,255,.14)}
+#prog i{position:absolute;left:0;top:6px;height:3px;border-radius:2px;background:var(--accent);width:0}
+.row{display:flex;align-items:center;gap:6px}
+.ib{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:0 0 auto}
+.ib:hover{background:rgba(255,255,255,.09)}
+.ib svg{width:20px;height:20px;fill:currentColor}
+.ib.big{width:42px;height:42px;border-radius:50%;background:#fff;color:#000}
+.ib.big:hover{background:#ddd}
+.chip{height:30px;padding:0 12px;border-radius:999px;background:rgba(255,255,255,.09);font-size:12.5px;font-weight:600;white-space:nowrap;flex:0 0 auto}
+.chip:hover{background:rgba(255,255,255,.16)}
+#now{flex:1;min-width:0;padding:0 6px}
+#title{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+#time{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+body.listening .song-only{display:none}
+body:not(.listening) .listen-only{display:none}
+
+@media (max-width:560px){
+  #bar{padding:6px 8px 8px}
+  .row{flex-wrap:wrap;justify-content:center;row-gap:4px}
+  #now{order:-1;flex-basis:100%;text-align:center;padding:0 6px 2px}
+}
+#start .warn{margin-top:8px;font-size:11.5px;color:var(--dim);opacity:.8}
+#list{position:fixed;right:max(12px,calc(50% - 360px));bottom:92px;width:min(320px,calc(100% - 24px));max-height:min(50vh,420px);border-radius:14px;display:none;flex-direction:column;overflow:hidden}
+#list.on{display:flex}
+#list header{padding:12px 14px;font-weight:600;border-bottom:1px solid var(--line)}
+#list header span{color:var(--dim);font-weight:400}
+#list ol{list-style:none;overflow:auto;padding:6px}
+#list li{padding:8px 10px;border-radius:9px;cursor:pointer;display:flex;gap:10px;white-space:nowrap}
+#list li span{overflow:hidden;text-overflow:ellipsis}
+#list li em{font-style:normal;color:var(--dim);min-width:20px;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+#list li:hover{background:rgba(255,255,255,.07)}
+#list li.cur{color:var(--accent)}
+#list li.bad{opacity:.4;cursor:default}
+
+#dropzone{position:fixed;inset:12px;border:2px dashed rgba(255,255,255,.55);border-radius:20px;display:none;place-items:center;font-size:18px;font-weight:600;background:rgba(0,0,0,.35);pointer-events:none}
+body.dragging #dropzone{display:grid}
+#tap{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.4)}
+#tap.on{display:grid}
+#tap button{padding:14px 22px;border-radius:999px;background:#fff;color:#000;font-weight:600;font-size:15px}
+#toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);padding:9px 14px;border-radius:11px;font-size:13px;max-width:calc(100% - 24px);opacity:0;transition:opacity .3s;pointer-events:none}
+#toast.on{opacity:1}
+#nogl{position:fixed;inset:0;display:none;place-items:center;text-align:center;padding:24px;color:var(--dim)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="start" class="glass">
+  <button class="x" id="bClose" title="Close"><svg viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z"/></svg></button>
+  <h1>Vizzy Tunes</h1>
+  <div class="drop"><b>Drop songs anywhere</b>as many as you like, they play in order</div>
+  <div class="or">or pick up music that's already playing</div>
+  <button class="btn" id="bSys"><svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6v2h3v2H7v-2h3v-2H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v8h14V6z"/></svg>Listen to this computer</button>
+  <button class="btn ghost" id="bMic"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>Use microphone</button>
+  <p class="hint" id="sysHint">For this computer, your browser asks what to share: pick the whole screen or the tab playing music, and switch its sound on.</p>
+  <p class="warn">Warning: flashing lights and colours</p>
+</div>
+
+<div id="bar" class="glass">
+  <div id="prog" class="song-only"><i></i></div>
+  <div class="row">
+    <button class="ib song-only" id="bPrev" title="Previous song"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6L20 18V6z"/></svg></button>
+    <button class="ib big song-only" id="bPlay" title="Play / pause"><svg viewBox="0 0 24 24"><path id="playIcon" d="M8 5v14l11-7z"/></svg></button>
+    <button class="ib song-only" id="bNext" title="Next song"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM4 18l10.5-6L4 6z"/></svg></button>
+    <button class="ib big listen-only" id="bStop" title="Stop listening"><svg viewBox="0 0 24 24"><path d="M7 7h10v10H7z"/></svg></button>
+    <div id="now"><b id="title"></b><span id="time"></span></div>
+    <button class="chip" id="bStyle" title="Change style">Mix</button>
+    <button class="ib" id="bPat" title="Change pattern"><svg viewBox="0 0 24 24"><path d="M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1zM19 15l.9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9z"/></svg></button>
+    <button class="ib song-only" id="bList" title="Songs"><svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg></button>
+    <button class="ib" id="bListen" title="Listen to other music"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v7a2 2 0 0 0 2 2h3v-8H5v-1a7 7 0 0 1 14 0v1h-3v8h3a2 2 0 0 0 2-2v-7a9 9 0 0 0-9-9z"/></svg></button>
+  </div>
+</div>
+
+<div id="list" class="glass"><header>Songs <span id="count"></span></header><ol id="songs"></ol></div>
+<div id="dropzone">Drop to add songs</div>
+<div id="tap"><button id="bTap">&#9654; Tap to play</button></div>
+<div id="toast" class="glass"></div>
+<div id="nogl">This visualizer needs WebGL, which this browser has switched off.</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const body = document.body;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const mix = (a, b, t) => a + (b - a) * t;
+
+/* =========================================================
+   SOUND: one audio player for dropped songs, or a live input
+   (this computer's sound, or the microphone)
+   ========================================================= */
+const A = { ctx: null, bus: null, anL: null, anR: null, anM: null, el: new Audio(), elSrc: null, input: null, stream: null, mode: 'idle' };
+A.el.preload = 'auto';
+
+function ctx() {
+  if (A.ctx) return A.ctx;
+  const C = window.AudioContext || window.webkitAudioContext;
+  const c = A.ctx = new C();
+  A.bus = c.createGain();
+  A.bus.channelCount = 2; A.bus.channelCountMode = 'explicit'; A.bus.channelInterpretation = 'speakers';
+  const sp = c.createChannelSplitter(2);
+  A.anL = c.createAnalyser(); A.anR = c.createAnalyser(); A.anM = c.createAnalyser();
+  A.anL.fftSize = A.anR.fftSize = 1024;
+  A.anL.smoothingTimeConstant = A.anR.smoothingTimeConstant = 0;
+  A.anM.fftSize = 2048; A.anM.smoothingTimeConstant = 0;
+  A.bus.connect(sp); sp.connect(A.anL, 0); sp.connect(A.anR, 1); A.bus.connect(A.anM);
+  // keep the analysers running without making any sound of their own
+  const sink = c.createGain(); sink.gain.value = 0;
+  A.anL.connect(sink); A.anR.connect(sink); A.anM.connect(sink); sink.connect(c.destination);
+  A.elSrc = c.createMediaElementSource(A.el);
+  A.elSrc.connect(c.destination);
+  return c;
+}
+function useInput(node) {
+  if (A.input === node) return;
+  if (A.input) { try { A.input.disconnect(A.bus); } catch (e) {} }
+  A.input = node;
+  if (node) node.connect(A.bus);
+}
+function stopStream() {
+  if (A.stream) { A.stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); A.stream = null; }
+  if (A.input && A.input !== A.elSrc) useInput(null);
+}
+
+/* ---------- songs ---------- */
+const songs = [];  // {name, url, bad}
+let cur = -1;
+const AUDIO_EXT = /\.(mp3|wav|ogg|oga|opus|m4a|aac|flac|webm|mp4|weba|aif|aiff)$/i;
+
+function addFiles(files) {
+  const list = [...files].filter(f => /^(audio|video)\//.test(f.type) || AUDIO_EXT.test(f.name));
+  if (!list.length) { toast('That doesn’t look like a song file'); return; }
+  const first = songs.length;
+  for (const f of list) songs.push({ name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f), bad: false });
+  renderList();
+  if (A.mode !== 'song' || A.el.paused && A.el.ended || cur < 0) playSong(first);
+  else toast(list.length === 1 ? 'Added to the list' : list.length + ' songs added to the list');
+}
+function playSong(i) {
+  if (i < 0 || i >= songs.length) return;
+  if (songs[i].bad) { const n = nextGood(i, 1); if (n >= 0 && n !== i) playSong(n); return; }
+  ctx();
+  stopStream();
+  A.mode = 'song'; body.classList.remove('listening');
+  useInput(A.elSrc);
+  if (cur !== i && R) newPattern();   // a fresh pattern for each new song
+  cur = i;
+  A.el.src = songs[i].url;
+  start();
+  A.ctx.resume();
+  A.el.play().then(() => { $('tap').classList.remove('on'); }).catch(err => {
+    if (err && err.name === 'NotAllowedError') $('tap').classList.add('on');
+  });
+  ui(); renderList();
+}
+function nextGood(i, dir) {
+  for (let k = 1; k <= songs.length; k++) {
+    const j = i + dir * k;
+    if (j < 0 || j >= songs.length) return -1;
+    if (!songs[j].bad) return j;
+  }
+  return -1;
+}
+A.el.addEventListener('ended', () => {
+  const n = nextGood(cur, 1);
+  if (n >= 0) playSong(n); else ui();
+});
+A.el.addEventListener('error', () => {
+  if (A.mode !== 'song' || cur < 0 || !A.el.getAttribute('src')) return;
+  songs[cur].bad = true;
+  toast('Can’t play “' + songs[cur].name + '”, skipping it');
+  renderList();
+  const n = nextGood(cur, 1);
+  if (n >= 0) playSong(n); else ui();
+});
+A.el.addEventListener('play', () => ui());
+A.el.addEventListener('pause', () => ui());
+
+/* ---------- listening ---------- */
+async function listen(kind) {
+  ctx(); A.ctx.resume();
+  let stream;
+  try {
+    if (kind === 'sys') {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 1 },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include'
+      });
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    }
+  } catch (e) {
+    toast(kind === 'sys' ? 'Sharing was cancelled' : 'The microphone wasn’t allowed');
+    return;
+  }
+  if (!stream.getAudioTracks().length) {
+    stream.getTracks().forEach(t => t.stop());
+    toast('No sound was shared. Try again and switch the sound sharing on (Chrome or Edge).', 6000);
+    return;
+  }
+  A.el.pause();
+  stopStream();
+  A.stream = stream;
+  stream.getTracks().forEach(t => t.onended = () => { if (A.stream === stream) stopListening(); });
+  useInput(A.ctx.createMediaStreamSource(stream));
+  A.mode = kind; body.classList.add('listening');
+  start();
+  ui();
+}
+function stopListening() {
+  stopStream();
+  A.mode = 'idle'; body.classList.remove('listening');
+  if (cur >= 0) { A.mode = 'song'; useInput(A.elSrc); }
+  ui();
+  if (!songs.length) showStart(false);
+}
+
+/* =========================================================
+   LISTENING TO THE MUSIC: wave, bass / mid / treble, hits
+   ========================================================= */
+const WL = new Float32Array(1024), WR = new Float32Array(1024), FQ = new Float32Array(1024);
+const M = {   // what the pictures read each frame
+  l: new Float32Array(512), r: new Float32Array(512), m: new Float32Array(512),
+  bass: 0, mid: 0, treb: 0, vol: 0, kick: 0, snare: 0, hits: 0, snares: 0, spec: new Float32Array(64), live: 0
+};
+const st = { pk: [1e-9, 1e-9, 1e-9], prev: [0, 0], fluxAvg: [0, 0], lastHit: [0, 0], lvl: 0.05, specPk: new Float32Array(64).fill(1e-9), prevDB: new Float32Array(1024).fill(-100) };
+const BANDS = [[28, 140], [140, 1800], [1800, 11000]];
+
+function hear(dt, now) {
+  const on = A.ctx && A.input && (A.mode !== 'song' || !A.el.paused);
+  if (!on) {
+    M.live = Math.max(0, M.live - dt * 2);
+    M.l.fill(0); M.r.fill(0); M.m.fill(0);
+    M.bass *= 0.9; M.mid *= 0.9; M.treb *= 0.9; M.vol *= 0.9; M.spec.fill(0);
+    return;
+  }
+  M.live = Math.min(1, M.live + dt * 2);
+  A.anL.getFloatTimeDomainData(WL); A.anR.getFloatTimeDomainData(WR);
+  A.anM.getFloatFrequencyData(FQ);
+  // waveform: take 512 points, auto-level so quiet or loud music both fill the screen
+  let rms = 0;
+  for (let i = 0; i < 512; i++) { const a = WL[i * 2], b = WR[i * 2]; rms += a * a + b * b; }
+  rms = Math.sqrt(rms / 1024);
+  st.lvl = Math.max(0.004, mix(st.lvl, rms, rms > st.lvl ? 0.08 : 0.01));
+  const g = clamp(0.28 / st.lvl, 0.6, 30);
+  for (let i = 0; i < 512; i++) {
+    const a = clamp(WL[i * 2] * g, -1, 1), b = clamp(WR[i * 2] * g, -1, 1);
+    M.l[i] = a; M.r[i] = b; M.m[i] = (a + b) * 0.5;
+  }
+  M.vol = clamp(rms / Math.max(st.lvl, 1e-4) * 0.6, 0, 1.5);
+  // bands (energy), auto-gained
+  const hz = A.ctx.sampleRate / A.anM.fftSize;
+  const e = [0, 0, 0];
+  for (let b = 0; b < 3; b++) {
+    const i0 = Math.max(1, Math.round(BANDS[b][0] / hz)), i1 = Math.min(FQ.length - 1, Math.round(BANDS[b][1] / hz));
+    let s = 0;
+    for (let i = i0; i <= i1; i++) s += Math.pow(10, FQ[i] / 10);
+    e[b] = s / (i1 - i0 + 1);
+    st.pk[b] = Math.max(e[b], st.pk[b] * Math.pow(0.6, dt), 1e-9);
+    const n = Math.sqrt(e[b] / st.pk[b]);
+    const key = b === 0 ? 'bass' : b === 1 ? 'mid' : 'treb';
+    M[key] = mix(M[key], n, n > M[key] ? 0.6 : 0.12);
+  }
+  // hits: new sound suddenly appearing, frequency by frequency (spectral flux).
+  // Low range = kick drum, middle range = snare. Works at any volume because it
+  // compares in decibels.
+  const HR = [[35, 150], [180, 4000]], fl = [0, 0], sur = [0, 0];
+  for (let k = 0; k < 2; k++) {
+    const i0 = Math.max(1, Math.round(HR[k][0] / hz)), i1 = Math.round(HR[k][1] / hz);
+    let f = 0, c = 0, top = -100;
+    for (let i = i0; i <= i1; i++) top = Math.max(top, FQ[i]);
+    const floor = k ? Math.max(-85, top - 36) : -85;   // for the snare, only the louder parts count (so hi-hats don't)
+    for (let i = i0; i <= i1; i++) {
+      const dB = Math.max(FQ[i], -100), p0 = Math.max(st.prevDB[i], floor);
+      if (dB > floor) { const d = dB - p0; if (d > 0) f += d; }
+      c++;
+    }
+    fl[k] = f / c;
+    sur[k] = fl[k] / (st.fluxAvg[k] + 0.3);   // how surprising this jump is
+    st.fluxAvg[k] = mix(st.fluxAvg[k], fl[k], 0.05);
+  }
+  for (let k = 0; k < 2; k++) {
+    const o = 1 - k;
+    if (sur[k] > 1.9 && fl[k] > st.prev[k] && sur[k] > sur[o] * 0.85 && now - st.lastHit[k] > (k === 0 ? 0.14 : 0.1)) {
+      st.lastHit[k] = now;
+      if (k === 0) { M.kick = 1; M.hits++; } else { M.snare = 1; M.snares++; }
+    }
+  }
+  st.prev[0] = fl[0]; st.prev[1] = fl[1];
+  for (let i = 0; i < FQ.length; i++) st.prevDB[i] = Math.max(FQ[i], -100);
+  // a small spectrum, log spaced, 64 bands
+  for (let j = 0; j < 64; j++) {
+    const f0 = 40 * Math.pow(300, j / 64), f1 = 40 * Math.pow(300, (j + 1) / 64);
+    const i0 = Math.max(1, Math.floor(f0 / hz)), i1 = Math.max(i0, Math.min(FQ.length - 1, Math.floor(f1 / hz)));
+    let s = 0; for (let i = i0; i <= i1; i++) s += Math.pow(10, FQ[i] / 10);
+    s /= (i1 - i0 + 1);
+    st.specPk[j] = Math.max(s, st.specPk[j] * Math.pow(0.5, dt), 1e-10);
+    const n = Math.sqrt(s / st.specPk[j]);
+    M.spec[j] = mix(M.spec[j], n, n > M.spec[j] ? 0.7 : 0.2);
+  }
+}
+
+/* =========================================================
+   PICTURES (WebGL)
+   Each frame: take the last picture, warp it, blur it and fade it
+   a little (the trails), draw the music on top, then colour it
+   through a 256-colour palette.
+   ========================================================= */
+const cv = $('c');
+const gl = cv.getContext('webgl', { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: false });
+if (!gl) { $('nogl').style.display = 'grid'; }
+
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function prog(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'a'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const QUAD_VS = 'attribute vec2 a;varying vec2 v;void main(){v=a*.5+.5;gl_Position=vec4(a,0.,1.);}';
+
+// feedback: warp + blur + fade the last frame.
+// The warp moves every pixel a little each frame (zoom, spin, swirl,
+// ripple, wobble, liquid), folds it into a kaleidoscope or a mirror,
+// pushes it like a flame, then blurs and fades it so trails are left.
+const FB_FS = `precision highp float;
+varying vec2 v;
+uniform sampler2D T;
+uniform vec2 px, C, drift, flame;
+uniform float asp, zoom, rot, swirl, tun, fold, mirror, blur, decay, fade, edge;
+uniform vec3 rip, wob, liq;
+const float TAU=6.2831853;
+void main(){
+  vec2 p=v-.5; p.x*=asp; p-=C;
+  if(mirror>.5) p.x=abs(p.x);
+  if(mirror>1.5) p.y=abs(p.y);
+  float r=length(p), a=atan(p.y,p.x);
+  if(fold>1.5){ float s=TAU/fold; a=mod(a,s); a=min(a,s-a); }
+  a+=rot+swirl*r;
+  r=r/zoom+tun*r*r;
+  r*=1.+rip.x*sin(r*rip.y-rip.z);
+  r*=1.+wob.x*sin(a*wob.y+wob.z);
+  p=vec2(cos(a),sin(a))*r;
+  p+=liq.x*vec2(sin(p.y*liq.y+liq.z),cos(p.x*liq.y+liq.z*1.3));
+  p+=C; p.x/=asp;
+  vec2 q=p+.5+drift+flame*px;
+  if(edge>.5) q=1.-abs(mod(q,2.)-1.);   // kaleidoscopes reflect at the edges instead of going black
+  vec2 o=px*blur;
+  float s=texture2D(T,q+vec2(o.x,0.)).r+texture2D(T,q-vec2(o.x,0.)).r+texture2D(T,q+vec2(0.,o.y)).r+texture2D(T,q-vec2(0.,o.y)).r;
+  float val=s*.25*decay-fade;
+  if(q.x<0.||q.y<0.||q.x>1.||q.y>1.) val=0.;
+  gl_FragColor=vec4(max(val,0.),0.,0.,1.);
+}`;
+// the music drawn as dots
+const DOT_VS = `attribute vec3 a;
+uniform float asp, rot, size;
+uniform vec2 flip;
+varying float k;
+void main(){
+  float c=cos(rot), s=sin(rot);
+  vec2 p=vec2(c*a.x-s*a.y, s*a.x+c*a.y)*flip;
+  gl_Position=vec4(p.x/asp*2., p.y*2., 0., 1.);
+  gl_PointSize=size; k=a.z;
+}`;
+const DOT_FS = 'precision mediump float;varying float k;void main(){gl_FragColor=vec4(k,0.,0.,1.);}';
+// colour through the palette (two palettes so one can melt into the next)
+const SHOW_FS = `precision highp float;
+varying vec2 v;
+uniform sampler2D T, P, Q;
+uniform float off, span, pmix, boost;
+void main(){
+  float i=min(texture2D(T,v).r*(1.+boost),1.);
+  vec2 u=vec2(fract(i*span+off),.5);
+  vec3 c=mix(texture2D(P,u).rgb,texture2D(Q,u).rgb,pmix);
+  gl_FragColor=vec4(c*smoothstep(0.,.05,i),1.);
+}`;
+
+let R = null; // renderer state
+function initGL() {
+  const fb = prog(QUAD_VS, FB_FS), dot = prog(DOT_VS, DOT_FS), show = prog(QUAD_VS, SHOW_FS);
+  const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const dots = gl.createBuffer();
+  const pals = PALETTES.map(stops => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, makePalette(stops));
+    return t;
+  });
+  R = { fb, dot, show, quad, dots, pals, tex: [], fbo: [], w: 0, h: 0, i: 0, dotData: new Float32Array(16384 * 3) };
+}
+// 256-colour palettes. Each one loops back to its start so the colours can cycle round smoothly.
+const PALETTES = [
+  [[0,0,0],[50,0,110],[230,0,140],[255,140,0],[255,255,170],[0,230,255],[0,50,140],[0,0,0]],          // acid
+  [[0,0,0],[90,0,0],[220,30,0],[255,150,0],[255,250,200],[255,150,0],[200,20,0],[60,0,0],[0,0,0]],   // fire
+  [[0,0,0],[0,70,20],[60,230,0],[240,255,0],[255,255,255],[255,0,200],[90,0,120],[0,0,0]],           // toxic
+  [[0,0,0],[0,10,90],[0,90,255],[0,240,255],[255,255,255],[190,160,255],[70,0,160],[0,0,0]],         // ice
+  'rainbow',
+  [[0,0,0],[60,0,90],[200,0,150],[255,90,90],[255,190,40],[255,255,220],[120,40,160],[0,0,0]],       // sunset
+  [[0,0,0],[0,60,30],[0,170,90],[230,200,40],[220,40,20],[255,220,120],[0,90,60],[0,0,0]],           // jungle
+  [[0,0,0],[40,40,60],[150,160,190],[255,255,255],[90,120,200],[20,20,50],[0,0,0]],                   // chrome
+  [[20,0,80],[200,0,200],[255,40,40],[255,230,0],[0,255,120],[0,200,255],[20,0,80]],                  // plasma
+  [[0,0,0],[70,20,0],[190,90,30],[255,170,110],[255,240,220],[160,60,20],[0,0,0]]                     // copper
+];
+function makePalette(stops) {
+  const out = new Uint8Array(256 * 4);
+  if (stops === 'rainbow') {
+    for (let i = 0; i < 256; i++) {
+      const h = i / 256 * 6, k = Math.floor(h), f = h - k;
+      const c = [[1, f, 0], [1 - f, 1, 0], [0, 1, f], [0, 1 - f, 1], [f, 0, 1], [1, 0, 1 - f]][k];
+      out[i * 4] = c[0] * 255; out[i * 4 + 1] = c[1] * 255; out[i * 4 + 2] = c[2] * 255; out[i * 4 + 3] = 255;
+    }
+    return out;
+  }
+  const n = stops.length - 1;
+  for (let i = 0; i < 256; i++) {
+    const t = i / 256 * n, k = Math.floor(t), f = t - k, a = stops[k], b = stops[Math.min(n, k + 1)];
+    out[i * 4] = mix(a[0], b[0], f); out[i * 4 + 1] = mix(a[1], b[1], f); out[i * 4 + 2] = mix(a[2], b[2], f); out[i * 4 + 3] = 255;
+  }
+  return out;
+}
+function sizeGL() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  // the pictures are made small and chunky, like the 90s, then blown up
+  const long = 480;
+  let w, h;
+  if (innerWidth >= innerHeight) { w = long; h = Math.round(long * innerHeight / innerWidth); }
+  else { h = long; w = Math.round(long * innerWidth / innerHeight); }
+  if (w === R.w && h === R.h) return;
+  R.w = w; R.h = h;
+  for (let k = 0; k < 2; k++) {
+    if (R.tex[k]) { gl.deleteTexture(R.tex[k]); gl.deleteFramebuffer(R.fbo[k]); }
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    R.tex[k] = t; R.fbo[k] = f;
+  }
+}
+function quad(p) {
+  gl.useProgram(p.p);
+  gl.bindBuffer(gl.ARRAY_BUFFER, R.quad);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+/* ---------- patterns: how the picture is warped ---------- */
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const chance = p => Math.random() < p;
+const sgn = () => chance(0.5) ? 1 : -1;
+const WK = ['zoom', 'rot', 'swirl', 'tun', 'blur', 'decay', 'fade', 'ripA', 'ripF', 'ripS', 'wobA', 'wobF', 'wobS', 'liqA', 'liqF', 'liqS', 'fx', 'fy', 'wander', 'kZoom', 'kRot', 'span', 'cyc'];
+function baseWarp() {
+  return { zoom: 1, rot: 0, swirl: 0, tun: 0, blur: 1, decay: 0.98, fade: 1.5 / 255, ripA: 0, ripF: 20, ripS: 2, wobA: 0, wobF: 5, wobS: 1,
+    liqA: 0, liqF: 10, liqS: 1, fx: 0, fy: 0, wander: 0, kZoom: 0.03, kRot: 0.01, span: 1, cyc: 0.03, fold: 0, mirror: 0 };
+}
+// FLAMES (the Cthugha way): the picture is pushed one way and burns away
+function flameWarp(w) {
+  const kind = pick(['up', 'up', 'left', 'right', 'water', 'spiral', 'rise']);
+  w.blur = 1; w.decay = rnd(0.965, 0.982); w.fade = rnd(1.2, 2.4) / 255;
+  if (kind === 'up') { w.fy = -rnd(1.2, 2.2); w.liqA = 0.002; w.liqF = 30; w.liqS = 6; }
+  if (kind === 'left') w.fx = rnd(1.2, 2);
+  if (kind === 'right') w.fx = -rnd(1.2, 2);
+  if (kind === 'water') { w.ripA = rnd(0.006, 0.014); w.ripF = rnd(25, 40); w.ripS = rnd(2, 4); w.zoom = 1.003; }
+  if (kind === 'spiral') { w.swirl = rnd(0.02, 0.05) * sgn(); w.zoom = rnd(1.004, 1.012); w.rot = rnd(0.004, 0.012) * sgn(); }
+  if (kind === 'rise') { w.fy = -rnd(0.8, 1.4); w.zoom = rnd(1.006, 1.014); }
+  w.kZoom = 0.025; w.kRot = 0.01; w.span = rnd(0.8, 1.4); w.cyc = rnd(0.02, 0.06);
+  return w;
+}
+// KALEIDOSCOPE (the Light Machine way): folded into mirrored slices that spin
+function kaleidoWarp(w) {
+  if (chance(0.75)) w.fold = pick([3, 4, 5, 6, 6, 8, 8, 10, 12]); else w.mirror = pick([1, 2, 2]);
+  w.zoom = chance(0.7) ? rnd(1.01, 1.04) : rnd(0.965, 0.99);
+  w.rot = rnd(0.004, 0.02) * sgn();
+  if (chance(0.5)) w.swirl = rnd(0.01, 0.05) * sgn();
+  if (chance(0.4)) { w.wobA = rnd(0.004, 0.012); w.wobF = w.fold || Math.round(rnd(3, 8)); w.wobS = rnd(0.5, 2); }
+  w.decay = rnd(0.955, 0.98); w.blur = rnd(0.6, 1);
+  w.kZoom = 0.05; w.kRot = 0.025; w.span = rnd(1, 2.5); w.cyc = rnd(0.03, 0.08);
+  return w;
+}
+// WARP TUNNELS (the Geiss way): the whole picture flows through zooms, swirls and ripples
+function tunnelWarp(w) {
+  w.zoom = rnd(0.99, 1.05); w.rot = rnd(0, 0.02) * sgn(); w.swirl = rnd(0, 0.08) * sgn();
+  const extras = ['rip', 'wob', 'liq', 'tun'].sort(() => Math.random() - 0.5).slice(0, Math.round(rnd(1, 2)));
+  if (extras.includes('rip')) { w.ripA = rnd(0.004, 0.015); w.ripF = rnd(15, 45); w.ripS = rnd(2, 6); }
+  if (extras.includes('wob')) { w.wobA = rnd(0.006, 0.02); w.wobF = Math.round(rnd(2, 7)); w.wobS = rnd(0.5, 2); }
+  if (extras.includes('liq')) { w.liqA = rnd(0.002, 0.008); w.liqF = rnd(6, 20); w.liqS = rnd(0.5, 2); }
+  if (extras.includes('tun')) w.tun = rnd(-0.1, 0.1);
+  if (chance(0.5)) w.wander = rnd(0.05, 0.15);
+  w.decay = rnd(0.97, 0.99); w.fade = 1 / 255; w.blur = rnd(0.5, 1);
+  w.kZoom = 0.04; w.kRot = 0.015; w.span = rnd(1, 2); w.cyc = rnd(0.02, 0.06);
+  return w;
+}
+const STYLES = { mix: 'Mix', flame: 'Flames', kaleido: 'Kaleidoscope', tunnel: 'Warp tunnels' };
+function makeWarp(style) {
+  const s = style === 'mix' ? pick(['flame', 'kaleido', 'tunnel']) : style;
+  const w = s === 'flame' ? flameWarp(baseWarp()) : s === 'kaleido' ? kaleidoWarp(baseWarp()) : tunnelWarp(baseWarp());
+  if (style === 'mix') {   // in Mix, borrow a bit from the other two
+    if (s !== 'kaleido' && chance(0.35)) { w.fold = pick([4, 6, 8]); w.mirror = 0; }
+    if (s !== 'tunnel' && chance(0.35)) { w.liqA = rnd(0.002, 0.006); w.liqF = rnd(6, 16); w.liqS = rnd(0.5, 2); }
+    if (s !== 'flame' && chance(0.25)) w.fy = -rnd(0.6, 1.2);
+  }
+  w.kind = s;
+  return w;
+}
+const W = baseWarp(), Wt = baseWarp();
+const vis = { off: 0, ripP: 0, wobP: 0, liqP: 0, wanT: 0, rotDir: 1, pal: 0, pal2: 0, pmix: 0, trans: 1, style: 'mix', patT: 0, hits: 0, layers: [], oldLayers: [] };
+function newPattern() {
+  Object.assign(Wt, makeWarp(vis.style));
+  vis.oldLayers = vis.trans < 0.5 ? vis.oldLayers : vis.layers;
+  vis.layers = makeLayers(Wt);
+  vis.trans = 0; vis.patT = 0; vis.rotDir = sgn();
+  if (vis.pmix > 0.5) vis.pal = vis.pal2;
+  let p; do { p = Math.floor(Math.random() * PALETTES.length); } while (p === vis.pal);
+  vis.pal2 = p; vis.pmix = 0;
+}
+function steer(dt) {
+  // glide the warp toward the new pattern over about a second
+  const k = 1 - Math.pow(0.03, dt);
+  for (const key of WK) W[key] += (Wt[key] - W[key]) * k;
+  if (vis.trans < 1) {
+    vis.trans = Math.min(1, vis.trans + dt * 1.2);
+    if (vis.trans >= 0.5) { W.fold = Wt.fold; W.mirror = Wt.mirror; }
+    if (vis.trans >= 1) vis.oldLayers = [];
+  }
+  if (vis.pmix < 1) { vis.pmix = Math.min(1, vis.pmix + dt / 1.5); if (vis.pmix >= 1) { vis.pal = vis.pal2; vis.pmix = 0; } }
+  vis.ripP += dt * W.ripS * (1 + M.bass); vis.wobP += dt * W.wobS; vis.liqP += dt * W.liqS * (1 + M.mid); vis.wanT += dt * 0.3;
+  vis.off = (vis.off + dt * (W.cyc + M.treb * 0.06) + M.snare * dt * 1.2) % 1;
+  // change pattern on a big hit, after a while on this one (the Geiss way)
+  vis.patT += dt;
+  const hit = M.hits !== vis.hits; vis.hits = M.hits;
+  if ((vis.patT > 12 && hit && M.live > 0.5) || vis.patT > 30) newPattern();
+}
+
+function step(dt) {
+  const asp = R.w / R.h;
+  const src = R.i, dst = 1 - R.i;
+  steer(dt);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, R.fbo[dst]);
+  gl.viewport(0, 0, R.w, R.h);
+  gl.disable(gl.BLEND);
+  const fb = R.fb, u = fb.u; gl.useProgram(fb.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, R.tex[src]);
+  gl.uniform1i(u.T, 0);
+  gl.uniform2f(u.px, 1 / R.w, 1 / R.h);
+  gl.uniform1f(u.asp, asp);
+  const zoomDir = W.zoom >= 1 ? 1 : -1;
+  gl.uniform1f(u.zoom, W.zoom + zoomDir * (M.bass * 0.006 + M.kick * W.kZoom));
+  gl.uniform1f(u.rot, W.rot * (1 + M.mid * 0.8) + M.snare * W.kRot * vis.rotDir);
+  gl.uniform1f(u.swirl, W.swirl);
+  gl.uniform1f(u.tun, W.tun);
+  gl.uniform1f(u.fold, W.fold);
+  gl.uniform1f(u.mirror, W.mirror);
+  gl.uniform1f(u.edge, W.fold > 1.5 || W.mirror > 0.5 ? 1 : 0);
+  gl.uniform1f(u.blur, W.blur);
+  gl.uniform1f(u.decay, W.decay);
+  gl.uniform1f(u.fade, W.fade);
+  gl.uniform3f(u.rip, W.ripA * (1 + M.bass), W.ripF, vis.ripP);
+  gl.uniform3f(u.wob, W.wobA, W.wobF, vis.wobP);
+  gl.uniform3f(u.liq, W.liqA * (1 + M.treb), W.liqF, vis.liqP);
+  gl.uniform2f(u.C, Math.sin(vis.wanT * 1.3) * W.wander * asp * 0.5, Math.sin(vis.wanT * 0.9 + 1) * W.wander * 0.5);
+  gl.uniform2f(u.drift, 0, 0);
+  gl.uniform2f(u.flame, W.fx, W.fy);
+  quad(fb);
+  // draw the music on top: the old pattern's shapes fade out while the new ones fade in
+  for (const L of vis.oldLayers) drawLayer(L, dt, asp, 1 - vis.trans);
+  for (const L of vis.layers) drawLayer(L, dt, asp, Math.min(1, vis.trans * 1.5));
+  R.i = dst;
+}
+
+/* ---------- shapes the music draws (the Light Machine way: layers, copied round the middle) ---------- */
+const TAU = Math.PI * 2;
+function makeLayer(type, o) {
+  return Object.assign({ type, sym: 1, mirror: false, spin: 0, ang: Math.random() * TAU, amp: 0.15, rad: 0.15, size: 2, bright: 0.9, y: 0, orbit: 0, sides: 5, parts: null, hits: M.hits }, o);
+}
+function makeLayers(w) {
+  const L = [];
+  if (w.kind === 'flame') {
+    const y = w.fy < 0 ? -rnd(0.12, 0.3) : 0;
+    L.push(makeLayer(pick(['line', 'line', 'bolt', 'ring', 'spec']), { y, amp: rnd(0.12, 0.22), rad: rnd(0.07, 0.15) }));
+    if (chance(0.4)) L.push(makeLayer('stars', { y }));
+  } else if (w.kind === 'kaleido') {
+    const n = Math.round(rnd(2, 3));
+    for (let i = 0; i < n; i++) {
+      L.push(makeLayer(pick(['ring', 'xy', 'spec', 'spokes', 'poly', 'stars', 'line', 'bolt']), {
+        sym: w.fold ? pick([1, 1, 2]) : pick([3, 4, 5, 6, 8]), mirror: chance(0.3), spin: rnd(0.2, 1.2) * sgn(),
+        rad: rnd(0.05, 0.25), amp: rnd(0.06, 0.16), orbit: chance(0.4) ? rnd(0.05, 0.2) : 0, sides: pick([3, 4, 5, 6, 8])
+      }));
+    }
+  } else {
+    const n = Math.round(rnd(1, 2));
+    for (let i = 0; i < n; i++) {
+      L.push(makeLayer(pick(['ring', 'xy', 'line', 'poly', 'stars', 'spec', 'spokes']), {
+        sym: pick([1, 1, 2, 3]), spin: rnd(0.1, 0.8) * sgn(), rad: rnd(0.07, 0.22), amp: rnd(0.08, 0.2), sides: pick([3, 4, 5, 6])
+      }));
+    }
+  }
+  return L;
+}
+function drawLayer(L, dt, asp, fade) {
+  if (fade <= 0.01) return;
+  if (L.spin) L.ang += L.spin * dt * (1 + M.mid) + M.snare * 0.03 * (L.spin < 0 ? -1 : 1);
+  else L.ang = 0;
+  const d = R.dotData, b = L.bright * fade * (0.35 + 0.65 * M.live);
+  const ox = L.orbit, oy = L.y;
+  let n = 0;
+  const put = (x, y, k) => { d[n++] = x; d[n++] = y; d[n++] = k; };
+  switch (L.type) {
+    case 'line': {          // the classic oscilloscope wave
+      const w = asp * 0.85, a = L.amp * (1 + M.bass * 0.5);
+      for (let i = 0; i < 512; i++) put(ox + (i / 511 - 0.5) * w, oy + M.m[i] * a, b);
+      break;
+    }
+    case 'ring': {          // the wave bent round into a circle
+      const r0 = L.rad * (1 + M.bass * 0.35 + M.kick * 0.25);
+      for (let i = 0; i < 512; i++) {
+        const k = i < 256 ? i * 2 : (511 - i) * 2, a = i / 512 * TAU, r = r0 + M.m[k] * L.amp;
+        put(ox + Math.cos(a) * r, oy + Math.sin(a) * r, b);
+      }
+      break;
+    }
+    case 'xy': {            // left speaker against right speaker
+      const s = L.amp * 1.8 * (1 + M.kick * 0.3);
+      for (let i = 0; i < 512; i++) put(ox + M.l[i] * s, oy + M.r[i] * s, b);
+      break;
+    }
+    case 'spec': {          // the spectrum as glowing dots round a circle
+      for (let j = 0; j < 64; j++) {
+        const v = M.spec[j], a = j / 64 * Math.PI, r1 = L.rad + v * L.amp * 2;
+        for (let s = 0; s < 4; s++) {
+          const r = mix(L.rad, r1, s / 3), k = b * (0.25 + 0.75 * v);
+          put(ox + Math.sin(a) * r, oy + Math.cos(a) * r, k);
+          put(ox - Math.sin(a) * r, oy + Math.cos(a) * r, k);
+        }
+      }
+      break;
+    }
+    case 'spokes': {        // the spectrum as spokes out of the middle
+      for (let j = 0; j < 64; j++) {
+        const v = M.spec[j], a = j / 64 * TAU, r1 = L.rad * 0.3 + v * (L.rad + L.amp * 2.5);
+        for (let s = 0; s < 10; s++) { const r = mix(L.rad * 0.3, r1, s / 9); put(ox + Math.cos(a) * r, oy + Math.sin(a) * r, b * (0.3 + 0.7 * v)); }
+      }
+      break;
+    }
+    case 'poly': {          // a spinning shape that punches out on the kick
+      const r = L.rad * (1 + M.kick * 0.6 + M.bass * 0.3), k = L.sides, per = Math.floor(400 / k);
+      for (let e = 0; e < k; e++) {
+        const a0 = e / k * TAU, a1 = (e + 1) / k * TAU;
+        for (let s = 0; s < per; s++) {
+          const t = s / per, x = mix(Math.cos(a0), Math.cos(a1), t) * r, y = mix(Math.sin(a0), Math.sin(a1), t) * r;
+          const wob = 1 + M.m[(e * per + s) % 512] * 0.15;
+          put(ox + x * wob, oy + y * wob, b);
+        }
+      }
+      break;
+    }
+    case 'bolt': {          // lightning out from the middle, shaped by the wave
+      const len = asp * 0.45;
+      let y1 = 0, y2 = 0;
+      for (let i = 0; i < 256; i++) {
+        const t = i / 255;
+        y1 += M.m[i] * L.amp * 0.25; y2 += M.m[511 - i] * L.amp * 0.25;
+        y1 *= 0.97; y2 *= 0.97;
+        put(ox + t * len, oy + y1 * t * 2, b); put(ox - t * len, oy + y2 * t * 2, b);
+      }
+      break;
+    }
+    case 'stars': {         // a burst of stars on every kick
+      if (!L.parts) L.parts = [];
+      const P = L.parts;
+      if (L.hits !== M.hits) {
+        L.hits = M.hits;
+        const cnt = 30 + Math.round(M.bass * 40);
+        for (let i = 0; i < cnt && P.length < 600; i++) { const a = Math.random() * TAU, sp = rnd(0.12, 0.45) * (1 + M.bass); P.push([0, 0, Math.cos(a) * sp, Math.sin(a) * sp, 1]); }
+      }
+      if (M.treb > 0.6 && P.length < 600) { const a = Math.random() * TAU, sp = rnd(0.05, 0.2); P.push([0, 0, Math.cos(a) * sp, Math.sin(a) * sp, 0.7]); }
+      for (let i = P.length - 1; i >= 0; i--) {
+        const q = P[i]; q[0] += q[2] * dt; q[1] += q[3] * dt; q[4] -= dt * 0.7;
+        if (q[4] <= 0) { P.splice(i, 1); continue; }
+        put(ox + q[0], oy + q[1], b * q[4]);
+      }
+      break;
+    }
+  }
+  if (!n) return;
+  const p = R.dot; gl.useProgram(p.p);
+  gl.bindBuffer(gl.ARRAY_BUFFER, R.dots);
+  gl.bufferData(gl.ARRAY_BUFFER, d.subarray(0, n), gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  gl.uniform1f(p.u.asp, asp); gl.uniform1f(p.u.size, L.type === 'spec' || L.type === 'stars' ? 3 : L.size);
+  const sym = Math.max(1, L.sym);
+  for (let c = 0; c < sym; c++) {
+    gl.uniform1f(p.u.rot, L.ang + c * TAU / sym);
+    gl.uniform2f(p.u.flip, 1, 1); gl.drawArrays(gl.POINTS, 0, n / 3);
+    if (L.mirror) { gl.uniform2f(p.u.flip, -1, 1); gl.drawArrays(gl.POINTS, 0, n / 3); }
+  }
+  gl.disable(gl.BLEND);
+}
+function show() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, cv.width, cv.height);
+  const s = R.show; gl.useProgram(s.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, R.tex[R.i]);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, R.pals[vis.pal]);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, R.pals[vis.pal2]);
+  gl.uniform1i(s.u.T, 0); gl.uniform1i(s.u.P, 1); gl.uniform1i(s.u.Q, 2);
+  gl.uniform1f(s.u.off, vis.off); gl.uniform1f(s.u.span, W.span); gl.uniform1f(s.u.pmix, vis.pmix);
+  gl.uniform1f(s.u.boost, M.kick * 0.25);
+  quad(s);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, R.tex[R.i]);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+}
+
+/* ---------- main loop ---------- */
+let running = false, last = 0, acc = 0, clock = 0;
+function start() { if (!running && R) { running = true; last = performance.now(); requestAnimationFrame(frame); } }
+function frame(ts) {
+  if (!running) return;
+  let dt = Math.min(0.1, (ts - last) / 1000); last = ts;
+  sizeGL();
+  acc += dt;
+  clock += dt;
+  hear(dt, clock);
+  const STEP = 1 / 60;
+  let k = 0;
+  while (acc >= STEP && k < 3) {
+    step(STEP);
+    acc -= STEP; k++;
+  }
+  if (k === 3) acc = 0;
+  M.kick *= Math.pow(0.02, dt); M.snare *= Math.pow(0.01, dt);
+  show();
+  if (A.mode === 'song') progress();
+  requestAnimationFrame(frame);
+}
+
+/* =========================================================
+   SCREEN CONTROLS
+   ========================================================= */
+function fmt(s) { if (!isFinite(s)) return '0:00'; s = Math.floor(s); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function progress() {
+  const d = A.el.duration, t = A.el.currentTime;
+  $('prog').firstElementChild.style.width = (d > 0 ? t / d * 100 : 0) + '%';
+  $('time').textContent = fmt(t) + ' / ' + fmt(d);
+}
+function ui() {
+  const active = A.mode !== 'idle';
+  $('bar').classList.toggle('on', active);
+  if (active) $('start').classList.add('off');
+  if (A.mode === 'song') {
+    $('title').textContent = cur >= 0 ? songs[cur].name : '';
+    $('playIcon').setAttribute('d', A.el.paused ? 'M8 5v14l11-7z' : 'M6 5h4v14H6zm8 0h4v14h-4z');
+    progress();
+  } else if (A.mode === 'sys') { $('title').textContent = 'Listening to this computer'; $('time').textContent = 'any music playing'; }
+  else if (A.mode === 'mic') { $('title').textContent = 'Listening with the microphone'; $('time').textContent = 'any music in the room'; }
+  wake();
+}
+function renderList() {
+  const ol = $('songs'); ol.textContent = '';
+  songs.forEach((s, i) => {
+    const li = document.createElement('li');
+    if (i === cur) li.className = 'cur';
+    if (s.bad) li.classList.add('bad');
+    const em = document.createElement('em'); em.textContent = i + 1;
+    const sp = document.createElement('span'); sp.textContent = s.name;
+    li.append(em, sp);
+    li.onclick = () => { if (!s.bad) playSong(i); };
+    ol.append(li);
+  });
+  $('count').textContent = songs.length ? '(' + songs.length + ')' : '';
+}
+function showStart(over) {
+  const s = $('start');
+  s.classList.remove('off'); s.classList.toggle('over', !!over);
+  $('list').classList.remove('on');
+}
+let toastT = 0;
+function toast(msg, ms) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms || 3000);
+}
+// tidy screen: the controls fade away when the mouse is still
+let idleT = 0;
+function wake() {
+  body.classList.remove('hide-ui');
+  clearTimeout(idleT);
+  idleT = setTimeout(() => {
+    const busy = A.mode !== 'idle' && !(A.mode === 'song' && A.el.paused);
+    if (busy && !$('list').classList.contains('on') && $('start').classList.contains('off') && !$('bar').matches(':hover')) body.classList.add('hide-ui');
+  }, 3000);
+}
+['pointermove', 'pointerdown', 'keydown', 'touchstart'].forEach(e => addEventListener(e, wake, { passive: true }));
+
+$('bPlay').onclick = () => {
+  if (cur < 0) return;
+  ctx(); A.ctx.resume();
+  if (A.el.paused) { if (A.el.ended) A.el.currentTime = 0; A.el.play().catch(() => {}); } else A.el.pause();
+};
+$('bNext').onclick = () => { const n = nextGood(cur, 1); if (n >= 0) playSong(n); };
+$('bPrev').onclick = () => {
+  if (A.el.currentTime > 3) { A.el.currentTime = 0; return; }
+  const n = nextGood(cur, -1); if (n >= 0) playSong(n); else A.el.currentTime = 0;
+};
+$('bList').onclick = () => {
+  const l = $('list');
+  l.style.bottom = Math.round(innerHeight - $('bar').getBoundingClientRect().top + 8) + 'px';   // sit just above the controls
+  l.classList.toggle('on');
+};
+$('bListen').onclick = () => showStart(true);
+$('bClose').onclick = () => $('start').classList.add('off');
+$('bStop').onclick = stopListening;
+$('bPat').onclick = () => newPattern();
+$('bStyle').onclick = () => {
+  const keys = Object.keys(STYLES);
+  vis.style = keys[(keys.indexOf(vis.style) + 1) % keys.length];
+  $('bStyle').textContent = STYLES[vis.style];
+  newPattern();
+};
+$('bSys').onclick = () => listen('sys');
+$('bMic').onclick = () => listen('mic');
+$('bTap').onclick = () => { ctx(); A.ctx.resume(); A.el.play().then(() => $('tap').classList.remove('on')).catch(() => {}); };
+$('prog').onclick = e => {
+  const r = $('prog').getBoundingClientRect();
+  if (A.el.duration > 0) A.el.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * A.el.duration;
+};
+if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { $('bSys').style.display = 'none'; $('sysHint').style.display = 'none'; }
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) $('bMic').style.display = 'none';
+
+// drag and drop songs anywhere
+let dragN = 0;
+const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragN++; body.classList.add('dragging'); });
+addEventListener('dragover', e => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+addEventListener('dragleave', e => { if (!hasFiles(e)) return; dragN = Math.max(0, dragN - 1); if (!dragN) body.classList.remove('dragging'); });
+addEventListener('drop', e => {
+  e.preventDefault(); dragN = 0; body.classList.remove('dragging');
+  if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
+
+if (gl) {
+  try { initGL(); sizeGL(); newPattern(); Object.assign(W, Wt); vis.pal = vis.pal2; vis.pmix = 0; vis.trans = 1; vis.oldLayers = []; start(); } catch (e) { console.error(e); $('nogl').textContent = 'The visualizer could not start: ' + e.message; $('nogl').style.display = 'grid'; }
+}
+if (/[?&]test\b/.test(location.search)) window.__viz = { A, M, songs, get cur() { return cur; }, R, vis, st, W, Wt, newPattern };
+})();
+</script>
+</body>
+</html>
