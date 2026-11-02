@@ -222,11 +222,22 @@ async function listen(kind) {
   let stream;
   try {
     if (kind === 'sys') {
-      stream = await navigator.mediaDevices.getDisplayMedia({
+      // ask Chrome to stay on this page instead of jumping to the shared tab (Chrome's "Conditional Focus")
+      const ctl = ('CaptureController' in window && 'setFocusBehavior' in CaptureController.prototype) ? new CaptureController() : null;
+      const opts = {
         video: { frameRate: 1 },
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include'
-      });
+      };
+      if (ctl) opts.controller = ctl;
+      stream = await navigator.mediaDevices.getDisplayMedia(opts);
+      // this has to happen straight away, before anything else
+      if (ctl) {
+        try {
+          const surf = stream.getVideoTracks()[0].getSettings().displaySurface;
+          if (surf === 'browser' || surf === 'window') ctl.setFocusBehavior('no-focus-change');
+        } catch (e) {}
+      }
     } else {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
     }
@@ -371,7 +382,7 @@ const FB_FS = `precision highp float;
 varying vec2 v;
 uniform sampler2D T;
 uniform vec2 px, C, drift, flame;
-uniform float asp, zoom, rot, swirl, tun, fold, mirror, blur, decay, fade, edge;
+uniform float asp, zoom, rot, swirl, vort, tun, fold, mirror, blur, decay, fade, edge;
 uniform vec3 rip, wob, liq;
 const float TAU=6.2831853;
 void main(){
@@ -380,14 +391,17 @@ void main(){
   if(mirror>1.5) p.y=abs(p.y);
   float r=length(p), a=atan(p.y,p.x);
   if(fold>1.5){ float s=TAU/fold; a=mod(a,s); a=min(a,s-a); }
-  a+=rot+swirl*r;
+  a+=rot+swirl*r+vort/(r+.04);   // vort: a whirlpool that spins fastest in the middle
   r=r/zoom+tun*r*r;
   r*=1.+rip.x*sin(r*rip.y-rip.z);
   r*=1.+wob.x*sin(a*wob.y+wob.z);
   p=vec2(cos(a),sin(a))*r;
-  p+=liq.x*vec2(sin(p.y*liq.y+liq.z),cos(p.x*liq.y+liq.z*1.3));
+  // liquid wobble, balanced round the middle so the picture stays centred
+  p+=liq.x*vec2(sin(p.y*liq.y)*cos(liq.z)+.6*sin(p.y*liq.y*1.7)*sin(liq.z*.8),
+                sin(p.x*liq.y)*sin(liq.z*1.3)+.6*sin(p.x*liq.y*1.7)*cos(liq.z*.9));
   p+=C; p.x/=asp;
-  vec2 q=p+.5+drift+flame*px;
+  // flames burn outwards from the middle, both ways
+  vec2 q=p+.5+drift-sign(v-.5)*flame*px;
   if(edge>.5) q=1.-abs(mod(q,2.)-1.);   // kaleidoscopes reflect at the edges instead of going black
   vec2 o=px*blur;
   float s=texture2D(T,q+vec2(o.x,0.)).r+texture2D(T,q-vec2(o.x,0.)).r+texture2D(T,q+vec2(0.,o.y)).r+texture2D(T,q-vec2(0.,o.y)).r;
@@ -500,21 +514,20 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const chance = p => Math.random() < p;
 const sgn = () => chance(0.5) ? 1 : -1;
-const WK = ['zoom', 'rot', 'swirl', 'tun', 'blur', 'decay', 'fade', 'ripA', 'ripF', 'ripS', 'wobA', 'wobF', 'wobS', 'liqA', 'liqF', 'liqS', 'fx', 'fy', 'wander', 'kZoom', 'kRot', 'span', 'cyc'];
+const WK = ['zoom', 'rot', 'swirl', 'vort', 'tun', 'blur', 'decay', 'fade', 'ripA', 'ripF', 'ripS', 'wobA', 'wobF', 'wobS', 'liqA', 'liqF', 'liqS', 'fx', 'fy', 'wander', 'kZoom', 'kRot', 'span', 'cyc'];
 function baseWarp() {
-  return { zoom: 1, rot: 0, swirl: 0, tun: 0, blur: 1, decay: 0.98, fade: 1.5 / 255, ripA: 0, ripF: 20, ripS: 2, wobA: 0, wobF: 5, wobS: 1,
+  return { zoom: 1, rot: 0, swirl: 0, vort: 0, tun: 0, blur: 1, decay: 0.98, fade: 1.5 / 255, ripA: 0, ripF: 20, ripS: 2, wobA: 0, wobF: 5, wobS: 1,
     liqA: 0, liqF: 10, liqS: 1, fx: 0, fy: 0, wander: 0, kZoom: 0.03, kRot: 0.01, span: 1, cyc: 0.03, fold: 0, mirror: 0 };
 }
-// FLAMES (the Cthugha way): the picture is pushed one way and burns away
+// FLAMES (the Cthugha way): the picture burns outwards from the middle and fades away
 function flameWarp(w) {
-  const kind = pick(['up', 'up', 'left', 'right', 'water', 'spiral', 'rise']);
+  const kind = pick(['up', 'up', 'side', 'water', 'spiral', 'rise']);
   w.blur = 1; w.decay = rnd(0.965, 0.982); w.fade = rnd(1.2, 2.4) / 255;
-  if (kind === 'up') { w.fy = -rnd(1.2, 2.2); w.liqA = 0.002; w.liqF = 30; w.liqS = 6; }
-  if (kind === 'left') w.fx = rnd(1.2, 2);
-  if (kind === 'right') w.fx = -rnd(1.2, 2);
+  if (kind === 'up') { w.fy = rnd(1.2, 2.2); w.liqA = 0.002; w.liqF = 30; w.liqS = 6; }
+  if (kind === 'side') w.fx = rnd(1.2, 2);
   if (kind === 'water') { w.ripA = rnd(0.006, 0.014); w.ripF = rnd(25, 40); w.ripS = rnd(2, 4); w.zoom = 1.003; }
   if (kind === 'spiral') { w.swirl = rnd(0.02, 0.05) * sgn(); w.zoom = rnd(1.004, 1.012); w.rot = rnd(0.004, 0.012) * sgn(); }
-  if (kind === 'rise') { w.fy = -rnd(0.8, 1.4); w.zoom = rnd(1.006, 1.014); }
+  if (kind === 'rise') { w.fy = rnd(0.8, 1.4); w.zoom = rnd(1.006, 1.014); }
   w.kZoom = 0.025; w.kRot = 0.01; w.span = rnd(0.8, 1.4); w.cyc = rnd(0.02, 0.06);
   return w;
 }
@@ -537,19 +550,33 @@ function tunnelWarp(w) {
   if (extras.includes('wob')) { w.wobA = rnd(0.006, 0.02); w.wobF = Math.round(rnd(2, 7)); w.wobS = rnd(0.5, 2); }
   if (extras.includes('liq')) { w.liqA = rnd(0.002, 0.008); w.liqF = rnd(6, 20); w.liqS = rnd(0.5, 2); }
   if (extras.includes('tun')) w.tun = rnd(-0.1, 0.1);
-  if (chance(0.5)) w.wander = rnd(0.05, 0.15);
   w.decay = rnd(0.97, 0.99); w.fade = 1 / 255; w.blur = rnd(0.5, 1);
   w.kZoom = 0.04; w.kRot = 0.015; w.span = rnd(1, 2); w.cyc = rnd(0.02, 0.06);
   return w;
 }
-const STYLES = { mix: 'Mix', flame: 'Flames', kaleido: 'Kaleidoscope', tunnel: 'Warp tunnels' };
+// SPIRALS (like Cthugha's spiral and vortex effects): everything is pulled round along spiral arms,
+// outwards, inwards, or into a whirlpool / hurricane that spins fastest in the middle
+function spiralWarp(w) {
+  const dir = sgn(), kind = pick(['out', 'in', 'vortex', 'hurricane']);
+  w.rot = rnd(0.01, 0.03) * dir;
+  w.swirl = rnd(0.05, 0.14) * dir * (chance(0.3) ? -1 : 1);
+  if (kind === 'out') w.zoom = rnd(1.015, 1.04);
+  if (kind === 'in') w.zoom = rnd(0.965, 0.985);
+  if (kind === 'vortex') { w.zoom = rnd(0.975, 0.99); w.vort = rnd(0.003, 0.007) * dir; }
+  if (kind === 'hurricane') { w.zoom = rnd(1.005, 1.02); w.vort = rnd(0.002, 0.005) * dir; w.wobA = rnd(0.004, 0.01); w.wobF = pick([2, 3, 4]); w.wobS = rnd(0.5, 1.5); }
+  w.decay = rnd(0.965, 0.985); w.blur = rnd(0.6, 1); w.fade = 1.2 / 255;
+  w.kZoom = 0.035; w.kRot = 0.02; w.span = rnd(1.5, 3); w.cyc = rnd(0.04, 0.08);
+  return w;
+}
+const STYLES = { mix: 'Mix', flame: 'Flames', kaleido: 'Kaleidoscope', tunnel: 'Warp tunnels', spiral: 'Spirals' };
 function makeWarp(style) {
-  const s = style === 'mix' ? pick(['flame', 'kaleido', 'tunnel']) : style;
-  const w = s === 'flame' ? flameWarp(baseWarp()) : s === 'kaleido' ? kaleidoWarp(baseWarp()) : tunnelWarp(baseWarp());
-  if (style === 'mix') {   // in Mix, borrow a bit from the other two
-    if (s !== 'kaleido' && chance(0.35)) { w.fold = pick([4, 6, 8]); w.mirror = 0; }
+  const s = style === 'mix' ? pick(['flame', 'kaleido', 'tunnel', 'spiral']) : style;
+  const w = s === 'flame' ? flameWarp(baseWarp()) : s === 'kaleido' ? kaleidoWarp(baseWarp()) : s === 'spiral' ? spiralWarp(baseWarp()) : tunnelWarp(baseWarp());
+  if (style === 'mix') {   // in Mix, borrow a bit from the others
+    if (s !== 'kaleido' && s !== 'spiral' && chance(0.35)) { w.fold = pick([4, 6, 8]); w.mirror = 0; }
     if (s !== 'tunnel' && chance(0.35)) { w.liqA = rnd(0.002, 0.006); w.liqF = rnd(6, 16); w.liqS = rnd(0.5, 2); }
-    if (s !== 'flame' && chance(0.25)) w.fy = -rnd(0.6, 1.2);
+    if (s !== 'flame' && s !== 'spiral' && chance(0.25)) w.fy = rnd(0.6, 1.2);
+    if (s !== 'spiral' && chance(0.25)) w.vort = rnd(0.002, 0.004) * sgn();
   }
   w.kind = s;
   return w;
@@ -599,6 +626,7 @@ function step(dt) {
   gl.uniform1f(u.zoom, W.zoom + zoomDir * (M.bass * 0.006 + M.kick * W.kZoom));
   gl.uniform1f(u.rot, W.rot * (1 + M.mid * 0.8) + M.snare * W.kRot * vis.rotDir);
   gl.uniform1f(u.swirl, W.swirl);
+  gl.uniform1f(u.vort, W.vort);
   gl.uniform1f(u.tun, W.tun);
   gl.uniform1f(u.fold, W.fold);
   gl.uniform1f(u.mirror, W.mirror);
@@ -622,31 +650,45 @@ function step(dt) {
 /* ---------- shapes the music draws (the Light Machine way: layers, copied round the middle) ---------- */
 const TAU = Math.PI * 2;
 function makeLayer(type, o) {
-  return Object.assign({ type, sym: 1, mirror: false, spin: 0, ang: Math.random() * TAU, amp: 0.15, rad: 0.15, size: 2, bright: 0.9, y: 0, orbit: 0, sides: 5, parts: null, hits: M.hits }, o);
+  return Object.assign({ type, sym: 1, mirror: false, spin: 0, ang: Math.random() * TAU, amp: 0.15, rad: 0.15, size: 2, bright: 0.9, y: 0, orbit: 0, sides: 5, turns: 1.5, dir: 1, parts: null, hits: M.hits }, o);
 }
 function makeLayers(w) {
   const L = [];
   if (w.kind === 'flame') {
-    const y = w.fy < 0 ? -rnd(0.12, 0.3) : 0;
-    L.push(makeLayer(pick(['line', 'line', 'bolt', 'ring', 'spec']), { y, amp: rnd(0.12, 0.22), rad: rnd(0.07, 0.15) }));
-    if (chance(0.4)) L.push(makeLayer('stars', { y }));
+    // drawn in the middle; the flames burn outwards from it
+    L.push(makeLayer(pick(['line', 'line', 'bolt', 'ring', 'spec']), { amp: rnd(0.12, 0.22), rad: rnd(0.07, 0.15) }));
+    if (chance(0.4)) L.push(makeLayer('stars'));
   } else if (w.kind === 'kaleido') {
     const n = Math.round(rnd(2, 3));
     for (let i = 0; i < n; i++) {
+      const sym = w.fold ? pick([1, 1, 2]) : pick([3, 4, 5, 6, 8]);
+      // a shape set off from the middle only when it's copied round it, so the whole thing stays centred
+      const orbit = (w.fold || sym >= 2) && chance(0.4) ? rnd(0.05, 0.2) : 0;
+      if (chance(0.15)) { L.push(spiralLayer()); continue; }
       L.push(makeLayer(pick(['ring', 'xy', 'spec', 'spokes', 'poly', 'stars', 'line', 'bolt']), {
-        sym: w.fold ? pick([1, 1, 2]) : pick([3, 4, 5, 6, 8]), mirror: chance(0.3), spin: rnd(0.2, 1.2) * sgn(),
-        rad: rnd(0.05, 0.25), amp: rnd(0.06, 0.16), orbit: chance(0.4) ? rnd(0.05, 0.2) : 0, sides: pick([3, 4, 5, 6, 8])
+        sym, mirror: chance(0.3), spin: rnd(0.2, 1.2) * sgn(),
+        rad: rnd(0.05, 0.25), amp: rnd(0.06, 0.16), orbit, sides: pick([3, 4, 5, 6, 8])
       }));
     }
+  } else if (w.kind === 'spiral') {
+    L.push(spiralLayer());
+    if (chance(0.7)) L.push(makeLayer(pick(['ring', 'spokes', 'stars', 'poly', 'xy', 'spec']), {
+      sym: pick([1, 1, 2, 3]), spin: rnd(0.2, 0.8) * sgn(), rad: rnd(0.06, 0.18), amp: rnd(0.06, 0.14), sides: pick([3, 4, 5, 6])
+    }));
   } else {
     const n = Math.round(rnd(1, 2));
     for (let i = 0; i < n; i++) {
+      if (chance(0.15)) { L.push(spiralLayer()); continue; }
       L.push(makeLayer(pick(['ring', 'xy', 'line', 'poly', 'stars', 'spec', 'spokes']), {
         sym: pick([1, 1, 2, 3]), spin: rnd(0.1, 0.8) * sgn(), rad: rnd(0.07, 0.22), amp: rnd(0.08, 0.2), sides: pick([3, 4, 5, 6])
       }));
     }
   }
   return L;
+}
+// spiral arms: 2 to 6 arms winding out from the middle
+function spiralLayer() {
+  return makeLayer('spiral', { sides: pick([2, 3, 3, 4, 5, 6]), turns: rnd(0.8, 2.2), dir: sgn(), spin: rnd(0.4, 1.4) * sgn(), rad: rnd(0.12, 0.22), amp: rnd(0.04, 0.1) });
 }
 function drawLayer(L, dt, asp, fade) {
   if (fade <= 0.01) return;
@@ -675,13 +717,14 @@ function drawLayer(L, dt, asp, fade) {
       for (let i = 0; i < 512; i++) put(ox + M.l[i] * s, oy + M.r[i] * s, b);
       break;
     }
-    case 'spec': {          // the spectrum as glowing dots round a circle
+    case 'spec': {          // the spectrum as glowing dots round a circle, mirrored 4 ways so it stays centred
       for (let j = 0; j < 64; j++) {
-        const v = M.spec[j], a = j / 64 * Math.PI, r1 = L.rad + v * L.amp * 2;
+        const v = M.spec[j], a = (j + 0.5) / 64 * Math.PI / 2, r1 = L.rad + v * L.amp * 2;
+        const sx = Math.sin(a), cy = Math.cos(a), k = b * (0.25 + 0.75 * v);
         for (let s = 0; s < 4; s++) {
-          const r = mix(L.rad, r1, s / 3), k = b * (0.25 + 0.75 * v);
-          put(ox + Math.sin(a) * r, oy + Math.cos(a) * r, k);
-          put(ox - Math.sin(a) * r, oy + Math.cos(a) * r, k);
+          const r = mix(L.rad, r1, s / 3);
+          put(ox + sx * r, oy + cy * r, k); put(ox - sx * r, oy + cy * r, k);
+          put(ox + sx * r, oy - cy * r, k); put(ox - sx * r, oy - cy * r, k);
         }
       }
       break;
@@ -713,6 +756,17 @@ function drawLayer(L, dt, asp, fade) {
         y1 += M.m[i] * L.amp * 0.25; y2 += M.m[511 - i] * L.amp * 0.25;
         y1 *= 0.97; y2 *= 0.97;
         put(ox + t * len, oy + y1 * t * 2, b); put(ox - t * len, oy + y2 * t * 2, b);
+      }
+      break;
+    }
+    case 'spiral': {        // spiral arms that spin, stretch with the bass and wriggle with the wave
+      const arms = L.sides, per = Math.floor(720 / arms), R = L.rad * 2.4 * (1 + M.bass * 0.3 + M.kick * 0.25);
+      for (let k = 0; k < arms; k++) {
+        const a0 = k / arms * TAU;
+        for (let s = 0; s < per; s++) {
+          const t = s / per, ang = a0 + t * L.turns * TAU * L.dir, r = t * R + M.m[Math.floor(t * 511)] * L.amp * t;
+          put(ox + Math.cos(ang) * r, oy + Math.sin(ang) * r, b * (0.35 + 0.65 * t));
+        }
       }
       break;
     }
