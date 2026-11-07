@@ -1018,16 +1018,16 @@ function paintWord(w) {
   if (w.b) { x.fillStyle = fg; fitFont(x, w.b, 10, 6, 56, 600); x.fillText(w.b, 32, 50, 58); }
 }
 const $ln = document.getElementById('ln');
-let xrAuto = true;
+const xrUser = {fees: null, ord: null};   // what you chose with the eye, kept separately for each view (none yet: ORDINALS starts with it on, FEES with it off)
 function setLens(l) {
-  if (l === 'ord' && xrAuto) { xrAuto = false; xray = true; $xr.classList.add('on'); }
+  xray = xrUser[l] != null ? xrUser[l] : l === 'ord'; $xr.classList.toggle('on', xray);
   lens = l; $ln.textContent = l === 'ord' ? 'ORDINALS' : 'FEES'; $ln.classList.toggle('ord', l === 'ord'); $fs.classList.toggle('off', l === 'ord');
   if (l === 'ord' && mode === 'block') { loadTags(cur); loadOrd(cur); }
   rebuild(); head(); if (sel) select(sel);
 }
 $ln.onclick = () => setLens(lens === 'ord' ? 'fees' : 'ord');
 const $xr = document.getElementById('xr');
-$xr.onclick = () => { xray = !xray; xrAuto = false; $xr.classList.toggle('on', xray); pinK = hovK = null; setHK(); rebuild(); };   // the eye also lets go of a kept parcel type, so it always shows a change
+$xr.onclick = () => { xray = !xray; xrUser[lens] = xray; $xr.classList.toggle('on', xray); pinK = hovK = null; setHK(); rebuild(); };   // the eye also lets go of a kept parcel type, so it always shows a change
 
 /* ---------- what is on screen ---------- */
 const T0 = performance.now() / 1000, now = () => performance.now() / 1000 - T0;
@@ -2357,7 +2357,7 @@ function frame() {
   }
   const boxes = (mir, xr) => {
     gl.useProgram(parP.p); gl.uniformMatrix4fv(parP.u.uVP, false, VP); gl.uniform3fv(parP.u.uE, eye);
-    gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, oa); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uXr, xr ? 1 : 0); gl.uniform1f(parP.u.uGa, foc || hk != null ? 0.42 : lens === 'ord' ? 1 : 0.55);
+    gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, oa); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uXr, xr ? 1 : 0); gl.uniform1f(parP.u.uGa, foc || hk != null ? 0.42 : lens === 'ord' ? 1 : 0.85);
     gl.uniform1i(parP.u.uSel, xr ? (sel ? ghosts.indexOf(sel) : -1) : si);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(xr ? ghVAO : parVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, xr ? nGh : nInst);
