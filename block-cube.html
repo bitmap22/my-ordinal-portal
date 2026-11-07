@@ -1059,11 +1059,11 @@ function addRows(rows) {
 }
 // the card may grow (preview, extra rows): it never reaches up into the header, it scrolls instead
 function fitCard() {
-  const tp = rectOf($top), b = parseFloat(getComputedStyle($card).bottom) || 26;
-  $card.style.maxHeight = Math.max(170, innerHeight - b - (tp ? tp[3] : 0) - 14) + 'px';
+  const tp = rectOf($top), cs = getComputedStyle($card), b = parseFloat(cs.bottom) || 26, pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 2;
+  $card.style.maxHeight = Math.max(140, innerHeight - b - (tp ? tp[3] : 0) - 14 - pad) + 'px';
 }
 // more about one transaction, straight from mempool.space: inputs, outputs, address types, how long it waited
-const TYPE = {p2tr: 'taproot', v0_p2wpkh: 'segwit', v0_p2wsh: 'segwit script', p2pkh: 'legacy', p2sh: 'p2sh', p2pk: 'pay-to-key (oldest)',
+const TYPE = {v1_p2tr: 'taproot', p2tr: 'taproot', empty: 'empty', v0_p2wpkh: 'segwit', v0_p2wsh: 'segwit script', p2pkh: 'legacy', p2sh: 'p2sh', p2pk: 'pay-to-key (oldest)',
   multisig: 'bare multisig', op_return: 'OP_RETURN data', anchor: 'anchor', nonstandard: 'nonstandard', unknown: 'other'};
 const typeName = k => TYPE[k] || k || 'other';
 const dur = x => { x = Math.max(0, Math.round(x)); return x < 60 ? x + ' s' : x < 3600 ? Math.round(x / 60) + ' min' : x < 86400 ? Math.floor(x / 3600) + ' h ' + Math.round(x % 3600 / 60) + ' min' : Math.floor(x / 86400) + ' days ' + Math.floor(x % 86400 / 3600) + ' h'; };
@@ -1076,9 +1076,11 @@ async function txInfo(t) {
     fetchT(MP + '/api/v1/transaction-times?txId[]=' + t.id, null, 15000).then(r => r.json()).catch(() => null)]);
   return t._x = {tx, seen: seen && seen[0] > 0 ? seen[0] : t.seen || 0};
 }
+let cardTok = 0;
 function enrich(t) {
+  const tok = ++cardTok;
   txInfo(t).then(x => {
-    if (!x || sel !== t || !x.tx || !x.tx.vin) return;
+    if (!x || sel !== t || tok !== cardTok || !x.tx || !x.tx.vin) return;
     const tx = x.tx, cb = tx.vin.length && tx.vin[0].is_coinbase, done = tx.status && tx.status.confirmed;
     const rows = [['inputs → outputs', (cb ? 'new coins' : fmt(tx.vin.length) + ' in') + ' → ' + fmt(tx.vout.length) + ' out']];
     if (!cb) rows.push(['from', [...new Set(tx.vin.map(i => typeName(i.prevout && i.prevout.scriptpubkey_type)))].join(', ')]);
