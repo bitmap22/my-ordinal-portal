@@ -1041,7 +1041,9 @@ function anim(t, mode, t0, from) { t.m = mode; t.t0 = t0; t.f = from || null; }
 // in FEES view every box turns to glass so the fee layers show all the way through
 let xray = false, ghosts = [], nGh = 0, hk = null;   // hk: the parcel type being hovered (or pinned) in the row bottom left
 // a hovered parcel type wins: those parcels stay solid and every other one turns to glass
-const ghostOf = t => !t.lid && t.m !== 2 && t.m !== 4 && (foc ? t !== foc : hk != null ? !hasType(t, hk) : xray && kindOf(t) < 0);
+// the eye keeps solid what the open tab is about: INSCRIPTIONS -> inscriptions, TOKENS -> tokens and runes, TRANSACTIONS -> every ordinal kind
+const eyeKeeps = t => { if (tabG === 2) return kindOf(t) >= 0; for (let i = 0; i < TYPES.length; i++) if (TYPES[i].g === tabG && hasType(t, i)) return true; return false; };
+const ghostOf = t => !t.lid && t.m !== 2 && t.m !== 4 && (foc ? t !== foc : hk != null ? !hasType(t, hk) : xray && !eyeKeeps(t));
 function fill(list) {
   const n = list.length, d = new Float32Array(n * NF);
   for (let i = 0; i < n; i++) {
@@ -1587,7 +1589,7 @@ const shade = (css, f) => '#' + [1, 3, 5].map(i => { const v = parseInt(css.slic
 const cubeIcon = css => `<svg viewBox="0 0 16 16"><path d="M8 1.5 14.5 5 8 8.5 1.5 5z" fill="${shade(css, 1.35)}"/><path d="M1.5 5 8 8.5V15L1.5 11.5z" fill="${css}"/><path d="M14.5 5 8 8.5V15l6.5-3.5z" fill="${shade(css, 0.55)}"/></svg>`;
 let hovK = null, pinK = null, khPx = -1, tabG = 0;
 const kTabs = [...document.querySelectorAll('.ktab')], $kn = document.getElementById('kn');
-kTabs.forEach(b => b.onclick = () => { tabG = +b.dataset.g; pinK = hovK = null; drawKinds(); });
+kTabs.forEach(b => b.onclick = () => { tabG = +b.dataset.g; pinK = hovK = null; drawKinds(); if (xray) rebuild(); });
 const kChips = TYPES.map((ty, i) => {
   const css = ty.css, el = document.createElement('button');
   el.className = 'kd'; el.style.cssText = `--k:${css};--g:${rgba(css, 0.45)};--b:${rgba(css, 0.14)}`;
