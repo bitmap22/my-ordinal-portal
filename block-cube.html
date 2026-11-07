@@ -153,10 +153,11 @@ body.halv #h{text-shadow:0 0 22px rgba(177,76,255,.75),0 0 4px rgba(255,209,102,
 <div id="kinds" class="m"><div id="kh">PARCEL TYPES<button class="ktab on" data-g="0">INSCRIPTIONS</button><button class="ktab" data-g="1">TOKENS</button><button class="ktab" data-g="2">TRANSACTIONS</button><span></span></div><div id="kl"><i id="kn">none in this block</i></div></div>
 <div id="card" class="m"><div id="cn"></div><div id="cr"></div><div id="ct"></div><div id="cp"></div></div>
 <button id="fb" class="m" aria-label="show or hide the live feed">FEED</button>
-<div id="tools"><button id="tp" class="tl" aria-label="flip back through blocks" title="flip back through blocks"></button><button id="ts" class="tl" aria-label="save a picture" title="save a picture"></button><button id="tu" class="tl" aria-label="sound on or off" title="sound on / off"></button></div>
+<div id="tools"><button id="tp" class="tl" aria-label="flip back through blocks" title="flip back through blocks"></button><button id="ts" class="tl" aria-label="save a picture" title="save a picture"></button><button id="tu" class="tl" aria-label="sound on or off" title="sound on / off"></button><button id="tc" class="tl" aria-label="grab the code" title="grab the code"></button></div>
 <div id="feed" class="m"><div id="fh">LIVE FEED</div><div id="fl"></div><div id="fh2" class="fh">JOINING THE NEXT BLOCK</div><div id="ft"></div></div>
 <script>
 'use strict';
+const SRC0 = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;   // the page as it arrived, for the grab-code button
 /* ---------- data sources: set on:false to switch one off ---------- */
 const SOURCES = [
   {name:'mempool.space', on:true, kind:'mempool', base:'https://mempool.space'},
@@ -380,7 +381,7 @@ vec3 s=iS*sc;vFl=fl;vSl=uSel<0?0.:gl_InstanceID==uSel?1.:-1.;
 vec3 w=pos+aP*s,nn=aN;if(uMir>.5){w.y=-w.y;nn.y=-nn.y;}
 vN=nn;vQ=aP*s;vS=s;vK=iK.rgb;vA=iA;vG=iG;vW=w;gl_Position=uVP*vec4(w,1.);}`,
   V + `in vec3 vN;in vec3 vQ;in vec3 vS;in vec3 vK;in vec3 vW;in float vFl;in float vSl;in float vG;in vec4 vA;uniform sampler2D uArt;uniform vec3 uE;uniform float uMir,uXr,uGa;out vec4 o;
-void main(){vec3 K=vK;if(vA.w>.5){vec3 an0=abs(normalize(vN));vec2 fu=an0.x>.5?vec2(vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,vQ.z/vS.z):vec2(vQ.x/vS.x,vQ.y/vS.y);fu=clamp(fu+.5,.002,.998);K=pow(texture(uArt,vA.xy+vec2(fu.x,1.-fu.y)*vA.z).rgb,vec3(2.2))*1.15+.01;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
+void main(){vec3 K=vK;if(vA.w>.5){vec3 an0=abs(normalize(vN));vec3 sn=sign(vN);vec2 fu=an0.x>.5?vec2(-sn.x*vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,-sn.y*vQ.z/vS.z):vec2(sn.z*vQ.x/vS.x,vQ.y/vS.y);fu=clamp(fu+.5,.002,.998);K=pow(texture(uArt,vA.xy+vec2(fu.x,1.-fu.y)*vA.z).rgb,vec3(2.2))*1.15+.01;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
 float m=an.x>.5?min(d.y,d.z):an.y>.5?min(d.x,d.z):min(d.x,d.y);
 float fw=fwidth(m),es=.25+.75*smoothstep(.3,1.4,min(vS.x,min(vS.y,vS.z))),edge=(1.-smoothstep(0.,fw*1.3,m))*es;
 vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
@@ -779,7 +780,7 @@ function scanBytes(X, h) {
   const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
   const ntx = vi(), out = new Array(ntx); let cb = null, artN = 0;
   for (let t = 0; t < ntx && p < X.length; t++) {
-    const r = {sc: 0, msg: null, ins: [], rn: null, tick: null, op: null, art: null, a: p}, set = f => { r.sc |= 1 << f; };
+    const r = {sc: 0, msg: null, ins: [], rn: null, tick: null, op: null, art: null, word: null, a: p}, set = f => { r.sc |= 1 << f; };
     p += 4; let sw = 0; if (X[p] === 0 && X[p + 1] === 1) { sw = 1; p += 2; }
     r.s = p;
     const nin = vi(), key = X.slice(p, p + 32).reverse(), isc = [];
@@ -850,13 +851,19 @@ function scanBytes(X, h) {
           set(/^image\//.test(ty) ? TF.img : /html/.test(ty) ? TF.html : /json/.test(ty) ? TF.json : /^text\//.test(ty) ? TF.txt : /^(audio|video)\//.test(ty) ? TF.media : /^model\//.test(ty) ? TF.model : TF.other);
           r.ins.push({i: ei++, ct: ty || 'unknown', par, del});
           const bl = body.reduce((n, x) => n + x.length, 0);
+          // the words, for painting: the first text-like inscription in the transaction
+          if (!enc && !del && bl && !r.word && !/^image\//.test(ty) && (/^text\/(plain|markdown)/.test(ty) || /json/.test(ty))) {
+            const all = catB(body), t0 = U8D.decode(all.subarray(0, 400)).replace(/\s+/g, ' ').trim();
+            if (t0 && !/^<|^\{?\s*$/.test(t0)) r.word = {k: 'text', a: t0.slice(0, 140), b: ''};
+          }
           if (!enc && bl && bl <= 1000) {
             const txt = U8D.decode(catB(body)).trim();
-            if (/^\d{1,7}\.bitmap$/.test(txt)) set(TF.bitmap);
+            if (/^\d{1,7}\.bitmap$/.test(txt)) { set(TF.bitmap); if (r.word) r.word = {k: 'bitmap', a: txt.split('.')[0], b: '.bitmap'}; }
             else if (txt[0] === '{') try {
-              const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase();
-              if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); }
-              else if (pr === 'tap') { set(TF.tap); r.tick = String(o.tick || '').slice(0, 16); if (/^dmt-/i.test(String(o.op || ''))) set(TF.dmt); }
+              const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase(), wb = [o.op, o.amt != null ? o.amt : o.max].filter(x => x != null && x !== '').map(String).join(' ').slice(0, 40);
+              if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word) r.word = {k: 'brc20', a: r.tick, b: wb}; }
+              else if (pr === 'tap') { set(TF.tap); r.tick = String(o.tick || '').slice(0, 16); if (/^dmt-/i.test(String(o.op || ''))) set(TF.dmt); if (r.word) r.word = {k: 'tap', a: r.tick, b: wb}; }
+              else if (pr && r.word) r.word = {k: 'json', a: String(o.tick || o.name || o.p).slice(0, 24), b: (pr !== String(o.tick || o.name || o.p).toLowerCase() ? pr + ' ' : '') + wb};
             } catch (e) {}
           }
           if (/^image\//.test(ty) && !enc && !del && bl > 0 && bl <= 400000 && !r.art && artN < 256) { r.art = {ct, bytes: catB(body)}; artN++; }
@@ -893,7 +900,7 @@ async function scanBlock(B) {
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
       const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t._k = null;
-      if (r.art) t.art = r.art;
+      if (r.art) t.art = r.art; else if (r.word) t.word = r.word;
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
     });
     const pl = POOLS.find(([re]) => re.test(S.cb || ''));
@@ -935,11 +942,46 @@ async function loadArt(B) {
       if (img.close) img.close();
       gl.bindTexture(gl.TEXTURE_2D, artTex);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, (slot % 16) * 128, (slot >> 4) * 128, gl.RGBA, gl.UNSIGNED_BYTE, artCv);
-      t.artS = slot; t.artG = my;
+      t.artR = [(slot % 16) / 16, (slot >> 4) / 16, 1 / 16]; t.artG = my;
     });
     rebuild();
   }
-  if (my === artGen) rebuild();
+  if (my !== artGen || cur !== B) return;
+  // then the words, four to a square, in the squares the pictures left free
+  const words = B.txs.filter(t => t.word && !t.art), free = 256 - list.length;
+  for (let i = 0; i < words.length && i < free * 4; i++) {
+    const t = words[i], sq = list.length + (i >> 2), q = i & 3, px = (sq % 16) * 128 + (q & 1) * 64, py = (sq >> 4) * 128 + (q >> 1) * 64;
+    paintWord(t.word);
+    gl.bindTexture(gl.TEXTURE_2D, artTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, px, py, gl.RGBA, gl.UNSIGNED_BYTE, wCv);
+    t.artR = [px / 2048, py / 2048, 1 / 32]; t.artG = my;
+  }
+  rebuild();
+}
+// one word tile: what the inscription says, in the colour of its kind
+const wCv = document.createElement('canvas'); wCv.width = wCv.height = 64;
+const wCx = wCv.getContext('2d');
+const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', '']};
+function fitFont(x, txt, max, min, w, weight) {
+  let f = max; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`;
+  while (f > min && x.measureText(txt).width > w) { f--; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`; }
+  return f;
+}
+function paintWord(w) {
+  const x = wCx, [bg, fg, label] = WSTYLE[w.k] || WSTYLE.text;
+  x.fillStyle = bg; x.fillRect(0, 0, 64, 64); x.textAlign = 'center'; x.textBaseline = 'middle';
+  if (w.k === 'text') {   // a little page of text
+    x.fillStyle = fg; x.textAlign = 'left'; x.textBaseline = 'top'; x.font = '600 9px ui-monospace,Menlo,Consolas,monospace';
+    const words = w.a.split(' '), lines = []; let ln = '';
+    for (const wd of words) { const t = ln ? ln + ' ' + wd : wd; if (x.measureText(t).width > 56 && ln) { lines.push(ln); ln = wd; } else ln = t; if (lines.length >= 6) break; }
+    if (ln && lines.length < 6) lines.push(ln);
+    lines.forEach((l, i) => x.fillText(l.length > 12 && x.measureText(l).width > 56 ? l.slice(0, 11) + '…' : l, 4, 4 + i * 9.6));
+    return;
+  }
+  x.strokeStyle = fg; x.lineWidth = 2; x.strokeRect(2, 2, 60, 60);
+  if (label) { x.fillStyle = fg; x.font = '700 8px ui-monospace,Menlo,Consolas,monospace'; x.fillText(label, 32, 11); }
+  x.fillStyle = '#ffffff'; fitFont(x, w.a, 22, 8, 54, 800); x.fillText(w.a, 32, label ? 31 : 27, 56);
+  if (w.b) { x.fillStyle = fg; fitFont(x, w.b, 10, 6, 56, 600); x.fillText(w.b, 32, 50, 58); }
 }
 const $ln = document.getElementById('ln');
 let xrAuto = true;
@@ -972,7 +1014,7 @@ function fill(list) {
     d[o + 3] = Math.max(sx - g, 1e-3); d[o + 4] = Math.max(sy - g, 1e-3); d[o + 5] = Math.max(sz - g, 1e-3);
     d[o + 6] = k[0]; d[o + 7] = k[1]; d[o + 8] = k[2]; d[o + 9] = t.t0 || 0;
     const f = t.f || c; d[o + 10] = f[0]; d[o + 11] = f[1]; d[o + 12] = f[2]; d[o + 13] = t.m || 0;
-    if (t.art && t.artG === artGen && t.artS != null) { d[o + 15] = (t.artS % 16) / 16; d[o + 16] = (t.artS >> 4) / 16; d[o + 17] = 1 / 16; d[o + 18] = 1; }
+    if (t.artR && t.artG === artGen) { d[o + 15] = t.artR[0]; d[o + 16] = t.artR[1]; d[o + 17] = t.artR[2]; d[o + 18] = 1; }
     d[o + 14] = t.lid || t === foc ? 1 : lens === 'ord' && (hk != null ? TYPES[hk].glow !== false && hasType(t, hk) : kindOf(t) >= 0) ? 1 : 0;   // glow only in ORDINALS view, so fee colours stay true
   }
   return d;
@@ -1665,14 +1707,15 @@ addEventListener('keydown', e => {
 
 
 /* ---------- tool buttons (top right): flip through blocks, save a picture, sound ---------- */
-const $tools = document.getElementById('tools'), $tp = document.getElementById('tp'), $ts = document.getElementById('ts'), $tu = document.getElementById('tu'), $fs = document.getElementById('fs');
+const $tools = document.getElementById('tools'), $tp = document.getElementById('tp'), $ts = document.getElementById('ts'), $tu = document.getElementById('tu'), $tc = document.getElementById('tc'), $fs = document.getElementById('fs');
 const ICON = {
   play: '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M6 3.5v13l11-6.5z"/></svg>',
   pause: '<svg viewBox="0 0 20 20" fill="currentColor"><rect x="5" y="4" width="3.6" height="12" rx="1"/><rect x="11.4" y="4" width="3.6" height="12" rx="1"/></svg>',
   cam: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6.5h3.2l1.6-2.2h5.4l1.6 2.2h3.2v9.2h-15z"/><circle cx="10" cy="11" r="3"/></svg>',
   snd: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor" stroke="none"/><path d="M13 7.5a3.5 3.5 0 0 1 0 5M15.2 5.3a6.6 6.6 0 0 1 0 9.4"/></svg>',
+  code: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5.5L2.8 10 7 14.5M13 5.5l4.2 4.5-4.2 4.5M11.2 4l-2.4 12"/></svg>',
   mute: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor" stroke="none"/><path d="M13 8l4 4M17 8l-4 4"/></svg>'};
-$tp.innerHTML = ICON.play; $ts.innerHTML = ICON.cam; $tu.innerHTML = ICON.mute;
+$tp.innerHTML = ICON.play; $ts.innerHTML = ICON.cam; $tu.innerHTML = ICON.mute; $tc.innerHTML = ICON.code;
 function placeTools() {
   const b = rectOf($fb);
   if (b && innerWidth > 640) document.body.style.setProperty('--tr', Math.round(innerWidth - b[0] + 8) + 'px');
@@ -1704,6 +1747,16 @@ function snap() {
   }, 'image/png');
   $ts.classList.add('on'); setTimeout(() => $ts.classList.remove('on'), 400);
 }
+
+// grab the code: downloads this whole page as block-cube.html, exactly as it was loaded (the page's own copy if the file can't be re-read)
+$tc.onclick = async () => {
+  let txt = null;
+  try { const r = await fetch(location.href.split('#')[0], {cache: 'force-cache'}); if (r.ok) { const t = await r.text(); if (/<canvas/i.test(t) && /Block Cube/.test(t)) txt = t; } } catch (e) {}
+  if (!txt) txt = SRC0;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], {type: 'text/html;charset=utf-8'})); a.download = 'block-cube.html';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  $tc.classList.add('on'); setTimeout(() => $tc.classList.remove('on'), 400);
+};
 
 /* ---------- sound (off at start): each new parcel ticks at a pitch set by its fee, a chime when a block is found ---------- */
 let sndOn = false, au = null, lastTick = 0;
@@ -1783,6 +1836,383 @@ function fit(VP, oa) {
   return c;
 }
 
+/* ---------- floor life: a little living world on each season's ground ---------- */
+// every season has its own plants and creatures, built here from simple shapes and moved in the shader;
+// they grow in when the floor turns to their season and shrink away when it leaves
+const LIFE = (() => {
+  let seed = 20261107;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296, rr = (a, b) => a + (b - a) * rnd();
+  const C = h => lin(hexc(h)), mixc = (a, b, f) => a.map((x, i) => x + (b[i] - x) * f);
+  const TINT = 2;   // a vertex weight of 2 or more means "use the instance's own colour here"
+
+  /* ---- building shapes: each vertex = position, normal, colour, weight (how much it moves) ---- */
+  function tri(v, a, b, c, col, w, ref) {
+    let n = nrm(crs(sub(b, a), sub(c, a)));
+    if (ref) { const m = [(a[0] + b[0] + c[0]) / 3 - ref[0], (a[1] + b[1] + c[1]) / 3 - ref[1], (a[2] + b[2] + c[2]) / 3 - ref[2]]; if (dot(n, m) < 0) { n = [-n[0], -n[1], -n[2]]; [b, c] = [c, b]; } }
+    for (const p of [a, b, c]) v.push(p[0], p[1], p[2], n[0], n[1], n[2], col[0], col[1], col[2], typeof w === 'function' ? w(p) : w);
+  }
+  // move / turn / size a point: s = scale [x,y,z], r = turn [x,y,z] in radians, t = shift
+  const TR = (s, r, t) => p => {
+    let [x, y, z] = [p[0] * s[0], p[1] * s[1], p[2] * s[2]];
+    let c = Math.cos(r[0]), q = Math.sin(r[0]); [y, z] = [y * c - z * q, y * q + z * c];
+    c = Math.cos(r[2]); q = Math.sin(r[2]); [x, y] = [x * c - y * q, x * q + y * c];
+    c = Math.cos(r[1]); q = Math.sin(r[1]); [x, z] = [x * c + z * q, -x * q + z * c];
+    return [x + t[0], y + t[1], z + t[2]];
+  };
+  const ID = p => p;
+  // a turned shape, like on a lathe: prof = [[radius, height], ...] bottom to top
+  function lathe(v, prof, seg, colf, w, T = ID) {
+    for (let i = 0; i < seg; i++) {
+      const a0 = i / seg * 6.2832, a1 = (i + 1) / seg * 6.2832;
+      for (let j = 0; j + 1 < prof.length; j++) {
+        const [r0, y0] = prof[j], [r1, y1] = prof[j + 1], P = (r, y, a) => T([Math.cos(a) * r, y, Math.sin(a) * r]);
+        const ref = T([0, (y0 + y1) / 2, 0]), col = colf(i, (a0 + a1) / 2, (y0 + y1) / 2, j);
+        if (r0 > 1e-4) tri(v, P(r0, y0, a0), P(r1, y1, a0), P(r0, y0, a1), col, w, ref);
+        if (r1 > 1e-4) tri(v, P(r0, y0, a1), P(r1, y1, a0), P(r1, y1, a1), col, w, ref);
+      }
+    }
+  }
+  // a rounded lump (subdivided icosahedron), optionally knobbly
+  function ico(sub) {
+    const t = (1 + Math.sqrt(5)) / 2;
+    const V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map(nrm);
+    let F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+    for (let s = 0; s < sub; s++) {
+      const F2 = [], mid = new Map(), m = (a, b) => { const k = a < b ? a * 999 + b : b * 999 + a; if (!mid.has(k)) { mid.set(k, V.length); V.push(nrm([(V[a][0] + V[b][0]) / 2, (V[a][1] + V[b][1]) / 2, (V[a][2] + V[b][2]) / 2])); } return mid.get(k); };
+      for (const [a, b, c] of F) { const ab = m(a, b), bc = m(b, c), ca = m(c, a); F2.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]); }
+      F = F2;
+    }
+    return {V, F};
+  }
+  function blob(v, sub, jit, colf, w, T = ID) {
+    const {V, F} = ico(sub), J = V.map(p => { const k = 1 + (rnd() - 0.5) * jit; return T([p[0] * k, p[1] * k, p[2] * k]); }), ref = T([0, 0, 0]);
+    F.forEach((f, i) => tri(v, J[f[0]], J[f[1]], J[f[2]], colf(i, V[f[0]], V[f[1]], V[f[2]]), typeof w === 'function' ? w(i) : w, ref));
+  }
+  // a thin bending blade (grass, stems), tapering to a point
+  function blade(v, h, wd, lean, rotY, col0, col1, T = ID, segs = 4) {
+    const P = (k, s) => { const f = k / segs; return T(TR([1, 1, 1], [0, rotY, 0], [0, 0, 0])([s * wd * (1 - f * 0.92), f * h, lean * f * f * h])); };
+    for (let k = 0; k < segs; k++) {
+      const c = mixc(col0, col1, (k + 0.5) / segs), wf = p => Math.min(1, Math.max(0, p[1] / h));
+      tri(v, P(k, -1), P(k, 1), P(k + 1, -1), c, wf); tri(v, P(k + 1, -1), P(k, 1), P(k + 1, 1), c, wf);
+    }
+  }
+
+  /* ---- the shapes ---- */
+  const MESH = {};
+  const make = (name, f) => { const v = []; f(v); MESH[name] = v; };
+  const G1 = C(0x24521c), G2 = C(0x8fcf4f), BARK = C(0x5a3b25), LEAF1 = C(0x3a8a34), LEAF2 = C(0x5fae46), LEAF3 = C(0x2c6e2b);
+  make('tuft', v => { for (let i = 0; i < 6; i++) blade(v, rr(0.35, 0.75), 0.045, rr(0.1, 0.45), rnd() * 6.28, G1, G2, TR([1, 1, 1], [0, 0, 0], [rr(-0.12, 0.12), 0, rr(-0.12, 0.12)])); });
+  make('flower', v => {
+    blade(v, 0.62, 0.025, 0.12, 0, C(0x2f6b25), C(0x4f9a3a));
+    const top = [0, 0.62, 0.07];
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * 6.2832, d = [Math.cos(a), 0, Math.sin(a)], s = [-d[2], 0, d[0]];
+      const P = (f, l, u) => [top[0] + d[0] * f + s[0] * l, top[1] + u, top[2] + d[2] * f + s[2] * l];
+      tri(v, P(0.02, 0, 0), P(0.11, 0.05, 0.03), P(0.17, 0, 0.05), [0, 0, 0], TINT + 1);
+      tri(v, P(0.02, 0, 0), P(0.17, 0, 0.05), P(0.11, -0.05, 0.03), [0, 0, 0], TINT + 1);
+    }
+    lathe(v, [[0.045, 0], [0.035, 0.03], [0, 0.035]], 6, () => C(0xffd23f), 1, TR([1, 1, 1], [0, 0, 0], [top[0], top[1] + 0.01, top[2]]));
+  });
+  make('tree', v => {
+    lathe(v, [[0.2, 0], [0.15, 0.6], [0.12, 1.3], [0.08, 1.8]], 7, (i) => i % 2 ? BARK : mixc(BARK, C(0x3d2717), 0.5), 0);
+    for (const [x, y, z, s] of [[0, 2.15, 0, 1.0], [0.45, 1.85, 0.2, 0.72], [-0.4, 1.9, -0.25, 0.75], [0.05, 2.65, -0.1, 0.7], [-0.2, 2.0, 0.45, 0.6]])
+      blob(v, 1, 0.22, (i, a) => a[1] > 0.3 ? LEAF2 : rnd() < 0.5 ? LEAF1 : LEAF3, 1, TR([s, s * 0.85, s], [0, rnd() * 6, 0], [x, y, z]));
+  });
+  make('pine', v => {   // a fir: five drooping, ragged tiers, snow lying on the top of each
+    lathe(v, [[0.15, 0], [0.11, 0.7]], 6, () => BARK, 0);
+    const N = 12, SN = [C(0xf4f9ff), C(0xdbe8f6)], GR = [C(0x1b4634), C(0x24573f), C(0x17402f)];
+    [[1.15, 0.45, 1.05], [0.95, 1.0, 0.95], [0.76, 1.52, 0.85], [0.56, 2.0, 0.75], [0.36, 2.42, 0.7]].forEach(([r, y, h], k) => {
+      const w = 0.25 + k * 0.17, rot = k * 0.45, A = [], B = [], top = [0, y + h, 0];
+      for (let i = 0; i < N; i++) {
+        const a = rot + i / N * 6.2832, tip = i % 2 === 0, rr0 = r * (tip ? rr(0.95, 1.08) : rr(0.68, 0.78)), dy = tip ? -rr(0.06, 0.14) : rr(0.02, 0.07);
+        A.push([Math.cos(a) * rr0, y + dy, Math.sin(a) * rr0]);
+        const f = k === 4 ? rr(0.5, 0.62) : rr(0.4, 0.55), rb = rr0 * (1 - f);   // where the snow ends, a little uneven
+        B.push([Math.cos(a) * rb, y + dy + (h - dy) * f + rr(-0.03, 0.03), Math.sin(a) * rb]);
+      }
+      const ref = [0, y + h * 0.3, 0];
+      for (let i = 0; i < N; i++) {
+        const j = (i + 1) % N, g = GR[(i + k) % 3], sn = SN[i % 2];
+        tri(v, top, B[i], B[j], sn, w, ref);
+        tri(v, B[i], A[i], A[j], i % 2 ? g : mixc(g, sn, 0.18), w, ref);
+        tri(v, B[i], A[j], B[j], g, w, ref);
+        tri(v, A[i], A[j], [0, y + 0.18, 0], C(0x0f2a1f), w, [0, y + 1, 0]);   // the dark underside
+      }
+    });
+  });
+  make('snowrock', v => blob(v, 1, 0.5, (i, a, b, c) => (a[1] + b[1] + c[1]) / 3 > 0.25 ? (i % 2 ? C(0xf2f7ff) : C(0xdde9f5)) : (i % 3 ? C(0x55667a) : C(0x6b7c90)), 0, TR([0.8, 0.5, 0.65], [0, 0, 0], [0, 0.2, 0])));
+  make('penguin', v => {
+    const BK = C(0x15171f), WH = C(0xf3f1ea), OR = C(0xff9a1f);
+    lathe(v, [[0, 0.02], [0.2, 0.06], [0.29, 0.24], [0.3, 0.44], [0.25, 0.62], [0.17, 0.74], [0.19, 0.84], [0.15, 0.95], [0.07, 1.02], [0, 1.03]], 12,
+      (i, a, y) => (Math.sin(a) > 0.35 && y < 0.76) || (Math.sin(a) > 0.55 && y < 0.92 && y > 0.8) ? WH : BK, 0);
+    lathe(v, [[0.055, 0], [0, 0.17]], 6, () => OR, 0, TR([1, 1, 0.8], [1.45, 0, 0], [0, 0.86, 0.17]));   // beak
+    for (const sx of [-1, 1]) {
+      blob(v, 0, 0.1, () => WH, 0, TR([0.035, 0.035, 0.02], [0, 0, 0], [sx * 0.085, 0.92, 0.16]));   // eyes
+      lathe(v, [[0.07, 0], [0.05, 0.38], [0, 0.42]], 6, () => BK, p => Math.max(0, 0.6 - p[1]) * 1.5, TR([0.5, 1, 1.2], [0, 0, sx * 2.8], [sx * 0.29, 0.66, -0.02]));   // flippers
+      lathe(v, [[0.08, 0], [0.06, 0.03], [0, 0.035]], 6, () => OR, 0, TR([1, 1, 1.6], [0, 0, 0], [sx * 0.11, 0, 0.06]));   // feet
+    }
+  });
+  make('icecrystal', v => {
+    for (let i = 0; i < 6; i++) {
+      const h = rr(0.6, 1.8), r = rr(0.08, 0.17), c = rnd() < 0.5 ? C(0xbff3ff) : C(0x86dcff);
+      lathe(v, [[r, 0], [r, h * 0.78], [0, h]], 6, (k) => k % 2 ? c : mixc(c, C(0xffffff), 0.45), 0, TR([1, 1, 1], [rr(-0.45, 0.45), rnd() * 6, rr(-0.45, 0.45)], [rr(-0.18, 0.18), 0, rr(-0.18, 0.18)]));
+    }
+  });
+  make('fish', v => {   // a koi: nose at +z
+    const prof = [[0, -0.42], [0.05, -0.34], [0.11, -0.2], [0.14, -0.02], [0.13, 0.14], [0.09, 0.27], [0.04, 0.36], [0, 0.4]];
+    let belly = false;
+    lathe(v, prof, 10, (i, a) => { belly = Math.sin(a) > 0.45; return belly ? C(0xfff4e6) : [0, 0, 0]; }, p => (belly ? 0 : TINT) + Math.max(0, -p[2]) / 0.42, TR([0.62, 1, 1], [1.5708, 0, 0], [0, 0, 0]));
+    for (const sy of [-1, 1]) tri(v, [0, 0, -0.36], [0, sy * 0.2, -0.62], [0, sy * 0.04, -0.58], [0, 0, 0], TINT + 1);
+    tri(v, [0, 0.11, -0.02], [0, 0.2, -0.18], [0, 0.12, -0.24], [0, 0, 0], TINT + 0.4);
+    for (const sx of [-1, 1]) tri(v, [sx * 0.08, -0.06, 0.12], [sx * 0.22, -0.1, 0.02], [sx * 0.08, -0.07, 0.0], C(0xfff4e6), 0.15);
+  });
+  make('lilypad', v => {
+    const seg = 14, R = 0.62, top = 0.02;
+    for (let i = 0; i < seg - 1; i++) {   // a disc with a notch cut in
+      const a0 = 0.4 + i / seg * 5.9, a1 = 0.4 + (i + 1) / seg * 5.9;
+      tri(v, [0, top, 0], [Math.cos(a1) * R, top, Math.sin(a1) * R], [Math.cos(a0) * R, top, Math.sin(a0) * R], i % 2 ? C(0x2f7a32) : C(0x3a8c3c), 0);
+    }
+  });
+  make('lily', v => {
+    for (let ring = 0; ring < 2; ring++) for (let i = 0; i < 8; i++) {
+      const a = (i + ring * 0.5) / 8 * 6.2832, d = [Math.cos(a), 0, Math.sin(a)], s = [-d[2], 0, d[0]], L = ring ? 0.2 : 0.27, U = ring ? 0.2 : 0.13;
+      const P = (f, l, u) => [d[0] * f + s[0] * l, 0.04 + u, d[2] * f + s[2] * l];
+      tri(v, P(0.02, 0, 0), P(L * 0.6, 0.06, U * 0.6), P(L, 0, U), [0, 0, 0], TINT);
+      tri(v, P(0.02, 0, 0), P(L, 0, U), P(L * 0.6, -0.06, U * 0.6), [0, 0, 0], TINT);
+    }
+    lathe(v, [[0.06, 0.04], [0.04, 0.09], [0, 0.1]], 6, () => C(0xffd23f), 0);
+  });
+  make('butterfly', v => {
+    for (const sx of [-1, 1]) {
+      tri(v, [0, 0, 0.05], [sx * 0.24, 0, 0.17], [sx * 0.22, 0, -0.02], [0, 0, 0], TINT + 1);
+      tri(v, [0, 0, -0.01], [sx * 0.18, 0, -0.06], [sx * 0.1, 0, -0.17], [0, 0, 0], TINT + 0.8);
+    }
+    lathe(v, [[0.012, -0.1], [0.018, 0], [0.01, 0.1]], 4, () => C(0x1b1b1b), 0, TR([1, 1, 1], [1.5708, 0, 0], [0, 0, 0]));
+  });
+  make('cactus', v => {
+    const G = k => k % 2 ? C(0x3f7d3a) : C(0x2f6830);
+    lathe(v, [[0.28, 0], [0.3, 0.2], [0.3, 1.9], [0.24, 2.2], [0.12, 2.36], [0, 2.4]], 10, G, 0);
+    for (const [sx, y, h] of [[1, 0.8, 0.8], [-1, 1.15, 0.6]]) {
+      lathe(v, [[0.17, 0], [0.17, 0.42]], 8, G, 0, TR([1, 1, 1], [0, 0, sx * -1.5708], [sx * 0.22, y, 0]));
+      lathe(v, [[0.17, 0], [0.17, h], [0.12, h + 0.12], [0, h + 0.17]], 8, G, 0, TR([1, 1, 1], [0, 0, 0], [sx * 0.62, y - 0.02, 0]));
+    }
+    for (let i = 0; i < 5; i++) { const a = i / 5 * 6.2832; tri(v, [0, 2.4, 0], [Math.cos(a) * 0.11, 2.47, Math.sin(a) * 0.11], [Math.cos(a + 0.6) * 0.11, 2.47, Math.sin(a + 0.6) * 0.11], [0, 0, 0], TINT); }
+  });
+  make('tumbleweed', v => {   // a loose ball of thin dry twigs
+    const S = () => { const a = rnd() * 6.2832, b = Math.acos(rr(-1, 1)); return [a, b]; }, P = (a, b, r) => [Math.sin(b) * Math.cos(a) * r, Math.cos(b) * r, Math.sin(b) * Math.sin(a) * r];
+    for (let k = 0; k < 90; k++) {
+      const [a, b] = S(), r1 = rr(0.3, 0.47), p = P(a, b, r1), q = P(a + rr(-0.8, 0.8), b + rr(-0.8, 0.8), rr(0.3, 0.47)), d = nrm(sub(q, p)), n = nrm(crs(d, nrm(p))), w = 0.018;
+      const col = k % 3 === 0 ? C(0x8a6a3c) : k % 3 === 1 ? C(0xc4a46a) : C(0xa8864f), o = [n[0] * w, n[1] * w, n[2] * w];
+      tri(v, sub(p, o), [p[0] + o[0], p[1] + o[1], p[2] + o[2]], sub(q, o), col, 0); tri(v, sub(q, o), [p[0] + o[0], p[1] + o[1], p[2] + o[2]], [q[0] + o[0], q[1] + o[1], q[2] + o[2]], col, 0);
+    }
+    blob(v, 0, 0.3, () => C(0x6b5130), 0, TR([0.2, 0.2, 0.2], [0, 0, 0], [0, 0, 0]));
+  });
+  make('rock', v => blob(v, 1, 0.55, () => [0, 0, 0], () => rnd() < 0.24 ? TINT + 1 : TINT, TR([0.8, 0.5, 0.65], [0, 0, 0], [0, 0.2, 0])));
+  make('burnt', v => {
+    const CH = C(0x1a1311);
+    let emb = false;
+    lathe(v, [[0.22, 0], [0.2, 0.3], [0.18, 0.6], [0.16, 0.9], [0.14, 1.2], [0.12, 1.55], [0.1, 1.9], [0.07, 2.25], [0.04, 2.6]], 7, () => { emb = rnd() < 0.13; return emb ? [0, 0, 0] : CH; }, () => emb ? TINT + 1 : 0);
+    for (let k = 0; k < 4; k++) lathe(v, [[0.07, 0], [0.03, 0.8], [0, 1.0]], 5, () => CH, 0, TR([1, 1, 1], [0, k * 1.7 + 0.4, rr(0.6, 1.0)], [0, rr(1.0, 2.0), 0]));
+  });
+  make('magma', v => {   // a lava rock: dark crust, hot cracks showing mostly on its underside
+    let hot = false;
+    blob(v, 2, 0.45, (i, a, b, c) => { const y = (a[1] + b[1] + c[1]) / 3; hot = rnd() < (y < -0.2 ? 0.38 : y < 0.25 ? 0.14 : 0.05); return [0, 0, 0]; }, () => hot ? TINT + 1 : TINT, TR([0.75, 0.55, 0.65], [0, 0, 0], [0, 0, 0]));
+  });
+  make('bubble', v => lathe(v, [[0.5, 0], [0.48, 0.1], [0.42, 0.21], [0.32, 0.31], [0.18, 0.38], [0, 0.41]], 12, () => [0, 0, 0], TINT + 1));
+  make('shard', v => { const f = []; lathe(v, [[0, 0], [0.3, 0.5], [0.24, 1.15], [0, 1.6]], 6, (k, a, y, j) => { f.push(k % 2); return [0, 0, 0]; }, () => TINT + (f[f.length - 1] ? 0.55 : 1)); });
+  // contact shadow under things that stand on the ground
+  make('shadow', v => { for (let i = 0; i < 16; i++) { const a0 = i / 16 * 6.2832, a1 = (i + 1) / 16 * 6.2832; v.push(0, 0, 0, 0, 1, 0, 0, 0, 0, 1, Math.cos(a1), 0, Math.sin(a1), 0, 1, 0, 0, 0, 0, 0, Math.cos(a0), 0, Math.sin(a0), 0, 1, 0, 0, 0, 0, 0); } });
+
+  /* ---- where things go: a ring around the cube, never under it ---- */
+  function spot(rmin = 6.4, rmax = 15.6) {
+    for (;;) { const a = rnd() * 6.2832, r = Math.sqrt(rr(rmin * rmin, rmax * rmax)), x = Math.cos(a) * r, z = Math.sin(a) * r; if (Math.abs(x) > 6.1 || Math.abs(z) > 6.1) return [x, z]; }
+  }
+  // instance = position (3), turn, size, phase, a, b, colour (3)
+  const I = (x, y, z, yaw, s, ph, a, b, col) => [x, y, z, yaw, s, ph, a, b, col[0], col[1], col[2]];
+  const many = (n, f) => Array.from({length: n}, (_, i) => f(i));
+  const PETALS = [0xff6fa5, 0xffd23f, 0xf7f3ff, 0xb28dff, 0xff8a3d, 0xff4f6d].map(C), KOI = [0xff6a1a, 0xffffff, 0xff3b2f, 0xffb21a, 0x1c1c1c].map(C);
+  const SEASONS = [
+    // 0 ice: frosted pines, penguins (some waddling about, some standing), glowing ice crystals, snowy rocks
+    [['pine', many(9, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.9, 1.5), rnd() * 9, 0, 0, [1, 1, 1]); }), 1.0],
+      ['penguin', (() => { const out = []; for (let g = 0; g < 5; g++) { const [x, z] = spot(7, 14); for (let k = 0; k < 3; k++) out.push(I(x + rr(-0.8, 0.8), 0, z + rr(-0.8, 0.8), rnd() * 6, rr(0.75, 1.0), rnd() * 9, rnd() < 0.55 ? 1 : 0, rr(0.6, 1.8), [1, 1, 1])); } return out; })(), 0.32],
+      ['icecrystal', many(13, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.7, 1.4), rnd() * 9, 0, 0, C(0x9fe9ff)); }), 0.4],
+      ['snowrock', many(8, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.6, 1.3), 0, 0, 0, [1, 1, 1]); }), 0.7]],
+    // 1 water: koi swimming under the surface (now and then one leaps), lily pads with flowers
+    [['fish', many(32, i => I(0, -rr(0.3, 1.0), 0, 0, rr(1.05, 1.55), rnd() * 6.28, rr(0.5, 1.0) * (rnd() < 0.5 ? -1 : 1), rr(6.8, 14.8), KOI[Math.floor(rnd() * KOI.length)])), 0],
+      ['lilypad', many(24, () => { const [x, z] = spot(); return I(x, 0.01, z, rnd() * 6, rr(0.7, 1.25), rnd() * 9, 0, 0, [1, 1, 1]); }), 0],
+      ['lily', many(11, () => { const [x, z] = spot(); return I(x, 0.02, z, rnd() * 6, rr(0.8, 1.2), rnd() * 9, 0, 0, rnd() < 0.6 ? C(0xff8fc0) : C(0xfff6fb)); }), 0]],
+    // 2 grass: thick swaying grass, flowers, trees, butterflies
+    [['tuft', many(1700, () => { const [x, z] = spot(6.2, 16.2); const g = rr(0.85, 1.15); return I(x, 0, z, rnd() * 6, rr(0.8, 1.35), rnd() * 9, 0, 0, [g, g * rr(0.95, 1.08), g]); }), 0],
+      ['flower', many(240, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.8, 1.3), rnd() * 9, 0, 0, PETALS[Math.floor(rnd() * PETALS.length)]); }), 0],
+      ['tree', many(9, () => { const [x, z] = spot(7.5, 15); return I(x, 0, z, rnd() * 6, rr(1.0, 1.45), rnd() * 9, 0, 0, [1, 1, 1]); }), 1.25],
+      ['butterfly', many(14, () => { const [x, z] = spot(); return I(x, 0, z, 0, rr(0.9, 1.3), rnd() * 9, 0, 0, PETALS[Math.floor(rnd() * PETALS.length)]); }), 0]],
+    // 3 desert: saguaro cacti (some in flower), tumbleweeds rolling through, red rocks, dry grass
+    [['cactus', many(10, () => { const [x, z] = spot(7, 15); return I(x, 0, z, rnd() * 6, rr(0.75, 1.35), 0, 0, 0, rnd() < 0.5 ? C(0xff6fa5) : C(0xfff0a8)); }), 0.55],
+      ['tumbleweed', many(5, () => I(rr(-14, 14), 0, rr(-14, 14), rnd() * 6.28, rr(0.8, 1.2), rnd() * 40, rr(1.4, 2.4), 0, [1, 1, 1])), 0],
+      ['rock', many(14, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.5, 1.15), 0, 0, 0, C(0xb0623d)); }), 0.8],
+      ['tuft', many(150, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.5, 0.9), rnd() * 9, 0, 0, [1.9, 1.25, 0.45]); }), 0]],
+    // 4 fire: burnt trees with glowing embers, charred rocks
+    [['burnt', many(10, () => { const [x, z] = spot(7, 15); return I(x, 0, z, rnd() * 6, rr(0.9, 1.4), rnd() * 9, 0, 0, C(0xff6a14)); }), 0.6],
+      ['rock', many(9, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.6, 1.3), rnd() * 9, 0, 0, C(0x2a1d18)); }), 0.75]],
+    // 5 lava storm: lava bubbles swelling and popping, glowing rocks drifting in the air
+    [['bubble', many(18, () => { const [x, z] = spot(); return I(x, 0, z, 0, rr(0.7, 1.4), rnd() * 9, rr(0.12, 0.28), 0, C(0xff6c12)); }), 0],
+      ['magma', many(12, () => { const [x, z] = spot(7, 14); return I(x, rr(1.5, 5.5), z, rnd() * 6, rr(0.7, 1.4), rnd() * 9, 1, 0, C(0xff4d0d)); }), 0]],
+    // 6 plasma: floating crystals spinning slowly
+    [['shard', many(14, () => { const [x, z] = spot(7, 14.5); return I(x, rr(1.2, 5), z, rnd() * 6, rr(0.8, 1.6), rnd() * 9, 0, 0, rnd() < 0.5 ? C(0xff4fd8) : C(0x4fe3ff)); }), 0]]];
+  // particles per season: [count, style]
+  const DUST = [900, 220, 160, 340, 760, 700, 650];
+  return {MESH, SEASONS, DUST, rnd};
+})();
+// the moving parts live in the shader: each kind of thing (uT) has its own little motion
+const LTYPE = {magma: 12, snowrock: 10, tuft: 0, flower: 1, tree: 2, pine: 3, penguin: 4, icecrystal: 5, fish: 6, lilypad: 7, lily: 8, butterfly: 9, cactus: 10, tumbleweed: 11, rock: 12, burnt: 13, bubble: 14, shard: 15};
+const lifeP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec3 aC;layout(location=3) in float aW;
+layout(location=4) in vec4 iP;layout(location=5) in vec4 iS;layout(location=6) in vec3 iC;
+uniform mat4 uVP;uniform float uNow,uW,uSR;uniform int uT,uST;
+out vec3 vN;out vec3 vC;out vec3 vP;out float vE;out float vA;out float vF;
+mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0.,-s,0.,1.,0.,s,0.,c);}
+mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1.,0.,0.,0.,c,s,0.,-s,c);}
+mat3 RZ(float a){float c=cos(a),s=sin(a);return mat3(c,s,0.,-s,c,0.,0.,0.,1.);}
+void main(){
+float t=uNow,ph=iS.y,g=smoothstep(0.,1.,uW),sc=iS.x*g,tn=aW>1.5?1.:0.,w=aW-tn*2.,em=0.,lift=0.;
+int T=uT==99?uST:uT;
+vec3 p=aP,n=aN,c=tn>.5?iC:aC,b=iP.xyz;mat3 R=RY(iP.w),L=mat3(1.);
+if(T==4){
+ bool walk=iS.z>.5;float wd=sin(t*7.+ph);
+ if(walk){float s=t*.22/iS.w+ph;b.xz+=vec2(cos(s),sin(s))*iS.w;R=RY(-s);L=RZ(wd*.15);lift=abs(wd)*.035;}
+ else{L=RZ(.04*sin(t*1.4+ph));float fl=step(.86,fract(t*.09+ph*.13));p.y+=w*.14*sin(t*15.+ph)*fl;}
+}else if(T==6){
+ float r=iS.w,dir=sign(iS.z),s=ph+t*abs(iS.z)*.9/r*dir;b=vec3(cos(s)*r,iP.y,sin(s)*r);
+ vec2 d=dir*vec2(-sin(s),cos(s));R=RY(atan(d.x,d.y));
+ p.x+=w*sin(t*11.+ph)*.13+sin(t*5.+ph+p.z*4.)*.02;
+ float jc=fract(t*.035+ph*.31);
+ if(jc<.045){float k=jc/.045;b.y=iP.y+sin(k*3.1416)*(1.4-iP.y);L=RX((k-.5)*2.4);}
+}else if(T==9){
+ float a1=t*.37+ph,a2=t*.29+ph*1.7;b+=vec3(sin(a1)*1.7,.75+.5*sin(t*.83+ph*2.)+.25,cos(a2)*1.7);
+ vec2 d=vec2(.37*cos(a1),-.29*sin(a2));R=RY(atan(d.x,d.y));
+ p.y+=abs(p.x)*sin(t*17.+ph)*1.5*w;
+}else if(T==11){
+ float r=clamp(length(iP.xz),7.,15.),s=ph+t*iS.z/r;b=vec3(cos(s)*r,0.,sin(s)*r);R=RY(-s);
+ L=RX(t*iS.z/.47);lift=.47+abs(sin(t*iS.z*1.6+ph))*.3;
+}else if(T==12&&iS.z>.5){
+ b.y+=.35*sin(t*.6+ph);R=RY(iP.w+t*.15)*RX(.3*sin(t*.4+ph));
+}else if(T==14){
+ float cc=fract(t*iS.z+ph),gr=cc<.82?cc/.82:1.+(cc-.82)/.14*.35;sc*=cc<.96?gr:0.;p.xz*=1.+.06*sin(t*7.+p.y*9.);
+}else if(T==15){
+ b.y+=.4*sin(t*.5+ph);R=RY(iP.w+t*.5)*RZ(.25*sin(t*.7+ph));
+}else if(T==7||T==8){
+ b.y+=.015*sin(t*1.1+ph);R=RY(iP.w+.12*sin(t*.2+ph));
+}
+float fd=smoothstep(15.2,12.8,length(b.xz));sc*=fd;vF=exp(-pow(length(b.xz)/10.,2.)*.5);
+vec3 wp;
+if(uT==99){wp=vec3(b.x,0.,b.z)+vec3(p.x,.012,p.z)*uSR*sc;vA=w*g*fd;vF=1.;vN=vec3(0.,1.,0.);vC=vec3(0.);vE=0.;vP=wp;gl_Position=uVP*vec4(wp,1.);return;}
+wp=R*(L*p*sc)+b+vec3(0.,lift*sc,0.);vec3 wn=R*(L*n);
+if(T==0||T==1){float k=w*w,wd=sin(t*1.3+b.x*.32+b.z*.21)*.5+.5,f=T==0?1.:.7;wp.x+=k*(.1*sin(t*2.2+ph)+.18*wd)*sc*f;wp.z+=k*.06*sin(t*3.1+ph*1.7)*sc*f;if(T==0)c=iC.r>1.5?mix(vec3(.26,.16,.06),vec3(.78,.6,.28),w):aC*iC;}
+else if(T==2||T==3){wp.x+=w*.06*sin(t*1.1+ph)*sc;wp.z+=w*.045*sin(t*1.37+ph)*sc;}
+if(T==5)em=.22+.16*sin(t*1.5+ph+aP.y*3.);
+else if(T==12){if(iS.z>.5){c=tn>.5&&w>.5?iC*1.4:vec3(.045,.03,.028);em=w>.5?.75+.25*sin(t*2.+ph+aP.x*6.):0.;}else c=iC*(w>.5?.82:1.);}
+else if(T==13&&tn>.5)em=.65+.35*sin(t*2.6+ph+aP.y*5.);
+else if(T==14){float hy=aP.y/.41;em=.35+.75*hy*hy;c=mix(iC*vec3(.6,.25,.12),iC*1.25,hy);}
+if(T==6){float dp=clamp(-b.y*.4+.1,0.,.45);c=mix(c*1.25,vec3(.03,.16,.3),dp);}
+else if(T==15){em=(.18+.42*w)*(.8+.2*sin(t*2.+ph));c=iC*(.55+.6*w);}
+vN=wn;vC=c;vE=em;vA=1.;vP=wp;gl_Position=uVP*vec4(wp,1.);}`,
+  V + `in vec3 vN;in vec3 vC;in vec3 vP;in float vE;in float vA;in float vF;uniform vec3 uE;uniform highp int uT;out vec4 o;
+void main(){
+if(uT==99){o=vec4(0.,0.,0.,vA*.36);return;}
+vec3 n=normalize(vN);if(!gl_FrontFacing)n=-n;
+vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
+float dif=max(dot(n,L),0.),fil=max(dot(n,F),0.),sky=.5+.5*n.y;
+vec3 vd=normalize(uE-vP);float rim=pow(1.-max(dot(n,vd),0.),3.);
+vec3 c=vC*(.2*sky+1.02*dif)+vC*vec3(.95,.72,.55)*.24*fil+vec3(1.,.62,.3)*rim*.12+vC*vE*1.8;
+c*=1.35*mix(.35,1.,vF);c=c*(1.+c/6.)/(1.+c);o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),clamp(vE*.75,0.,1.));}`);
+// glowing specks: snow, glints on the water, fireflies, dust, flames and embers, sparks and ash, plasma wisps
+const dustP = prog(V + `layout(location=0) in vec4 aA;layout(location=1) in vec4 aB;uniform mat4 uVP;uniform float uNow,uW,uH;uniform int uT;out vec3 vC;out float vA;
+void main(){float t=uNow,sz=aA.w,a=1.;vec3 p,c=vec3(1.);
+if(uT==0){p=vec3(aA.x+sin(t*.6+aA.z*6.)*.5,11.-mod(t*(.45+aB.x*.5)+aA.z*11.,11.),aA.y+cos(t*.5+aA.z*5.)*.5);c=vec3(.95,.98,1.);a=.8;}
+else if(uT==1){p=vec3(aA.x,.05,aA.y);a=pow(max(0.,sin(t*(1.1+aB.x*2.)+aA.z*40.)),14.)*1.4;c=vec3(.8,.95,1.);}
+else if(uT==2){p=vec3(aA.x+sin(t*.31*(.5+aB.x)+aA.z*7.)*1.3,.35+aB.y*2.2+sin(t*.7+aA.z)*.3,aA.y+cos(t*.27*(.5+aB.x)+aA.z*5.)*1.3);a=smoothstep(.2,1.,sin(t*(.8+aB.z)+aA.z*20.));c=vec3(.78,1.,.32);}
+else if(uT==3){float x=mod(aA.x+t*.7*(.4+aB.x)+17.,34.)-17.;p=vec3(x,.15+aB.y*1.6+sin(t+aA.z*9.)*.15,aA.y+sin(t*.3+aA.z*4.)*.6);a=.3*smoothstep(17.,13.,abs(x));c=vec3(.9,.72,.5);}
+else if(uT==4){float lf=fract(t*(.25+aB.x*.35)+aA.z);bool fl=aB.w<.45;p=vec3(aA.x+sin(t*2.+aA.z*9.)*.18*lf,lf*(fl?1.7:6.5),aA.y+cos(t*1.7+aA.z*7.)*.18*lf);
+ if(fl){sz*=2.8*(1.-lf*.7);c=mix(vec3(1.,.85,.35),vec3(1.,.22,.04),lf);a=.5*(1.-lf);}else{sz*=.6;c=vec3(1.,.55,.15);a=(1.-lf)*(.6+.4*sin(t*20.+aA.z*50.));}}
+else if(uT==5){if(aB.w<.55){float lf=fract(t*(.4+aB.x*.5)+aA.z);p=vec3(aA.x+sin(aA.z*30.)*lf*1.5,lf*(2.-lf)*4.,aA.y+cos(aA.z*30.)*lf*1.5);c=vec3(1.,.5,.1);a=1.-lf;sz*=.7;}
+ else{p=vec3(aA.x+sin(t*.4+aA.z*6.)*.8,9.-mod(t*(.3+aB.x*.3)+aA.z*9.,9.),aA.y+cos(t*.3+aA.z*5.)*.8);c=vec3(.3,.28,.27);a=.55;sz*=.8;}}
+else{float an=aA.z*6.2832+t*(.15+.25*aB.x)*(aB.y>.5?1.:-1.),r=6.6+aB.z*8.4;p=vec3(cos(an)*r,.4+aB.w*6.+sin(t*.8+aA.z*12.)*.6,sin(an)*r);c=mix(vec3(.3,.9,1.),vec3(1.,.3,.9),aB.y);a=.75+.25*sin(t*3.+aA.z*20.);}
+a*=uW*smoothstep(17.,13.5,length(p.xz));vC=c;vA=a;gl_Position=uVP*vec4(p,1.);gl_PointSize=clamp(sz*uH*1.3/gl_Position.w,1.,56.);}`,
+  V + `in vec3 vC;in float vA;uniform float uG;uniform highp int uT;out vec4 o;void main(){vec2 q=gl_PointCoord*2.-1.;float d=dot(q,q);if(d>1.)discard;float f=exp(-d*3.2);
+if(uT==1){vec2 a=abs(q);f=exp(-d*16.)+max(0.,1.-a.x*9.)*max(0.,1.-a.y)+max(0.,1.-a.y*9.)*max(0.,1.-a.x);}
+f*=vA;o=vec4(vC*f,f*uG);}`);
+
+// GPU buffers: one shape buffer per kind, one buffer of instances per season group, one VAO each (plus one for its shadow)
+const SHADOWR = {snowrock: 0.8, pine: 1.35, tree: 1.6, penguin: 0.42, icecrystal: 0.5, cactus: 0.75, tumbleweed: 0.5, rock: 0.8, burnt: 0.7, butterfly: 0.18, flower: 0.12};
+const lifeGeo = {};
+for (const [k, v] of Object.entries(LIFE.MESH)) { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW); lifeGeo[k] = {b, n: v.length / 10}; }
+function lifeVAO(geo, ib) {
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, geo.b);
+  [[0, 3, 0], [1, 3, 12], [2, 3, 24], [3, 1, 36]].forEach(([l, s, o]) => { gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, s, gl.FLOAT, false, 40, o); });
+  gl.bindBuffer(gl.ARRAY_BUFFER, ib);
+  [[4, 4, 0], [5, 4, 16], [6, 3, 32]].forEach(([l, s, o]) => { gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, s, gl.FLOAT, false, 44, o); gl.vertexAttribDivisor(l, 1); });
+  gl.bindVertexArray(null); return vao;
+}
+const LGROUPS = LIFE.SEASONS.map(groups => groups.map(([mesh, inst]) => {
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst.flat()), gl.STATIC_DRAW);
+  const fly = mesh === 'magma';
+  return {mesh, t: LTYPE[mesh], n: inst.length, vao: lifeVAO(lifeGeo[mesh], ib), sh: SHADOWR[mesh] && !fly ? lifeVAO(lifeGeo.shadow, ib) : null, sr: SHADOWR[mesh] || 0, under: mesh === 'fish'};
+}));
+// specks: one buffer per season
+const LDUST = LIFE.DUST.map((n, k) => {
+  const d = [], r = LIFE.rnd, SZ = [0.1, 0.34, 0.17, 0.12, 0.2, 0.14, 0.2][k];
+  for (let i = 0; i < n; i++) {
+    let x, z; do { const a = r() * 6.2832, rad = Math.sqrt(6 * 6 + r() * (16 * 16 - 6 * 6)); x = Math.cos(a) * rad; z = Math.sin(a) * rad; } while (Math.abs(x) < 6 && Math.abs(z) < 6);
+    d.push(x, z, r(), SZ * (0.6 + r() * 0.8), r(), r(), r(), r());
+  }
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d), gl.STATIC_DRAW);
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16);
+  gl.bindVertexArray(null); return {vao, n};
+});
+// how much of each season is showing: the same blend the floor uses
+function lifeWeights(h) {
+  const W = [0, 0, 0, 0, 0, 0, 0], hh = Math.max(0, Math.min(6, h)), k = Math.floor(hh), f = hh - k, b = k < 6 ? (f <= 0.3 ? 0 : f >= 0.7 ? 1 : (x => x * x * (3 - 2 * x))((f - 0.3) / 0.4)) : 0;
+  W[k] = 1 - b; if (k < 6) W[k + 1] = b; return W;
+}
+function lifeUniforms(VP, eye, tn) {
+  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye);
+}
+// solid things: under = true draws only what lives below the water (drawn before the water surface)
+function lifeDraw(VP, eye, tn, LW, under) {
+  let set = false;
+  LW.forEach((w, k) => {
+    if (w < 0.01) return;
+    for (const g of LGROUPS[k]) {
+      if (g.under !== under) continue;
+      if (!set) { lifeUniforms(VP, eye, tn); set = true; }
+      gl.uniform1f(lifeP.u.uW, w); gl.uniform1i(lifeP.u.uT, g.t); gl.uniform1i(lifeP.u.uST, g.t);
+      gl.bindVertexArray(g.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo[g.mesh].n, g.n);
+    }
+  });
+}
+function lifeShadows(VP, eye, tn, LW) {
+  let set = false;
+  LW.forEach((w, k) => {
+    if (w < 0.01) return;
+    for (const g of LGROUPS[k]) {
+      if (!g.sh) continue;
+      if (!set) { lifeUniforms(VP, eye, tn); set = true; }
+      gl.uniform1f(lifeP.u.uW, w); gl.uniform1i(lifeP.u.uT, 99); gl.uniform1i(lifeP.u.uST, g.t); gl.uniform1f(lifeP.u.uSR, g.sr);
+      gl.bindVertexArray(g.sh); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo.shadow.n, g.n);
+    }
+  });
+}
+function lifeDust(VP, tn, LW, H) {
+  let set = false;
+  LW.forEach((w, k) => {
+    if (w < 0.01) return;
+    if (!set) { gl.useProgram(dustP.p); gl.uniformMatrix4fv(dustP.u.uVP, false, VP); gl.uniform1f(dustP.u.uNow, tn); gl.uniform1f(dustP.u.uH, H); set = true; }
+    gl.uniform1f(dustP.u.uW, w); gl.uniform1i(dustP.u.uT, k); gl.uniform1f(dustP.u.uG, [0.15, 0.6, 0.9, 0.05, 0.8, 0.7, 0.9][k]);
+    gl.bindVertexArray(LDUST[k].vao); gl.drawArrays(gl.POINTS, 0, LDUST[k].n);
+  });
+}
+
 /* ---------- draw ---------- */
 function frame() {
   const dpr = Math.min(devicePixelRatio || 1, 2), W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
@@ -1822,6 +2252,9 @@ function frame() {
   // reflection in the glass floor
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
   if (nInst) { gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.frontFace(gl.CW); boxes(1); gl.frontFace(gl.CCW); gl.disable(gl.BLEND); }
+  const LW = lifeWeights(heatS);
+  // fish swim under the water, so they are drawn before its surface
+  if (LW[1] > 0.01) { gl.disable(gl.CULL_FACE); gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); lifeDraw(VP, eye, tn, LW, true); }
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
   // the floor's season (two passes: its colour, then how much it glows), then the orange grid on top
   const fdt = Math.min(0.1, Math.max(0, tn - (lastFT || tn))); lastFT = tn;
@@ -1841,10 +2274,16 @@ function frame() {
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   gl.useProgram(flP.p); gl.uniformMatrix4fv(flP.u.uVP, false, VP); gl.uniform1f(flP.u.uNow, tn); gl.uniform1f(flP.u.uPulse, tn - pulseT); gl.uniform3f(flP.u.uGC, 1 + (0.69 - 1) * themeS, 0.52 + (0.3 - 0.52) * themeS, 0.1 + (1 - 0.1) * themeS);
   gl.bindVertexArray(flVAO); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  // soft shadows under the plants and creatures
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); lifeShadows(VP, eye, tn, LW);
   gl.disable(gl.BLEND);
   // the cube
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
   if (nInst) boxes(0);
+  // the living world around the cube, then its glowing specks
+  gl.disable(gl.CULL_FACE); lifeDraw(VP, eye, tn, LW, false);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); lifeDust(VP, tn, LW, H); gl.depthMask(true); gl.disable(gl.BLEND);
+  gl.enable(gl.CULL_FACE);
   if (nGh) {
     gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ZERO, gl.ONE); gl.depthMask(false);
     boxes(0, true);
