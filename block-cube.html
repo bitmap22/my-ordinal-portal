@@ -2023,8 +2023,8 @@ const LIFE = (() => {
   make('shadow', v => { for (let i = 0; i < 16; i++) { const a0 = i / 16 * 6.2832, a1 = (i + 1) / 16 * 6.2832; v.push(0, 0, 0, 0, 1, 0, 0, 0, 0, 1, Math.cos(a1), 0, Math.sin(a1), 0, 1, 0, 0, 0, 0, 0, Math.cos(a0), 0, Math.sin(a0), 0, 1, 0, 0, 0, 0, 0); } });
 
   /* ---- where things go: a ring around the cube, never under it ---- */
-  function spot(rmin = 6.4, rmax = 15.6) {
-    for (;;) { const a = rnd() * 6.2832, r = Math.sqrt(rr(rmin * rmin, rmax * rmax)), x = Math.cos(a) * r, z = Math.sin(a) * r; if (Math.abs(x) > 6.1 || Math.abs(z) > 6.1) return [x, z]; }
+  function spot(rmin = 6.4, rmax = 15.6, sq = 6.1) {
+    for (;;) { const a = rnd() * 6.2832, r = Math.sqrt(rr(rmin * rmin, rmax * rmax)), x = Math.cos(a) * r, z = Math.sin(a) * r; if (Math.abs(x) > sq || Math.abs(z) > sq) return [x, z]; }
   }
   // instance = position (3), turn, size, phase, a, b, colour (3)
   const I = (x, y, z, yaw, s, ph, a, b, col) => [x, y, z, yaw, s, ph, a, b, col[0], col[1], col[2]];
@@ -2033,7 +2033,7 @@ const LIFE = (() => {
   const SEASONS = [
     // 0 ice: frosted pines, penguins (some waddling about, some standing), glowing ice crystals, snowy rocks
     [['pine', many(9, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.9, 1.5), rnd() * 9, 0, 0, [1, 1, 1]); }), 1.0],
-      ['penguin', (() => { const out = []; for (let g = 0; g < 5; g++) { const [x, z] = spot(7, 14); for (let k = 0; k < 3; k++) out.push(I(x + rr(-0.8, 0.8), 0, z + rr(-0.8, 0.8), rnd() * 6, rr(0.75, 1.0), rnd() * 9, rnd() < 0.55 ? 1 : 0, rr(0.6, 1.8), [1, 1, 1])); } return out; })(), 0.32],
+      ['penguin', (() => { const out = []; for (let g = 0; g < 5; g++) { const [x, z] = spot(9, 14.5, 8); for (let k = 0; k < 3; k++) out.push(I(x + rr(-0.8, 0.8), 0, z + rr(-0.8, 0.8), rnd() * 6, rr(0.75, 1.0), rnd() * 9, rnd() < 0.55 ? 1 : 0, rr(0.6, 1.4), [1, 1, 1])); } return out; })(), 0.32],
       ['icecrystal', many(13, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.7, 1.4), rnd() * 9, 0, 0, C(0x9fe9ff)); }), 0.4],
       ['snowrock', many(8, () => { const [x, z] = spot(); return I(x, 0, z, rnd() * 6, rr(0.6, 1.3), 0, 0, 0, [1, 1, 1]); }), 0.7]],
     // 1 water: koi swimming under the surface (now and then one leaps), lily pads with flowers
@@ -2071,27 +2071,56 @@ out vec3 vN;out vec3 vC;out vec3 vP;out float vE;out float vA;out float vF;
 mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0.,-s,0.,1.,0.,s,0.,c);}
 mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1.,0.,0.,0.,c,s,0.,-s,c);}
 mat3 RZ(float a){float c=cos(a),s=sin(a);return mat3(c,s,0.,-s,c,0.,0.,0.,1.);}
+vec2 pw(float u,float ph){float R=1.+.3*sin(1.7*u+ph*2.);vec2 q=R*vec2(cos(u+ph),.8*sin(u+ph));return fract(ph*.53)>.5?vec2(-q.x,q.y):q;}
+float wr(float a){return mod(a+3.1416,6.2832)-3.1416;}
+vec2 bv(float f,float sd){float R=2.2*(1.+.25*sin(1.9*f+sd));vec2 q=R*vec2(cos(f*.62+sd),.8*sin(f*.62+sd));return fract(sd*.37)>.5?vec2(-q.x,q.y):q;}
+float wind(vec2 q,float t){return (.5+.5*sin(t*.9-q.x*.35+q.y*.08))*(.65+.35*sin(t*.21));}
 void main(){
 float t=uNow,ph=iS.y,g=smoothstep(0.,1.,uW),sc=iS.x*g,tn=aW>1.5?1.:0.,w=aW-tn*2.,em=0.,lift=0.;
 int T=uT==99?uST:uT;
 vec3 p=aP,n=aN,c=tn>.5?iC:aC,b=iP.xyz;mat3 R=RY(iP.w),L=mat3(1.);
 if(T==4){
- bool walk=iS.z>.5;float wd=sin(t*7.+ph);
- if(walk){float s=t*.22/iS.w+ph;b.xz+=vec2(cos(s),sin(s))*iS.w;R=RY(-s);L=RZ(wd*.15);lift=abs(wd)*.035;}
- else{L=RZ(.04*sin(t*1.4+ph));float fl=step(.86,fract(t*.09+ph*.13));p.y+=w*.14*sin(t*15.+ph)*fl;}
+ float tt=t+ph*5.;
+ if(iS.z>.5){
+  // a walker: waddles off along a wandering path, slows to a stop, looks about, then sets off again
+  float P=15.,Wk=9.5,cy=floor(tt/P),f=tt-cy*P,x=clamp(f/Wk,0.,1.),sp=min(6.*x*(1.-x),1.);
+  float u=(cy+x*x*(3.-2.*x))*Wk*.3/iS.w;
+  vec2 q0=pw(u,ph)*iS.w,q1=pw(u+.03,ph)*iS.w,d=q1-q0;
+  b.xz+=q0;
+  float st=1.-sp,look=st*.65*sin((f-Wk)*.75+ph)*smoothstep(Wk,Wk+1.2,f),wd=sin(tt*7.5)*sp;
+  R=RY(atan(d.x,d.y)+look+wd*.07);L=RZ(wd*.17)*RX(.09*sp);lift=abs(wd)*.03;
+  p.x+=sign(p.x)*w*.07*sp;   // flippers held out for balance
+ }else{
+  // a stander: shifts its weight, now and then turns to look, now and then flaps
+  R=RY(iP.w+.7*sin(tt*.13)+.35*sin(tt*.31+1.));L=RZ(.035*sin(tt*1.3));lift=.008*sin(tt*2.6);
+  float cf=fract(tt*.07+ph*.13),fl=cf>.9?sin((cf-.9)*31.4):0.;
+  p.y+=w*.13*sin(tt*17.)*fl;p.x+=sign(p.x)*w*.08*fl;
+ }
 }else if(T==6){
- float r=iS.w,dir=sign(iS.z),s=ph+t*abs(iS.z)*.9/r*dir;b=vec3(cos(s)*r,iP.y,sin(s)*r);
- vec2 d=dir*vec2(-sin(s),cos(s));R=RY(atan(d.x,d.y));
- p.x+=w*sin(t*11.+ph)*.13+sin(t*5.+ph+p.z*4.)*.02;
- float jc=fract(t*.035+ph*.31);
- if(jc<.045){float k=jc/.045;b.y=iP.y+sin(k*3.1416)*(1.4-iP.y);L=RX((k-.5)*2.4);}
+ // koi: a few strong tail beats, then a glide; the body bends in a wave that runs to the tail
+ float tt=t+ph*4.,r=iS.w,dir=sign(iS.z),bs=abs(iS.z)*.75;
+ float dd=bs*(tt+.55*sin(tt*.9+ph)/.9+.25*sin(tt*.37+ph*2.)/.37),vel=1.+.55*cos(tt*.9+ph)+.25*cos(tt*.37+ph*2.);
+ float s=ph+dd/r*dir,rw=r+.7*sin(s*2.+ph*1.7),rwp=1.4*cos(s*2.+ph*1.7);
+ b=vec3(cos(s)*rw,iP.y+.12*sin(tt*.23+ph),sin(s)*rw);
+ vec2 d=dir*vec2(-sin(s)*rw+cos(s)*rwp,cos(s)*rw+sin(s)*rwp);R=RY(atan(d.x,d.y));
+ p.x+=(.012+w*.12)*sin(dd*9.+p.z*7.+ph)*(.45+.55*clamp(vel,0.,1.6));
+ float jc=fract(t*.0143+ph*.31);
+ if(fract(ph*.37)>.72&&jc<.022){float k=jc/.022;b.y=iP.y+sin(k*3.1416)*(1.5-iP.y);L=RX((k-.5)*2.6);}
 }else if(T==9){
- float a1=t*.37+ph,a2=t*.29+ph*1.7;b+=vec3(sin(a1)*1.7,.75+.5*sin(t*.83+ph*2.)+.25,cos(a2)*1.7);
- vec2 d=vec2(.37*cos(a1),-.29*sin(a2));R=RY(atan(d.x,d.y));
- p.y+=abs(p.x)*sin(t*17.+ph)*1.5*w;
+ // a butterfly: rests a while with its wings slowly opening and closing, then flutters off on a loop and comes back
+ float tt=t+ph*6.,P=14.,cy=floor(tt/P),f=tt-cy*P,rs=4.5,L2=P-rs,ff=max(f-rs,0.),e=f<rs?0.:sin(ff/L2*3.1416),sd=cy*1.7+ph;
+ float f2=ff+.05,e2=f<rs?0.:sin(f2/L2*3.1416);vec2 o0=e*bv(ff,sd),dv=e2*bv(f2,sd)-o0,vi=-bv(L2,sd-1.7),vo=bv(0.,sd),ve=-bv(L2,sd);
+ float fly=smoothstep(0.,.2,e),yi=atan(vi.x,vi.y),yo=atan(vo.x,vo.y),yw=yi+wr(yo-yi)*smoothstep(.8,3.8,f);   // on the ground it shuffles round to face where it will go
+ if(f>=rs){float yb=ff<L2*.5?yo:atan(ve.x,ve.y);yw=yb;if(length(dv)>1e-6)yw=yb+wr(atan(dv.x,dv.y)-yb)*fly;}   // lands facing the way it flew in
+ b+=vec3(o0.x+fly*.12*sin(tt*3.3+sd),.42+e*(1.1+.35*sin(tt*1.3+sd))+fly*.05*max(0.,-sin(tt*24.)),o0.y+fly*.12*cos(tt*2.9+sd));
+ R=RY(yw);
+ if(w>.5){float th=mix(1.3-.6*(.5+.5*sin(tt*1.4)),.95*sin(tt*24.),fly),ax=abs(p.x);p.x=sign(p.x)*ax*cos(th);p.y+=ax*sin(th);}
 }else if(T==11){
- float r=clamp(length(iP.xz),7.,15.),s=ph+t*iS.z/r;b=vec3(cos(s)*r,0.,sin(s)*r);R=RY(-s);
- L=RX(t*iS.z/.47);lift=.47+abs(sin(t*iS.z*1.6+ph))*.3;
+ // tumbleweeds blow along with the wind, in gusts, hopping
+ float tt=t+ph,a=iS.z,dd=a*(tt+.8*sin(tt*.31+ph)/.31),vel=1.+.8*cos(tt*.31+ph);
+ float zl=(iP.z<0.?-1.:1.)*clamp(abs(iP.z),6.9,14.);
+ b=vec3(mod(iP.x+dd+17.,34.)-17.,0.,zl+.4*sin(dd*.3+ph));
+ R=mat3(1.);L=RZ(-dd/.47)*RX(.4*sin(ph*3.));lift=.47+abs(sin(dd*1.25+ph))*.32*clamp(vel,.2,1.6);
 }else if(T==12&&iS.z>.5){
  b.y+=.35*sin(t*.6+ph);R=RY(iP.w+t*.15)*RX(.3*sin(t*.4+ph));
 }else if(T==14){
@@ -2105,8 +2134,8 @@ float fd=smoothstep(15.2,12.8,length(b.xz));sc*=fd;vF=exp(-pow(length(b.xz)/10.,
 vec3 wp;
 if(uT==99){wp=vec3(b.x,0.,b.z)+vec3(p.x,.012,p.z)*uSR*sc;vA=w*g*fd;vF=1.;vN=vec3(0.,1.,0.);vC=vec3(0.);vE=0.;vP=wp;gl_Position=uVP*vec4(wp,1.);return;}
 wp=R*(L*p*sc)+b+vec3(0.,lift*sc,0.);vec3 wn=R*(L*n);
-if(T==0||T==1){float k=w*w,wd=sin(t*1.3+b.x*.32+b.z*.21)*.5+.5,f=T==0?1.:.7;wp.x+=k*(.1*sin(t*2.2+ph)+.18*wd)*sc*f;wp.z+=k*.06*sin(t*3.1+ph*1.7)*sc*f;if(T==0)c=iC.r>1.5?mix(vec3(.26,.16,.06),vec3(.78,.6,.28),w):aC*iC;}
-else if(T==2||T==3){wp.x+=w*.06*sin(t*1.1+ph)*sc;wp.z+=w*.045*sin(t*1.37+ph)*sc;}
+if(T==0||T==1){float k=w*w,wd=wind(b.xz,t),f=T==0?1.:.7;wp.x+=k*(.05+.22*wd+.035*sin(t*3.3+ph))*sc*f;wp.z+=k*.045*sin(t*2.7+ph*1.7)*(.4+wd)*sc*f;if(T==0)c=iC.r>1.5?mix(vec3(.26,.16,.06),vec3(.78,.6,.28),w):aC*iC;}
+else if(T==2||T==3){float wd=wind(b.xz,t-.4),k=T==2?1.:.7;wp.x+=w*(.02+.07*wd+.012*sin(t*2.3+ph))*sc*k;wp.z+=w*.018*sin(t*1.37+ph)*(.4+wd)*sc*k;}
 if(T==5)em=.22+.16*sin(t*1.5+ph+aP.y*3.);
 else if(T==12){if(iS.z>.5){c=tn>.5&&w>.5?iC*1.4:vec3(.045,.03,.028);em=w>.5?.75+.25*sin(t*2.+ph+aP.x*6.):0.;}else c=iC*(w>.5?.82:1.);}
 else if(T==13&&tn>.5)em=.65+.35*sin(t*2.6+ph+aP.y*5.);
@@ -2128,7 +2157,7 @@ const dustP = prog(V + `layout(location=0) in vec4 aA;layout(location=1) in vec4
 void main(){float t=uNow,sz=aA.w,a=1.;vec3 p,c=vec3(1.);
 if(uT==0){p=vec3(aA.x+sin(t*.6+aA.z*6.)*.5,11.-mod(t*(.45+aB.x*.5)+aA.z*11.,11.),aA.y+cos(t*.5+aA.z*5.)*.5);c=vec3(.95,.98,1.);a=.8;}
 else if(uT==1){p=vec3(aA.x,.05,aA.y);a=pow(max(0.,sin(t*(1.1+aB.x*2.)+aA.z*40.)),14.)*1.4;c=vec3(.8,.95,1.);}
-else if(uT==2){p=vec3(aA.x+sin(t*.31*(.5+aB.x)+aA.z*7.)*1.3,.35+aB.y*2.2+sin(t*.7+aA.z)*.3,aA.y+cos(t*.27*(.5+aB.x)+aA.z*5.)*1.3);a=smoothstep(.2,1.,sin(t*(.8+aB.z)+aA.z*20.));c=vec3(.78,1.,.32);}
+else if(uT==2){p=vec3(aA.x+sin(t*.31*(.5+aB.x)+aA.z*7.)*1.3,.35+aB.y*2.2+sin(t*.7+aA.z)*.3,aA.y+cos(t*.27*(.5+aB.x)+aA.z*5.)*1.3);a=pow(max(0.,sin(t*(.55+aB.z*.5)+aA.z*20.)),10.)*1.7;c=vec3(.78,1.,.32);}
 else if(uT==3){float x=mod(aA.x+t*.7*(.4+aB.x)+17.,34.)-17.;p=vec3(x,.15+aB.y*1.6+sin(t+aA.z*9.)*.15,aA.y+sin(t*.3+aA.z*4.)*.6);a=.3*smoothstep(17.,13.,abs(x));c=vec3(.9,.72,.5);}
 else if(uT==4){float lf=fract(t*(.25+aB.x*.35)+aA.z);bool fl=aB.w<.45;p=vec3(aA.x+sin(t*2.+aA.z*9.)*.18*lf,lf*(fl?1.7:6.5),aA.y+cos(t*1.7+aA.z*7.)*.18*lf);
  if(fl){sz*=2.8*(1.-lf*.7);c=mix(vec3(1.,.85,.35),vec3(1.,.22,.04),lf);a=.5*(1.-lf);}else{sz*=.6;c=vec3(1.,.55,.15);a=(1.-lf)*(.6+.4*sin(t*20.+aA.z*50.));}}
