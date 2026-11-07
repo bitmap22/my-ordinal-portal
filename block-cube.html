@@ -170,6 +170,12 @@ body.halv #h{text-shadow:0 0 22px rgba(177,76,255,.75),0 0 4px rgba(255,209,102,
 body #top,body #feed{margin-top:calc(env(safe-area-inset-top) + var(--fwh,0px))}
 @media (max-width:640px){body #fb{margin-top:calc(env(safe-area-inset-top) + var(--fwh,0px))}}
 @media (min-width:1500px) and (min-height:820px){#fwl{font-size:11.5px}#fwb,#fwc{height:42px}}
+/* phones: the parcel card is a small sheet at the bottom (more / close), and the cube moves up above it */
+#cf{display:none}
+@media (max-width:640px){#cf{display:flex;justify-content:space-between;gap:8px;position:sticky;z-index:3;bottom:-12px;margin:8px -16px -12px;padding:6px 12px 8px;background:#120c06;border-top:1px solid rgba(247,147,26,.15)}
+#cf button{height:36px;padding:0 14px;border-radius:18px;border:1px solid rgba(247,147,26,.35);background:rgba(247,147,26,.08);color:#ffb04a;font:600 11px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:1px;cursor:pointer}
+body.cardon #kinds,body.cardon #tools{display:none!important}body.cardon #card{bottom:72px}}
+@media (max-width:640px) and (max-height:720px){body.cardon #ot,body.cardon #fs{display:none!important}}
 /* phones: everything above and below the cube packs tighter so the cube keeps its room */
 @media (max-width:640px){
 .bk{width:68px;height:68px;margin:8px 8px 0 0;font-size:9.5px;line-height:1.22}.bk .tp{width:68px;height:8px;top:-8px}.bk .sd{left:68px;width:8px;height:68px}.bk .h{font-size:10px}.bk .tx{padding-top:3px}.sa{height:68px;margin:8px 8px 0 0}
@@ -206,7 +212,7 @@ body.tiny #fw,body.tiny #top,body.tiny #strip,body.tiny #nav,body.tiny #kinds,bo
 <div id="top"><div id="tg" class="m"><i></i><span id="tgt">&nbsp;</span></div><input id="h" class="m" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="block"><div id="st" class="m">&nbsp;</div><div id="ot" class="m"></div><div id="mn" class="m"></div><div id="fs" class="m"></div></div>
 <div id="nav"><button id="pv" aria-label="previous block">&lsaquo;</button><button id="lv" class="on" aria-label="live next block"><i></i>LIVE</button><button id="nx" aria-label="next block">&rsaquo;</button><button id="ln" class="m" aria-label="switch between fees and ordinals">FEES</button><button id="xr" aria-label="x-ray: see inside the cube"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 10s3.2-6 8.5-6 8.5 6 8.5 6-3.2 6-8.5 6-8.5-6-8.5-6z"/><circle cx="10" cy="10" r="2.6"/></svg></button><button id="op" aria-label="open the layers"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="14" height="4" rx="1"/><rect x="3" y="8" width="14" height="4" rx="1"/><rect x="3" y="14" width="14" height="4" rx="1"/></svg></button></div>
 <div id="kinds" class="m"><div id="kh">PARCEL TYPES<button class="ktab on" data-g="0">INSCRIPTIONS</button><button class="ktab" data-g="1">TOKENS</button><button class="ktab" data-g="2">TRANSACTIONS</button><span></span></div><div id="kl"><i id="kn">none in this block</i></div></div>
-<div id="card" class="m"><div id="cs"><button id="csp" aria-label="previous parcel of this type">&lsaquo;</button><span id="csl"></span><button id="csn" aria-label="next parcel of this type">&rsaquo;</button></div><div id="cn"></div><div id="cr"></div><div id="ct"></div><div id="cp"></div></div>
+<div id="card" class="m"><div id="cs"><button id="csp" aria-label="previous parcel of this type">&lsaquo;</button><span id="csl"></span><button id="csn" aria-label="next parcel of this type">&rsaquo;</button></div><div id="cn"></div><div id="cr"></div><div id="ct"></div><div id="cp"></div><div id="cf"><button id="cm">more &#9662;</button><button id="cx">close &times;</button></div></div>
 <button id="fb" class="m" aria-label="show or hide the live feed">FEED</button>
 <div id="tools"><button id="tp" class="tl" aria-label="flip back through blocks" title="flip back through blocks"></button><button id="ts" class="tl" aria-label="save a picture" title="save a picture"></button><button id="tu" class="tl" aria-label="sound on or off" title="sound on / off"></button><button id="tc" class="tl" aria-label="grab the code" title="grab the code"></button></div>
 <div id="feed" class="m"><div id="fh">LIVE FEED</div><div id="fl"></div><div id="fh2" class="fh">JOINING THE NEXT BLOCK</div><div id="ft"></div></div>
@@ -1581,7 +1587,11 @@ function addRows(rows) {
   }
 }
 // the card may grow (preview, extra rows): it never reaches up into the header, it scrolls instead
+// the card's own buttons on phones: more / less, and close (which also lets go of a picked parcel type)
+document.getElementById('cm').onclick = () => { const big = !$card.classList.contains('big'); $card.classList.toggle('big', big); document.getElementById('cm').innerHTML = big ? 'less &#9652;' : 'more &#9662;'; fitCard(); };
+document.getElementById('cx').onclick = () => { if (pinK != null) { pinK = hovK = null; setHK(); } select(null); };
 function fitCard() {
+  if (innerWidth <= 640) { $card.style.maxHeight = ($card.classList.contains('big') ? Math.round(innerHeight * 0.62) : innerHeight <= 720 ? 140 : 168) + 'px'; return; }
   const tp = rectOf($top), cs = getComputedStyle($card), b = parseFloat(cs.bottom) || 26, pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 2;
   $card.style.maxHeight = Math.max(140, innerHeight - b - (tp ? tp[3] : 0) - 14 - pad) + 'px';
 }
@@ -1631,7 +1641,8 @@ function select(t) {
   const hadFoc = foc; if (t !== foc) foc = null;
   sel = t;
   if (hadFoc && !foc) rebuild();
-  if (!t) { $card.classList.remove('on', 'st'); $cp.innerHTML = ''; $cp.style.display = 'none'; return; }
+  document.body.classList.toggle('cardon', !!t);
+  if (!t) { $card.classList.remove('on', 'st', 'big'); const cm = document.getElementById('cm'); if (cm) cm.innerHTML = 'more &#9662;'; $cp.innerHTML = ''; $cp.style.display = 'none'; return; }
   $cn.textContent = t.live ? 'waiting in the next block' : 'transaction ' + fmt(t.idx) + ' in block ' + fmt(cur.height);
   const rows = [];
   if (!t.live && t.idx === 0) rows.push(['type', 'coinbase (miner reward)']);
@@ -2031,6 +2042,7 @@ function freeRect() {
   const st = rectOf($top), sp = rectOf($strip), nv = rectOf($nav), kd = rectOf($kinds), tl = rectOf($tools), fd = feedOn && innerWidth > 900 ? rectOf($feed) : null;
   const fwr = rectOf($fw); let t = Math.max(st ? st[3] : 0, sp ? sp[3] : 0, fwr ? fwr[3] : 0), b = Math.min(nv ? nv[1] : innerHeight, kd ? kd[1] : innerHeight);
   let rt = (fd ? fd[0] : innerWidth);
+  if (innerWidth <= 640 && $card.classList.contains('on')) { const cr = rectOf($card); if (cr) b = Math.min(b, cr[1]); }
   if (tl) { if (innerWidth <= 640 && tl[0] > innerWidth / 2) rt = Math.min(rt, tl[0] - 4); else if (tl[1] > innerHeight / 2) b = Math.min(b, tl[1]); else t = Math.max(t, tl[3]); }
   const m = tiny ? 3 : 16, mv = tiny ? 3 : 14;
   return [m, t + mv, rt - m, b - mv];
