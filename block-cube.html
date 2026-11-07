@@ -71,6 +71,11 @@ canvas:active{cursor:grabbing}
 #card .r{display:flex;justify-content:space-between;gap:12px;font-size:12px;line-height:1.75;color:#bba88f}
 #card .r b{font-weight:500;color:#f7efe3;text-align:right}
 #card .r b i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+#card .r.rm{flex-direction:column;gap:1px}#card .tk{overflow:hidden;white-space:nowrap}#card .tk b{display:inline-block;text-align:left}
+#card .tk.go{-webkit-mask-image:linear-gradient(90deg,transparent,#000 10px,#000 calc(100% - 14px),transparent);mask-image:linear-gradient(90deg,transparent,#000 10px,#000 calc(100% - 14px),transparent)}
+#card .tk.go b{padding:0 12px;animation:tick 8s linear infinite alternate}
+@keyframes tick{0%,14%{transform:translateX(0)}86%,100%{transform:translateX(var(--d))}}
+@media (prefers-reduced-motion:reduce){#card .tk{white-space:normal}#card .tk.go b{animation:none}}
 #ct{margin-top:6px;font-size:10.5px;line-height:1.4;color:#a08b72;word-break:break-all;white-space:pre-line;-webkit-user-select:text;user-select:text}
 #fb{position:fixed;right:20px;top:20px;height:30px;padding:0 13px;border-radius:15px;border:1px solid rgba(247,147,26,.28);background:rgba(18,11,5,.62);color:#ffb04a;font:600 10px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:2px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 #fb.on{color:#f7931a;border-color:rgba(247,147,26,.7)}
@@ -225,12 +230,14 @@ const SRC = {
     async block(b, h) {
       const hash = (await (await fetchT(b + '/api/block-height/' + h)).text()).trim();
       if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error('bad hash');
-      const [meta, sum] = await Promise.all([
+      const [meta, v1, sum] = await Promise.all([
         fetchT(b + '/api/block/' + hash).then(r => r.json()),
+        fetchT(b + '/api/v1/block/' + hash, null, 15000).then(r => r.json()).catch(() => null),
         fetchT(b + '/api/v1/block/' + hash + '/summary', null, 60000).then(r => r.json())]);
       if (!sum.length) throw new Error('empty');
       const txs = sum.map((t, i) => ({id: t.txid, fee: t.fee, vsize: t.vsize, value: t.value || 0, rate: t.rate || (t.vsize ? t.fee / t.vsize : 0), idx: i, insc: tagged(t.flags)}));
-      return {height: h, hash, time: meta.timestamp, size: meta.size, weight: meta.weight, count: meta.tx_count || txs.length, txs, fees: true};
+      const pn = v1 && v1.extras && v1.extras.pool && v1.extras.pool.name;
+      return {height: h, hash, time: meta.timestamp, size: meta.size, weight: meta.weight, count: meta.tx_count || txs.length, txs, fees: true, pool: pn && !/^unknown$/i.test(pn) ? pn : null};
     }
   },
   ord: {
@@ -421,7 +428,7 @@ c+=(K*.7+.06)*vFl;c=mix(c,K*1.3,vG*.3);
 float g=edge*.08+vFl*.35+vG*.28;
 if(vSl>.5){c=c*1.3+K*.35+edge*.6;g+=.85;}else if(vSl<-.5){c=mix(vec3(dot(c,vec3(.3,.5,.2))),c,.35)*.3;g*=.15;}
 if(uXr>.5){float rim=pow(1.-abs(dot(n,vd)),2.);vec3 gc=K*(.3+.7*dif)*.6+K*edge*1.6+K*rim*.35+vec3(1.,.6,.25)*edge*.15;
-float ga=(.045+edge*.5+rim*.06)*uGa;if(vSl>.5){gc=K*1.6+.25;ga=.95;}gc=gc*(1.+gc/6.)/(1.+gc);o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),ga);return;}
+float ga=(.06+edge*.62+rim*.08)*uGa;if(vSl>.5){gc=K*1.6+.25;ga=.95;}gc=gc*(1.+gc/6.)/(1.+gc);o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),ga);return;}
 float al=clamp(g,0.,1.);if(uMir>.5){float f=clamp(1.+vW.y/${(S * 0.45).toFixed(2)},0.,1.);c*=.75;al=.32*f*f;}
 c*=1.35;c=c*(1.+c/6.)/(1.+c);
 o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),al);}`);
@@ -773,12 +780,12 @@ function words(u) {
   let ok = 0; for (const c of u) if ((c >= 32 && c < 127) || c >= 128 || c === 10) ok++;
   if (ok / u.length < 0.92) return null;
   const t = U8D.decode(u).replace(/[\u0000-\u001f\u007f\ufffd]+/g, ' ').trim();
-  return /[a-z]{2}/i.test(t) ? t.slice(0, 120) : null;
+  return /[a-z]{2}/i.test(t) ? (t.length > 1000 ? t.slice(0, 1000) + '…' : t) : null;
 }
 // the miner's words in the coinbase: the readable stretches of its input script
 function coinbaseWords(u) {
   const runs = L1D.decode(u).match(/[\x20-\x7e]{4,}/g) || [];
-  return runs.map(r => r.trim().replace(/^\S{1,3}\s+(?=\S{3})/, m => /^[a-z0-9]+\s/i.test(m) ? m : '')).filter(r => /[a-z]{2}/i.test(r)).join(' · ').slice(0, 90);
+  return runs.map(r => r.trim().replace(/^\S{1,3}\s+(?=\S{3})/, m => /^[a-z0-9]+\s/i.test(m) ? m : '').replace(/^[^\s\/]{1,5}(?=\/[^\/]{2,}\/)/, '').replace(/(\/[^\/]*[a-z][^\/]*\/)[^\s\/]{1,3}$/i, '$1')).filter(r => /[a-z]{2}/i.test(r)).join(' · ');
 }
 const POOLS = [[/foundry/i, 'Foundry USA'], [/antpool/i, 'AntPool'], [/viabtc/i, 'ViaBTC'], [/f2pool/i, 'F2Pool'], [/\bmara\b/i, 'MARA Pool'],
   [/spiderpool/i, 'SpiderPool'], [/binance/i, 'Binance Pool'], [/luxor/i, 'Luxor'], [/braiins|slush/i, 'Braiins Pool'], [/secpool/i, 'SECPOOL'],
@@ -931,7 +938,7 @@ async function scanBlock(B) {
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
     });
     const pl = POOLS.find(([re]) => re.test(S.cb || ''));
-    B.cb = {words: S.cb || '', pool: pl ? pl[1] : null};
+    B.cb = {words: S.cb || '', pool: B.pool || (pl ? pl[1] : null)};
     B.scan = {ok: true};
   } catch (e) { B.scan = {failed: true}; }
   if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
@@ -1071,9 +1078,10 @@ const liveTx = a => ({id: a[0], fee: a[1], vsize: a[2], value: a[3] || 0, rate: 
 function wsSend(o) { try { ws.send(JSON.stringify(o)); } catch (e) {} }
 function wsConnect() {
   try { ws = new WebSocket(LIVE_FEED); } catch (e) { return; }
-  ws.onopen = () => { wsLive = true; feedDown = false; $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
+  ws.onopen = () => { if (dropNoted) { dropNoted = false; feedRow('blk', `${chip('#f7931a')}live feed back`); } everLive = true; wsLive = true; feedDown = false;
+    if (fellBack) { fellBack = false; if (mode === 'block' && !flipping && cur && cur.height === tipH && !sel) setTimeout(goLive, 0); } $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
   ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch (x) { return; } onFeed(d); };
-  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) showBlock(tipH); } if (was) head(); setTimeout(wsConnect, 5000); };
+  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); setTimeout(wsConnect, 5000); };
   ws.onerror = () => {};
 }
 function onFeed(d) {
@@ -1285,9 +1293,10 @@ function feedRow(kind, html, time, txid) {
   box.prepend(d);
   while (box.children.length > (kind === 'tx' ? 10 : 60)) box.lastChild.remove();
 }
-let offNoted = false;
+let offNoted = false, everLive = false, dropNoted = false, fellBack = false;
 function feedOff() {   // the live feed can't be reached from here (for example inside an inscription)
   $feed.classList.add('down');
+  if (everLive) { if (!dropNoted) { dropNoted = true; feedRow('blk', `${chip('#7a6853')}live feed dropped for a moment · reconnecting…`); } return; }
   if (!offNoted) { offNoted = true; feedRow('blk', `${chip('#7a6853')}mempool.space's live feed can't be reached from here, so there is nothing live to show.<br>Open Block Cube on your portal or in a browser to see it.`); }
 }
 function findTx(id) {
@@ -1424,6 +1433,16 @@ const rt = v => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' sat/vB';
 const $cp = document.getElementById('cp');
 function addRows(rows) {
   for (const [k, v, sw] of rows) {
+    if (k === 'miner says' || k === 'message') {
+      const d = document.createElement('div'); d.className = 'r rm'; d.innerHTML = '<span></span><div class="tk"><b></b></div>';
+      d.firstChild.textContent = k; d.querySelector('b').textContent = v; $cr.appendChild(d);
+      setTimeout(() => {   // longer than the box: glide to the end, rest, glide back
+        const box = d.querySelector('.tk'), b = box.firstChild; box.classList.add('go');
+        const over = b.offsetWidth - box.clientWidth;
+        if (over > 2) { b.style.setProperty('--d', -over + 'px'); b.style.animationDuration = (4 + over / 28).toFixed(1) + 's'; } else box.classList.remove('go');
+      }, 0);
+      continue;
+    }
     const d = document.createElement('div'); d.className = 'r'; d.innerHTML = '<span></span><b></b>';
     d.firstChild.textContent = k; d.lastChild.textContent = v;
     if (sw) { const i = document.createElement('i'); i.style.background = sw; d.lastChild.prepend(i); }
@@ -1611,6 +1630,7 @@ function drawKinds() {
 // ice < 1 sat/vB · water 1-2 · grass 2-5 · desert 5-20 · fire 20-100 · lava storm 100-500 · plasma 500+
 const HEAT = [0.1, 1, 2, 5, 20, 100, 500, 2500];
 function heatOf(r) {
+  if (r === 0) return 0;   // no fees paid at all (early blocks): the coldest floor
   if (!(r > 0)) return null;
   for (let k = 0; k < 7; k++) if (r < HEAT[k + 1] || k === 6) {
     const f = Math.log(Math.max(r, HEAT[k]) / HEAT[k]) / Math.log(HEAT[k + 1] / HEAT[k]);
@@ -1643,7 +1663,7 @@ function head(msg) {
   if (document.activeElement !== $h) $h.value = isLive ? (tipH >= 0 ? fmt(tipH + 1 + liveIdx) : '') : want >= 0 ? fmt(want) : mode === 'live' && tipH >= 0 ? fmt(tipH) : '';
   const hNow = mode === 'live' ? (wsLive ? (tipH >= 0 ? tipH + 1 + liveIdx : -1) : tipH) : want;
   $ot.innerHTML = satLine(hNow);
-  const mb = mode === 'block' && cur && cur.height === want ? cur.cb : null;
+  const mb = mode === 'block' && cur && cur.height === want ? (cur.cb || (cur.pool ? {pool: cur.pool, words: ''} : null)) : null;
   $mn.textContent = mb ? '⛏ ' + (mb.pool || 'mined by an unknown pool') + (mb.words ? ' · “' + mb.words + '”' : '') : '';
   if (msg) { $st.textContent = msg; return; }
   if (noteMsg && now() < noteMsg.until) { $st.textContent = noteMsg.text; return; }
@@ -2337,7 +2357,7 @@ function frame() {
   }
   const boxes = (mir, xr) => {
     gl.useProgram(parP.p); gl.uniformMatrix4fv(parP.u.uVP, false, VP); gl.uniform3fv(parP.u.uE, eye);
-    gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, oa); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uXr, xr ? 1 : 0); gl.uniform1f(parP.u.uGa, foc || hk != null ? 0.35 : lens === 'ord' ? 1 : 0.5);
+    gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, oa); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uXr, xr ? 1 : 0); gl.uniform1f(parP.u.uGa, foc || hk != null ? 0.42 : lens === 'ord' ? 1 : 0.55);
     gl.uniform1i(parP.u.uSel, xr ? (sel ? ghosts.indexOf(sel) : -1) : si);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(xr ? ghVAO : parVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, xr ? nGh : nInst);
