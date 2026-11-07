@@ -1,4 +1,12 @@
 <!DOCTYPE html>
+<!--
+  Block Cube, made by bitmap22.
+  Code, look, colours, icons and sounds are Block Cube's own.
+  Live data comes from the public APIs of mempool.space (blocks, fees, the next block),
+  ordpool.space (ordinal tags) and ordinals.com (inscription lists and previews).
+  Ordinal theory (first sat, degree, rarity) follows ord, which is CC0 (public domain).
+  Block Cube is not made by, affiliated with, or endorsed by Mempool Space K.K., ordpool.space or ordinals.com.
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -211,10 +219,11 @@ async function viaSources(job) {
   throw err;
 }
 
-/* ---------- colour: fee rate, with mempool.space's own fee colours ---------- */
-const FEE_LV = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150, 175, 200, 250, 300, 350, 400, 500, 600, 700, 800, 900, 1000, 1200, 1400, 1600, 1800, 2000];
-const FEE_COL = ('007d3d 557d00 5d7d01 637d02 6d7d04 757d05 7d7d06 867d08 8c7d09 957d0b 9b7d0c a67d0e aa7d0f b27d10 bb7d11 bf7d12 bf7815 bf7319 ' +
-  'be6c1e be6820 bd6125 bd5c28 bc552d bc4f30 bc4a34 bb4339 bb3d3c bb373f ba3243 b92b48 b9254b b8214d b71d4f b61951 b41453 b30e55 b10857 b00259 ae005b').split(' ').map(h => hexc(parseInt(h, 16)));
+/* ---------- colour: fee rate on Block Cube's own scale ---------- */
+// cheap = sea green, then green, olive, amber, orange, red, and purple for the most expensive;
+// between two stops the colour blends smoothly (on a log scale of sat/vB)
+const FEE_STOPS = [[0.1, 0x13775a], [1, 0x3f7f14], [2, 0x5c8410], [5, 0x7a8410], [10, 0x94800f], [20, 0xa87512], [50, 0xb56417],
+  [100, 0xb8501f], [200, 0xb43b33], [500, 0xa92a55], [1000, 0x8f2577], [2000, 0x7a2590]].map(([r, c]) => [Math.log10(r), hexc(c)]);
 const UNKNOWN_COL = [0.55, 0.62, 0.72];
 function hexc(c) { return [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255]; }
 const ownRate = t => t.vsize ? t.fee / t.vsize : 0;
@@ -222,11 +231,16 @@ const INSC_BIT = Math.pow(2, 26);   // mempool.space's "inscription" flag (it fo
 const tagged = f => Math.floor((f || 0) / INSC_BIT) % 2 === 1;
 function feeCol(t) {
   if (t.fee < 0) return UNKNOWN_COL;
-  const i = FEE_LV.findIndex(l => Math.max(0, ownRate(t)) < l) - 1;   // same rule as mempool.space
-  return FEE_COL[i] || FEE_COL[FEE_COL.length - 1];
+  const x = Math.log10(Math.max(0.1, ownRate(t)));
+  if (x <= FEE_STOPS[0][0]) return FEE_STOPS[0][1];
+  for (let i = 1; i < FEE_STOPS.length; i++) if (x < FEE_STOPS[i][0]) {
+    const [x0, a] = FEE_STOPS[i - 1], [x1, b] = FEE_STOPS[i], f = (x - x0) / (x1 - x0);
+    return a.map((v, k) => v + (b[k] - v) * f);
+  }
+  return FEE_STOPS[FEE_STOPS.length - 1][1];
 }
 
-/* ---------- packing: mempool.space's block layout, in 3D ---------- */
+/* ---------- packing: the block filled by size and fee, in 3D ---------- */
 // The cube is one block (1,000,000 vB) on a 64 x 64 x 64 grid, with a little headroom for the gaps.
 // Each transaction is a box (sides differ by at most one step) whose volume matches its vsize.
 // Highest fee rate goes in first; every box takes the lowest space it fits (small ones fill gaps),
@@ -1336,7 +1350,7 @@ function placeTools() {
 }
 addEventListener('resize', () => { placeTools(); strip(); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeTools(); strip(); });
-// fee colour scale: the same colours mempool.space uses, so every parcel's colour can be read off
+// fee colour scale: Block Cube's own fee colours, so every parcel's colour can be read off
 $fs.innerHTML = '<span class="fl2">FEE sat/vB</span>' + [['<1', 0.5], ['1', 1], ['2', 2], ['5', 5], ['10', 10], ['20', 20], ['50', 50], ['100', 100], ['200', 200], ['500', 500], ['1k+', 1000]]
   .map(([l, r]) => `<i style="--c:${feeCss(r)}">${l}</i>`).join('');
 // save a picture: the cube exactly as drawn this frame, with the block written along the bottom
