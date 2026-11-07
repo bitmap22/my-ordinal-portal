@@ -32,6 +32,8 @@ canvas:active{cursor:grabbing}
 .bk.new{animation:arrive 2.4s ease-out}
 @keyframes arrive{0%{transform:translateX(-90px) scale(.85);filter:drop-shadow(0 0 0 #f7931a)}35%{transform:none;filter:drop-shadow(0 0 14px #f7931a)}100%{filter:drop-shadow(0 0 0 rgba(247,147,26,0))}}
 .bk .fl{position:absolute;left:0;right:0;bottom:0;opacity:.8}
+.bk.nx .fl{animation:mine 1.8s ease-in-out infinite}.bk.nx .fr{box-shadow:0 0 14px rgba(255,209,102,.35)}
+@keyframes mine{50%{opacity:1;filter:brightness(1.3)}}
 .bk .tx{position:relative;padding-top:5px;text-shadow:0 0 3px #000,0 1px 2px #000}
 .bk .h{font-weight:700;font-size:11px;color:#fff}
 #tg{font-size:11px;letter-spacing:2px;color:#ffb04a;margin-bottom:4px;display:flex;align-items:center;gap:8px}
@@ -860,6 +862,8 @@ function strip() {
   if (stripT) return;   // redraw at most once a second
   stripT = setTimeout(() => { stripT = 0; drawStrip(); }, 250);
 }
+// tile colours: mined blocks = Bitcoin orange, the block being mined now = hot gold, blocks still waiting = slate blue
+const TILE_MINED = '#f7931a', TILE_NEXT = '#ffd166', TILE_WAIT = '#56688c';
 function drawStrip() {
   $fut.innerHTML = ''; $past.innerHTML = '';
   const tw = matchMedia('(min-width:1500px) and (min-height:820px)').matches ? 103 : 85;
@@ -872,7 +876,7 @@ function drawStrip() {
     const lo = m.feeRange[0], hi = m.feeRange[m.feeRange.length - 1];
     const lines = `<div class="h">${k === 0 ? 'NEXT' : over ? '+' + fmt(Math.ceil(full)) + ' blocks' : '+' + k}</div>~${r1(m.medianFee)} sat/vB<br>${r1(lo)}-${r1(hi)}<br>${(m.blockSize / 1e6).toFixed(2)} MB<br>${fmt(m.nTx)} txs`;
     const sel = mode === 'live' && wsLive && liveIdx === k;
-    $fut.appendChild(tile((sel ? 'sel' : '') + (over ? ' na' : ''), full, feeCss(m.medianFee), lines,
+    $fut.appendChild(tile((sel ? 'sel' : '') + (over ? ' na' : '') + (k === 0 ? ' nx' : ''), full, k === 0 ? TILE_NEXT : TILE_WAIT, lines,
       over ? 'everything else waiting in the mempool' : (k === 0 ? 'the next block, being built now' : 'upcoming block +' + k) + ' (projected by mempool.space)',
       over ? null : () => goLiveIdx(k)));
   }
@@ -881,7 +885,7 @@ function drawStrip() {
     const b = pastBlocks[i], x = b.extras || {}, fr = x.feeRange || [];
     const lines = `<div class="h">${fmt(b.height)}</div>` + (x.medianFee != null ? `~${r1(x.medianFee)} sat/vB<br>` : '') +
       (fr.length ? `${r1(fr[0])}-${r1(fr[fr.length - 1])}<br>` : '') + `${(b.size / 1e6).toFixed(2)} MB<br>${fmt(b.tx_count)} txs`;
-    $past.appendChild(tile((mode === 'block' && want === b.height ? 'sel' : '') + (b.height === newH ? ' new' : ''), b.weight / 4e6, feeCss(x.medianFee || 0), lines,
+    $past.appendChild(tile((mode === 'block' && want === b.height ? 'sel' : '') + (b.height === newH ? ' new' : ''), b.weight / 4e6, TILE_MINED, lines,
       'block ' + fmt(b.height) + ' · ' + ago(b.timestamp) + (x.pool && x.pool.name ? ' · mined by ' + x.pool.name : ''), () => go(b.height)));
   }
 }
