@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<!--
+  Block Cube, made by bitmap22.
+  Code, look, colours, icons and sounds are Block Cube's own.
+  Live data comes from the public APIs of mempool.space (blocks, fees, the next block),
+  ordpool.space (ordinal tags) and ordinals.com (inscription lists and previews).
+  Ordinal theory (first sat, degree, rarity) follows ord, which is CC0 (public domain).
+  Block Cube is not made by, affiliated with, or endorsed by Mempool Space K.K., ordpool.space or ordinals.com.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Block Cube</title>
+<style>
+html,body{margin:0;height:100%;background:#050406;overflow:hidden;color:#f7efe3;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+canvas{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+.m{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+#top{position:fixed;left:28px;top:108px}
+#strip{position:fixed;top:4px;left:50%;transform:translateX(-50%);display:flex;align-items:flex-start;max-width:calc(100vw - 210px);overflow-x:auto;scrollbar-width:none;padding:2px}
+#strip::-webkit-scrollbar{display:none}
+#fut,#past{display:flex;gap:2px}
+#sep{flex:none;align-self:stretch;border-left:2px dashed rgba(247,147,26,.6);margin:0 12px}
+.bk{position:relative;flex:none;width:76px;height:80px;margin:9px 9px 0 0;cursor:pointer;font:10px/1.3 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#f7efe3;text-align:center;transition:transform .2s}
+.bk .fr{position:absolute;inset:0;background:rgba(16,10,5,.85);border:1px solid rgba(247,147,26,.25);overflow:hidden;transition:border-color .2s,box-shadow .2s}
+.bk .tp{position:absolute;left:0;top:-9px;width:76px;height:9px;background:var(--c);filter:brightness(1.35);opacity:.9;transform:skewX(-45deg);transform-origin:0 100%}
+.bk .sd{position:absolute;left:76px;top:0;width:9px;height:80px;background:var(--c);filter:brightness(.55);opacity:.9;transform:skewY(-45deg);transform-origin:0 0}
+.bk:hover{transform:translateY(-2px)}.bk:hover .fr{border-color:rgba(247,147,26,.75)}
+.bk.sel .fr{border-color:#f7931a;box-shadow:0 0 14px rgba(247,147,26,.6)}
+.bk.na{cursor:default}.bk.na:hover{transform:none}
+.bk.new{animation:arrive 2.4s ease-out}
+@keyframes arrive{0%{transform:translateX(-90px) scale(.85);filter:drop-shadow(0 0 0 #f7931a)}35%{transform:none;filter:drop-shadow(0 0 14px #f7931a)}100%{filter:drop-shadow(0 0 0 rgba(247,147,26,0))}}
+.bk .fl{position:absolute;left:0;right:0;bottom:0;opacity:.8}
+.bk.nx .fl{animation:mine 1.8s ease-in-out infinite}.bk.nx .fr{box-shadow:0 0 14px rgba(255,209,102,.35)}
+@keyframes mine{50%{opacity:1;filter:brightness(1.3)}}
+.bk .tx{position:relative;padding-top:5px;text-shadow:0 0 3px #000,0 1px 2px #000}
+.bk .h{font-weight:700;font-size:11px;color:#fff}
+#tg{font-size:11px;letter-spacing:2px;color:#ffb04a;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+#tg i{width:7px;height:7px;border-radius:50%;background:#f7931a;box-shadow:0 0 10px #f7931a;display:none}
+#tg.live i{display:block;animation:bl 1.6s infinite}
+#h{font:600 44px/1.1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:-1px;background:none;border:0;padding:0;margin:0;color:#f7efe3;width:10ch;outline:none;caret-color:#f7931a;text-shadow:0 0 22px rgba(247,147,26,.45)}
+#h:focus{color:#fff}
+#st{margin-top:6px;font-size:12px;line-height:1.5;color:#cdbca3;max-width:calc(100vw - 40px)}
+#st b{font-weight:400}
+#ot{margin-top:3px;font-size:11px;line-height:1.5;color:#c9a67a;max-width:calc(100vw - 40px)}
+#ot b{color:#f7931a;font-weight:600}
+@media (min-width:901px){body.fo #ot{max-width:calc(100vw - 400px)}}
+@media (min-width:901px){body.fo #st{max-width:calc(100vw - 400px)}}
+#nav{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:flex;gap:10px;align-items:center}
+#nav button{height:40px;min-width:40px;border-radius:20px;border:1px solid rgba(247,147,26,.28);background:rgba(18,11,5,.62);color:#f7efe3;font:500 20px/1 system-ui,sans-serif;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:border-color .2s,opacity .2s,box-shadow .2s,color .2s;display:flex;align-items:center;justify-content:center}
+#nav button:hover{border-color:rgba(247,147,26,.7)}
+#nav button:disabled{opacity:.25;cursor:default}
+#lv{padding:0 16px;font:600 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace!important;letter-spacing:2px;gap:8px}
+#lv i{width:7px;height:7px;border-radius:50%;background:#5a4b3a;transition:background .3s,box-shadow .3s}
+#lv.on i{background:#f7931a;box-shadow:0 0 10px #f7931a}
+@keyframes bl{50%{opacity:.25}}
+#ln{padding:0 14px;font:600 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace!important;letter-spacing:2px;min-width:96px}
+#ln.ord{color:#fff;border-color:rgba(255,255,255,.8);box-shadow:0 0 14px rgba(255,255,255,.3)}
+#op svg,#xr svg{width:18px;height:18px}
+#xr.on{color:#f7931a;border-color:rgba(247,147,26,.8);box-shadow:0 0 14px rgba(247,147,26,.45)}
+#op.on{color:#f7931a;border-color:rgba(247,147,26,.8);box-shadow:0 0 14px rgba(247,147,26,.45)}
+#card{position:fixed;left:28px;bottom:26px;width:310px;padding:14px 16px 12px;border-radius:14px;background:rgba(14,9,5,.82);border:1px solid rgba(247,147,26,.22);box-shadow:0 0 24px rgba(247,147,26,.12);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s;pointer-events:none}
+#card.on{opacity:1;transform:none;pointer-events:auto}
+#cn{font-size:13px;font-weight:600;margin-bottom:8px;color:#ffb04a}
+#card .r{display:flex;justify-content:space-between;gap:12px;font-size:12px;line-height:1.75;color:#bba88f}
+#card .r b{font-weight:500;color:#f7efe3;text-align:right}
+#card .r b i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+#ct{margin-top:6px;font-size:10.5px;line-height:1.4;color:#a08b72;word-break:break-all;white-space:pre-line;-webkit-user-select:text;user-select:text}
+#fb{position:fixed;right:20px;top:20px;height:30px;padding:0 13px;border-radius:15px;border:1px solid rgba(247,147,26,.28);background:rgba(18,11,5,.62);color:#ffb04a;font:600 10px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:2px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+#fb.on{color:#f7931a;border-color:rgba(247,147,26,.7)}
+#feed{position:fixed;right:20px;top:108px;bottom:90px;width:300px;display:flex;flex-direction:column;border-radius:14px;background:rgba(12,8,4,.62);border:1px solid rgba(247,147,26,.16);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);overflow:hidden;transition:opacity .25s,transform .25s}
+#feed.off{opacity:0;transform:translateX(20px);pointer-events:none}
+#fh,.fh{padding:10px 12px 8px;font-size:10px;letter-spacing:2px;color:#ffb04a;border-bottom:1px solid rgba(247,147,26,.1)}
+.fh{border-top:1px solid rgba(247,147,26,.14);padding-top:8px}
+#ft{height:170px;overflow:hidden;flex:none;-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 22px),transparent)}
+#ft .fi{padding:4px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fl{flex:1;overflow-y:auto;-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);scrollbar-width:thin;scrollbar-color:rgba(247,147,26,.25) transparent}
+.fi{padding:7px 12px;border-bottom:1px solid rgba(247,147,26,.07);font-size:11px;line-height:1.5;color:#cbb9a0;animation:fin .3s ease-out}
+.fi[data-tx]{cursor:pointer}.fi[data-tx]:hover{background:rgba(247,147,26,.07)}
+.fi.blk{background:rgba(247,147,26,.06)}
+.fi i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:7px}
+.fi .tm{float:right;margin-left:8px;color:#9a8670;font-size:10px}
+.fi b{color:#f7efe3;font-weight:600}
+.fi a{color:#ffb04a;text-decoration:none}
+@keyframes fin{from{opacity:.35;transform:translateY(-4px)}}
+#ft .fi{animation:none}
+@media (max-width:640px){#feed{left:12px;right:12px;width:auto;top:200px;bottom:140px}#fb{top:108px;right:14px}#strip{max-width:calc(100vw - 16px)}}
+@media (max-width:640px){#top{left:18px;top:104px}#h{font-size:34px}#card{left:12px;right:12px;width:auto;bottom:80px}#nav{bottom:20px}}
+@media (max-width:1100px){#card{bottom:84px}}
+#kinds{position:fixed;left:28px;bottom:26px;max-width:calc(50vw - 250px);display:none}
+#kinds.on{display:block}
+#kh{font-size:10px;letter-spacing:2px;color:#ffb04a;margin:0 0 7px 2px;white-space:nowrap}
+#kh span{color:#a08b72;letter-spacing:1px;margin-left:10px}
+#kl{display:flex;flex-wrap:wrap;gap:6px}
+.kd{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px 0 8px;border-radius:15px;border:1px solid rgba(247,147,26,.2);background:rgba(18,11,5,.62);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#e9dcc8;font:600 10px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:.8px;text-transform:uppercase;white-space:nowrap;cursor:pointer;transition:border-color .2s,box-shadow .2s,background .2s,opacity .2s,transform .2s}
+.kd svg{width:16px;height:16px;flex:none}
+.kd b{font-weight:500;color:#c2ae94;letter-spacing:0}
+.kd:hover,.kd.hv{border-color:var(--k);box-shadow:0 0 14px var(--g);transform:translateY(-1px)}
+.kd.on{border-color:var(--k);background:var(--b);box-shadow:0 0 16px var(--g)}
+.kd.on b,.kd.hv b{color:#fff}
+#kinds.act .kd:not(.hv):not(.on){opacity:.5}
+@media (max-width:1100px){#kinds{bottom:80px;max-width:calc(100vw - 56px)}#card{bottom:calc(84px + var(--kh,0px))}}
+@media (min-width:901px) and (max-width:1100px){body.fo #kinds{max-width:calc(100vw - 376px)}}
+@media (max-width:640px){#kinds{left:12px;bottom:72px;max-width:calc(100vw - 24px)}#kh{margin-bottom:5px}#kl{gap:5px}.kd{height:26px;padding:0 9px 0 6px;gap:5px;font-size:9px}.kd svg{width:14px;height:14px}#feed{bottom:max(140px,calc(72px + var(--kh,0px)))}}
+@media (min-width:1101px){#card{bottom:calc(26px + var(--kh,0px))}}
+@media (min-width:1500px) and (min-height:820px){.bk{width:92px;height:96px;margin:11px 11px 0 0;font-size:11.5px}.bk .tp{width:92px;height:11px;top:-11px}.bk .sd{left:92px;width:11px;height:96px}.bk .h{font-size:13px}.bk .tx{padding-top:7px}
+#top{left:36px;top:132px}#feed{top:132px}}
+@media (min-width:1500px) and (min-height:820px){#tg{font-size:13px;letter-spacing:2.5px;margin-bottom:6px}#tg i{width:8px;height:8px}#h{font-size:58px}#st{font-size:14.5px;margin-top:8px}#ot{font-size:13px;margin-top:4px}
+body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
+#feed{width:360px;right:24px;bottom:100px}#fh,.fh{font-size:11.5px;padding:12px 14px 10px}.fi{font-size:13px;padding:8px 14px}.fi .tm{font-size:11px}.fi i{width:9px;height:9px}#ft{height:210px}#ft .fi{padding:5px 14px}
+#fb{height:34px;padding:0 15px;border-radius:17px;font-size:11.5px;right:24px;top:22px}}
+@media (min-width:1500px) and (min-height:820px){#nav{bottom:28px;gap:12px}#nav button{height:46px;min-width:46px;border-radius:23px;font-size:23px}#lv{padding:0 18px}#lv,#ln{font-size:12.5px!important}#ln{min-width:112px;padding:0 16px}#op svg,#xr svg{width:20px;height:20px}
+#kinds{left:36px;bottom:28px;max-width:calc(50vw - 300px)}#kh{font-size:11.5px;margin-bottom:8px}#kl{gap:8px}.kd{height:36px;padding:0 15px 0 10px;gap:8px;font-size:11.5px;border-radius:18px}.kd svg{width:19px;height:19px}
+#card{left:36px;width:370px;padding:16px 18px 14px;bottom:calc(28px + var(--kh,0px))}#cn{font-size:15px}#card .r{font-size:13.5px}#ct{font-size:12px}}
+#fs{display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:8px;font-size:9.5px;line-height:1}
+#fs .fl2{color:#a08b72;letter-spacing:1px;margin-right:6px}
+#fs i{font-style:normal;min-width:20px;padding:3px 3px;text-align:center;color:#fff;background:var(--c);text-shadow:0 0 3px #000,0 1px 1px #000;border-radius:2px}
+#fs.off{display:none}
+#tools{position:fixed;top:20px;right:var(--tr,96px);display:flex;gap:8px}
+.tl{width:30px;height:30px;padding:0;border-radius:15px;border:1px solid rgba(247,147,26,.28);background:rgba(18,11,5,.62);color:#ffb04a;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s,color .2s,transform .15s}
+.tl:hover{border-color:rgba(247,147,26,.7)}.tl:active{transform:scale(.92)}
+.tl svg{width:15px;height:15px}
+.tl.on{color:#f7931a;border-color:rgba(247,147,26,.8);box-shadow:0 0 12px rgba(247,147,26,.45)}
+@media (max-width:640px){#fs{flex-wrap:nowrap}#fs i{flex:1;min-width:0;padding:3px 0}#fs .fl2{margin-right:4px}#tools{top:auto;right:auto;left:50%;transform:translateX(-50%);bottom:68px}#kinds{bottom:110px}#card{bottom:calc(122px + var(--kh,0px))}#feed{bottom:max(178px,calc(110px + var(--kh,0px)))}}
+@media (min-width:1500px) and (min-height:820px){#tools{top:22px;gap:9px}.tl{width:34px;height:34px;border-radius:17px}.tl svg{width:17px;height:17px}#fs{font-size:11px;margin-top:10px}#fs i{min-width:25px;padding:4px 4px}}
+#card{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(247,147,26,.25) transparent}
+#cp{display:none}
+#cp iframe{display:block;width:100%;height:clamp(120px,24vh,230px);border:0;border-radius:8px;background:#000;margin-top:10px}
+#cp .pv2{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#a08b72}
+#cp .pv2 button{background:none;border:1px solid rgba(247,147,26,.3);color:#ffb04a;border-radius:10px;padding:3px 9px;font:inherit;cursor:pointer}
+#cp .pv0{margin-top:8px;font-size:10.5px;color:#a08b72}
+.ktab{margin-left:8px;padding:2px 7px;border-radius:9px;border:1px solid rgba(247,147,26,.25);background:rgba(18,11,5,.5);color:#a08b72;font:inherit;letter-spacing:1px;cursor:pointer}
+.ktab.on{color:#ffb04a;border-color:rgba(247,147,26,.7);background:rgba(247,147,26,.12)}.ktab.none:not(.on){opacity:.45}
+#kn{font-style:normal;font-size:10px;color:#a08b72;padding:7px 2px}
+@media (max-width:1100px){#kh span{display:none}}
+@media (max-width:640px){.ktab{margin-left:5px;padding:2px 5px;letter-spacing:.5px}}
+#mn{margin-top:3px;font-size:11px;line-height:1.5;color:#e0c49a;max-width:calc(100vw - 40px)}#mn:empty{display:none}
+@media (min-width:901px){body.fo #mn{max-width:calc(100vw - 400px)}}
+@media (min-width:1500px) and (min-height:820px){#mn{font-size:13px;margin-top:4px}}
+.bk.hv .fr{border-color:#ffd166;animation:hvb 2.4s ease-in-out infinite}
+@keyframes hvb{50%{box-shadow:0 0 16px rgba(255,209,102,.6),inset 0 0 12px rgba(177,76,255,.35)}}
+body.halv #tg{color:#d9a8ff}body.halv #tg i{background:#ffd166;box-shadow:0 0 10px #ffd166}
+body.halv #h{text-shadow:0 0 22px rgba(177,76,255,.75),0 0 4px rgba(255,209,102,.5)}
+#feed.down .fh,#feed.down #ft{display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="strip"><div id="fut"></div><div id="sep"></div><div id="past"></div></div>
+<div id="top"><div id="tg" class="m"><i></i><span id="tgt">&nbsp;</span></div><input id="h" class="m" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="block"><div id="st" class="m">&nbsp;</div><div id="ot" class="m"></div><div id="mn" class="m"></div><div id="fs" class="m"></div></div>
+<div id="nav"><button id="pv" aria-label="previous block">&lsaquo;</button><button id="lv" class="on" aria-label="live next block"><i></i>LIVE</button><button id="nx" aria-label="next block">&rsaquo;</button><button id="ln" class="m" aria-label="switch between fees and ordinals">FEES</button><button id="xr" aria-label="x-ray: see inside the cube"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 10s3.2-6 8.5-6 8.5 6 8.5 6-3.2 6-8.5 6-8.5-6-8.5-6z"/><circle cx="10" cy="10" r="2.6"/></svg></button><button id="op" aria-label="open the layers"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="14" height="4" rx="1"/><rect x="3" y="8" width="14" height="4" rx="1"/><rect x="3" y="14" width="14" height="4" rx="1"/></svg></button></div>
+<div id="kinds" class="m"><div id="kh">PARCEL TYPES<button class="ktab on" data-g="0">INSCRIPTIONS</button><button class="ktab" data-g="1">TOKENS</button><button class="ktab" data-g="2">TRANSACTIONS</button><span></span></div><div id="kl"><i id="kn">none in this block</i></div></div>
+<div id="card" class="m"><div id="cn"></div><div id="cr"></div><div id="ct"></div><div id="cp"></div></div>
+<button id="fb" class="m" aria-label="show or hide the live feed">FEED</button>
+<div id="tools"><button id="tp" class="tl" aria-label="flip back through blocks" title="flip back through blocks"></button><button id="ts" class="tl" aria-label="save a picture" title="save a picture"></button><button id="tu" class="tl" aria-label="sound on or off" title="sound on / off"></button></div>
+<div id="feed" class="m"><div id="fh">LIVE FEED</div><div id="fl"></div><div id="fh2" class="fh">JOINING THE NEXT BLOCK</div><div id="ft"></div></div>
+<script>
+'use strict';
+/* ---------- data sources: set on:false to switch one off ---------- */
+const SOURCES = [
+  {name:'mempool.space', on:true, kind:'mempool', base:'https://mempool.space'},
+  {name:'this ordinal',  on:true, kind:'ord',     base:''},
+  {name:'ordinals.com',  on:true, kind:'ord',     base:'https://ordinals.com'}
+];
+const LIVE_FEED = 'wss://mempool.space/api/v1/ws';   // mempool.space's live feed of the next block
+const ORD_EXPLORERS = ['https://ordinals.com', ''];   // ord explorers that list each block's inscriptions ('' = the site this runs on)
+const BLOCK_VB = 1e6;   // a block holds 1,000,000 vB
+const S = 10;           // cube side in the 3D world
+
+/* ---------- fetching ---------- */
+function fetchT(url, opt, ms) {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms || 25000);
+  return fetch(url, Object.assign({signal: ac.signal}, opt || {})).then(r => {
+    clearTimeout(t); if (!r.ok) throw new Error('http ' + r.status); return r;
+  }, e => { clearTimeout(t); throw e; });
+}
+function vlen(n) { return n < 0xfd ? 1 : n <= 0xffff ? 3 : n <= 0xffffffff ? 5 : 9; }
+// exact weight of one transaction from ord's JSON (base bytes x4 + witness bytes)
+function txWeight(tx) {
+  const ins = tx.input, outs = tx.output;
+  let base = 8 + vlen(ins.length) + vlen(outs.length), wit = 0, hasW = false;
+  for (const i of ins) { const l = i.script_sig.length >> 1; base += 40 + vlen(l) + l; if (i.witness && i.witness.length) hasW = true; }
+  for (const o of outs) { const l = o.script_pubkey.length >> 1; base += 8 + vlen(l) + l; }
+  if (hasW) {
+    wit = 2;
+    for (const i of ins) { const w = i.witness || []; wit += vlen(w.length); for (const x of w) { const l = x.length >> 1; wit += vlen(l) + l; } }
+  }
+  return base * 4 + wit;
+}
+const SRC = {
+  mempool: {
+    async tip(b) {
+      const n = parseInt(await (await fetchT(b + '/api/blocks/tip/height', {cache: 'no-store'}, 12000)).text());
+      if (!(n > 0)) throw new Error('bad tip'); return n;
+    },
+    async block(b, h) {
+      const hash = (await (await fetchT(b + '/api/block-height/' + h)).text()).trim();
+      if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error('bad hash');
+      const [meta, sum] = await Promise.all([
+        fetchT(b + '/api/block/' + hash).then(r => r.json()),
+        fetchT(b + '/api/v1/block/' + hash + '/summary', null, 60000).then(r => r.json())]);
+      if (!sum.length) throw new Error('empty');
+      const txs = sum.map((t, i) => ({id: t.txid, fee: t.fee, vsize: t.vsize, value: t.value || 0, rate: t.rate || (t.vsize ? t.fee / t.vsize : 0), idx: i, insc: tagged(t.flags)}));
+      return {height: h, hash, time: meta.timestamp, size: meta.size, weight: meta.weight, count: meta.tx_count || txs.length, txs, fees: true};
+    }
+  },
+  ord: {
+    async tip(b) {
+      const n = +(await (await fetchT(b + '/r/blockheight', {cache: 'no-store'}, 12000)).json());
+      if (!(n >= 0)) throw new Error('bad tip'); return n;
+    },
+    async block(b, h) {
+      const [info, blk] = await Promise.all([
+        fetchT(b + '/r/blockinfo/' + h).then(r => r.json()),
+        fetchT(b + '/block/' + h, {headers: {Accept: 'application/json'}}, 120000).then(r => r.json())]);
+      const raw = blk.transactions, n = raw ? raw.length : 0;
+      if (!n || (info.transaction_count && info.transaction_count !== n)) throw new Error('bad block');
+      // the chain itself does not list each transaction's fee, so fee rates are unknown here
+      const txs = raw.map((tx, i) => { let v = 0; for (const o of tx.output) v += o.value; return {id: null, fee: -1, vsize: txWeight(tx) / 4, value: v, rate: -1, idx: i, raw: tx}; });
+      return {height: h, hash: info.hash || blk.hash, time: info.timestamp, size: info.total_size, weight: info.total_weight, count: n, txs, fees: false};
+    }
+  }
+};
+let goodSrc = null;
+async function viaSources(job) {
+  const list = SOURCES.filter(s => s.on && s !== goodSrc);
+  if (goodSrc && goodSrc.on) list.unshift(goodSrc);
+  let err = new Error('no data source');
+  for (const s of list) {
+    try { const r = await job(SRC[s.kind], s.base); goodSrc = s; return r; } catch (e) { err = e; }
+  }
+  throw err;
+}
+
+/* ---------- colour: fee rate on Block Cube's own scale ---------- */
+// cheap = sea green, then green, olive, amber, orange, red, and purple for the most expensive;
+// between two stops the colour blends smoothly (on a log scale of sat/vB)
+const FEE_STOPS = [[0.1, 0x13775a], [1, 0x3f7f14], [2, 0x5c8410], [5, 0x7a8410], [10, 0x94800f], [20, 0xa87512], [50, 0xb56417],
+  [100, 0xb8501f], [200, 0xb43b33], [500, 0xa92a55], [1000, 0x8f2577], [2000, 0x7a2590]].map(([r, c]) => [Math.log10(r), hexc(c)]);
+const UNKNOWN_COL = [0.55, 0.62, 0.72];
+function hexc(c) { return [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255]; }
+const ownRate = t => t.vsize ? t.fee / t.vsize : 0;
+const INSC_BIT = Math.pow(2, 26);   // mempool.space's "inscription" flag (it found an ord envelope in the witness)
+const tagged = f => Math.floor((f || 0) / INSC_BIT) % 2 === 1;
+function feeCol(t) {
+  if (t.fee < 0) return UNKNOWN_COL;
+  const x = Math.log10(Math.max(0.1, ownRate(t)));
+  if (x <= FEE_STOPS[0][0]) return FEE_STOPS[0][1];
+  for (let i = 1; i < FEE_STOPS.length; i++) if (x < FEE_STOPS[i][0]) {
+    const [x0, a] = FEE_STOPS[i - 1], [x1, b] = FEE_STOPS[i], f = (x - x0) / (x1 - x0);
+    return a.map((v, k) => v + (b[k] - v) * f);
+  }
+  return FEE_STOPS[FEE_STOPS.length - 1][1];
+}
+
+/* ---------- packing: the block filled by size and fee, in 3D ---------- */
+// The cube is one block (1,000,000 vB) on a 64 x 64 x 64 grid, with a little headroom for the gaps.
+// Each transaction is a box (sides differ by at most one step) whose volume matches its vsize.
+// Highest fee rate goes in first; every box takes the lowest space it fits (small ones fill gaps),
+// turning on its side if that sits lower. The very biggest boxes settle first so they don't stick out the top.
+const R = 64, HM = R * 2, LL = R * R, VPU = BLOCK_VB / Math.pow(R / 1.06, 3);
+function dimsOf(vsize) {
+  const v = Math.max(1, vsize / VPU), s = Math.max(1, Math.floor(Math.cbrt(v) + 1e-9));
+  let best = [s, s, s], be = 1e9;
+  for (const o of [[s, s, s], [s + 1, s, s], [s + 1, s + 1, s], [s + 1, s + 1, s + 1]]) {
+    const e = Math.abs(Math.log(o[0] * o[1] * o[2] / v)); if (e < be) { be = e; best = o; }
+  }
+  return best.map(x => Math.min(R, x));
+}
+class Grid {
+  constructor() { this.occ = new Uint8Array(LL * HM); this.free = new Int32Array(HM).fill(LL); this.lo = new Map(); }
+  fits(x, y, z, a, h, c) {
+    const o = this.occ;
+    for (let yy = y; yy < y + h; yy++) { const b = yy * LL; for (let zz = z; zz < z + c; zz++) { const r = b + zz * R; for (let xx = x; xx < x + a; xx++) if (o[r + xx]) return false; } }
+    return true;
+  }
+  find(a, h, c, y0) {
+    const key = (a * 128 + c) * 128 + h, lo = this.lo.get(key) || 0, need = a * c;
+    for (let y = Math.max(y0, lo); y + h <= HM; y++) {
+      if (this.free[y] < need) continue;
+      const b = y * LL;
+      for (let z = 0; z <= R - c; z++) for (let x = 0; x <= R - a; x++)
+        if (!this.occ[b + z * R + x] && this.fits(x, y, z, a, h, c)) { if (y0 <= lo) this.lo.set(key, y); return [x, y, z]; }
+    }
+    return null;
+  }
+  mark(t, v) {
+    for (let yy = t.y; yy < t.y + t.h; yy++) {
+      const b = yy * LL; for (let zz = t.z; zz < t.z + t.c; zz++) this.occ.fill(v, b + zz * R + t.x, b + zz * R + t.x + t.a);
+      this.free[yy] += v ? -t.a * t.c : t.a * t.c;
+    }
+  }
+  place(t, y0) {
+    const [p, q, r] = t.d || (t.d = dimsOf(t.vsize)), seen = new Set();
+    let best = null, bo = [p, q, r];
+    for (const o of [[p, q, r], [p, r, q], [q, p, r], [r, p, q], [q, r, p], [r, q, p]]) {
+      const k = o.join(); if (seen.has(k)) continue; seen.add(k);
+      const f = this.find(o[0], o[1], o[2], y0);
+      if (f && (!best || f[1] + o[1] < best[1] + bo[1])) { best = f; bo = o; }
+    }
+    if (!best) best = [0, HM - bo[1], 0];
+    t.x = best[0]; t.y = best[1]; t.z = best[2]; t.a = bo[0]; t.h = bo[1]; t.c = bo[2];
+    this.mark(t, 1);
+  }
+  remove(t) { this.mark(t, 0); this.lo.clear(); }
+  // like mempool's gravity: boxes drop into space that opened up underneath them
+  settle(list) {
+    const moved = [];
+    list.sort((u, v) => u.y - v.y);
+    for (const t of list) {
+      if (!t.y) continue;
+      this.mark(t, 0); let y = t.y;
+      while (y > 0 && this.fits(t.x, y - 1, t.z, t.a, 1, t.c)) y--;
+      if (y !== t.y) { moved.push([t, t.y]); t.y = y; }
+      this.mark(t, 1);
+    }
+    if (moved.length) this.lo.clear();
+    return moved;
+  }
+}
+const rateKey = t => t.rate >= 0 ? t.rate : -t.idx;   // fee rate, or block order when fees are unknown
+function layoutAll(txs) {
+  const g = new Grid();
+  for (const t of txs) t.d = dimsOf(t.vsize);
+  const big = t => Math.max(t.d[0], t.d[1], t.d[2]) >= 6 ? 1 : 0;
+  const order = txs.slice().sort((u, v) => (big(v) - big(u)) || (rateKey(v) - rateKey(u)) || ((u.idx || 0) - (v.idx || 0)));
+  for (const t of order) g.place(t, 0);
+  return {g, order};
+}
+const centerOf = t => [((t.x + t.a / 2) / R - .5) * S, (t.y + t.h / 2) / R * S, ((t.z + t.c / 2) / R - .5) * S];
+
+/* ---------- WebGL ---------- */
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl2', {antialias: false, alpha: false});
+function sh(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function prog(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
+  return {p, u};
+}
+const V = '#version 300 es\nprecision highp float;\n';
+const SF = S.toFixed(1), LAYER = (S / 8).toFixed(3), LIFT = (S * 0.07).toFixed(3);
+const FS_VS = V + `out vec2 vU;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);vU=p;gl_Position=vec4(p*2.-1.,0.,1.);}`;
+// background: near-black with a slow drifting orange glow, warm light behind the cube, a few stars (decoration only)
+const bgP = prog(FS_VS, V + `in vec2 vU;uniform vec2 uR;uniform float uNow,uD;out vec4 o;
+float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+1.),f.x),f.y);}
+float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<4;i++){v+=a*ns(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
+void main(){vec2 q=(vU-vec2(.5,.45))*vec2(uR.x/uR.y,1.);float r=length(q),t=uNow*.025;
+vec3 c=vec3(.016,.012,.016);
+float f=fbm(q*1.5+vec2(t,-t*.6)),g=fbm(q*3.+vec2(-t*1.3,t*.5)+f*1.5);
+c+=vec3(.6,.22,.03)*pow(f*g,2.2)*1.6;
+c+=vec3(.3,.05,.12)*pow(g,4.)*.5;
+c+=vec3(1.,.48,.08)*exp(-r*r*5.)*.14;
+c*=1.-.5*smoothstep(.45,1.35,r);
+vec2 gs=gl_FragCoord.xy/(18.*uD),id=floor(gs);float k=h(id);
+if(k>.978){vec2 fc=fract(gs)-.5+(vec2(h(id+3.),h(id+7.))-.5)*.6;float tw=.5+.5*sin(uNow*(1.+k*2.)+k*80.);
+c+=vec3(1.,.9,.75)*smoothstep(.08,0.,length(fc))*tw*.7;}
+c+=(h(gl_FragCoord.xy+uNow)-.5)/255.;o=vec4(c,0.);}`);
+// transactions. iF.w = how this box is moving: 0 settling/staying, 1 just joined (lights up as it lands), 2 leaving, 3 filling in, 4 sealed block lifting away
+const parP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;
+layout(location=2) in vec3 iC;layout(location=3) in vec3 iS;layout(location=4) in vec4 iK;layout(location=5) in vec4 iF;layout(location=6) in float iG;layout(location=7) in vec4 iA;
+uniform mat4 uVP;uniform float uNow,uOpen,uMir;uniform int uSel;
+out vec3 vN;out vec3 vQ;out vec3 vS;out vec3 vK;out vec3 vW;out float vFl;out float vSl;out float vG;out vec4 vA;
+void main(){float age=uNow-iK.w,sc=1.,fl=0.;vec3 pos=iC;
+if(iF.w>3.5){float p=clamp(age/1.35,0.,1.),e=p*p*(3.-2.*p),k=1.-.97*e;vec3 c0=vec3(0.,${(S / 2).toFixed(2)},0.);pos=c0+(iC-c0)*k+vec3(0.,${(S * 2.2).toFixed(2)},0.)*e*e*e;sc=p<1.?k:0.;fl=.5*e;}
+else if(iF.w<.5){float p=clamp(age/.7,0.,1.);p=p*p*(3.-2.*p);pos=mix(iF.xyz,iC,p);}
+else if(iF.w<1.5||iF.w>2.5){float p=clamp(age/.9,0.,1.),e=1.-pow(1.-p,3.);sc=age<0.?0.:mix(.55,1.,e);pos.y+=(1.-e)*${(S * 0.5).toFixed(2)};fl=iF.w<1.5&&age>=.9?exp(-(age-.9)*6.):0.;}
+else{float p=clamp(age/.55,0.,1.);sc=1.-p;pos.y+=p*p*${(S * 0.08).toFixed(2)};}
+pos.y+=floor(iC.y/${LAYER})*${LIFT}*uOpen;
+vec3 s=iS*sc;vFl=fl;vSl=uSel<0?0.:gl_InstanceID==uSel?1.:-1.;
+vec3 w=pos+aP*s,nn=aN;if(uMir>.5){w.y=-w.y;nn.y=-nn.y;}
+vN=nn;vQ=aP*s;vS=s;vK=iK.rgb;vA=iA;vG=iG;vW=w;gl_Position=uVP*vec4(w,1.);}`,
+  V + `in vec3 vN;in vec3 vQ;in vec3 vS;in vec3 vK;in vec3 vW;in float vFl;in float vSl;in float vG;in vec4 vA;uniform sampler2D uArt;uniform vec3 uE;uniform float uMir,uXr,uGa;out vec4 o;
+void main(){vec3 K=vK;if(vA.w>.5){vec3 an0=abs(normalize(vN));vec2 fu=an0.x>.5?vec2(vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,vQ.z/vS.z):vec2(vQ.x/vS.x,vQ.y/vS.y);fu=clamp(fu+.5,.002,.998);K=pow(texture(uArt,vA.xy+vec2(fu.x,1.-fu.y)*vA.z).rgb,vec3(2.2))*1.15+.01;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
+float m=an.x>.5?min(d.y,d.z):an.y>.5?min(d.x,d.z):min(d.x,d.y);
+float fw=fwidth(m),es=.25+.75*smoothstep(.3,1.4,min(vS.x,min(vS.y,vS.z))),edge=(1.-smoothstep(0.,fw*1.3,m))*es;
+vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
+float dif=max(dot(n,L),0.),fil=max(dot(n,F),0.),sky=.5+.5*n.y;
+vec3 c=K*(.12*sky+1.08*dif)+K*vec3(.95,.72,.55)*.26*fil;
+vec3 vd=normalize(uE-vW);c+=vec3(1.,.58,.2)*pow(1.-max(dot(n,vd),0.),3.)*.16;
+c+=vec3(1.,.8,.55)*pow(max(dot(reflect(-L,n),vd),0.),28.)*.22;
+c=mix(c,c*1.6+.05,edge*.5);
+c+=(K*.7+.06)*vFl;c=mix(c,K*1.3,vG*.3);
+float g=edge*.08+vFl*.35+vG*.28;
+if(vSl>.5){c=c*1.3+K*.35+edge*.6;g+=.85;}else if(vSl<-.5){c=mix(vec3(dot(c,vec3(.3,.5,.2))),c,.35)*.3;g*=.15;}
+if(uXr>.5){float rim=pow(1.-abs(dot(n,vd)),2.);vec3 gc=K*(.3+.7*dif)*.6+K*edge*1.6+K*rim*.35+vec3(1.,.6,.25)*edge*.15;
+float ga=(.045+edge*.5+rim*.06)*uGa;if(vSl>.5){gc=K*1.6+.25;ga=.95;}gc=gc*(1.+gc/6.)/(1.+gc);o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),ga);return;}
+float al=clamp(g,0.,1.);if(uMir>.5){float f=clamp(1.+vW.y/${(S * 0.45).toFixed(2)},0.,1.);c*=.75;al=.32*f*f;}
+c*=1.35;c=c*(1.+c/6.)/(1.+c);
+o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),al);}`);
+const lnP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;uniform float uY;void main(){vec3 p=aP;p.y*=uY;gl_Position=uVP*vec4(p,1.);}`,
+  V + `uniform vec4 uC;out vec4 o;void main(){o=uC;}`);
+// floor: orange grid; a ring sweeps out across it when a new block is found (uPulse = seconds since)
+const flP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;out vec2 vU;void main(){vU=aP.xz;gl_Position=uVP*vec4(aP,1.);}`,
+  V + `in vec2 vU;uniform float uNow,uPulse;uniform vec3 uGC;out vec4 o;
+void main(){vec2 p=vU/(${SF}*.125),w=fwidth(p),g=abs(fract(p-.5)-.5)/w;
+float ln=1.-min(min(g.x,g.y),1.);
+float r=length(vU)/${SF},fade=exp(-r*r*.9)*(1.-smoothstep(1.3,1.9,r));
+float foot=1.-smoothstep(.42,.62,max(abs(vU.x),abs(vU.y))/${SF});
+float ring=uPulse<5.?exp(-pow((r-uPulse*.45)/.05,2.))*(1.-uPulse/5.):0.;
+vec3 col=uGC*(ln*1.1*fade+ring*1.6)+vec3(1.,.45,.08)*foot*.08;
+float shd=foot*.45;
+o=vec4(col*(1.-shd*.5),ln*fade*.75+foot*.12+ring*.9);}`);
+// floor seasons: the ground under the cube follows the fee heat of the block on screen
+// (uHeat 0..6 = ice, water, grass, desert, fire, lava storm, plasma; between two whole numbers it blends)
+const mtP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;out vec2 vU;void main(){vU=aP.xz;gl_Position=uVP*vec4(aP,1.);}`,
+  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash;out vec4 o;float G;
+float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h1(i),h1(i+vec2(1.,0.)),f.x),mix(h1(i+vec2(0.,1.)),h1(i+1.),f.x),f.y);}
+float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*ns(p);p=p*2.03+vec2(3.1,1.7);a*=.5;}return v;}
+vec2 vor(vec2 p){vec2 i=floor(p),f=fract(p);float d1=8.,d2=8.;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 g=vec2(float(x),float(y)),q=g+vec2(h1(i+g),h1(i+g+17.3))-f;float d=dot(q,q);if(d<d1){d2=d1;d1=d;}else if(d<d2){d2=d;}}return vec2(sqrt(d1),sqrt(d2));}
+vec4 ice(vec2 p,float t){vec2 v=vor(p*1.4);float cr=1.-smoothstep(0.,.05,v.y-v.x);float fr=fbm(p*2.5);
+vec3 c=mix(vec3(.30,.48,.62),vec3(.70,.86,.96),fr)*.75+vec3(.85,.97,1.)*cr*.55;float sp=pow(ns(p*11.+vec2(t*.4,-t*.3)),22.)*2.;c+=vec3(1.)*sp;G=sp*.5+cr*.06;return vec4(c,.62);}
+vec4 water(vec2 p,float t){vec2 q=p+.3*vec2(fbm(p*.7+t*.12),fbm(p*.7-t*.1));
+float ca=pow(1.-abs(sin(q.x*2.6+fbm(q*1.3+t*.25)*5.)),7.)+pow(1.-abs(sin(q.y*2.9-fbm(q*1.5-t*.2)*5.)),7.);float w=sin(p.x*1.7+t*1.1)*.5+sin(p.y*2.1-t*.8)*.5;
+vec3 c=vec3(.02,.12,.27)+vec3(.05,.30,.50)*(.6+.3*w)+vec3(.5,.9,1.)*ca*.5;G=ca*.12;return vec4(c,.62);}
+vec4 grass(vec2 p,float t){float n=fbm(p*1.3);vec2 sw=vec2(sin(t*.9+p.y*.8)*.04,0.);float b=ns((p+sw)*30.),b2=ns((p+sw)*55.+7.);
+vec3 c=mix(vec3(.05,.2,.04),vec3(.30,.62,.14),n)*(.7+.6*b*b2)+vec3(.55,.75,.2)*pow(b,8.)*.45;float fl=pow(ns(p*7.+3.),30.)*1.5;c+=vec3(1.,.85,.4)*fl;G=fl*.3;return vec4(c,.84);}
+vec4 desert(vec2 p,float t){float d=pow(sin(p.x*1.2+p.y*.5+fbm(p*.6)*5.)*.5+.5,1.6),g=ns(p*60.+vec2(t*.6,0.)),hz=fbm(p*.5+vec2(t*.05,0.));
+float rip=sin(p.x*13.+p.y*5.+fbm(p*2.)*4.)*.5+.5;vec3 c=mix(vec3(.42,.26,.12),vec3(.95,.74,.44),d*(.75+.25*hz))*(.86+.14*g)*(.9+.14*rip);
+float shim=pow(ns(p*3.+vec2(t*.2,0.)),6.)*.25;c+=vec3(1.,.85,.6)*shim;G=shim*.2;return vec4(c,.86);}
+vec4 fire(vec2 p,float t){vec2 q=p*1.1;float f=fbm(q+vec2(0.,-t*.8)+fbm(q*1.6+vec2(t*.3,-t*.5))*1.4),fl=smoothstep(.42,.86,f);
+vec3 c=mix(vec3(.05,.02,.01),vec3(.95,.28,.03),fl)+vec3(1.,.75,.25)*pow(fl,3.)*.9;float em=pow(ns(p*13.+vec2(t*1.5,-t*2.6)),26.)*4.;c+=vec3(1.,.55,.15)*em;G=fl*.55+em*.4;return vec4(c,.85);}
+vec4 lava(vec2 p,float t){vec2 q=p*1.05+vec2(fbm(p*.5+t*.04),fbm(p*.5-t*.035))*1.6;vec2 v=vor(q);float cr=1.-smoothstep(0.,.14,v.y-v.x),pu=.65+.35*sin(t*1.3+fbm(q*2.)*7.);
+vec3 c=vec3(.04,.02,.02)+vec3(.10,.04,.03)*fbm(q*3.)+vec3(1.,.28,.02)*cr*pu*1.5+vec3(1.,.8,.3)*pow(cr,5.)*pu;
+float bolt=0.;if(uFlash>.01){float x=p.x*.5+fbm(vec2(p.y*1.3,floor(t*9.)))*1.6-.8;bolt=exp(-abs(x)*45.)*uFlash;}
+c+=vec3(.75,.8,1.)*(bolt*2.5+uFlash*.22);G=cr*pu*.75+bolt;return vec4(c,.88);}
+vec4 plasma(vec2 p,float t){float v=sin(p.x*1.25+t)+sin(p.y*1.05-t*1.3)+sin((p.x+p.y)*.85+t*.7)+sin(length(p)*2.1-t*2.);
+vec3 c=.5+.5*cos(vec3(0.,2.1,4.2)+v*1.15+t*.35);c=mix(c,vec3(.78,.22,1.),.35);float ar=pow(1.-abs(sin(v*5.+t*2.6)),18.);
+c=c*(.55+.35*abs(sin(v*3.14)))+vec3(.95,.85,1.)*ar*1.2;G=.45+ar*.8;return vec4(c,.78);}
+vec4 mat(int k,vec2 p,float t){if(k<=0)return ice(p,t);if(k==1)return water(p,t);if(k==2)return grass(p,t);if(k==3)return desert(p,t);if(k==4)return fire(p,t);if(k==5)return lava(p,t);return plasma(p,t);}
+void main(){vec2 p=vU/${SF}*4.;float t=uNow,r=length(vU)/${SF},fade=exp(-r*r*.75)*(1.-smoothstep(1.15,1.85,r));
+float hh=clamp(uHeat,0.,6.);int k=int(floor(hh));float b=k<6?smoothstep(.3,.7,fract(hh)):0.;
+G=0.;vec4 a=mat(k,p,t);float ga=G;if(b>.001){G=0.;vec4 d=mat(k+1,p,t);a=mix(a,d,b);ga=mix(ga,G,b);}
+if(uPass<.5)o=vec4(a.rgb,a.a*fade);else o=vec4(0.,0.,0.,clamp(ga*fade,0.,1.)*.55);}`);
+// glow (bloom) passes
+const dnP = prog(FS_VS, V + `in vec2 vU;uniform sampler2D T;uniform vec2 uPx;uniform int uPre;out vec4 o;
+vec3 s(vec2 u){vec4 c=texture(T,u);return uPre==1?c.rgb*c.a:c.rgb;}
+void main(){o=vec4((s(vU)*4.+s(vU+uPx*vec2(-1,-1))+s(vU+uPx*vec2(1,-1))+s(vU+uPx*vec2(-1,1))+s(vU+uPx*vec2(1,1)))/8.,1.);}`);
+const upP = prog(FS_VS, V + `in vec2 vU;uniform sampler2D T;uniform vec2 uPx;out vec4 o;
+vec3 s(vec2 d){return texture(T,vU+uPx*d).rgb;}
+void main(){o=vec4((s(vec2(-2,0))+s(vec2(2,0))+s(vec2(0,-2))+s(vec2(0,2))+2.*(s(vec2(-1,-1))+s(vec2(1,-1))+s(vec2(-1,1))+s(vec2(1,1))))/12.,1.);}`);
+const coP = prog(FS_VS, V + `in vec2 vU;uniform sampler2D T,G;uniform float uB;out vec4 o;
+void main(){vec3 c=texture(T,vU).rgb+texture(G,vU).rgb*uB;o=vec4(c,1.);}`);
+
+// floating text (real txids and block hashes) drawn from a texture of text rows
+const txP = prog(V + `layout(location=0) in vec2 aQ;layout(location=1) in vec4 iP;layout(location=2) in vec4 iU;layout(location=3) in vec2 iX;
+uniform mat4 uVP;uniform vec3 uRt,uUp;out vec2 vT;out float vA;
+void main(){vec3 p=iP.xyz+uRt*aQ.x*iP.w+uUp*aQ.y*iX.x;vT=vec2(mix(iU.x,iU.z,aQ.x+.5),mix(iU.w,iU.y,aQ.y+.5));vA=iX.y;gl_Position=uVP*vec4(p,1.);}`,
+  V + `in vec2 vT;in float vA;uniform sampler2D T;out vec4 o;void main(){vec4 c=texture(T,vT);float a=c.a*vA;o=vec4(c.rgb*a,a*.6);}`);
+
+// unit cube with normals
+const cube = [];
+[[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].forEach(nn => {
+  const ax = nn.findIndex(v => v !== 0), u = (ax + 1) % 3, v = (ax + 2) % 3, s = nn[ax];
+  const q = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
+  (s > 0 ? q : q.slice().reverse()).forEach(([a, b]) => {
+    const p = [0, 0, 0]; p[ax] = s * .5; p[u] = a * .5; p[v] = b * .5; cube.push(...p, ...nn);
+  });
+});
+const cubeVB = gl.createBuffer(), parVAO = gl.createVertexArray(); gl.bindVertexArray(parVAO);
+gl.bindBuffer(gl.ARRAY_BUFFER, cubeVB); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cube), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+const instBuf = gl.createBuffer(), ghBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+const NF = 19, IST = NF * 4;   // floats per box: centre, size, colour, start time, from, motion, glow, art (atlas x, y, size, on)
+[[2, 3, 0], [3, 3, 12], [4, 4, 24], [5, 4, 40], [6, 1, 56], [7, 4, 60]].forEach(([loc, sz, off]) => {
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, sz, gl.FLOAT, false, IST, off); gl.vertexAttribDivisor(loc, 1);
+});
+gl.bindVertexArray(null);
+const ghVAO = gl.createVertexArray(); gl.bindVertexArray(ghVAO);
+gl.bindBuffer(gl.ARRAY_BUFFER, cubeVB);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+gl.bindBuffer(gl.ARRAY_BUFFER, ghBuf);
+[[2, 3, 0], [3, 3, 12], [4, 4, 24], [5, 4, 40], [6, 1, 56], [7, 4, 60]].forEach(([loc, sz, off]) => {
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, sz, gl.FLOAT, false, IST, off); gl.vertexAttribDivisor(loc, 1);
+});
+gl.bindVertexArray(null);
+// glass cube edges
+const lnVAO = gl.createVertexArray(); gl.bindVertexArray(lnVAO);
+const E = [], h2 = S / 2;
+const cr = i => [(i & 1 ? 1 : -1) * h2, (i & 2 ? S : 0), (i & 4 ? 1 : -1) * h2];
+for (let i = 0; i < 8; i++) for (const b of [1, 2, 4]) if (!(i & b)) E.push(...cr(i), ...cr(i | b));
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(E), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+// floor
+const flVAO = gl.createVertexArray(); gl.bindVertexArray(flVAO);
+const F = S * 2;
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-F, 0, -F, F, 0, F, F, 0, -F, -F, 0, -F, -F, 0, F, F, 0, F]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+gl.bindVertexArray(null);
+
+// text sprites: a 2048 x 2048 texture holding 128 rows of text (two columns of 1024 x 32)
+const AT = document.createElement('canvas'); AT.width = AT.height = 2048;
+const actx = AT.getContext('2d', {willReadFrequently: true});
+const atTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, atTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2048, 2048, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+const txVAO = gl.createVertexArray(); gl.bindVertexArray(txVAO);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-.5, -.5, .5, -.5, .5, .5, -.5, -.5, .5, .5, -.5, .5]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+const txBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, txBuf);
+[[1, 4, 0], [2, 4, 16], [3, 2, 32]].forEach(([loc, sz, off]) => { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, sz, gl.FLOAT, false, 40, off); gl.vertexAttribDivisor(loc, 1); });
+gl.bindVertexArray(null);
+
+// render targets: scene (multisampled) + glow chain
+let RT = null;
+function tex(w, h) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+function fbo(t) { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return f; }
+function targets(W, H) {
+  if (RT) {
+    gl.deleteFramebuffer(RT.ms); gl.deleteRenderbuffer(RT.mc); gl.deleteRenderbuffer(RT.md); gl.deleteFramebuffer(RT.sf); gl.deleteTexture(RT.st);
+    RT.lv.forEach(l => { gl.deleteFramebuffer(l.f); gl.deleteTexture(l.t); });
+  }
+  const ns = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0);
+  const ms = gl.createFramebuffer(), mc = gl.createRenderbuffer(), md = gl.createRenderbuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, mc); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ns, gl.RGBA8, W, H);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, md); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ns, gl.DEPTH_COMPONENT24, W, H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, ms);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, mc);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, md);
+  const st = tex(W, H), sf = fbo(st), lv = [];
+  for (let i = 1; i <= 5; i++) { const w = Math.max(1, W >> i), h = Math.max(1, H >> i), t = tex(w, h); lv.push({t, f: fbo(t), w, h}); }
+  RT = {W, H, ms, mc, md, st, sf, lv};
+}
+function pass(p, f, w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.viewport(0, 0, w, h); gl.useProgram(p.p); }
+
+/* ---------- matrices ---------- */
+function persp(fy, as, n, f) { const t = 1 / Math.tan(fy / 2); return [t / as, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]; }
+function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+function crs(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+function nrm(a) { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+function look(e, c) {
+  const z = nrm(sub(e, c)), x = nrm(crs([0, 1, 0], z)), y = crs(z, x);
+  return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, e), -dot(y, e), -dot(z, e), 1];
+}
+function mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; }
+  return o;
+}
+
+/* ---------- camera ---------- */
+const cam = {yaw: 0.7, pitch: 0.42, dist: S * 3.6, ty: S * 0.48, fov: 0.62, uz: 1};
+let lastUser = -1e9, fitD = 1, shX = 0, shY = 0;
+const ptrs = new Map(); let pinch0 = 0, dist0 = 0, tap = null;
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  tap = ptrs.size === 1 ? [e.clientX, e.clientY, performance.now()] : null;
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a[0] - b[0], a[1] - b[1]); dist0 = cam.uz; } });
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  const p = ptrs.get(e.pointerId), dx = e.clientX - p[0], dy = e.clientY - p[1];
+  ptrs.set(e.pointerId, [e.clientX, e.clientY]); lastUser = performance.now();
+  if (ptrs.size === 1) { cam.yaw -= dx * 0.006; cam.pitch = Math.max(-0.2, Math.min(1.35, cam.pitch + dy * 0.005)); }
+  else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch0) cam.uz = clampD(dist0 * pinch0 / d); }
+});
+const up = e => {
+  if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap[0], e.clientY - tap[1]) < 7 && performance.now() - tap[2] < 500) pick(e.clientX, e.clientY);
+  tap = null; ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0;
+};
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', e => { e.preventDefault(); cam.uz = clampD(cam.uz * Math.exp(e.deltaY * 0.001)); lastUser = performance.now(); }, {passive: false});
+function clampD(z) { return Math.max(0.35, Math.min(2, z)); }
+
+/* ---------- lens: FEES (fee rate colours) or ORDINALS (what each transaction carries) ---------- */
+let lens = 'fees';
+const lin = c => c.map(x => Math.pow(x, 2.2)), DIM_COL = lin([0.12, 0.16, 0.24]);
+// ordpool.space's tags: the bit numbers in its "flags" (from its open-source parser; they matched our own
+// reading of a raw block exactly). If a transaction has more than one tag, the first in this list wins its colour.
+// one flag per thing a transaction can be (a transaction can be several at once)
+const TF = {insc: 0, img: 1, txt: 2, html: 3, json: 4, media: 5, model: 6, other: 7, cursed: 8, child: 9, brc20: 10, tap: 11, dmt: 12, bitmap: 13,
+  atom: 14, rune: 15, etch: 16, rmint: 17, rmove: 18, alkanes: 19, cp: 20, stamps: 21, msg: 22, taproot: 23, segwit: 24, legacy: 25,
+  consol: 26, batch: 27, msig: 28, cb: 29};
+// ordinal kinds, in priority order for the colour in ORDINALS view (a transaction takes the first kind it has);
+// bit = ordpool.space's tag, sf = what the raw block scan found
+const KINDS = [
+  {name: 'BRC-20', bit: 52n, sf: TF.brc20, col: 0x4aa8ff}, {name: 'TAP', sf: TF.tap, col: 0x36f1ff},
+  {name: 'SRC-20', bit: 53n, col: 0x2fe0c0}, {name: 'Stamps', sf: TF.stamps, col: 0xd9d9d9}, {name: 'Counterparty', sf: TF.cp, col: 0xb08cff},
+  {name: 'CAT-21', bit: 49n, col: 0xff6fb1}, {name: 'Atomicals', bit: 48n, sf: TF.atom, col: 0x9be15d}, {name: 'Labitbu', bit: 54n, col: 0xffe066},
+  {name: 'Alkanes', sf: TF.alkanes, col: 0xff7a45}, {name: 'bitmaps', sf: TF.bitmap, col: 0xff3b5c},
+  {name: 'runes', bit: 51n, sf: TF.rune, col: 0xc86bff}, {name: 'inscriptions', bit: 50n, sf: TF.insc, col: 0xffa53a}];
+KINDS.forEach(k => { k.lin = lin(hexc(k.col)); k.css = '#' + k.col.toString(16).padStart(6, '0'); });
+const INSC = KINDS.length - 1;
+// which kinds a transaction has, as a bit mask (worked out again whenever its tags change)
+function kmask(t) {
+  if (t._k != null && t._ko === t.op && t._ks === t.sc && t._ki === t.insc) return t._k;
+  let m = 0;
+  for (let i = 0; i < KINDS.length; i++) {
+    const k = KINDS[i];
+    if ((k.bit != null && t.op != null && (t.op >> k.bit) & 1n) || (k.sf != null && t.sc != null && (t.sc >> k.sf) & 1)) m |= 1 << i;
+  }
+  if (!m && t.insc && t.op == null && t.sc == null) m = 1 << INSC;
+  t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._t = null;
+  return t._k = m;
+}
+const isInsc = t => ((kmask(t) >> INSC) & 1) === 1;
+const ORDPOOL = 'https://ordpool.space';   // ordinals-focused copy of mempool.space that tags every transaction
+// a mined block uses ordpool.space's tags once loaded; the live block only has mempool.space's inscription tag
+function kindOf(t) { const m = kmask(t); for (let i = 0; i < KINDS.length; i++) if ((m >> i) & 1) return i; return -1; }
+function kindsOf(t) { const m = kmask(t); return KINDS.filter((k, i) => (m >> i) & 1).map(k => k.name); }
+// the parcel-type row: three tabs of chips, each chip lights up the parcels that have it
+const tfl = f => t => t.sc != null && ((t.sc >> f) & 1) === 1, kdi = n => { const i = KINDS.findIndex(k => k.name === n); return t => ((kmask(t) >> i) & 1) === 1; };
+const kcss = n => KINDS.find(k => k.name === n).css, REG_CSS = '#7d8cab';
+const TYPES = [
+  {g: 0, name: 'inscriptions', css: kcss('inscriptions'), test: kdi('inscriptions')}, {g: 0, name: 'images', css: '#ff9f1c', test: tfl(TF.img)},
+  {g: 0, name: 'text', css: '#e9dcc8', test: tfl(TF.txt)}, {g: 0, name: 'HTML', css: '#3a86ff', test: tfl(TF.html)},
+  {g: 0, name: 'JSON', css: '#8ecae6', test: tfl(TF.json)}, {g: 0, name: 'audio / video', css: '#ff4d9d', test: tfl(TF.media)},
+  {g: 0, name: '3D models', css: '#80ffdb', test: tfl(TF.model)}, {g: 0, name: 'other files', css: '#adb5bd', test: tfl(TF.other)},
+  {g: 0, name: 'children', css: '#ffd166', test: tfl(TF.child)}, {g: 0, name: 'cursed', css: '#9d4edd', test: tfl(TF.cursed)},
+  {g: 0, name: 'bitmaps', css: kcss('bitmaps'), test: kdi('bitmaps')},
+  {g: 1, name: 'BRC-20', css: kcss('BRC-20'), test: kdi('BRC-20')}, {g: 1, name: 'TAP', css: kcss('TAP'), test: kdi('TAP')},
+  {g: 1, name: 'DMT mints', css: '#00ffa3', test: tfl(TF.dmt)}, {g: 1, name: 'runes', css: kcss('runes'), test: kdi('runes')},
+  {g: 1, name: 'runes etched', css: '#e0aaff', test: tfl(TF.etch)}, {g: 1, name: 'runes minted', css: '#b56bff', test: tfl(TF.rmint)},
+  {g: 1, name: 'runes moved', css: '#8a4fd8', test: tfl(TF.rmove)}, {g: 1, name: 'Alkanes', css: kcss('Alkanes'), test: kdi('Alkanes')},
+  {g: 1, name: 'Atomicals', css: kcss('Atomicals'), test: kdi('Atomicals')}, {g: 1, name: 'SRC-20', css: kcss('SRC-20'), test: kdi('SRC-20')},
+  {g: 1, name: 'Stamps', css: kcss('Stamps'), test: kdi('Stamps')}, {g: 1, name: 'Counterparty', css: kcss('Counterparty'), test: kdi('Counterparty')},
+  {g: 1, name: 'CAT-21', css: kcss('CAT-21'), test: kdi('CAT-21')}, {g: 1, name: 'Labitbu', css: kcss('Labitbu'), test: kdi('Labitbu')},
+  {g: 2, name: 'taproot', css: '#a78bfa', test: tfl(TF.taproot)}, {g: 2, name: 'segwit', css: '#4cc9f0', test: tfl(TF.segwit)},
+  {g: 2, name: 'legacy', css: '#9aa5b1', test: tfl(TF.legacy)}, {g: 2, name: 'consolidations', css: '#ffd166', test: tfl(TF.consol)},
+  {g: 2, name: 'batch payouts', css: '#06d6a0', test: tfl(TF.batch)}, {g: 2, name: 'multisig', css: '#ef476f', test: tfl(TF.msig)},
+  {g: 2, name: 'messages', css: '#f7efe3', test: tfl(TF.msg)}, {g: 2, name: 'coinbase', css: '#f7931a', test: tfl(TF.cb)},
+  {g: 2, name: 'regular', css: REG_CSS, test: t => !kmask(t), glow: false}];
+const REG = TYPES.length - 1;
+// which chips a transaction lights up, as two 30-bit masks (cached with its kinds)
+function tmask(t) {
+  kmask(t);
+  if (t._t) return t._t;
+  let lo = 0, hi = 0;
+  for (let i = 0; i < TYPES.length; i++) if (TYPES[i].test(t)) { if (i < 30) lo |= 1 << i; else hi |= 1 << (i - 30); }
+  return t._t = [lo, hi];
+}
+const hasType = (t, i) => { const m = tmask(t); return ((i < 30 ? m[0] >> i : m[1] >> (i - 30)) & 1) === 1; };
+const LID_COL = lin([1, 0.62, 0.16]), LID_HV = lin([0.69, 0.3, 1]);
+function colOf(t) {
+  if (t.lid) return t.hv ? LID_HV : LID_COL;
+  if (lens === 'ord') { const k = kindOf(t); return k < 0 ? DIM_COL : KINDS[k].lin; }
+  return t.cf || (t.cf = lin(feeCol(t)));
+}
+async function loadTags(B) {
+  if (!B || B.tags || !B.hash || !B.fees) return;
+  B.tags = {loading: true}; head();
+  try {
+    const s = await (await fetchT(ORDPOOL + '/api/v1/block/' + B.hash + '/summary', null, 60000)).json(), m = new Map();
+    for (const x of s) m.set(x.txid, x.flags);
+    let hit = 0;
+    for (const t of B.txs) { const f = m.get(t.id); if (f != null) { try { t.op = BigInt(f); hit++; } catch (e) {} } }
+    B.tags = hit === B.txs.length ? {ok: true} : {failed: true};
+    if (!B.tags.ok) for (const t of B.txs) delete t.op;
+  } catch (e) { B.tags = {failed: true}; }
+  if (cur === B) { rebuild(); head(); if (sel) select(sel); }
+}
+// every inscription made in a block, read from an ord explorer's block pages (100 per page) - used for inscription IDs
+async function ordInscriptions(h) {
+  let err = new Error('no ord explorer');
+  for (const base of ORD_EXPLORERS) {
+    try {
+      const ids = new Set();
+      for (let page = 0; page < 400; page++) {
+        const html = await (await fetchT(base + '/inscriptions/block/' + h + (page ? '/' + page : ''), null, 20000)).text();
+        for (const m of html.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)) ids.add(m[1]);
+        if (!html.includes('/inscriptions/block/' + h + '/' + (page + 1))) break;
+      }
+      return {ids: [...ids], base};
+    } catch (e) { err = e; }
+  }
+  throw err;
+}
+async function loadOrd(B) {
+  if (!B || B.ord) return;
+  B.ord = {loading: true}; head();
+  try {
+    const got = await ordInscriptions(B.height), ids = got.ids, byTx = new Map(); B.ordBase = got.base;
+    for (const id of ids) { const tx = id.slice(0, 64); if (!byTx.has(tx)) byTx.set(tx, []); byTx.get(tx).push(id); }
+    for (const t of B.txs) t.ordIds = t.id ? byTx.get(t.id) || null : null;
+    B.ord = {ids: ids.length, txs: byTx.size};
+  } catch (e) { B.ord = {failed: true}; }
+  if (cur === B) { rebuild(); head(); if (sel) select(sel); }
+}
+
+/* ---------- the whole block, read byte by byte from /r/block (or mempool.space's raw block) ---------- */
+const U8D = new TextDecoder('utf-8'), L1D = new TextDecoder('latin1');
+const catB = list => { let n = 0; for (const a of list) n += a.length; const o = new Uint8Array(n); let k = 0; for (const a of list) { o.set(a, k); k += a.length; } return o; };
+// a script as a list of [opcode, pushed bytes or null]
+function pushes(s, a, b) {
+  const o = []; let i = a;
+  while (i < b) {
+    const op = s[i++]; let n = op === 0 ? 0 : -1;
+    if (op >= 1 && op <= 75) n = op; else if (op === 76) n = s[i++]; else if (op === 77) { n = s[i] | s[i + 1] << 8; i += 2; }
+    else if (op === 78) { n = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+    if (n < 0) { o.push([op, null]); continue; }
+    if (i + n > b) break;
+    o.push([op, s.subarray(i, i + n)]); i += n;
+  }
+  return o;
+}
+// runestones: OP_RETURN OP_13, then LEB128 numbers in tag/value pairs; tag 0 starts the edicts (rune moves)
+function runestone(s) {
+  const pay = catB(pushes(s, 2, s.length).filter(x => x[1]).map(x => x[1])), ints = [];
+  for (let i = 0; i < pay.length;) { let v = 0n, sh = 0n, c; do { c = pay[i++]; v |= BigInt(c & 127) << sh; sh += 7n; } while (c & 128 && i < pay.length); ints.push(v); }
+  const F = {}; let moves = false;
+  for (let k = 0; k < ints.length; k += 2) { const t = Number(ints[k]); if (t === 0) { moves = ints.length - k - 1 >= 4; break; } if (k + 1 < ints.length) (F[t] = F[t] || []).push(ints[k + 1]); }
+  return {F, moves};
+}
+function runeName(n, sp) {
+  n += 1n; let s = '';
+  while (n > 0n) { s = String.fromCharCode(65 + Number((n - 1n) % 26n)) + s; n = (n - 1n) / 26n; }
+  if (!sp) return s;
+  let o = ''; for (let i = 0; i < s.length; i++) { o += s[i]; if (i < s.length - 1 && (sp >> BigInt(i)) & 1n) o += '•'; }
+  return o;
+}
+// Counterparty and Stamps scramble their data with RC4, keyed on the id of the transaction's first input
+function rc4(key, d) {
+  const S = new Uint8Array(256).map((_, i) => i);
+  for (let i = 0, j = 0; i < 256; i++) { j = (j + S[i] + key[i % key.length]) & 255; [S[i], S[j]] = [S[j], S[i]]; }
+  const o = new Uint8Array(d.length);
+  for (let k = 0, i = 0, j = 0; k < d.length; k++) { i = (i + 1) & 255; j = (j + S[i]) & 255; [S[i], S[j]] = [S[j], S[i]]; o[k] = d[k] ^ S[(S[i] + S[j]) & 255]; }
+  return o;
+}
+function cpKind(key, chunks) {
+  const t = L1D.decode(rc4(key, catB(chunks))) + (chunks.length > 1 ? '\n' + L1D.decode(catB(chunks.map(c => rc4(key, c)))) : '');
+  return /stamp:/i.test(t) ? TF.stamps : t.includes('CNTRPRTY') ? TF.cp : -1;
+}
+// readable words: mostly printable characters
+function words(u) {
+  if (u.length < 3) return null;
+  let ok = 0; for (const c of u) if ((c >= 32 && c < 127) || c >= 128 || c === 10) ok++;
+  if (ok / u.length < 0.92) return null;
+  const t = U8D.decode(u).replace(/[\u0000-\u001f\u007f\ufffd]+/g, ' ').trim();
+  return /[a-z]{2}/i.test(t) ? t.slice(0, 120) : null;
+}
+// the miner's words in the coinbase: the readable stretches of its input script
+function coinbaseWords(u) {
+  const runs = L1D.decode(u).match(/[\x20-\x7e]{4,}/g) || [];
+  return runs.map(r => r.trim()).filter(r => /[a-z]{2}/i.test(r)).join(' · ').slice(0, 90);
+}
+const POOLS = [[/foundry/i, 'Foundry USA'], [/antpool/i, 'AntPool'], [/viabtc/i, 'ViaBTC'], [/f2pool/i, 'F2Pool'], [/\bmara\b/i, 'MARA Pool'],
+  [/spiderpool/i, 'SpiderPool'], [/binance/i, 'Binance Pool'], [/luxor/i, 'Luxor'], [/braiins|slush/i, 'Braiins Pool'], [/secpool/i, 'SECPOOL'],
+  [/ocean/i, 'OCEAN'], [/poolin/i, 'Poolin'], [/sbi ?crypto/i, 'SBI Crypto'], [/\bemcd\b/i, 'EMCD'], [/ultimus/i, 'ULTIMUSPOOL'],
+  [/whitepool/i, 'WhitePool'], [/btc\.com/i, 'BTC.com'], [/nicehash/i, 'NiceHash'], [/titan/i, 'Titan'], [/kucoin/i, 'KuCoin Pool'],
+  [/miningsquared|bsquared/i, 'Mining Squared'], [/ckpool|solo\.ck/i, 'solo miner'], [/datum/i, 'DATUM']];
+// the whole block as bytes: mempool.space's raw block, else an ord explorer's /r/block (hex)
+async function blockBytes(B) {
+  if (SOURCES[0].on && B.hash) {
+    try { return new Uint8Array(await (await fetchT(MP + '/api/block/' + B.hash + '/raw', null, 60000)).arrayBuffer()); } catch (e) {}
+  }
+  for (const base of ORD_EXPLORERS) {
+    try {
+      let t = (await (await fetchT(base + '/r/block/' + B.height, null, 90000)).text()).trim();
+      if (t[0] === '"') t = t.slice(1, -1);
+      if (!/^[0-9a-f]{160}/i.test(t)) continue;
+      const u = new Uint8Array(t.length >> 1); for (let i = 0; i < u.length; i++) u[i] = parseInt(t.substr(i * 2, 2), 16);
+      return u;
+    } catch (e) {}
+  }
+  throw new Error('no raw block');
+}
+// walk every transaction once
+function scanBytes(X, h) {
+  let p = 80;
+  const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
+  const ntx = vi(), out = new Array(ntx); let cb = null, artN = 0;
+  for (let t = 0; t < ntx && p < X.length; t++) {
+    const r = {sc: 0, msg: null, ins: [], rn: null, tick: null, art: null, a: p}, set = f => { r.sc |= 1 << f; };
+    p += 4; let sw = 0; if (X[p] === 0 && X[p + 1] === 1) { sw = 1; p += 2; }
+    r.s = p;
+    const nin = vi(), key = X.slice(p, p + 32).reverse(), isc = [];
+    for (let i = 0; i < nin; i++) { p += 36; const l = vi(); isc.push([p, p + l]); p += l + 4; }
+    const nout = vi(); let ms = null, pay = 0;
+    for (let i = 0; i < nout; i++) {
+      p += 8; const l = vi(), q = p; p += l;
+      if (!t) continue;
+      if (X[q] === 0x6a) {
+        if (X[q + 1] === 0x5d) {
+          const {F, moves} = runestone(X.subarray(q, p)); set(TF.rune);
+          if (F[2] && F[2][0] & 1n) { set(TF.etch); if (F[4]) r.rn = runeName(F[4][0], F[3] && F[3][0]); }
+          if (F[20]) set(TF.rmint);
+          if (moves) set(TF.rmove);
+          if (F[16383]) set(TF.alkanes);
+        } else if (l > 1) {
+          const d = catB(pushes(X, q + 1, p).filter(x => x[1]).map(x => x[1])), k = d.length > 8 ? cpKind(key, [d]) : -1;
+          if (k >= 0) set(k); else { const w = words(d); if (w) { set(TF.msg); r.msg = w; } }
+        }
+      } else {
+        pay++;
+        if (l >= 105 && X[p - 1] === 0xae && X[q] >= 0x51 && X[q] <= 0x53) {
+          const P = pushes(X, q + 1, p - 2); for (const x of P) if (x[1] && x[1].length === 33) (ms = ms || []).push(x[1].subarray(1, 32));
+        }
+      }
+    }
+    if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
+    r.e = p;
+    let tap = false, ei = 0;
+    for (let i = 0; i < nin; i++) {
+      const w = [];
+      if (sw) { const ni = vi(); for (let k = 0; k < ni; k++) { const l = vi(); w.push([p, p + l]); p += l; } }
+      if (!t) continue;
+      if (!w.length) {   // legacy input: a P2SH multisig ends its redeem script with OP_CHECKMULTISIG
+        const P = pushes(X, isc[i][0], isc[i][1]), last = P.length && P[P.length - 1][1];
+        if (last && last.length > 3 && last[last.length - 1] === 0xae && last[0] >= 0x51 && last[0] <= 0x60) set(TF.msig);
+        continue;
+      }
+      if (w.length >= 2 && X[w[w.length - 1][0]] === 0x50) w.pop();   // annex
+      const lw = w[w.length - 1], ll = lw[1] - lw[0];
+      if (w.length === 1 && (ll === 64 || ll === 65)) { tap = true; continue; }   // taproot key spend
+      if (w.length >= 2 && ll >= 33 && (ll - 33) % 32 === 0 && (X[lw[0]] & 0xfe) === 0xc0) {   // taproot script spend: look for envelopes
+        tap = true;
+        const [sa, sb] = w[w.length - 2], P = pushes(X, sa, sb);
+        if (X[lw[0] - 1] === 0xae) set(TF.msig);
+        for (let k = 0; k + 2 < P.length; k++) {
+          if (P[k][0] !== 0 || P[k + 1][0] !== 0x63 || !P[k + 2][1]) continue;
+          const tag = L1D.decode(P[k + 2][1]);
+          if (tag === 'atom') { set(TF.atom); continue; }
+          if (tag !== 'ord') continue;
+          let j = k + 3, ct = '', enc = false, par = false, del = false, pn = false; const body = [];
+          while (j < P.length && P[j][0] !== 0x68) {
+            const [op, d] = P[j];
+            if (op === 0) { for (j++; j < P.length && P[j][0] !== 0x68; j++) if (P[j][1]) body.push(P[j][1]); break; }
+            const tg = d && d.length === 1 ? d[0] : op >= 0x51 && op <= 0x60 ? (pn = true, op - 0x50) : -1, v = P[j + 1] && P[j + 1][1];
+            if (tg === 1 && v) ct = U8D.decode(v).slice(0, 80); else if (tg === 3) par = true; else if (tg === 9) enc = true; else if (tg === 11) del = true;
+            j += 2;
+          }
+          k = j;
+          set(TF.insc); if (par) set(TF.child);
+          if (h < 824544 && (i > 0 || ei > 0 || pn)) set(TF.cursed);
+          const ty = (ct.split(';')[0] || '').trim().toLowerCase();
+          set(/^image\//.test(ty) ? TF.img : /html/.test(ty) ? TF.html : /json/.test(ty) ? TF.json : /^text\//.test(ty) ? TF.txt : /^(audio|video)\//.test(ty) ? TF.media : /^model\//.test(ty) ? TF.model : TF.other);
+          r.ins.push({i: ei++, ct: ty || 'unknown', par, del});
+          const bl = body.reduce((n, x) => n + x.length, 0);
+          if (!enc && bl && bl <= 1000) {
+            const txt = U8D.decode(catB(body)).trim();
+            if (/^\d{1,7}\.bitmap$/.test(txt)) set(TF.bitmap);
+            else if (txt[0] === '{') try {
+              const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase();
+              if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); }
+              else if (pr === 'tap') { set(TF.tap); r.tick = String(o.tick || '').slice(0, 16); if (/^dmt-/i.test(String(o.op || ''))) set(TF.dmt); }
+            } catch (e) {}
+          }
+          if (/^image\//.test(ty) && !enc && !del && bl > 0 && bl <= 400000 && !r.art && artN < 256) { r.art = {ct, bytes: catB(body)}; artN++; }
+        }
+        continue;
+      }
+      if (ll > 3 && X[lw[1] - 1] === 0xae && X[lw[0]] >= 0x51 && X[lw[0]] <= 0x60) set(TF.msig);   // P2WSH multisig
+    }
+    p += 4; r.z = p;
+    if (!t) { set(TF.cb); cb = isc[0] ? coinbaseWords(X.subarray(isc[0][0], isc[0][1])) : ''; }
+    else {
+      set(tap ? TF.taproot : sw ? TF.segwit : TF.legacy);
+      if (nin >= 3 && nout === 1) set(TF.consol);
+      if (pay >= 10) set(TF.batch);
+    }
+    out[t] = r;
+  }
+  return {txs: out, cb};
+}
+// a transaction's id: double SHA-256 of it without its witness data
+async function rawTxid(X, r) {
+  const u = catB([X.subarray(r.a, r.a + 4), X.subarray(r.s, r.e), X.subarray(r.z - 4, r.z)]);
+  const d = await crypto.subtle.digest('SHA-256', await crypto.subtle.digest('SHA-256', u));
+  return Array.from(new Uint8Array(d).reverse(), b => b.toString(16).padStart(2, '0')).join('');
+}
+async function scanBlock(B) {
+  if (!B || B.scan) return;
+  B.scan = {loading: true}; head();
+  try {
+    const X = await blockBytes(B), S = scanBytes(X, B.height);
+    if (S.txs.length !== B.txs.length) throw new Error('count');
+    // make sure both lists are in the same order before joining them up (checks one transaction's id)
+    const k = Math.min(1, S.txs.length - 1);
+    if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
+    B.txs.forEach((t, i) => {
+      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t._k = null;
+      if (r.art) t.art = r.art;
+      if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
+    });
+    const pl = POOLS.find(([re]) => re.test(S.cb || ''));
+    B.cb = {words: S.cb || '', pool: pl ? pl[1] : null};
+    B.scan = {ok: true};
+  } catch (e) { B.scan = {failed: true}; }
+  if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
+}
+/* ---------- art: image inscriptions decoded straight from the block's bytes, painted onto their parcels ---------- */
+// a 2048 x 2048 atlas of 256 pictures (128 px each), one per image inscription in the block on screen
+let artGen = 0;
+const artTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, artTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2048, 2048, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+const artCv = document.createElement('canvas'); artCv.width = artCv.height = 128;
+const artCx = artCv.getContext('2d');
+// raster images decode off the main thread; SVG goes through an <img>
+async function decodeArt(a) {
+  const blob = new Blob([a.bytes], {type: a.ct});
+  if (!/svg/.test(a.ct) && window.createImageBitmap) return createImageBitmap(blob);
+  const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
+  try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
+}
+async function loadArt(B) {
+  const my = ++artGen, list = B.txs.filter(t => t.art).slice(0, 256);
+  for (let k = 0; k < list.length; k += 8) {
+    if (my !== artGen || cur !== B) return;
+    const got = await Promise.allSettled(list.slice(k, k + 8).map(t => decodeArt(t.art)));
+    if (my !== artGen || cur !== B) return;
+    got.forEach((g, j) => {
+      if (g.status !== 'fulfilled') return;
+      const img = g.value, slot = k + j, t = list[slot];
+      const w = img.naturalWidth || img.width || 128, h = img.naturalHeight || img.height || 128, sc = Math.min(128 / w, 128 / h), dw = w * sc, dh = h * sc;
+      artCx.fillStyle = '#0b0805'; artCx.fillRect(0, 0, 128, 128);
+      artCx.imageSmoothingEnabled = sc < 1;   // tiny pixel art stays crisp when it is made bigger
+      artCx.drawImage(img, (128 - dw) / 2, (128 - dh) / 2, dw, dh);
+      if (img.close) img.close();
+      gl.bindTexture(gl.TEXTURE_2D, artTex);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, (slot % 16) * 128, (slot >> 4) * 128, gl.RGBA, gl.UNSIGNED_BYTE, artCv);
+      t.artS = slot; t.artG = my;
+    });
+    rebuild();
+  }
+  if (my === artGen) rebuild();
+}
+const $ln = document.getElementById('ln');
+let xrAuto = true;
+function setLens(l) {
+  if (l === 'ord' && xrAuto) { xrAuto = false; xray = true; $xr.classList.add('on'); }
+  lens = l; $ln.textContent = l === 'ord' ? 'ORDINALS' : 'FEES'; $ln.classList.toggle('ord', l === 'ord'); $fs.classList.toggle('off', l === 'ord');
+  if (l === 'ord' && mode === 'block') { loadTags(cur); loadOrd(cur); }
+  rebuild(); head(); if (sel) select(sel);
+}
+$ln.onclick = () => setLens(lens === 'ord' ? 'fees' : 'ord');
+const $xr = document.getElementById('xr');
+$xr.onclick = () => { xray = !xray; xrAuto = false; $xr.classList.toggle('on', xray); pinK = hovK = null; setHK(); rebuild(); };   // the eye also lets go of a kept parcel type, so it always shows a change
+
+/* ---------- what is on screen ---------- */
+const T0 = performance.now() / 1000, now = () => performance.now() / 1000 - T0;
+let shown = [], leaving = [], inst = [], nInst = 0, sel = null;
+function anim(t, mode, t0, from) { t.m = mode; t.t0 = t0; t.f = from || null; }
+// X-RAY: in ORDINALS view ordinary transactions turn to glass so the tagged ones show from inside the cube;
+// in FEES view every box turns to glass so the fee layers show all the way through
+let xray = false, ghosts = [], nGh = 0, hk = null;   // hk: the parcel type being hovered (or pinned) in the row bottom left
+// a hovered parcel type wins: those parcels stay solid and every other one turns to glass
+const ghostOf = t => !t.lid && t.m !== 2 && t.m !== 4 && (foc ? t !== foc : hk != null ? !hasType(t, hk) : xray && (lens === 'ord' ? kindOf(t) < 0 : true));
+function fill(list) {
+  const n = list.length, d = new Float32Array(n * NF);
+  for (let i = 0; i < n; i++) {
+    const t = list[i], c = centerOf(t), o = i * NF;
+    const sx = t.a / R * S, sy = t.h / R * S, sz = t.c / R * S, g = Math.min(Math.min(sx, sy, sz) * 0.18, S * 0.0045);
+    const k = colOf(t);
+    d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2];
+    d[o + 3] = Math.max(sx - g, 1e-3); d[o + 4] = Math.max(sy - g, 1e-3); d[o + 5] = Math.max(sz - g, 1e-3);
+    d[o + 6] = k[0]; d[o + 7] = k[1]; d[o + 8] = k[2]; d[o + 9] = t.t0 || 0;
+    const f = t.f || c; d[o + 10] = f[0]; d[o + 11] = f[1]; d[o + 12] = f[2]; d[o + 13] = t.m || 0;
+    if (t.art && t.artG === artGen && t.artS != null) { d[o + 15] = (t.artS % 16) / 16; d[o + 16] = (t.artS >> 4) / 16; d[o + 17] = 1 / 16; d[o + 18] = 1; }
+    d[o + 14] = t.lid || t === foc ? 1 : lens === 'ord' && (hk != null ? TYPES[hk].glow !== false && hasType(t, hk) : kindOf(t) >= 0) ? 1 : 0;   // glow only in ORDINALS view, so fee colours stay true
+  }
+  return d;
+}
+function rebuild() {
+  const tn = now();
+  leaving = leaving.filter(t => t.seal || tn - t.t0 < 0.6);
+  const all = shown.concat(leaving), solid = [], gh = [];
+  for (const t of all) (ghostOf(t) ? gh : solid).push(t);
+  gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.bufferData(gl.ARRAY_BUFFER, fill(solid), gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ghBuf); gl.bufferData(gl.ARRAY_BUFFER, fill(gh), gl.DYNAMIC_DRAW);
+  inst = solid; nInst = solid.length; ghosts = gh; nGh = gh.length;
+  if (leaving.length && !purge) purge = setTimeout(() => { purge = 0; rebuild(); }, 650);
+}
+let purge = 0;
+// swap what is on screen: old boxes leave, new ones drop in from the bottom layer up
+function showSet(txs) {
+  const tn = now(), n = txs.length, spread = Math.min(flipping ? 1.6 : 6, 1.2 + n * 0.0008), keep = new Set(txs);
+  for (const t of shown) if (!keep.has(t)) { anim(t, 2, tn); leaving.push(t); }
+  txs.slice().sort((u, v) => u.y - v.y || u.z - v.z || u.x - v.x).forEach((t, k) => anim(t, 3, tn + 0.15 + (n > 1 ? k / (n - 1) : 0) * spread));
+  shown = txs; select(null); rebuild();
+}
+
+/* ---------- live: the next block, straight from mempool.space ---------- */
+let ws = null, wsSeq = -1, wsLive = false, feedDown = false, liveG = null, liveMap = new Map(), liveIdx = 0;   // liveIdx: 0 = next block, 1 = the one after, ...
+const liveTx = a => ({id: a[0], fee: a[1], vsize: a[2], value: a[3] || 0, rate: a[4] || (a[2] ? a[1] / a[2] : 0), insc: tagged(a[5]), seen: a[6] || 0, live: true});
+function wsSend(o) { try { ws.send(JSON.stringify(o)); } catch (e) {} }
+function wsConnect() {
+  try { ws = new WebSocket(LIVE_FEED); } catch (e) { return; }
+  ws.onopen = () => { wsLive = true; feedDown = false; $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
+  ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch (x) { return; } onFeed(d); };
+  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) showBlock(tipH); } if (was) head(); setTimeout(wsConnect, 5000); };
+  ws.onerror = () => {};
+}
+function onFeed(d) {
+  if (d.blocks && d.blocks.length) { setTip(d.blocks[d.blocks.length - 1].height); gotBlocks(d.blocks); }
+  if (d.block) { setTip(d.block.height); gotBlock(d.block); mined(d.block); }
+  if (d['mempool-blocks']) { futBlocks = d['mempool-blocks']; strip(); }
+  if (d.txPosition) gotPosition(d.txPosition);
+  const p = d['projected-block-transactions'];
+  if (!p || p.index !== liveIdx) return;
+  if (p.blockTransactions) { wsSeq = p.sequence; liveFull(p.blockTransactions); }
+  else if (p.delta) {
+    if (wsSeq >= 0 && p.sequence !== wsSeq + 1) { wsSeq = -1; wsSend({'track-mempool-block': liveIdx}); return; }   // missed an update: ask for the full list again
+    wsSeq = p.sequence; liveDelta(p.delta);
+  }
+}
+function liveFull(arr) {
+  const txs = arr.map(liveTx), {g} = layoutAll(txs);
+  liveG = g; liveMap = new Map(txs.map(t => [t.id, t]));
+  if (mode === 'live' && !(now() < sealUntil)) { cur = null; showSet(txs); head(); if (pendFind && liveMap.has(pendFind)) { const f = liveMap.get(pendFind); pendFind = null; focusTx(f); } }
+  feedStart(txs);
+}
+function liveDelta(dl) {
+  if (!liveG) return;
+  const tn = now(), out = [];
+  for (const id of dl.removed || []) {
+    const t = liveMap.get(id); if (!t) continue;
+    liveG.remove(t); liveMap.delete(id); anim(t, 2, tn); out.push(t);
+  }
+  for (const c of dl.changed || []) { const t = liveMap.get(c[0]); if (t) { t.rate = c[1]; if (c[2] != null) t.insc = tagged(c[2]); } }
+  // boxes above the gaps drop down, like mempool.space's gravity
+  for (const [t, oy] of liveG.settle([...liveMap.values()])) { const c = centerOf(t); anim(t, 0, tn, [c[0], c[1] + (oy - t.y) / R * S, c[2]]); }
+  // new ones go in at a height that keeps the fee order: not below anything that pays less
+  for (const t of (dl.added || []).map(liveTx).sort((u, v) => v.rate - u.rate)) {
+    let y0 = Infinity, top = 0;
+    for (const u of liveMap.values()) { if (u.rate < t.rate && u.y < y0) y0 = u.y; if (u.y > top) top = u.y; }
+    liveG.place(t, y0 === Infinity ? top : y0); liveMap.set(t.id, t); anim(t, 1, tn);
+    feedTx(t); if (mode === 'live') tick(t.rate);
+  }
+  // if the pile has grown out of the top, re-sort the whole block by fee and let every box glide to its new place
+  let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h;
+  if (top > R) repack(tn);
+  if (mode === 'live' && !(now() < sealUntil)) {
+    if (sel && !liveMap.has(sel.id)) select(null);
+    leaving.push(...out); shown = [...liveMap.values()]; rebuild(); head();
+  }
+}
+function repack(tn) {
+  const list = [...liveMap.values()], old = new Map(list.map(t => [t, centerOf(t)]));
+  liveG = layoutAll(list).g;
+  for (const t of list) {
+    if (t.m === 1 && tn - t.t0 < 0.9) continue;   // still dropping in: it just lands in its new place
+    const o = old.get(t), c = centerOf(t);
+    if (o[0] !== c[0] || o[1] !== c[1] || o[2] !== c[2]) anim(t, 0, tn, o);
+  }
+}
+let minedMsg = null, sealUntil = -1;
+// a block is found: the lid drops onto the cube we were watching, it lifts away towards the mined blocks along the top,
+// then the new next block fills in from empty
+function seal(tn, hv) {
+  // the crate: a lid that drops on and lights up, plus glowing edges where the cube's frame is
+  const th = Math.max(0.4, R * 0.014), E = R - th, lid = {lid: true, hv, seal: true, x: 0, y: R, z: 0, a: R, h: th, c: R};
+  const edges = [[0, 0, th, R, th], [E, 0, th, R, th], [0, E, th, R, th], [E, E, th, R, th],
+    [0, 0, R, th, th], [0, E, R, th, th], [0, 0, th, th, R], [E, 0, th, th, R]].map(([x, z, a, h, c]) => ({lid: true, hv, seal: true, x, y: 0, z, a, h, c}));
+  const group = shown.filter(t => t.m !== 2);
+  for (const t of group) { t.seal = true; anim(t, 0, tn); }
+  for (const e of edges) anim(e, 0, tn);
+  anim(lid, 1, tn); group.push(lid, ...edges); leaving.push(...group); sealUntil = tn + 2.5;
+  setTimeout(() => {
+    const t2 = now(); for (const t of group) anim(t, 4, t2); rebuild();
+    setTimeout(() => {
+      const gs = new Set(group); for (const t of group) delete t.seal; leaving = leaving.filter(t => !gs.has(t));
+      sealUntil = -1; rebuild();
+      if (mode === 'live' && liveG && !shown.length) { cur = null; showSet([...liveMap.values()]); }
+      head();
+    }, 1450);
+  }, 1000);
+}
+function mined(b) {
+  minedMsg = {h: b.height, n: b.tx_count, until: now() + 6};
+  liveG = null; wsSeq = -1; wsSend({'track-mempool-block': liveIdx});   // fresh list after a block is found
+  const sealing = mode === 'live' && liveIdx === 0 && shown.length > 0 && sealUntil < 0;
+  if (mode === 'live') { const tn = now(); if (sealing) seal(tn, isHalving(b.height)); else for (const t of shown) { anim(t, 2, tn); leaving.push(t); } shown = []; select(null); rebuild(); head(); }
+  setTimeout(chime, sealing ? 900 : 0);
+}
+
+/* ---------- real hashes drifting in the background ---------- */
+// every transaction that joins the block sends its real txid floating up behind the cube;
+// real block hashes drift through bigger, with their proof-of-work zeros in orange
+const SLOTS = 128, sprites = [];
+let slotNext = 0, lastSpawn = 0;
+function writeSlot(slot, text, zeros) {
+  const x = (slot & 1) * 1024, y = (slot >> 1) * 32;
+  actx.clearRect(x, y, 1024, 32);
+  actx.font = '600 22px ui-monospace,Menlo,Consolas,monospace'; actx.textBaseline = 'middle';
+  const cw = actx.measureText('0').width;
+  for (let i = 0; i < text.length; i++) { actx.fillStyle = i < zeros ? '#f7931a' : '#f3e2c8'; actx.fillText(text[i], x + 4 + i * cw, y + 17); }
+  gl.bindTexture(gl.TEXTURE_2D, atTex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, actx.getImageData(x, y, 1024, 32));
+  return Math.min(1, (8 + cw * text.length) / 1024);
+}
+function spawnText(text, big) {
+  if (!text) return;
+  const tn = now();
+  if (!big) { if (tn - lastSpawn < 0.35) return; lastSpawn = tn; }
+  const slot = slotNext; slotNext = (slotNext + 1) % SLOTS;
+  for (let i = sprites.length - 1; i >= 0; i--) if (sprites[i].slot === slot) sprites.splice(i, 1);
+  const zeros = big ? text.match(/^0*/)[0].length : 0, wf = writeSlot(slot, big ? text : text.slice(0, 10) + '…' + text.slice(-6), zeros);
+  // keep them on the far side of the cube from the camera, so they stay in the background
+  const ang = cam.yaw + Math.PI + (Math.random() - 0.5) * 2.6;
+  sprites.push({slot, wf, ang, rad: S * (big ? 2.8 + Math.random() * 1.0 : 2.1 + Math.random() * 1.4), y0: -S * 0.15 + Math.random() * S * 0.35, t0: tn,
+    life: big ? 34 : 16 + Math.random() * 8, w: (big ? S * 2.1 : S * 2.2) * wf, a: big ? 0.7 : 0.42});
+}
+function spriteData(tn, VP, rt3, up3, avoid) {
+  for (let i = sprites.length - 1; i >= 0; i--) if (tn - sprites[i].t0 > sprites[i].life) sprites.splice(i, 1);
+  const d = new Float32Array(sprites.length * 10), taken = [];   // taken: where codes already show, so two never sit on top of each other
+  sprites.forEach((s, i) => {
+    const p = (tn - s.t0) / s.life, ang = s.ang + (tn - s.t0) * 0.012, o = i * 10;
+    d[o] = Math.sin(ang) * s.rad; d[o + 1] = s.y0 + p * S * 1.7; d[o + 2] = Math.cos(ang) * s.rad; d[o + 3] = s.w;
+    // where it lands on screen; if that crosses any text, panel, button or the cube, fade it out
+    const hw = s.w / 2, hh = s.w * (32 / (s.wf * 1024)) / 2, c = [d[o], d[o + 1], d[o + 2]];
+    let bx = [1e9, 1e9, -1e9, -1e9], behind = false;
+    for (const [a, b] of [[-hw, -hh], [hw, -hh], [-hw, hh], [hw, hh]]) {
+      const q = project(VP, [c[0] + rt3[0] * a + up3[0] * b, c[1] + rt3[1] * a + up3[1] * b, c[2] + rt3[2] * a + up3[2] * b]);
+      if (q[2] <= 0) behind = true; bx = [Math.min(bx[0], q[0]), Math.min(bx[1], q[1]), Math.max(bx[2], q[0]), Math.max(bx[3], q[1])];
+    }
+    const near = r => bx[0] < r[2] + 14 && bx[2] > r[0] - 14 && bx[1] < r[3] + 14 && bx[3] > r[1] - 14;
+    const hit = behind || bx[0] < 6 || bx[1] < 6 || bx[2] > innerWidth - 6 || bx[3] > innerHeight - 6 || avoid.some(near) || taken.some(near);
+    s.vis = (s.vis == null ? (hit ? 0 : 1) : s.vis) + ((hit ? 0 : 1) - (s.vis == null ? 0 : s.vis)) * 0.2;
+    if (s.vis > 0.05) taken.push(bx);
+    const x = (s.slot & 1) * 0.5, y = (s.slot >> 1) / 64;
+    d[o + 4] = x; d[o + 5] = y; d[o + 6] = x + s.wf * 0.5; d[o + 7] = y + 1 / 64;
+    d[o + 8] = s.w * (32 / (s.wf * 1024)); d[o + 9] = s.a * s.vis * Math.min(1, p * 8, (1 - p) * 5);
+  });
+  return d;
+}
+
+/* ---------- strip across the top: upcoming blocks | mined blocks (like mempool.space) ---------- */
+let futBlocks = [], pastBlocks = [];
+const $fut = document.getElementById('fut'), $past = document.getElementById('past');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
+const feeCss = r => { const k = feeCol({fee: r, vsize: 1}); return `rgb(${k.map(x => Math.round(x * 255)).join(',')})`; };
+const ago = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago'; };
+const r1 = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');
+function gotBlocks(list) { pastBlocks = list.slice().sort((a, b) => b.height - a.height).slice(0, 8); strip(); if (!feedPrimed) { feedPrimed = true; pastBlocks.slice(0, 3).forEach(b => spawnText(b.id, true)); list.slice(-3).forEach(b => feedBlock(b, false)); if (pastBlocks[0]) feedOrdinals(pastBlocks[0]); } }
+let pulseT = -100, newH = -1;
+function gotBlock(b) { pulseT = now(); newH = b.height; setTimeout(() => { newH = -1; }, 2600); spawnText(b.id, true); if (!pastBlocks.some(x => x.height === b.height)) { pastBlocks.unshift(b); pastBlocks = pastBlocks.slice(0, 8); } strip(); feedBlock(b, true); feedOrdinals(b); }
+function tile(cls, fillPct, col, lines, title, onClick) {
+  const d = document.createElement('div'); d.className = 'bk ' + cls; d.title = title; d.style.setProperty('--c', col);
+  d.innerHTML = `<div class="tp"></div><div class="sd"></div><div class="fr"><div class="fl" style="height:${Math.round(Math.min(1, fillPct) * 100)}%;background:linear-gradient(${col},rgba(0,0,0,.25))"></div><div class="tx">${lines}</div></div>`;
+  if (onClick) d.onclick = onClick;
+  return d;
+}
+let stripT = 0;
+function strip() {
+  if (stripT) return;   // redraw at most once a second
+  stripT = setTimeout(() => { stripT = 0; drawStrip(); }, 250);
+}
+// tile colours: mined blocks = Bitcoin orange, the block being mined now = hot gold, blocks still waiting = slate blue
+const TILE_MINED = '#f7931a', TILE_NEXT = '#ffd166', TILE_WAIT = '#56688c', TILE_HALVING = '#b14cff';
+// halving blocks (every 210,000th) get their own theme: violet with gold
+const isHalving = h => h > 0 && h % 210000 === 0;
+function drawStrip() {
+  $fut.innerHTML = ''; $past.innerHTML = '';
+  const tw = matchMedia('(min-width:1500px) and (min-height:820px)').matches ? 103 : 85;
+  let res = 8;
+  if (innerWidth > 640) { const a = rectOf($tools), b = rectOf($fb); res = Math.max(16, innerWidth - Math.min(a ? a[0] : innerWidth, b ? b[0] : innerWidth) + 12); }
+  const fitN = Math.max(2, Math.floor((innerWidth - 2 * res - 34) / tw));
+  const nf = Math.min(futBlocks.length, 4, Math.max(1, Math.round(fitN * 4 / 9)));
+  for (let k = nf - 1; k >= 0; k--) {
+    const m = futBlocks[k], full = m.blockVSize / BLOCK_VB, over = full > 1.02;   // the last one holds everything else waiting
+    const lo = m.feeRange[0], hi = m.feeRange[m.feeRange.length - 1];
+    const lines = `<div class="h">${k === 0 ? 'NEXT' : over ? '+' + fmt(Math.ceil(full)) + ' blocks' : '+' + k}</div>~${r1(m.medianFee)} sat/vB<br>${r1(lo)}-${r1(hi)}<br>${(m.blockSize / 1e6).toFixed(2)} MB<br>${fmt(m.nTx)} txs`;
+    const sel = mode === 'live' && wsLive && liveIdx === k;
+    const hv = !over && tipH >= 0 && isHalving(tipH + 1 + k);
+    $fut.appendChild(tile((sel ? 'sel' : '') + (over ? ' na' : '') + (k === 0 ? ' nx' : '') + (hv ? ' hv' : ''), full, hv ? TILE_HALVING : k === 0 ? TILE_NEXT : TILE_WAIT, lines,
+      over ? 'everything else waiting in the mempool' : (k === 0 ? 'the next block, being built now' : 'upcoming block +' + k) + ' (projected by mempool.space)',
+      over ? null : () => goLiveIdx(k)));
+  }
+  const np = Math.min(pastBlocks.length, 5, Math.max(1, fitN - nf));
+  for (let i = 0; i < np; i++) {
+    const b = pastBlocks[i], x = b.extras || {}, fr = x.feeRange || [];
+    const lines = `<div class="h">${fmt(b.height)}</div>` + (x.medianFee != null ? `~${r1(x.medianFee)} sat/vB<br>` : '') +
+      (fr.length ? `${r1(fr[0])}-${r1(fr[fr.length - 1])}<br>` : '') + `${(b.size / 1e6).toFixed(2)} MB<br>${fmt(b.tx_count)} txs`;
+    $past.appendChild(tile((mode === 'block' && want === b.height ? 'sel' : '') + (b.height === newH ? ' new' : '') + (isHalving(b.height) ? ' hv' : ''), b.weight / 4e6, isHalving(b.height) ? TILE_HALVING : TILE_MINED, lines,
+      'block ' + fmt(b.height) + ' · ' + ago(b.timestamp) + (x.pool && x.pool.name ? ' · mined by ' + x.pool.name : ''), () => go(b.height)));
+  }
+}
+setInterval(strip, 30000);
+function goLiveIdx(k) {
+  if (!wsLive) { goLive(); return; }
+  if (k !== liveIdx) { liveIdx = k; liveG = null; liveMap = new Map(); wsSeq = -1; wsSend({'track-mempool-block': k}); }
+  goLive(); strip();
+}
+
+/* ---------- live feed down the right side ---------- */
+const $feed = document.getElementById('feed'), $fl = document.getElementById('fl'), $ft = document.getElementById('ft'), $fh2 = document.getElementById('fh2'), $fb = document.getElementById('fb');
+let feedOn = innerWidth > 640, feedPrimed = false, rec = null;
+function setFeed(on) { feedOn = on; $feed.classList.toggle('off', !on); $fb.classList.toggle('on', on); document.body.classList.toggle('fo', on); }
+setFeed(feedOn); $fb.onclick = () => setFeed(!feedOn);
+const clock24 = ts => (ts ? new Date(ts * 1000) : new Date()).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: ts ? undefined : '2-digit'});
+const chip = css => `<i style="background:${css}"></i>`;
+const sats = v => (v / 1e8).toFixed(4) + ' BTC';
+function feedRow(kind, html, time, txid) {
+  const d = document.createElement('div'); d.className = 'fi ' + kind;
+  d.innerHTML = `<span class="tm">${time || clock24()}</span>` + html;
+  if (txid) { d.dataset.tx = txid; d.onclick = () => findTx(txid); }
+  // new transactions stream through the short ticker at the bottom; everything else stays in the list above
+  const box = kind === 'tx' ? $ft : $fl;
+  box.prepend(d);
+  while (box.children.length > (kind === 'tx' ? 10 : 60)) box.lastChild.remove();
+}
+let offNoted = false;
+function feedOff() {   // the live feed can't be reached from here (for example inside an inscription)
+  $feed.classList.add('down');
+  if (!offNoted) { offNoted = true; feedRow('blk', `${chip('#7a6853')}mempool.space's live feed can't be reached from here, so there is nothing live to show.<br>Open Block Cube on your portal or in a browser to see it.`); }
+}
+function findTx(id) {
+  const pickIt = () => { const t = liveMap.get(id); if (t) select(t); };
+  if (mode === 'live') pickIt(); else { goLive(); setTimeout(pickIt, 1500); }
+}
+const which = () => liveIdx === 0 ? 'the next block' : 'block +' + liveIdx;
+function feedBlock(b, isNew) {
+  const x = b.extras || {};
+  feedRow('blk', `${chip('#f7931a')}<b>Block ${fmt(b.height)}</b> ${isNew ? 'just found' : 'found'}` + (x.pool && x.pool.name ? ` by <b>${esc(x.pool.name)}</b>` : '') +
+    `<br>${fmt(b.tx_count)} transactions` + (x.totalFees != null ? ` · fees ${sats(x.totalFees)}` : '') + (x.reward != null ? ` · miner got ${sats(x.reward)}` : '') +
+    (x.medianFee != null ? ` · median ${r1(x.medianFee)} sat/vB` : ''), clock24(b.timestamp));
+}
+async function feedOrdinals(b) {
+  try {
+    const s = await (await fetchT(ORDPOOL + '/api/v1/block/' + b.id + '/summary', null, 60000)).json(), n = KINDS.map(() => 0);
+    for (const x of s) { let f; try { f = BigInt(x.flags); } catch (e) { continue; } for (let i = 0; i < KINDS.length; i++) if (KINDS[i].bit != null && (f >> KINDS[i].bit) & 1n) { n[i]++; break; } }
+    const parts = []; for (let i = KINDS.length - 1; i >= 0; i--) if (n[i]) parts.push(`${chip(KINDS[i].css)}${fmt(n[i])} ${KINDS[i].name}`);
+    feedRow('ord', `<b>Block ${fmt(b.height)}</b> ordinals <span style="opacity:.6">(ordpool.space)</span><br>` + (parts.length ? parts.join(' &nbsp;') : 'none'), clock24(b.timestamp));
+  } catch (e) {}
+  try {
+    const ids = await ordInscriptions(b.height);
+    if (ids.length) feedRow('ord', `${chip(KINDS[INSC].css)}inscriptions made in block ${fmt(b.height)}:<br>` +
+      ids.slice(0, 3).map(id => `<a href="https://ordinals.com/inscription/${id}" target="_blank" rel="noopener">${id.slice(0, 8)}…i${id.split('i').pop()}</a>`).join(' · ') +
+      (ids.length > 3 ? ` + ${fmt(ids.length - 3)} more` : '') + ' <span style="opacity:.6">(ordinals.com)</span>', clock24(b.timestamp));
+  } catch (e) {}
+}
+function feedStart(txs) {   // a fresh block list: note its biggest and top-paying transaction, then watch for new records
+  let big = null, top = null;
+  for (const t of txs) { if (!big || t.vsize > big.vsize) big = t; if (!top || ownRate(t) > ownRate(top)) top = t; }
+  rec = {v: big ? big.vsize : 0, r: top ? ownRate(top) : 0};
+  $fh2.textContent = 'JOINING ' + which().toUpperCase(); $ft.innerHTML = '';
+  if (big) feedRow('rec', `${chip('#ffd36b')}<b>${which()}</b> started: ${fmt(txs.length)} transactions<br>biggest ${vb(big.vsize)} · top fee rate ${rt(ownRate(top))}`);
+}
+function feedTx(t) {
+  spawnText(t.id, false);
+  const r = ownRate(t);
+  feedRow('tx', `${chip(feeCss(r))}<b>${rt(r)}</b> · ${vb(t.vsize)}` + (t.insc ? ` · <b style="color:${KINDS[INSC].css}">inscription</b>` : ''), null, t.id);
+  if (!rec) return;
+  if (t.vsize > rec.v) { rec.v = t.vsize; feedRow('rec', `${chip('#ffd36b')}<b>new biggest</b> in ${which()}: ${vb(t.vsize)} · ${rt(r)}`, null, t.id); }
+  if (r > rec.r) { rec.r = r; feedRow('rec', `${chip('#ff5a6a')}<b>new top fee rate</b> in ${which()}: ${rt(r)} · ${fmt(t.fee)} sats`, null, t.id); }
+  if (t.value >= 1e8) feedRow('rec', `${chip('#ffb04a')}<b>big move</b>: outputs total <b>${btc(t.value)}</b> · ${rt(r)}`, null, t.id);
+}
+
+/* ---------- mined blocks (browse back) ---------- */
+let mode = 'live', want = -1, tipH = -1, cur = null, ticket = 0, loading = false;
+async function showBlock(h) {
+  const my = ++ticket; loading = true; head();
+  let B;
+  try { B = await viaSources((s, b) => s.block(b, h)); }
+  catch (e) { if (my === ticket) { loading = false; head('block ' + fmt(h) + ' not reachable'); if (flipping) flipNext(2.5); } return; }
+  if (my !== ticket) return;
+  loading = false;
+  layoutAll(B.txs);
+  cur = B; showSet(B.txs); head();
+  if (flipping) flipNext(Math.min(1.6, 1.2 + B.txs.length * 0.0008) + 3.4);
+  if (pendFind) { const f = B.txs.find(x => x.id === pendFind); pendFind = null; if (f) focusTx(f); }
+  loadTags(B);   // the parcel-type row needs the tags in both views
+  scanBlock(B);   // and the whole block, read byte by byte
+  if (lens === 'ord') loadOrd(B);
+}
+function setTip(h) {
+  if (!(h > tipH)) return;
+  tipH = h;
+  if (mode === 'live' && feedDown) showBlock(tipH);   // no live feed here: follow the newest mined block instead
+  nav(); head();
+}
+async function poll() { try { setTip(await viaSources((s, b) => s.tip(b))); } catch (e) { if (tipH < 0) head(); } }
+
+/* ---------- open: lift the layers apart to see inside ---------- */
+let openT = -100, openD = 0;
+function openAmt(t) { const p = Math.min(1, Math.max(0, (t - openT) / 0.7)), e = p * p * (3 - 2 * p); return openD ? e : 1 - e; }
+const $op = document.getElementById('op');
+function toggleOpen() { const t = now(), a = openAmt(t); openD = openD ? 0 : 1; openT = t - (openD ? a : 1 - a) * 0.7; $op.classList.toggle('on', !!openD); }
+$op.onclick = toggleOpen;
+
+/* ---------- tap a box ---------- */
+let view = null;
+function pick(px, py) {
+  if (!view) return;
+  const f = nrm(sub([0, view.ty, 0], view.eye)), r = nrm(crs(f, [0, 1, 0])), u = crs(r, f), th = Math.tan(view.fov / 2);
+  const x = (2 * px / innerWidth - 1 - view.shX) * th * view.asp, y = (1 - 2 * py / innerHeight - view.shY) * th;
+  const dr = nrm([f[0] + r[0] * x + u[0] * y, f[1] + r[1] * x + u[1] * y, f[2] + r[2] * x + u[2] * y]);
+  const e = view.eye, tn = now(), oa = openAmt(tn);
+  let best = null, bt = 1e9;
+  // with X-RAY on (or a parcel type lit up), a tap goes to the solid boxes first, then the glass ones
+  for (const list of nGh ? [inst, ghosts] : [shown]) {
+  if (best) break;
+  for (const t of list) {
+    if (t.m === 2 || t.m === 4 || t.lid) continue;
+    if ((t.m === 1 || t.m === 3) && tn - t.t0 < 0.9) continue;
+    const c = centerOf(t), hs = [t.a / R * S / 2, t.h / R * S / 2, t.c / R * S / 2];
+    c[1] += Math.floor(c[1] / (S / 8)) * S * 0.07 * oa;
+    let t0 = -1e9, t1 = 1e9, k = 0;
+    for (; k < 3; k++) {
+      if (Math.abs(dr[k]) < 1e-9) { if (Math.abs(e[k] - c[k]) > hs[k]) break; continue; }
+      let a = (c[k] - hs[k] - e[k]) / dr[k], b = (c[k] + hs[k] - e[k]) / dr[k]; if (a > b) { const s = a; a = b; b = s; }
+      if (a > t0) t0 = a; if (b < t1) t1 = b; if (t0 > t1) break;
+    }
+    if (k === 3 && t0 <= t1 && t0 > 0 && t0 < bt) { bt = t0; best = t; }
+  }
+  }
+  select(best);
+}
+function hx(s) { const a = new Uint8Array(s.length >> 1); for (let i = 0; i < a.length; i++) a[i] = parseInt(s.substr(i * 2, 2), 16); return a; }
+// txid worked out from ord's raw transaction (double SHA-256 of the non-witness bytes)
+async function txidOf(tx) {
+  const parts = []; let len = 0;
+  const push = a => { parts.push(a); len += a.length; };
+  const u32 = n => { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, n >>> 0, true); push(a); };
+  const vi = n => { if (n < 0xfd) push(Uint8Array.of(n)); else if (n <= 0xffff) push(Uint8Array.of(0xfd, n & 255, n >> 8)); else { push(Uint8Array.of(0xfe)); u32(n); } };
+  u32(tx.version); vi(tx.input.length);
+  for (const i of tx.input) {
+    const [t, v] = i.previous_output.split(':'); push(hx(t).reverse()); u32(+v);
+    const s = hx(i.script_sig); vi(s.length); push(s); u32(i.sequence);
+  }
+  vi(tx.output.length);
+  for (const o of tx.output) {
+    const a = new Uint8Array(8), dv = new DataView(a.buffer);
+    dv.setUint32(0, o.value % 4294967296, true); dv.setUint32(4, Math.floor(o.value / 4294967296), true); push(a);
+    const s = hx(o.script_pubkey); vi(s.length); push(s);
+  }
+  u32(tx.lock_time);
+  const buf = new Uint8Array(len); let p = 0; for (const a of parts) { buf.set(a, p); p += a.length; }
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', await crypto.subtle.digest('SHA-256', buf)));
+  return Array.from(h.reverse(), b => b.toString(16).padStart(2, '0')).join('');
+}
+const $card = document.getElementById('card'), $cn = document.getElementById('cn'), $cr = document.getElementById('cr'), $ct = document.getElementById('ct');
+const fmt = n => n.toLocaleString('en-US');
+const btc = v => (v / 1e8).toFixed(8).replace(/\.?0+$/, '') + ' BTC';
+const pct = x => (x * 100 >= 1 ? (x * 100).toFixed(1) : (x * 100).toPrecision(2)) + '%';
+const vb = v => (Number.isInteger(v) ? fmt(v) : v.toFixed(2).replace(/0$/, '')) + ' vB';
+const rt = v => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' sat/vB';
+const $cp = document.getElementById('cp');
+function addRows(rows) {
+  for (const [k, v, sw] of rows) {
+    const d = document.createElement('div'); d.className = 'r'; d.innerHTML = '<span></span><b></b>';
+    d.firstChild.textContent = k; d.lastChild.textContent = v;
+    if (sw) { const i = document.createElement('i'); i.style.background = sw; d.lastChild.prepend(i); }
+    $cr.appendChild(d);
+  }
+}
+// the card may grow (preview, extra rows): it never reaches up into the header, it scrolls instead
+function fitCard() {
+  const tp = rectOf($top), cs = getComputedStyle($card), b = parseFloat(cs.bottom) || 26, pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 2;
+  $card.style.maxHeight = Math.max(140, innerHeight - b - (tp ? tp[3] : 0) - 14 - pad) + 'px';
+}
+// more about one transaction, straight from mempool.space: inputs, outputs, address types, how long it waited
+const TYPE = {v1_p2tr: 'taproot', p2tr: 'taproot', empty: 'empty', v0_p2wpkh: 'segwit', v0_p2wsh: 'segwit script', p2pkh: 'legacy', p2sh: 'p2sh', p2pk: 'pay-to-key (oldest)',
+  multisig: 'bare multisig', op_return: 'OP_RETURN data', anchor: 'anchor', nonstandard: 'nonstandard', unknown: 'other'};
+const typeName = k => TYPE[k] || k || 'other';
+const dur = x => { x = Math.max(0, Math.round(x)); return x < 60 ? x + ' s' : x < 3600 ? Math.round(x / 60) + ' min' : x < 86400 ? Math.floor(x / 3600) + ' h ' + Math.round(x % 3600 / 60) + ' min' : Math.floor(x / 86400) + ' days ' + Math.floor(x % 86400 / 3600) + ' h'; };
+const MP = SOURCES[0].base;
+async function txInfo(t) {
+  if (t._x) return t._x;
+  if (!t.id || !SOURCES[0].on) return null;
+  const [tx, seen] = await Promise.all([
+    fetchT(MP + '/api/tx/' + t.id, null, 15000).then(r => r.json()),
+    fetchT(MP + '/api/v1/transaction-times?txId[]=' + t.id, null, 15000).then(r => r.json()).catch(() => null)]);
+  return t._x = {tx, seen: seen && seen[0] > 0 ? seen[0] : t.seen || 0};
+}
+let cardTok = 0;
+function enrich(t) {
+  const tok = ++cardTok;
+  txInfo(t).then(x => {
+    if (!x || sel !== t || tok !== cardTok || !x.tx || !x.tx.vin) return;
+    const tx = x.tx, cb = tx.vin.length && tx.vin[0].is_coinbase, done = tx.status && tx.status.confirmed;
+    const rows = [['inputs → outputs', (cb ? 'new coins' : fmt(tx.vin.length) + ' in') + ' → ' + fmt(tx.vout.length) + ' out']];
+    if (!cb) rows.push(['from', [...new Set(tx.vin.map(i => typeName(i.prevout && i.prevout.scriptpubkey_type)))].join(', ')]);
+    rows.push(['to', [...new Set(tx.vout.map(o => typeName(o.scriptpubkey_type)))].join(', ')]);
+    const w = x.seen && !cb ? (done ? tx.status.block_time : Date.now() / 1000) - x.seen : -1;
+    if (w > 0) rows.push([done ? 'waited' : 'waiting for', dur(w)]);
+    addRows(rows); fitCard();
+  }, () => {});
+}
+// inscriptions in a mined block: show the real thing, from the ord explorer that listed it
+function preview(t) {
+  const ids = !t.live && t.ordIds;
+  if (!ids || !ids.length) {
+    const w = !t.live && cur && isInsc(t) && cur.ord && cur.ord.loading;
+    $cp.style.display = w ? 'block' : 'none'; $cp.innerHTML = w ? '<div class="pv0">loading the inscription…</div>' : ''; return;
+  }
+  const k = (t._pi || 0) % ids.length, base = cur && cur.ordBase != null ? cur.ordBase : 'https://ordinals.com';
+  $cp.style.display = 'block';
+  $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>` +
+    (ids.length > 1 ? `<div class="pv2"><span>inscription ${k + 1} of ${fmt(ids.length)}</span><button>next ›</button></div>` : '');
+  if (ids.length > 1) $cp.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = k + 1; preview(t); };
+}
+let foc = null;   // a parcel found by its transaction ID: it stays solid and everything else turns to glass
+function select(t) {
+  const hadFoc = foc; if (t !== foc) foc = null;
+  sel = t;
+  if (hadFoc && !foc) rebuild();
+  if (!t) { $card.classList.remove('on'); $cp.innerHTML = ''; $cp.style.display = 'none'; return; }
+  $cn.textContent = t.live ? 'waiting in the next block' : 'transaction ' + fmt(t.idx) + ' in block ' + fmt(cur.height);
+  const rows = [];
+  if (!t.live && t.idx === 0) rows.push(['type', 'coinbase (miner reward)']);
+  if (t.fee >= 0 && !(t.idx === 0 && !t.live)) {
+    const k = feeCol(t), sw = `rgb(${k.map(x => Math.round(x * 255)).join(',')})`;
+    rows.push(['fee rate', rt(ownRate(t)), sw]);
+    if (Math.abs(t.rate - ownRate(t)) > 0.05) rows.push(['effective fee rate', rt(t.rate)]);
+    rows.push(['fee', fmt(t.fee) + ' sats']);
+  }
+  rows.push(['size', vb(t.vsize)]);
+  rows.push(['outputs total', btc(t.value)]);
+  let ids = '';
+  if (lens === 'ord' && t.fee >= 0) {
+    const k = kindOf(t), names = kindsOf(t);
+    rows.push(['ordinals', (names.length ? names.join(', ') : 'none') + (t.op != null ? ' (ordpool.space)' : t.sc != null ? ' (read from the block)' : ' (mempool.space tag)'), k >= 0 ? KINDS[k].css : null]);
+    if (!t.live && t.ordIds) { rows.push(['inscription ids', fmt(t.ordIds.length) + ' (ordinals.com)']); ids = '\n' + t.ordIds.slice(0, 3).join('\n') + (t.ordIds.length > 3 ? '\n+ ' + fmt(t.ordIds.length - 3) + ' more' : ''); }
+  }
+  if (t.sc != null) {
+    const has = f => ((t.sc >> f) & 1) === 1;
+    if (has(TF.cb) && cur && cur.cb && cur.cb.words) rows.push(['miner says', '“' + cur.cb.words + '”']);
+    const ty = [has(TF.taproot) ? 'taproot' : has(TF.segwit) ? 'segwit' : has(TF.legacy) ? 'legacy' : null, has(TF.consol) && 'consolidation', has(TF.batch) && 'batch payout', has(TF.msig) && 'multisig'].filter(Boolean);
+    if (ty.length) rows.push(['kind', ty.join(' · ')]);
+    if (t.ins && t.ins.length) rows.push(['inscription', [...new Set(t.ins.map(e => e.ct))].join(', ') + (t.ins.length > 1 ? ' × ' + t.ins.length : '') + (has(TF.child) ? ' · child of a parent' : '') + (has(TF.cursed) ? ' · cursed' : '')]);
+    const tok = [has(TF.brc20) && 'BRC-20', has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', has(TF.cp) && 'Counterparty'].filter(Boolean);
+    if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
+    if (has(TF.rune)) rows.push(['rune', [has(TF.etch) && 'etched' + (t.rn ? ' ' + t.rn : ''), has(TF.rmint) && 'minted', has(TF.rmove) && 'moved', has(TF.alkanes) && 'Alkanes'].filter(Boolean).join(' · ') || 'runestone']);
+    if (t.msg) rows.push(['message', '“' + t.msg + '”']);
+  }
+  $cr.innerHTML = ''; addRows(rows);
+  $ct.textContent = (t.id || '') + ids;
+  if (!t.live && cur && cur.fees && !cur.ord && !t.ordIds && isInsc(t)) loadOrd(cur);   // fetch the block's inscription list for the preview
+  preview(t); enrich(t);
+  if (!t.id && t.raw && window.crypto && crypto.subtle) txidOf(t.raw).then(id => { t.id = id; if (sel === t) $ct.textContent = id; }, () => {});
+  $card.classList.add('on'); fitCard();
+}
+
+/* ---------- header and buttons ---------- */
+const $mn = document.getElementById('mn'), $tg = document.getElementById('tg'), $tgt = document.getElementById('tgt'), $h = document.getElementById('h'), $st = document.getElementById('st');
+const $pv = document.getElementById('pv'), $nx = document.getElementById('nx'), $lv = document.getElementById('lv');
+function feeRange(list) {
+  let lo = Infinity, hi = 0;
+  for (const t of list) { if (t.fee < 0 || (!t.live && t.idx === 0)) continue; const r = ownRate(t); if (r < lo) lo = r; if (r > hi) hi = r; }
+  return lo === Infinity ? '' : ' · ' + (lo >= 100 ? lo.toFixed(0) : lo.toFixed(1)) + '–' + rt(hi);
+}
+/* ---------- ordinal theory: the first new sat of a block, its degree and rarity (ord's rules) ---------- */
+const EPOCH = 210000, PERIOD = 2016, CYCLE = EPOCH * 6;
+const subsidy = h => { const e = Math.floor(h / EPOCH); return e >= 33 ? 0 : Math.floor(5e9 / Math.pow(2, e)); };
+function firstSat(h) {
+  const E = Math.floor(h / EPOCH); let s = 0;
+  for (let e = 0; e < E; e++) s += EPOCH * subsidy(e * EPOCH);
+  return s + (h - E * EPOCH) * subsidy(h);
+}
+function satLine(h) {
+  if (!(h >= 0)) return '';
+  const rar = h === 0 ? 'mythic' : h % CYCLE === 0 ? 'legendary' : h % EPOCH === 0 ? 'epic' : h % PERIOD === 0 ? 'rare' : 'uncommon';
+  return `◉ first new sat <b>${fmt(firstSat(h))}</b> · ${Math.floor(h / CYCLE)}°${h % EPOCH}′${h % PERIOD}″0‴ · <b>${rar}</b>` +
+    (subsidy(h) ? ` · ${(subsidy(h) / 1e8).toString()} BTC of new sats` : '');
+}
+
+/* ---------- parcel types: a row bottom left, hover one (or tap it) to light up just those parcels ---------- */
+const $kinds = document.getElementById('kinds'), $kl = document.getElementById('kl');
+document.querySelector('#kh span').textContent = matchMedia('(hover: hover)').matches ? 'hover to light up · click to keep' : 'tap to light up';
+const rgba = (css, a) => 'rgba(' + [1, 3, 5].map(i => parseInt(css.slice(i, i + 2), 16)).join(',') + ',' + a + ')';
+const shade = (css, f) => '#' + [1, 3, 5].map(i => { const v = parseInt(css.slice(i, i + 2), 16); return Math.round(f > 1 ? v + (255 - v) * (f - 1) : v * f).toString(16).padStart(2, '0'); }).join('');
+const cubeIcon = css => `<svg viewBox="0 0 16 16"><path d="M8 1.5 14.5 5 8 8.5 1.5 5z" fill="${shade(css, 1.35)}"/><path d="M1.5 5 8 8.5V15L1.5 11.5z" fill="${css}"/><path d="M14.5 5 8 8.5V15l6.5-3.5z" fill="${shade(css, 0.55)}"/></svg>`;
+let hovK = null, pinK = null, khPx = -1, tabG = 0;
+const kTabs = [...document.querySelectorAll('.ktab')], $kn = document.getElementById('kn');
+kTabs.forEach(b => b.onclick = () => { tabG = +b.dataset.g; pinK = hovK = null; drawKinds(); });
+const kChips = TYPES.map((ty, i) => {
+  const css = ty.css, el = document.createElement('button');
+  el.className = 'kd'; el.style.cssText = `--k:${css};--g:${rgba(css, 0.45)};--b:${rgba(css, 0.14)}`;
+  el.innerHTML = cubeIcon(css) + '<span>' + ty.name + '</span><b></b>';
+  el.onpointerenter = e => { if (e.pointerType === 'mouse') { hovK = i; setHK(); } };
+  el.onpointerleave = e => { if (e.pointerType === 'mouse') { hovK = null; setHK(); } };
+  el.onclick = () => { if (pinK === i) { pinK = null; hovK = null; } else pinK = i; setHK(); };
+  $kl.appendChild(el); return {i, el, n: el.querySelector('b')};
+});
+function setHK() {
+  const k = hovK != null ? hovK : pinK;
+  for (const c of kChips) { c.el.classList.toggle('hv', c.i === k); c.el.classList.toggle('on', c.i === pinK); }
+  $kinds.classList.toggle('act', k != null);
+  if (k !== hk) { hk = k; rebuild(); }
+}
+// counts come from the parcels in the cube right now, so the row always matches what is on screen
+function drawKinds() {
+  if (now() < sealUntil) return;   // keep the row steady while a found block lifts away
+  const n = new Array(TYPES.length).fill(0), g = [0, 0, 0];
+  for (const t of shown) { const [lo, hi] = tmask(t); if (lo) for (let i = 0; i < 30; i++) if ((lo >> i) & 1) n[i]++; if (hi) for (let i = 30; i < TYPES.length; i++) if ((hi >> (i - 30)) & 1) n[i]++; }
+  for (const c of kChips) { const v = n[c.i], on = v > 0 && TYPES[c.i].g === tabG; c.el.style.display = on ? '' : 'none'; if (on) c.n.textContent = fmt(v); if (v) g[TYPES[c.i].g]++; }
+  kTabs.forEach(b => { b.classList.toggle('on', +b.dataset.g === tabG); b.classList.toggle('none', !g[+b.dataset.g]); });
+  $kn.style.display = g[tabG] ? 'none' : '';
+  if (hovK != null && (!n[hovK] || TYPES[hovK].g !== tabG)) hovK = null;
+  if (pinK != null && (!n[pinK] || TYPES[pinK].g !== tabG)) pinK = null;
+  $kinds.classList.toggle('on', shown.length > 0);
+  setHK();
+  const r = rectOf($kinds), px = r ? Math.round(r[3] - r[1] + 10) : 0;
+  if (px !== khPx) { khPx = px; document.body.style.setProperty('--kh', px + 'px'); }
+}
+
+/* ---------- floor heat: the median fee of the block on screen picks the season ---------- */
+// ice < 1 sat/vB · water 1-2 · grass 2-5 · desert 5-20 · fire 20-100 · lava storm 100-500 · plasma 500+
+const HEAT = [0.1, 1, 2, 5, 20, 100, 500, 2500];
+function heatOf(r) {
+  if (!(r > 0)) return null;
+  for (let k = 0; k < 7; k++) if (r < HEAT[k + 1] || k === 6) {
+    const f = Math.log(Math.max(r, HEAT[k]) / HEAT[k]) / Math.log(HEAT[k + 1] / HEAT[k]);
+    return Math.max(0, Math.min(6, k - 0.5 + Math.min(1, f)));
+  }
+}
+// the fee rate in the middle of the block by size, like mempool.space's median
+function medianRate(list) {
+  const a = []; let tot = 0;
+  for (const t of list) { if (t.fee < 0 || (!t.live && t.idx === 0)) continue; a.push(t); tot += t.vsize; }
+  if (!a.length) return 0;
+  a.sort((u, v) => u.rate - v.rate); let c = 0;
+  for (const t of a) { c += t.vsize; if (c >= tot / 2) return t.rate; }
+  return a[a.length - 1].rate;
+}
+let heatT = 1, heatS = 1, lastFT = 0, flashS = -10, flashNext = 0, themeT = 0, themeS = 0;
+function setHeat() {
+  const list = mode === 'live' ? (liveG ? liveMap.values() : null) : cur && cur.fees && !loading ? cur.txs : null;
+  if (!list) return;
+  const h = heatOf(medianRate(list)); if (h != null) heatT = h;
+}
+function head(msg) {
+  drawKinds(); setHeat();
+  const hvNow = mode === 'block' ? isHalving(want) : wsLive && tipH >= 0 && isHalving(tipH + 1 + liveIdx);
+  themeT = hvNow ? 1 : 0; document.body.classList.toggle('halv', !!hvNow);
+  const isLive = mode === 'live' && wsLive;
+  $tg.classList.toggle('live', mode === 'live');
+  $tgt.textContent = isLive ? (liveIdx ? 'UPCOMING BLOCK +' + liveIdx + ' · LIVE' : 'NEXT BLOCK · LIVE') : mode === 'live' ? 'NEWEST BLOCK · LIVE' : flipping ? 'MINED BLOCK · FLIPPING BACK' : 'MINED BLOCK';
+  if (document.body.classList.contains('halv')) $tgt.textContent += ' · HALVING';
+  if (document.activeElement !== $h) $h.value = isLive ? (tipH >= 0 ? fmt(tipH + 1 + liveIdx) : '') : want >= 0 ? fmt(want) : mode === 'live' && tipH >= 0 ? fmt(tipH) : '';
+  const hNow = mode === 'live' ? (wsLive ? (tipH >= 0 ? tipH + 1 + liveIdx : -1) : tipH) : want;
+  $ot.innerHTML = satLine(hNow);
+  const mb = mode === 'block' && cur && cur.height === want ? cur.cb : null;
+  $mn.textContent = mb ? '⛏ ' + (mb.pool || 'mined by an unknown pool') + (mb.words ? ' · “' + mb.words + '”' : '') : '';
+  if (msg) { $st.textContent = msg; return; }
+  if (noteMsg && now() < noteMsg.until) { $st.textContent = noteMsg.text; return; }
+  if (minedMsg && now() < minedMsg.until && mode === 'live') { $st.textContent = 'block ' + fmt(minedMsg.h) + ' was just mined · ' + fmt(minedMsg.n) + ' transactions'; return; }
+  if (isLive) {
+    if (!liveG) { $st.textContent = 'waiting for ' + which() + '…'; return; }
+    if (lens === 'ord') { ordHead(liveMap.values(), 'live tags show inscriptions only · runes and the rest appear once mined'); return; }
+    let v = 0; for (const t of liveMap.values()) v += t.vsize;
+    $st.textContent = fmt(liveMap.size) + ' transactions · ' + pct(v / BLOCK_VB) + ' full' + feeRange(liveMap.values());
+    return;
+  }
+  if (loading || !cur) { $st.textContent = tipH < 0 ? 'connecting…' : 'reading block…'; return; }
+  const d = new Date(cur.time * 1000);
+  if (lens === 'ord') {
+    const g = cur.tags || {};
+    if (g.loading) $st.textContent = 'reading ordinal tags from ordpool.space…';
+    else if (g.ok) ordHead(cur.txs, 'tags from ordpool.space');
+    else if (cur.fees) ordHead(cur.txs, 'ordpool.space not reachable · inscriptions only (mempool.space tag)');
+    else $st.textContent = 'ordinal data is not available here';
+    return;
+  }
+  $st.textContent = d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) + ' ' +
+    d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}) + ' · ' + fmt(cur.count) + ' transactions · ' +
+    (cur.size / 1e6).toFixed(2) + ' MB · ' + pct(cur.weight / 4e6) + ' full' + (cur.fees ? feeRange(cur.txs) : ' · fees not in this data');
+}
+// header in the ORDINALS view: a coloured dot and count for each kind found, how much of the block they take, and the source
+function ordHead(list, note) {
+  const n = KINDS.map(() => 0); let v = 0;   // same counts as the parcel-type row: a transaction can count in more than one kind
+  for (const t of list) { const m = kmask(t); if (m) { v += t.vsize; for (let i = 0; i < KINDS.length; i++) if ((m >> i) & 1) n[i]++; } }
+  const parts = [];
+  for (let i = KINDS.length - 1; i >= 0; i--) if (n[i]) parts.push(`<b style="color:${KINDS[i].css}">●</b> ${fmt(n[i])} ${KINDS[i].name}`);
+  $st.innerHTML = (parts.length ? parts.join(' &nbsp;') + ' · ' + pct(v / BLOCK_VB) + ' of the block' : 'no ordinal transactions') + ' · ' + note;
+}
+function nav() {
+  const isLive = mode === 'live';
+  $pv.disabled = isLive ? tipH < 0 : want <= 0;
+  $nx.disabled = isLive;
+  $lv.classList.toggle('on', isLive);
+  strip();
+}
+function goLive() {
+  if (flipping) setFlip(false);
+  mode = 'live'; want = -1; ticket++; loading = false; nav();
+  if (wsLive && liveG) { cur = null; showSet([...liveMap.values()]); }
+  else if (feedDown && tipH >= 0) showBlock(tipH);
+  head();
+}
+function go(h, auto) {
+  if (!auto && flipping) setFlip(false);
+  if (tipH < 0 || !(h >= 0)) return;
+  h = Math.floor(h);
+  if (h > tipH || (h === tipH && mode === 'live' && !wsLive)) { goLive(); return; }
+  mode = 'block'; want = h; nav(); showBlock(h);
+}
+$pv.onclick = () => go(mode === 'live' ? (wsLive ? tipH : tipH - 1) : want - 1);
+$nx.onclick = () => go(want + 1);
+$lv.onclick = () => goLiveIdx(0);
+$h.addEventListener('focus', () => { $h.value = $h.value.replace(/[^0-9]/g, ''); $h.select(); $st.textContent = 'type a block number, or paste a transaction ID'; });
+$h.addEventListener('keydown', e => {
+  if (e.key === 'Enter') $h.blur();
+  else if (e.key === 'Escape') { $h.value = ''; $h.blur(); }
+  e.stopPropagation();
+});
+$h.addEventListener('blur', () => { const raw = $h.value.trim(); if (/^[0-9a-fA-F]{64}$/.test(raw)) { findTx(raw.toLowerCase()); return; } const v = parseInt(raw.replace(/[^0-9]/g, '')); if (v >= 0 && raw.length < 12) go(v); else head(); });
+
+/* ---------- find a transaction: paste its ID where the block number is ---------- */
+let noteMsg = null, pendFind = null, pendTrack = null, trackT = 0;
+function note(text, sec) { noteMsg = {text, until: now() + (sec || 6)}; head(); }
+function focusTx(t) {
+  foc = t; select(t); rebuild();
+  note(t.live ? 'found it: waiting in ' + which() : 'found it: transaction ' + fmt(t.idx) + ' in block ' + fmt(cur.height), 8);
+}
+async function findTx(id) {
+  if (flipping) setFlip(false);
+  const lv = liveMap.get(id);
+  if (lv) { if (mode !== 'live') goLiveIdx(liveIdx); focusTx(lv); return; }
+  const here = mode === 'block' && cur && cur.txs.find(t => t.id === id);
+  if (here) { focusTx(here); return; }
+  if (!SOURCES[0].on) { note('looking up transactions needs mempool.space'); return; }
+  note('looking for that transaction…', 20);
+  let tx;
+  try { tx = await (await fetchT(MP + '/api/tx/' + id, null, 15000)).json(); }
+  catch (e) { note(/404/.test(String(e)) ? 'no transaction with that ID was found' : 'mempool.space not reachable right now'); return; }
+  if (tx.status && tx.status.confirmed) {
+    pendFind = id;
+    if (mode === 'block' && want === tx.status.block_height && cur && !loading) { const t = cur.txs.find(x => x.id === id); pendFind = null; if (t) focusTx(t); return; }
+    go(tx.status.block_height); return;
+  }
+  if (!wsLive) { note('that transaction is waiting in the queue (not mined yet)'); return; }
+  // still waiting: ask mempool.space which upcoming block it sits in
+  pendTrack = id; wsSend({'track-tx': id});
+  clearTimeout(trackT); trackT = setTimeout(() => { if (pendTrack === id) { pendTrack = null; note('that transaction is waiting in the queue (not mined yet)'); } }, 9000);
+}
+function gotPosition(p) {
+  if (!p || p.txid !== pendTrack) return;
+  const id = pendTrack; pendTrack = null; clearTimeout(trackT); wsSend({'track-tx': 'stop'});
+  const k = p.position ? p.position.block : -1, normal = futBlocks.filter(m => m.blockVSize / BLOCK_VB <= 1.02).length;
+  if (k >= 0 && k < Math.min(normal, 4)) {
+    pendFind = id;
+    if (k === liveIdx && liveMap.has(id)) { pendFind = null; if (mode !== 'live') goLiveIdx(k); focusTx(liveMap.get(id)); }
+    else goLiveIdx(k);
+  } else note('that transaction is waiting about ' + fmt(k + 1) + ' blocks back in the queue, too far back to show');
+}
+$h.addEventListener('paste', e => {
+  const v = ((e.clipboardData || window.clipboardData).getData('text') || '').trim();
+  if (/^[0-9a-fA-F]{64}$/.test(v)) { e.preventDefault(); $h.value = ''; $h.blur(); findTx(v.toLowerCase()); }
+});
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') $pv.click();
+  else if (e.key === 'ArrowRight' && !$nx.disabled) $nx.click();
+  else if (e.key === 'Escape') select(null);
+  else if (e.key === 'o' || e.key === 'O') toggleOpen();
+});
+
+
+/* ---------- tool buttons (top right): flip through blocks, save a picture, sound ---------- */
+const $tools = document.getElementById('tools'), $tp = document.getElementById('tp'), $ts = document.getElementById('ts'), $tu = document.getElementById('tu'), $fs = document.getElementById('fs');
+const ICON = {
+  play: '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M6 3.5v13l11-6.5z"/></svg>',
+  pause: '<svg viewBox="0 0 20 20" fill="currentColor"><rect x="5" y="4" width="3.6" height="12" rx="1"/><rect x="11.4" y="4" width="3.6" height="12" rx="1"/></svg>',
+  cam: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6.5h3.2l1.6-2.2h5.4l1.6 2.2h3.2v9.2h-15z"/><circle cx="10" cy="11" r="3"/></svg>',
+  snd: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor" stroke="none"/><path d="M13 7.5a3.5 3.5 0 0 1 0 5M15.2 5.3a6.6 6.6 0 0 1 0 9.4"/></svg>',
+  mute: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor" stroke="none"/><path d="M13 8l4 4M17 8l-4 4"/></svg>'};
+$tp.innerHTML = ICON.play; $ts.innerHTML = ICON.cam; $tu.innerHTML = ICON.mute;
+function placeTools() {
+  const b = rectOf($fb);
+  if (b && innerWidth > 640) document.body.style.setProperty('--tr', Math.round(innerWidth - b[0] + 8) + 'px');
+}
+addEventListener('resize', () => { placeTools(); strip(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeTools(); strip(); });
+// fee colour scale: Block Cube's own fee colours, so every parcel's colour can be read off
+$fs.innerHTML = '<span class="fl2">FEE sat/vB</span>' + [['<1', 0.5], ['1', 1], ['2', 2], ['5', 5], ['10', 10], ['20', 20], ['50', 50], ['100', 100], ['200', 200], ['500', 500], ['1k+', 1000]]
+  .map(([l, r]) => `<i style="--c:${feeCss(r)}">${l}</i>`).join('');
+// save a picture: the cube exactly as drawn this frame, with the block written along the bottom
+let snapReq = false;
+$ts.onclick = () => { snapReq = true; };
+function snap() {
+  const W = cv.width, H = cv.height, d = W / innerWidth, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), mono = 'ui-monospace,"SF Mono",Menlo,Consolas,monospace';
+  x.drawImage(cv, 0, 0);
+  const g = x.createLinearGradient(0, H - 130 * d, 0, H); g.addColorStop(0, 'rgba(5,4,6,0)'); g.addColorStop(1, 'rgba(5,4,6,.9)');
+  x.fillStyle = g; x.fillRect(0, H - 130 * d, W, 130 * d);
+  x.fillStyle = '#ffb04a'; x.font = `600 ${12 * d}px ${mono}`; x.fillText(($tgt.textContent || '').toUpperCase(), 26 * d, H - 74 * d);
+  x.fillStyle = '#f7efe3'; x.font = `600 ${32 * d}px ${mono}`; x.fillText($h.value || '', 26 * d, H - 42 * d);
+  x.fillStyle = '#cdbca3'; x.font = `${12 * d}px ${mono}`; x.fillText(($st.textContent || '').slice(0, 150), 26 * d, H - 20 * d);
+  x.textAlign = 'right'; x.fillStyle = '#a08b72'; x.font = `${11 * d}px ${mono}`;
+  x.fillText('BLOCK CUBE · ' + new Date().toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}), W - 26 * d, H - 20 * d);
+  c.toBlob(b => {
+    if (!b) return;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+    a.download = 'block-cube-' + (($h.value || '').replace(/[^0-9]/g, '') || 'live') + '.png';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, 'image/png');
+  $ts.classList.add('on'); setTimeout(() => $ts.classList.remove('on'), 400);
+}
+
+/* ---------- sound (off at start): each new parcel ticks at a pitch set by its fee, a chime when a block is found ---------- */
+let sndOn = false, au = null, lastTick = 0;
+function audio() {
+  if (!au) { const A = window.AudioContext || window.webkitAudioContext; if (!A) return null; try { au = new A(); } catch (e) { return null; } }
+  if (au.state === 'suspended') au.resume();
+  return au;
+}
+function tone(f, at, dur, vol, type) {
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + (at || 0), o = a.createOscillator(), g = a.createGain();
+  o.type = type || 'sine'; o.frequency.value = f;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + dur + 0.05);
+}
+// higher fee = higher note: 0.1 to 1,000 sat/vB spread over three octaves, snapped to a five-note scale so it always sounds musical
+const PENTA = [0, 2, 4, 7, 9];
+function noteFor(rate) {
+  const x = Math.max(-1, Math.min(3, Math.log10(Math.max(rate, 0.1)))), st = Math.round((x + 1) / 4 * 14);
+  return 196 * Math.pow(2, (Math.floor(st / 5) * 12 + PENTA[st % 5]) / 12);
+}
+function tick(rate) {
+  if (!sndOn) return;
+  const t = performance.now(); if (t - lastTick < 75) return; lastTick = t;
+  const f = noteFor(rate); tone(f, 0, 0.22, 0.045); tone(f * 2, 0, 0.09, 0.01, 'triangle');
+}
+function chime() {
+  if (!sndOn) return;
+  tone(98, 0, 0.6, 0.09, 'triangle');
+  [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => tone(f, 0.05 + i * 0.09, 1.8, 0.05));
+}
+$tu.onclick = () => { sndOn = !sndOn; $tu.classList.toggle('on', sndOn); $tu.innerHTML = sndOn ? ICON.snd : ICON.mute; if (sndOn && audio()) tone(659.25, 0, 0.3, 0.05); };
+
+/* ---------- flip back through blocks: one mined block after another, like a time-lapse ---------- */
+let flipping = false, flipT = 0;
+function flipNext(sec) {
+  clearTimeout(flipT);
+  flipT = setTimeout(() => { if (!flipping) return; if (!(want > 0)) { setFlip(false); return; } go(want - 1, true); }, sec * 1000);
+}
+function setFlip(on) {
+  flipping = on; clearTimeout(flipT);
+  $tp.classList.toggle('on', on); $tp.innerHTML = on ? ICON.pause : ICON.play;
+  if (on) { if (mode === 'live') go(wsLive ? tipH : tipH - 1, true); else flipNext(1.2); }
+  head();
+}
+$tp.onclick = () => setFlip(!flipping);
+
+/* ---------- keep the cube and the floating text clear of every piece of text on screen ---------- */
+const $strip = document.getElementById('strip'), $nav = document.getElementById('nav'), $top = document.getElementById('top'), $ot = document.getElementById('ot');
+const rectOf = el => { const r = el.getBoundingClientRect(); return r.width && r.height ? [r.left, r.top, r.right, r.bottom] : null; };
+function uiRects() {
+  const L = [$tg, $h, $st, $ot, $mn, $fs, $strip, $nav, $fb, $kinds, $tools].map(rectOf);
+  if (feedOn) L.push(rectOf($feed));
+  if ($card.classList.contains('on')) L.push(rectOf($card));
+  return L.filter(Boolean);
+}
+function project(VP, p) {
+  const x = VP[0] * p[0] + VP[4] * p[1] + VP[8] * p[2] + VP[12], y = VP[1] * p[0] + VP[5] * p[1] + VP[9] * p[2] + VP[13], w = VP[3] * p[0] + VP[7] * p[1] + VP[11] * p[2] + VP[15];
+  return [(x / w * 0.5 + 0.5) * innerWidth, (0.5 - y / w * 0.5) * innerHeight, w];
+}
+// the space the cube may use: below the header and strip, above the buttons, left of the feed panel
+function freeRect() {
+  const st = rectOf($top), sp = rectOf($strip), nv = rectOf($nav), kd = rectOf($kinds), tl = rectOf($tools), fd = feedOn && innerWidth > 900 ? rectOf($feed) : null;
+  let t = Math.max(st ? st[3] : 0, sp ? sp[3] : 0), b = Math.min(nv ? nv[1] : innerHeight, kd ? kd[1] : innerHeight);
+  if (tl) { if (tl[1] > innerHeight / 2) b = Math.min(b, tl[1]); else t = Math.max(t, tl[3]); }
+  return [16, t + 14, (fd ? fd[0] : innerWidth) - 16, b - 14];
+}
+function fit(VP, oa) {
+  const h = S / 2, top = S * (1 + oa * 0.49);
+  let c = [1e9, 1e9, -1e9, -1e9];
+  for (const x of [-h, h]) for (const y of [0, top]) for (const z of [-h, h]) { const p = project(VP, [x, y, z]); c = [Math.min(c[0], p[0]), Math.min(c[1], p[1]), Math.max(c[2], p[0]), Math.max(c[3], p[1])]; }
+  const f = freeRect();
+  const s = Math.max((c[2] - c[0]) / Math.max(60, f[2] - f[0]), (c[3] - c[1]) / Math.max(60, f[3] - f[1])) * cam.uz / 0.97;
+  fitD = Math.min(4, Math.max(0.4, fitD * (1 + (s - 1) * 0.12)));
+  shX += ((f[0] + f[2]) - (c[0] + c[2])) / innerWidth * 0.12;
+  shY -= ((f[1] + f[3]) - (c[1] + c[3])) / innerHeight * 0.12;
+  return c;
+}
+
+/* ---------- draw ---------- */
+function frame() {
+  const dpr = Math.min(devicePixelRatio || 1, 2), W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
+  if (cv.width !== W || cv.height !== H || !RT) { cv.width = W; cv.height = H; targets(W, H); }
+  const tn = now(), oa = openAmt(tn);
+  if (performance.now() - lastUser > 2500) cam.yaw += 0.0012;
+  const ty = cam.ty + oa * S * 0.25;
+  const cd = cam.dist * fitD * cam.uz, cp = Math.cos(cam.pitch), eye = [Math.sin(cam.yaw) * cp * cd, ty + Math.sin(cam.pitch) * cd, Math.cos(cam.yaw) * cp * cd];
+  const asp = W / H, fov = 2 * Math.atan(Math.tan(cam.fov / 2) * Math.max(1, 1.25 / asp * 0.8));  // tall screens see the whole cube
+  const P = persp(fov, asp, 0.5, S * 20); P[8] -= shX; P[9] -= shY;
+  const VP = mul(P, look(eye, [0, ty, 0]));
+  view = {eye, fov, asp, ty, shX, shY};
+  const cubeR = fit(VP, oa);   // keeps the cube inside the space left free by the header, strip, feed and buttons
+  if (minedMsg && tn > minedMsg.until) { minedMsg = null; head(); }
+  if (noteMsg && tn > noteMsg.until) { noteMsg = null; head(); }
+  const si = sel ? inst.indexOf(sel) : -1;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+  gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr);
+  gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (sprites.length) {
+    const f = nrm(sub([0, ty, 0], eye)), rt3 = nrm(crs(f, [0, 1, 0])), up3 = crs(rt3, f), sd = spriteData(tn, VP, rt3, up3, uiRects().concat([cubeR]));
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(txP.p); gl.uniformMatrix4fv(txP.u.uVP, false, VP); gl.uniform3fv(txP.u.uRt, rt3); gl.uniform3fv(txP.u.uUp, up3);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, atTex); gl.uniform1i(txP.u.T, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, txBuf); gl.bufferData(gl.ARRAY_BUFFER, sd, gl.DYNAMIC_DRAW);
+    gl.bindVertexArray(txVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, sprites.length);
+    gl.disable(gl.BLEND);
+  }
+  const boxes = (mir, xr) => {
+    gl.useProgram(parP.p); gl.uniformMatrix4fv(parP.u.uVP, false, VP); gl.uniform3fv(parP.u.uE, eye);
+    gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, oa); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uXr, xr ? 1 : 0); gl.uniform1f(parP.u.uGa, foc || hk != null ? 0.35 : lens === 'ord' ? 1 : 0.5);
+    gl.uniform1i(parP.u.uSel, xr ? (sel ? ghosts.indexOf(sel) : -1) : si);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
+    gl.bindVertexArray(xr ? ghVAO : parVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, xr ? nGh : nInst);
+  };
+  // reflection in the glass floor
+  gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
+  if (nInst) { gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.frontFace(gl.CW); boxes(1); gl.frontFace(gl.CCW); gl.disable(gl.BLEND); }
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  // the floor's season (two passes: its colour, then how much it glows), then the orange grid on top
+  const fdt = Math.min(0.1, Math.max(0, tn - (lastFT || tn))); lastFT = tn;
+  heatS += (heatT - heatS) * Math.min(1, fdt * 0.6);
+  themeS += (themeT - themeS) * Math.min(1, fdt * 2);
+  let flash = 0; const storm = Math.max(0, 1 - Math.abs(heatS - 5) * 1.4);
+  if (storm > 0) {
+    if (tn > flashNext) { flashS = tn; flashNext = tn + 1.2 + Math.random() * 4; }
+    const fa = tn - flashS; flash = storm * Math.exp(-fa * 6) * (fa < 0.25 ? 0.7 + 0.3 * Math.sin(fa * 90) : 1);
+  }
+  gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
+  gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, flash);
+  gl.bindVertexArray(flVAO);
+  gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.colorMask(false, false, false, true); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 1); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.colorMask(true, true, true, true);
+  gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(flP.p); gl.uniformMatrix4fv(flP.u.uVP, false, VP); gl.uniform1f(flP.u.uNow, tn); gl.uniform1f(flP.u.uPulse, tn - pulseT); gl.uniform3f(flP.u.uGC, 1 + (0.69 - 1) * themeS, 0.52 + (0.3 - 0.52) * themeS, 0.1 + (1 - 0.1) * themeS);
+  gl.bindVertexArray(flVAO); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.disable(gl.BLEND);
+  // the cube
+  gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
+  if (nInst) boxes(0);
+  if (nGh) {
+    gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ZERO, gl.ONE); gl.depthMask(false);
+    boxes(0, true);
+    gl.depthMask(true); gl.disable(gl.BLEND);
+  }
+  gl.disable(gl.CULL_FACE);
+  gl.enable(gl.BLEND); gl.depthMask(false);
+  gl.useProgram(lnP.p); gl.uniformMatrix4fv(lnP.u.uVP, false, VP); gl.uniform1f(lnP.u.uY, 1 + oa * 0.49);
+  gl.uniform4f(lnP.u.uC, 1 + (0.85 - 1) * themeS, 0.6 + (0.55 - 0.6) * themeS, 0.15 + (1 - 0.15) * themeS, 0.5 + 0.2 * themeS);
+  gl.bindVertexArray(lnVAO); gl.drawArrays(gl.LINES, 0, 24);
+  gl.depthMask(true); gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+  // resolve, then glow
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, RT.ms); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, RT.sf);
+  gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+  gl.bindVertexArray(null); gl.activeTexture(gl.TEXTURE0);
+  let src = RT.st, sw = W, shh = H;
+  RT.lv.forEach((l, i) => {
+    pass(dnP, l.f, l.w, l.h); gl.uniform1i(dnP.u.T, 0); gl.uniform2f(dnP.u.uPx, 1 / sw, 1 / shh); gl.uniform1i(dnP.u.uPre, i === 0 ? 1 : 0);
+    gl.bindTexture(gl.TEXTURE_2D, src); gl.drawArrays(gl.TRIANGLES, 0, 3); src = l.t; sw = l.w; shh = l.h;
+  });
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  for (let i = RT.lv.length - 1; i > 0; i--) {
+    const s = RT.lv[i], d = RT.lv[i - 1];
+    pass(upP, d.f, d.w, d.h); gl.uniform1i(upP.u.T, 0); gl.uniform2f(upP.u.uPx, 0.5 / s.w, 0.5 / s.h);
+    gl.bindTexture(gl.TEXTURE_2D, s.t); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  gl.disable(gl.BLEND);
+  pass(coP, null, W, H); gl.uniform1i(coP.u.T, 0); gl.uniform1i(coP.u.G, 1); gl.uniform1f(coP.u.uB, 0.7);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, RT.lv[0].t);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, RT.st);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (snapReq) { snapReq = false; try { snap(); } catch (e) {} }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- start ---------- */
+placeTools(); head(); nav();
+requestAnimationFrame(frame);
+wsConnect();
+poll(); setInterval(poll, 20000);
+// if the live feed can't be reached here (for example inside an inscription), follow the newest mined block instead
+setTimeout(() => { if (!wsLive && !feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) showBlock(tipH); } head(); }, 6000);
+</script>
+</body>
+</html>
