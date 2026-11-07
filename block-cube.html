@@ -1078,9 +1078,10 @@ const liveTx = a => ({id: a[0], fee: a[1], vsize: a[2], value: a[3] || 0, rate: 
 function wsSend(o) { try { ws.send(JSON.stringify(o)); } catch (e) {} }
 function wsConnect() {
   try { ws = new WebSocket(LIVE_FEED); } catch (e) { return; }
-  ws.onopen = () => { if (dropNoted) { dropNoted = false; feedRow('blk', `${chip('#f7931a')}live feed back`); } everLive = true; wsLive = true; feedDown = false; $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
+  ws.onopen = () => { if (dropNoted) { dropNoted = false; feedRow('blk', `${chip('#f7931a')}live feed back`); } everLive = true; wsLive = true; feedDown = false;
+    if (fellBack) { fellBack = false; if (mode === 'block' && !flipping && cur && cur.height === tipH && !sel) setTimeout(goLive, 0); } $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
   ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch (x) { return; } onFeed(d); };
-  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) showBlock(tipH); } if (was) head(); setTimeout(wsConnect, 5000); };
+  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); setTimeout(wsConnect, 5000); };
   ws.onerror = () => {};
 }
 function onFeed(d) {
@@ -1292,7 +1293,7 @@ function feedRow(kind, html, time, txid) {
   box.prepend(d);
   while (box.children.length > (kind === 'tx' ? 10 : 60)) box.lastChild.remove();
 }
-let offNoted = false, everLive = false, dropNoted = false;
+let offNoted = false, everLive = false, dropNoted = false, fellBack = false;
 function feedOff() {   // the live feed can't be reached from here (for example inside an inscription)
   $feed.classList.add('down');
   if (everLive) { if (!dropNoted) { dropNoted = true; feedRow('blk', `${chip('#7a6853')}live feed dropped for a moment · reconnecting…`); } return; }
@@ -1435,11 +1436,11 @@ function addRows(rows) {
     if (k === 'miner says' || k === 'message') {
       const d = document.createElement('div'); d.className = 'r rm'; d.innerHTML = '<span></span><div class="tk"><b></b></div>';
       d.firstChild.textContent = k; d.querySelector('b').textContent = v; $cr.appendChild(d);
-      requestAnimationFrame(() => {   // longer than the box: glide to the end, rest, glide back
+      setTimeout(() => {   // longer than the box: glide to the end, rest, glide back
         const box = d.querySelector('.tk'), b = box.firstChild; box.classList.add('go');
         const over = b.offsetWidth - box.clientWidth;
         if (over > 2) { b.style.setProperty('--d', -over + 'px'); b.style.animationDuration = (4 + over / 28).toFixed(1) + 's'; } else box.classList.remove('go');
-      });
+      }, 0);
       continue;
     }
     const d = document.createElement('div'); d.className = 'r'; d.innerHTML = '<span></span><b></b>';
