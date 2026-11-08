@@ -709,6 +709,14 @@ const TYPES = [
   {g: 2, name: 'messages', css: '#f7efe3', test: tfl(TF.msg)}, {g: 2, name: 'coinbase', css: '#f7931a', test: tfl(TF.cb)},
   {g: 2, name: 'regular', css: REG_CSS, test: t => !kmask(t), glow: false}];
 const REG = TYPES.length - 1;
+// TOKENS: each transaction belongs to one token chip only (the most specific one it is), so hovering a chip shows that token
+// and nothing else. An Alkanes action that also mints a rune counts as Alkanes (its tile still says '+ rune mint'); NAT is NAT,
+// not TAP; SRC-20 is SRC-20, not Stamps. 'runes' is the rune family: new runes, mints, moves, and runestones that do none of those.
+const TOK_ORDER = ['Alkanes', 'NAT', 'DMT mints', 'TAP', 'BRC-20', 'CRC-20 · LEAF', 'SRC-20', 'Stamps', 'Counterparty', 'CAT-21', 'Labitbu', 'Atomicals', 'runes etched', 'runes minted', 'runes moved', 'runes'];
+const TOK_IDX = TOK_ORDER.map(n => TYPES.findIndex(T => T.name === n)), TOK_RAW = TOK_IDX.map(i => TYPES[i].test);
+const RUNE_FAM = ['runes etched', 'runes minted', 'runes moved', 'runes'].map(n => TYPES.findIndex(T => T.name === n));
+function tokOf(t) { for (let k = 0; k < TOK_IDX.length; k++) if (TOK_RAW[k](t)) return TOK_IDX[k]; return -1; }
+TOK_IDX.forEach(i => { TYPES[i].test = TYPES[i].name === 'runes' ? t => RUNE_FAM.includes(tokOf(t)) : t => tokOf(t) === i; });
 // which chips a transaction lights up, as two 30-bit masks (cached with its kinds)
 function tmask(t) {
   kmask(t);
@@ -1968,10 +1976,12 @@ function head(msg) {
 }
 // header in the ORDINALS view: a coloured dot and count for each kind found, how much of the block they take, and the source
 function ordHead(list, note) {
-  const n = KINDS.map(() => 0); let v = 0;   // same counts as the parcel-type row: a transaction can count in more than one kind
-  for (const t of list) { const m = kmask(t); if (m) { v += t.vsize; for (let i = 0; i < KINDS.length; i++) if ((m >> i) & 1) n[i]++; } }
+  // the same numbers as the chips: inscriptions and bitmaps, then each token once (runes as one family)
+  const show = ['inscriptions', 'bitmaps'].map(nm => TYPES.findIndex(T => T.name === nm)).concat(TYPES.map((T, i) => i).filter(i => TYPES[i].g === 1 && !RUNE_FAM.slice(0, 3).includes(i)));
+  const n = show.map(() => 0); let v = 0;
+  for (const t of list) { if (!kmask(t)) continue; v += t.vsize; show.forEach((i, j) => { if (TYPES[i].test(t)) n[j]++; }); }
   const parts = [];
-  for (let i = KINDS.length - 1; i >= 0; i--) if (n[i]) parts.push(`<b style="color:${KINDS[i].css}">●</b> ${fmt(n[i])} ${KINDS[i].name}`);
+  show.forEach((i, j) => { if (n[j]) parts.push(`<b style="color:${TYPES[i].css}">●</b> ${fmt(n[j])} ${TYPES[i].name}`); });
   $st.innerHTML = (parts.length ? parts.join(' &nbsp;') + ' · ' + pct(v / BLOCK_VB) + ' of the block' : 'no ordinal transactions') + ' · ' + note;
 }
 function nav() {
