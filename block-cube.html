@@ -3932,6 +3932,10 @@ for (const x of [29, 37]) for (const o of [-.65, .65]) CM_SEATS.push([x + o, 25.
 for (const s of [-1, 1]) for (const d of [26.2, 27.8]) CM_SEATS.push([s * 10.7, d, .9, -s, 0, 0]);
 CM_SEATS.push([-8.6, 10.3, -.45, 0, 1, 0, -8.6, 9.55], [-8.6, 11.7, -.45, 0, -1, 0, -8.6, 12.45]);   // (the chess table's chairs)
 
+// work for the graphics card, done one piece a frame while the rooms are built (so no frame has to wait for several)
+const cmJobs = [], cmJob = f => new Promise(r => cmJobs.push(() => { f(); r(); }));
+function cmJobRun() { if (cmJobs.length) cmJobs.shift()(); }
+
 /* ---- making it: joined to block room `of` on its `side` (or standing alone, its door to the block on screen) ---- */
 function cmMake(of, side) {
   const R = {h: COMMON, common: true, of, side, ready: false, back: {to: NODOOR, o: 0}, front: {to: NODOOR, o: 0}};
@@ -3947,10 +3951,10 @@ function cmMake(of, side) {
     cmLabels(R); await yieldNow(); if (gone()) return;
     cmFix(R); cmLightsUp(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
     for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); if (gone()) return; }
-    gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D);
+    await cmJob(() => { gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D); }); if (gone()) return;
     cmProps(R); await yieldNow(); if (gone()) return;
     cmQuads(R); await yieldNow(); if (gone()) return;
-    for (const q of R.q) if (q.mk) { q.tex = cmTex(q.mk()); q.mk = null; await yieldNow(); if (gone()) return; }
+    for (const q of R.q) if (q.mk) { await cmJob(() => { q.tex = cmTex(q.mk()); q.mk = null; }); if (gone()) return; }
     R.ready = true; room.dirty = room.fixDirty = true;
     if (R === room.rooms[1]) rmCurrent(R);
     rmSigns();
@@ -4966,6 +4970,7 @@ function cmQuads(R) {
   }
 }
 function cmQDraw(VP, eye, tn) {
+  cmJobRun();
   const R = room.rooms.find(q => q && q.ready && q.common); if (!R || !R.q) return;
   gl.useProgram(cmQP.p); gl.uniformMatrix4fv(cmQP.u.uVP, false, VP); gl.uniform3fv(cmQP.u.uE, eye); gl.uniform1f(cmQP.u.uNow, tn); gl.uniform1i(cmQP.u.uTx, 5);
   gl.bindVertexArray(cmQV); gl.activeTexture(gl.TEXTURE5);
@@ -5266,7 +5271,7 @@ function cmTick() {
 }
 
 // leaving the rooms: the pages over the room go, the music stops
-function cmLeave() { if (cm.sc) { cm.sc.remove(); cm.sc = null; cm.scKey = ''; } if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } cmShut(); $cmd.classList.remove('on'); if (cmA.el) { cmA.el.remove(); cmA.el = null; cmA.key = ''; } if (cmA.gain && au) cmA.gain.gain.setTargetAtTime(0, au.currentTime, .2); cm.pour = null; }
+function cmLeave() { cmJobs.length = 0; if (cm.sc) { cm.sc.remove(); cm.sc = null; cm.scKey = ''; } if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } cmShut(); $cmd.classList.remove('on'); if (cmA.el) { cmA.el.remove(); cmA.el = null; cmA.key = ''; } if (cmA.gain && au) cmA.gain.gain.setTargetAtTime(0, au.currentTime, .2); cm.pour = null; }
 
 /* looking and picking: a ray from the eye (through the crosshair, or where you tapped) */
 function rmRay(sx, sy) {
