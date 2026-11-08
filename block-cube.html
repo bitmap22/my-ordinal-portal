@@ -3227,19 +3227,15 @@ const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS
 const LC = h => lin(hexc(parseInt(h.slice(1), 16)));
 const RCG = {wall: LC('#0b0906'), back: LC('#120d06'), wood: LC('#3b2a13'), post: LC('#21170a'), pillar: LC('#100c07'), neon: LC('#ffc94a'), neon2: LC('#e3a72c'), dim: LC('#7a5a14'), trim: LC('#ffd36b'), door: LC('#171007'), sign: LC('#0d0805')};   // block 0: gold
 const RC = {wall: LC('#0a0708'), back: LC('#100a07'), wood: LC('#3b2313'), post: LC('#1e120a'), pillar: LC('#0e0a0b'), neon: LC('#ff8a1e'), neon2: LC('#d9741c'), dim: LC('#6a3612'), trim: LC('#ff9a2e'), door: LC('#140d08'), sign: LC('#0d0805')};
-// where a transaction stands: an inscription on the INSCRIPTIONS shelves, by what kind of file it is (BRC-20s, bitmaps and the
-// picture a new rune is etched with are inscriptions too); a token on the TOKENS shelves (runes, BRC-20, Alkanes, ...); anything
-// else on the TRANSACTIONS shelves. One that is both an inscription and a token stands on both, as the chips count it
-function shelvesOf(t) {
-  const s = [];
-  if (isInsc(t)) { let i = SECT[SECT.length - 1]; for (const j of SECT) if (TYPES[j].test(t)) { i = j; break; } s.push(i); }
-  const k = tokC(t); if (k >= 0) s.push(k);
-  if (!s.length) { if (kmask(t)) s.push(SECT[SECT.length - 1]); else { const x = txC(t); s.push(x >= 0 ? x : REG); } }
-  return s;
+// every transaction gets exactly one shelf: its token, else what kind of inscription it is, else what kind of transaction
+function shelfOf(t) {
+  const k = tokC(t); if (k >= 0) return k;
+  if (kmask(t)) { for (const i of SECT) if (TYPES[i].test(t)) return i; return SECT[SECT.length - 1]; }
+  const x = txC(t); return x >= 0 ? x : REG;
 }
 function roomPlan(B) {
   const by = new Map();
-  for (const t of B.txs) for (const k of shelvesOf(t)) { if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
+  for (const t of B.txs) { const k = shelfOf(t); if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
   const items = [], labs = [], cats = [], IW = BAY - .1;
   let bay = 0, row = 0, u = 0, g = -1, any = false;
   const nextRow = () => { u = 0; if (++row >= PLANKS.length) { row = 0; bay++; } };
@@ -3560,20 +3556,12 @@ function rmFix(R) {
 // the block's facts, on boards either side of each door (the counts per tab say which shelves they are on)
 function rmFacts(B) {
   const r = B.txs.filter(t => t.fee > 0).map(t => t.rate), cb = B.cb || {}, d = new Date((B.time || 0) * 1000);
-  const tabs = [0, 0, 0]; let nIns = 0, nEt = 0;
-  for (const t of B.txs) {
-    for (const g of new Set(shelvesOf(t).map(k => TYPES[k].g))) tabs[g]++;
-    if (isInsc(t)) nIns += t.ins && t.ins.length || 1;   // (counted one by one, as ordinals.com does: a transaction can carry several)
-    if (t.sc != null && (t.sc >> TF.etch) & 1) nEt++;   // new runes
-  }
+  const tabs = [0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
   const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS IN ALL'], [(B.height === 0 ? 'SATOSHI NAKAMOTO' : cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
     [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})], [B.size < 1e5 ? fmt(B.size) + ' BYTES' : (B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
   if (r.length) out.push([r1(Math.min(...r)) + '–' + r1(Math.max(...r)), 'SAT/VB PAID']);
-  tabs.forEach((n, g) => {
-    if (!n) return;
-    if (g === 0 && nIns !== n) out.push([fmt(nIns) + ' INSCRIPTIONS', 'IN ' + fmt(n) + (n === 1 ? ' PARCEL' : ' PARCELS') + ' ON THE INSCRIPTIONS SHELVES']);
-    else out.push([fmt(n), 'ON THE ' + CATS[g][0] + ' SHELVES' + (g === 1 && nEt ? ' · ' + fmt(nEt) + (nEt === 1 ? ' NEW RUNE' : ' NEW RUNES') : '')]);
-  });
+  const nEt = B.txs.reduce((n, t) => n + (t.sc != null && (t.sc >> TF.etch) & 1 ? 1 : 0), 0);   // new runes
+  tabs.forEach((n, g) => { if (n) out.push([fmt(n), 'ON THE ' + CATS[g][0] + ' SHELVES' + (g === 1 && nEt ? ' · ' + fmt(nEt) + (nEt === 1 ? ' NEW RUNE' : ' NEW RUNES') : '')]); });
   const f = out.slice(0, cb.words ? 8 : 10).map(([a, b]) => ({a, b}));
   if (cb.words) f.push({a: '“' + cb.words + '”', b: 'THE MINER WROTE', big: 1});   // the miner's whole message, on a board twice as tall
   return f;
