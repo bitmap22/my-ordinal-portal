@@ -367,7 +367,8 @@ const FEE_STOPS = [[0.1, 0x13775a], [1, 0x3f7f14], [2, 0x5c8410], [5, 0x7a8410],
 const UNKNOWN_COL = [0.55, 0.62, 0.72];
 function hexc(c) { return [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255]; }
 const ownRate = t => t.vsize ? t.fee / t.vsize : 0;
-const INSC_BIT = Math.pow(2, 26);   // mempool.space's "inscription" flag (it found an ord envelope in the witness)
+const INSC_BIT = Math.pow(2, 26);   // mempool.space's quick "inscription" tag: any 'OP_0 OP_IF' envelope in a witness. Not only
+// inscriptions: a new rune hides its name in one too, as Atomicals and others do, so the next block's tagged ones are read (lrRead)
 const tagged = f => Math.floor((f || 0) / INSC_BIT) % 2 === 1;
 function feeCol(t) {
   if (t.fee < 0) return UNKNOWN_COL;
@@ -1107,6 +1108,7 @@ async function scanBytes(X, h) {
         } else if (l > 1) {
           const d = catB(pushes(X, q + 1, p).filter(x => x[1]).map(x => x[1])), k = d.length > 8 ? cpKind(key, [d]) : -1;
           if (k >= 0) set(k);
+          else if (d.length === 8 && L1D.decode(d) === 'CNTRPRTY') set(TF.cp);   // (Counterparty with its data in a taproot envelope)
           else {
             const w = words(d); let pr = null;
             if (w && w[0] === '{') try { const o = JSON.parse(U8D.decode(d)); pr = String(o.p || '').toLowerCase(); if (pr === 'crc-20') { set(TF.crc20); r.tick = String(o.tick || o.exe || '').slice(0, 20); r.op = String(o.op || '').slice(0, 12); r.word = {k: 'crc20', a: r.tick.toUpperCase().replace(',', '→'), b: [r.op, o.amt != null ? String(o.amt) : ''].filter(Boolean).join(' ').slice(0, 30)}; } else pr = null; } catch (e) {}
@@ -1525,6 +1527,7 @@ async function liveFull(arr) {
   if (!r) return;
   const q = fullQ; fullQ = null;
   liveG = r.g; liveMap = new Map(txs.map(t => [t.id, t]));
+  for (const t of txs) if (t.insc) lrRead(t);
   if (mode === 'live' && !(now() < sealUntil)) { cur = null; showSet(txs); head(); if (pendFind && liveMap.has(pendFind)) { const f = liveMap.get(pendFind); pendFind = null; focusTx(f); } }
   feedStart(txs);
   for (const d of q) liveDelta(d);
@@ -1536,13 +1539,14 @@ function liveDelta(dl) {
     const t = liveMap.get(id); if (!t) continue;
     liveG.remove(t); liveMap.delete(id); anim(t, 2, tn); out.push(t);
   }
-  for (const c of dl.changed || []) { const t = liveMap.get(c[0]); if (t) { t.rate = c[1]; if (c[2] != null) t.insc = tagged(c[2]); } }
+  for (const c of dl.changed || []) { const t = liveMap.get(c[0]); if (t) { t.rate = c[1]; if (c[2] != null) { t.insc = tagged(c[2]); if (t.insc) lrRead(t); } } }
   // boxes above the gaps drop down, like mempool.space's gravity
   for (const [t, oy] of liveG.settle([...liveMap.values()])) { const c = centerOf(t); anim(t, 0, tn, [c[0], c[1] + (oy - t.y) / R * S, c[2]]); }
   // new ones go in at a height that keeps the fee order: not below anything that pays less
   for (const t of (dl.added || []).map(liveTx).sort((u, v) => v.rate - u.rate)) {
     placeLive(liveG, t, liveMap.values()); liveMap.set(t.id, t); anim(t, 1, tn);
-    feedTx(t); if (mode === 'live') tick(t.rate);
+    if (t.insc) lrRead(t, () => feedTx(t)); else feedTx(t);   // (a tagged one is named once it is read)
+    if (mode === 'live') tick(t.rate);
   }
   // if the pile has grown out of the top, re-sort the whole block by fee and let every box glide to its new place
   let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h;
@@ -1886,10 +1890,63 @@ function feedStart(txs) {   // a fresh block list: note its biggest and top-payi
 // what a transaction joining the next block is, from mempool.space's tags (the full read of what it holds comes once it is
 // mined): its kind, which tab it belongs to, and a border in the colour of the fee rate it pays (the same scale as the cube)
 const mfl = (t, b) => Math.floor((t.fl || 0) / Math.pow(2, b)) % 2 === 1, tcss = n => TYPES.find(T => T.name === n).css;
+// the next block's envelopes, read for real: each transaction mempool.space tags is fetched and read byte by byte with the same
+// reader as a mined block, so it counts as an inscription only if it holds an 'ord' envelope, and a new rune by its runestone
+const LR_CB = new Uint8Array([1, 0, 0, 0, 1].concat(new Array(32).fill(0), [255, 255, 255, 255, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0]));   // a stand-in first transaction (the reader skips a block's first)
+const lrSeen = new Map();   // what each read found, by transaction id (the last few thousand)
+let lrQ = [], lrOn = 0, lrAt = 0, lrT = 0;
+function lrApply(t, r) {
+  t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
+  if (r.word) t.word = r.word;
+  if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
+}
+// read t if mempool.space tagged it; done (if given) runs once it is read, or after 6 s if it can't be
+function lrRead(t, done) {
+  if (!t.insc || t.sc != null) { if (done) done(); return; }
+  const r = lrSeen.get(t.id); if (r) { lrApply(t, r); if (done) done(); return; }
+  if (done) { t.lrDone = done; setTimeout(() => { if (t.lrDone === done) { t.lrDone = null; done(); } }, 6000); }
+  if (!t.lrQ) { t.lrQ = true; lrQ.push(t); lrPump(); }
+}
+function lrPump() {
+  while (lrOn < 2 && lrQ.length) {
+    const t = lrQ.shift();
+    if (t.sc != null || !liveMap.has(t.id)) { t.lrQ = false; if (t.lrDone) { const d = t.lrDone; t.lrDone = null; d(); } continue; }
+    lrOn++;
+    (async () => {
+      let ok = false;
+      try {
+        const wait = lrAt - performance.now(); lrAt = Math.max(lrAt, performance.now()) + 150;   // a few a second, kind to mempool.space
+        if (wait > 0) await new Promise(f => setTimeout(f, wait));
+        const hex = (await (await fetchT(MP + '/api/tx/' + t.id + '/hex', null, 15000)).text()).trim();
+        if (/^[0-9a-f]+$/i.test(hex) && hex.length % 2 === 0) {
+          const n = hex.length >> 1, X = new Uint8Array(81 + LR_CB.length + n); X[80] = 2; X.set(LR_CB, 81);
+          for (let i = 0, o = 81 + LR_CB.length; i < n; i++) X[o + i] = parseInt(hex.substr(i * 2, 2), 16);
+          const r = (await scanBytes(X, tipH + 1)).txs[1];
+          if (r) { r.art = null; lrSeen.set(t.id, r); if (lrSeen.size > 6000) lrSeen.delete(lrSeen.keys().next().value); lrApply(t, r); ok = true; lrDirty(); }
+        }
+      } catch (e) {}
+      if (!ok && (t.lrTry = (t.lrTry || 0) + 1) < 3) { lrAt = performance.now() + 4000; lrQ.push(t); }   // busy: wait a moment, then try again
+      else t.lrQ = false;
+      if ((ok || t.lrTry >= 3) && t.lrDone) { const d = t.lrDone; t.lrDone = null; d(); }
+      lrOn--; lrPump();
+    })();
+  }
+}
+function lrDirty() {
+  if (lrT) return;
+  lrT = setTimeout(() => { lrT = 0; if (mode === 'live' && !(now() < sealUntil)) { rebuild(); drawKinds(); if (sel && sel.live) select(sel); } }, 500);
+}
 function liveKind(t) {
-  if (t.insc || mfl(t, 26)) return ['inscription', 'INSCRIPTIONS', KINDS[INSC].css];
+  if (t.sc != null) {   // read for real: an inscription only with an 'ord' envelope, a new rune by its runestone
+    const tk = tokC(t), ins = isInsc(t), ct = ins && t.ins && t.ins[0] ? t.ins[0].ct.split('/')[0] : '', what = /^(image|text|audio|video|model)$/.test(ct) ? ct + ' inscription' : 'inscription';
+    if ((t.sc >> TF.etch) & 1) return ['new rune' + (t.rn ? ' ' + t.rn : '') + (ins ? ' + ' + what : ''), ins ? 'TOKENS + INSCRIPTIONS' : 'TOKENS', tcss('runes etched')];
+    if (ins && tk >= 0) return [TYPES[tk].name + ' · ' + what, 'INSCRIPTIONS + TOKENS', TYPES[tk].css];
+    if (ins) return [what, 'INSCRIPTIONS', KINDS[INSC].css];
+    if (tk >= 0) return [TYPES[tk].name, 'TOKENS', TYPES[tk].css];
+    if ((t.sc >> TF.msg) & 1) return ['message', 'TRANSACTIONS', tcss('messages')];
+  } else if (t.insc) return ['envelope data', 'INSCRIPTION OR NEW RUNE?', KINDS[INSC].css];   // (mempool.space's tag: it could not be read)
   if (mfl(t, 25) || mfl(t, 27)) return ['data in fake keys', 'STAMPS?', kcss('Stamps')];
-  if (mfl(t, 24)) return ['OP_RETURN data', 'TOKEN OR MESSAGE?', kcss('runes')];
+  if (mfl(t, 24) && t.sc == null) return ['OP_RETURN data', 'TOKEN OR MESSAGE?', kcss('runes')];
   if (mfl(t, 33)) return ['consolidation', 'TRANSACTIONS', tcss('consolidations')];
   if (mfl(t, 34)) return ['batch payout', 'TRANSACTIONS', tcss('batch payouts')];
   if (mfl(t, 32)) return ['coinjoin (likely)', 'TRANSACTIONS', REG_CSS];
@@ -2110,7 +2167,7 @@ function select(t) {
   let ids = '';
   if (lens === 'ord' && t.fee >= 0) {
     const k = kindOf(t), names = kindsOf(t);
-    rows.push(['ordinals', (names.length ? names.join(', ') : 'none') + (t.op != null ? ' (ordpool.space)' : t.sc != null ? ' (read from the block)' : ' (mempool.space tag)'), k >= 0 ? KINDS[k].css : null]);
+    rows.push(['ordinals', (names.length ? names.join(', ') : 'none') + (t.op != null ? ' (ordpool.space)' : t.sc != null ? (t.live ? ' (read from the transaction)' : ' (read from the block)') : t.live && t.insc ? ' (mempool.space tag, being read)' : ' (mempool.space tag)'), k >= 0 ? KINDS[k].css : null]);
     if (!t.live && t.ordIds) { rows.push(['inscription ids', fmt(t.ordIds.length) + ' (ordinals.com)']); ids = '\n' + t.ordIds.slice(0, 3).join('\n') + (t.ordIds.length > 3 ? '\n+ ' + fmt(t.ordIds.length - 3) + ' more' : ''); }
   }
   if (t.sc != null) {
@@ -3170,15 +3227,19 @@ const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS
 const LC = h => lin(hexc(parseInt(h.slice(1), 16)));
 const RCG = {wall: LC('#0b0906'), back: LC('#120d06'), wood: LC('#3b2a13'), post: LC('#21170a'), pillar: LC('#100c07'), neon: LC('#ffc94a'), neon2: LC('#e3a72c'), dim: LC('#7a5a14'), trim: LC('#ffd36b'), door: LC('#171007'), sign: LC('#0d0805')};   // block 0: gold
 const RC = {wall: LC('#0a0708'), back: LC('#100a07'), wood: LC('#3b2313'), post: LC('#1e120a'), pillar: LC('#0e0a0b'), neon: LC('#ff8a1e'), neon2: LC('#d9741c'), dim: LC('#6a3612'), trim: LC('#ff9a2e'), door: LC('#140d08'), sign: LC('#0d0805')};
-// every transaction gets exactly one shelf: its token, else what kind of inscription it is, else what kind of transaction
-function shelfOf(t) {
-  const k = tokC(t); if (k >= 0) return k;
-  if (kmask(t)) { for (const i of SECT) if (TYPES[i].test(t)) return i; return SECT[SECT.length - 1]; }
-  const x = txC(t); return x >= 0 ? x : REG;
+// where a transaction stands: an inscription on the INSCRIPTIONS shelves, by what kind of file it is (BRC-20s, bitmaps and the
+// picture a new rune is etched with are inscriptions too); a token on the TOKENS shelves (runes, BRC-20, Alkanes, ...); anything
+// else on the TRANSACTIONS shelves. One that is both an inscription and a token stands on both, as the chips count it
+function shelvesOf(t) {
+  const s = [];
+  if (isInsc(t)) { let i = SECT[SECT.length - 1]; for (const j of SECT) if (TYPES[j].test(t)) { i = j; break; } s.push(i); }
+  const k = tokC(t); if (k >= 0) s.push(k);
+  if (!s.length) { if (kmask(t)) s.push(SECT[SECT.length - 1]); else { const x = txC(t); s.push(x >= 0 ? x : REG); } }
+  return s;
 }
 function roomPlan(B) {
   const by = new Map();
-  for (const t of B.txs) { const k = shelfOf(t); if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
+  for (const t of B.txs) for (const k of shelvesOf(t)) { if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
   const items = [], labs = [], cats = [], IW = BAY - .1;
   let bay = 0, row = 0, u = 0, g = -1, any = false;
   const nextRow = () => { u = 0; if (++row >= PLANKS.length) { row = 0; bay++; } };
@@ -3410,10 +3471,10 @@ function rmFix(R) {
     for (const s of [-1, 1]) {
       box(s * (DOOR / 2 + .07), DOORH / 2, zi, .1, DOORH + .02, .04, K.neon, 2);
       box(s * (DOOR / 2 - .012), DOORH / 2, zc, .024, DOORH, WT / 2 - .02, K.neon2, 2);   // the light inside the doorway
-      box(s * (RW / 2 - .015), RH / 2, zi, .03, RH, .03, K.neon2, 2);   // corners of the hall
+      box(s * (RW / 2 - .015), (RH - .1) / 2, zi, .03, RH - .1, .03, K.neon2, 2);   // corners of the hall
     }
     box(0, DOORH + .07, zi, DOOR + .24, .1, .04, K.neon, 2);
-    box(0, RH - .06, zi, RW, .05, .03, K.neon, 2);
+    box(0, RH - .06, zi, RW - .08, .05, .03, K.neon, 2);
   }
   // bookcases all along both walls, a tall pillar between each, a sign above each saying what is on its shelves
   for (let b = 0; b < 2 * P.side; b++) {
@@ -3499,11 +3560,20 @@ function rmFix(R) {
 // the block's facts, on boards either side of each door (the counts per tab say which shelves they are on)
 function rmFacts(B) {
   const r = B.txs.filter(t => t.fee > 0).map(t => t.rate), cb = B.cb || {}, d = new Date((B.time || 0) * 1000);
-  const tabs = [0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
+  const tabs = [0, 0, 0]; let nIns = 0, nEt = 0;
+  for (const t of B.txs) {
+    for (const g of new Set(shelvesOf(t).map(k => TYPES[k].g))) tabs[g]++;
+    if (isInsc(t)) nIns += t.ins && t.ins.length || 1;   // (counted one by one, as ordinals.com does: a transaction can carry several)
+    if (t.sc != null && (t.sc >> TF.etch) & 1) nEt++;   // new runes
+  }
   const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS IN ALL'], [(B.height === 0 ? 'SATOSHI NAKAMOTO' : cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
     [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})], [B.size < 1e5 ? fmt(B.size) + ' BYTES' : (B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
   if (r.length) out.push([r1(Math.min(...r)) + '–' + r1(Math.max(...r)), 'SAT/VB PAID']);
-  tabs.forEach((n, g) => { if (n) out.push([fmt(n), 'ON THE ' + CATS[g][0] + ' SHELVES']); });
+  tabs.forEach((n, g) => {
+    if (!n) return;
+    if (g === 0 && nIns !== n) out.push([fmt(nIns) + ' INSCRIPTIONS', 'IN ' + fmt(n) + (n === 1 ? ' PARCEL' : ' PARCELS') + ' ON THE INSCRIPTIONS SHELVES']);
+    else out.push([fmt(n), 'ON THE ' + CATS[g][0] + ' SHELVES' + (g === 1 && nEt ? ' · ' + fmt(nEt) + (nEt === 1 ? ' NEW RUNE' : ' NEW RUNES') : '')]);
+  });
   const f = out.slice(0, cb.words ? 8 : 10).map(([a, b]) => ({a, b}));
   if (cb.words) f.push({a: '“' + cb.words + '”', b: 'THE MINER WROTE', big: 1});   // the miner's whole message, on a board twice as tall
   return f;
@@ -3832,6 +3902,7 @@ function roomFrame(W, H, tn, dpr) {
   gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); rings(() => lifeShadows(VP, eye, tn, LW));
   gl.disable(gl.BLEND);
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
+  rmFloorDepth(VP);
   all(0);
   gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, tn, LW, false));
   cmDraw(VP, eye, tn); cmQDraw(VP, eye, tn);
@@ -3924,7 +3995,7 @@ const CM_PICS = [['mascot', -3.8, 2.9, 2.35, 1.5, 1.5, 1, 0, 'gilt'], ['woman', 
 // and three of them as lit glass high in the hall's windows: which one, the bottom corner (layout), along, up
 const CM_GLASS = [['cubes', [15.8, 6.6, 27.65], [0, 0, -3.3], [0, 3.3, 0]], ['city', [-15.8, 6.0, 42.25], [0, 0, 3.6], [0, 3.6, 0]], ['portal', [15.8, 6.25, 45.85], [0, 0, -3.6], [0, 3.05, 0]]];
 // what the filler stands on
-for (const s of [-1, 1]) CM_BLOCK.push([s * 3 - .4, s * 3 + .4, 15.15, 15.95], [s * 12.4 - .95, s * 12.4 + .95, 43.55, 44.85], [s * 12 - .5, s * 12 + .5, 31.1, 32.1]);
+for (const s of [-1, 1]) CM_BLOCK.push([s * 12.4 - 1.3, s * 12.4 + 1.3, 42.8, 45.4], [s * 12 - .5, s * 12 + .5, 31.1, 32.1]);
 CM_BLOCK.push([-9.0, -8.2, 10.0, 12.0], [-5.75, -4.85, 2.35, 3.25], [-15.6, -15.0, 8.3, 8.9], [-33.1, -29.9, 30.1, 31.9], [25.35, 25.85, 34.15, 34.65], [25.35, 25.85, 38.35, 38.85],
   [29.4, 36.6, 42.2, 45.8], [24.3, 25.1, 28.1, 28.9], [24.3, 25.1, 42.6, 43.4], [4.5, 6.2, 5.2, 6.5], [13.1, 14.5, 5.3, 6.7], [7.3, 7.7, 6.0, 6.4], [11.8, 12.2, 5.6, 6.0], [5.7, 6.3, 10.6, 10.9]);
 for (const [x, d] of [[-35, 39.5], [-28.5, 41.5], [-27, 30]]) CM_BLOCK.push([x - .45, x + .45, d - .45, d + .45]);
@@ -4048,7 +4119,7 @@ function* cmLabelsG(R) {
   R.pl = {};
   [['hall', 'THE GRAND HALL', '#ffd36b', 'the Forum · the big screen · the balcony'], ['bar', 'THE MEMPOOL', '#ff4fd8', 'pour your own pint · the jukebox'], ['koi', 'KOI GARDEN', '#7dff4a', 'the glasshouse · the koi tank'],
    ['lounge', 'FIRESIDE LOUNGE', '#ffb04a', 'sofas · the fire · the books'], ['jb', 'BLOCK BEATS', '#ff4fd8', 'the jukebox · click to choose'], ['forum', 'THE FORUM', '#ffd36b', 'sit on the steps and talk'],
-   ['ware', 'THE WAREHOUSE', '#27e1ff', 'mind the wet paint'], ['scr', 'THE BIG SCREEN', '#4cc9f0', 'click it to play something'], ['arc', 'THE ENTRANCE ARCADE', '#ffd36b', 'the common rooms'],
+   ['ware', 'THE WAREHOUSE', '#27e1ff', 'mind the wet paint'], ['scr', 'THE BIG SCREEN', '#4cc9f0', 'live from the blockchain'], ['arc', 'THE ENTRANCE ARCADE', '#ffd36b', 'the common rooms'],
    ['pizza', 'TWO PIZZAS', '#ffd36b', '10,000 BTC · 22 May 2010'], ['coin', 'A PHYSICAL BITCOIN', '#ffd36b', 'solid gold · the B on both sides']]
     .forEach(([k, a, col, b], i) => { const x = (i % 4) * 512, y = y0 + 256 + Math.floor(i / 4) * 128; plate(x, y, 512, 128, a, col, b); R.pl[k] = {x, y}; });
   const CM_FAMOUS = [[0, 'GENESIS'], [170, 'FIRST TRANSACTION'], [57043, 'PIZZA DAY'], [210000, '1ST HALVING'], [420000, '2ND HALVING'], [630000, '3RD HALVING'], [709632, 'TAPROOT'], [840000, '4TH HALVING']];
@@ -4100,7 +4171,7 @@ function* cmFixG(R) {   // (built a part at a time, the rooms' build letting fra
   for (const s of [-1, 1]) { B(s * (DOOR / 2 + .02) - .05, s * (DOOR / 2 + .02) + .05, 0, DOORH + .02, .02, .08, K.gold, 2); }
   B(-DOOR / 2 - .1, DOOR / 2 + .1, DOORH, DOORH + .1, .02, .08, K.gold, 2);
   // walnut panelling to dado height with a brass rail; carved pillars where the arches land, gilded capitals; brass sconces between
-  for (const s of [-1, 1]) for (const [a, b] of [[0, 5], [11, 16]]) { B(s * 3.85 - .05, s * 3.85 + .05, 0, 1.1, a, b, K.walnut, 0, null, 1); B(s * 3.79 - .02, s * 3.79 + .02, 1.1, 1.14, a, b, K.brass, 1); }
+  for (const s of [-1, 1]) for (const [a, b] of [[0, 4.97], [11.03, 16]]) { B(s * 3.85 - .05, s * 3.85 + .05, 0, 1.1, a, b, K.walnut, 0, null, 1); B(s * 3.79 - .02, s * 3.79 + .02, 1.1, 1.14, a, b, K.brass, 1); }   // (stopping just short of the doorways, so no two faces share a place)
   for (const dd of [1.2, 4.6, 11.4, 14.8]) for (const s of [-1, 1]) {
     const x = s * 3.62; B(x - .38, x + .38, 0, .35, dd - .38, dd + .38, K.dwalnut); B(x - .3, x + .3, .35, 3.9, dd - .3, dd + .3, K.walnut, 0, null, 1);
     for (const y of [.9, 2.2]) B(x - s * .31 - .01, x - s * .31 + .01, y, y + .9, dd - .17, dd + .17, K.dwalnut);
@@ -4520,18 +4591,21 @@ LIFE.MESH && (() => {
     q4(v, [-gx, 0, -gz], [gx, 0, -gz], [gx, y1, -gz], [-gx, y1, -gz], [0, 0, -1], G, 0); q4(v, [-gx, 0, gz], [gx, 0, gz], [gx, y1, gz], [-gx, y1, gz], [0, 0, 1], G, 0);
     q4(v, [-gx, 0, -gz], [-gx, 0, gz], [-gx, y1, gz], [-gx, y1, -gz], [-1, 0, 0], G, 0); q4(v, [gx, 0, -gz], [gx, 0, gz], [gx, y1, gz], [gx, y1, -gz], [1, 0, 0], G, 0); });
   // the waterfall: a sheet pouring off a lip of rock, curving out as it falls (falling toward -x), and the foam where it lands
-  make('cmFall', v => { const NW = 6, NH = 18, W = .5, H = .62; for (let i = 0; i < NW; i++) for (let j = 0; j < NH; j++) {
-    const P = (a, b) => { const f = b / NH; return [-.16 * Math.sqrt(f) - .02 * Math.sin(a * 2.1), -f * H, (a / NW - .5) * W * (1 + .25 * f)]; };
-    q4(v, P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1), [-1, 0, 0], C(0xd8f4ff), 0); } });
+  make('cmFall', v => { const N = 14, S = 10, H = .52; for (let j = 0; j < N; j++) for (let k = 0; k < S; k++) {   // a round stream of water, falling in a curve from the pipe's mouth, swelling a little as it falls
+    const P = (f, a) => { f = f / N; const r = .026 + .03 * f, cx = -.1 * Math.sqrt(f); return [cx + Math.cos(a / S * 6.2832) * r, -f * H, Math.sin(a / S * 6.2832) * r]; };
+    const c = P(j + .5, 0); q4(v, P(j, k), P(j + 1, k), P(j + 1, k + 1), P(j, k + 1), [Math.cos((k + .5) / S * 6.2832), 0, Math.sin((k + .5) / S * 6.2832)], C(0xd8f4ff), 0); } });
+  // a bamboo pipe out of the rocks, the water's source
+  make('cmSpout', v => { lathe(v, [[.042, 0], [.042, .62], [.03, .62], [.03, .58], [0, .58]], 10, (i, a, y) => y > .6 ? C(0x5a5a2a) : C(0xa8a058), 0, TR([1, 1, 1], [0, 0, 1.5708], [0, 0, 0]));
+    for (const y of [.2, .42]) lathe(v, [[.046, y], [.046, y + .02], [0, y + .02]], 10, () => C(0x8a8448), 0, TR([1, 1, 1], [0, 0, 1.5708], [0, 0, 0])); });
   make('cmFoam', v => { for (let i = 0; i < 16; i++) { const a0 = i / 16 * 6.2832, a1 = (i + 1) / 16 * 6.2832; for (const [r0, r1] of [[0, .16], [.16, .34]]) q4(v, [Math.cos(a0) * r0, 0, Math.sin(a0) * r0], [Math.cos(a1) * r0, 0, Math.sin(a1) * r0], [Math.cos(a1) * r1, 0, Math.sin(a1) * r1], [Math.cos(a0) * r1, 0, Math.sin(a0) * r1], [0, 1, 0], C(0xf4fbff), 1); } });
   // paint: tins (in the instance's colour, a silver lid) and spray cans
   make('cmCan', v => { lathe(v, [[0, 0], [.1, 0], [.1, .22], [0, .22]], 14, () => [0, 0, 0], T2); lathe(v, [[.101, .2], [.101, .23], [0, .23]], 14, () => C(0xb8bcc4), 0); lathe(v, [[.06, .17], [.09, .24]], 10, () => C(0x8a9099), 0); });
   make('cmSpray', v => { lathe(v, [[0, 0], [.033, 0], [.033, .18], [.024, .21], [0, .215]], 10, () => [0, 0, 0], T2); lathe(v, [[.018, .21], [.018, .25], [0, .25]], 8, () => C(0xe8e8ea), 0); });
 })();
-for (const k of ['cmVaultE', 'cmVaultS', 'cmFlame', 'cmLogs', 'cmVase1', 'cmVase2', 'cmVase3', 'cmVase4', 'cmUrn', 'cmPampas', 'cmBamboo', 'cmOrb', 'cmWeed', 'cmWater', 'cmTankGlass', 'cmFall', 'cmFoam', 'cmCan', 'cmSpray']) {
+for (const k of ['cmSpout', 'cmVaultE', 'cmVaultS', 'cmFlame', 'cmLogs', 'cmVase1', 'cmVase2', 'cmVase3', 'cmVase4', 'cmUrn', 'cmPampas', 'cmBamboo', 'cmOrb', 'cmWeed', 'cmWater', 'cmTankGlass', 'cmFall', 'cmFoam', 'cmCan', 'cmSpray']) {
   const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
 }
-Object.assign(CMT, {cmVaultE: 20, cmVaultS: 20, cmFlame: 27, cmLogs: 20, cmVase1: 20, cmVase2: 20, cmVase3: 20, cmVase4: 20, cmUrn: 20, cmPampas: 26, cmBamboo: 26, cmOrb: 20, cmWeed: 26,
+Object.assign(CMT, {cmSpout: 20, cmVaultE: 20, cmVaultS: 20, cmFlame: 27, cmLogs: 20, cmVase1: 20, cmVase2: 20, cmVase3: 20, cmVase4: 20, cmUrn: 20, cmPampas: 26, cmBamboo: 26, cmOrb: 20, cmWeed: 26,
   cmWater: 30, cmTankGlass: 22, cmFall: 31, cmFoam: 30, cmCan: 20, cmSpray: 20, fish: 28, rock: 12, bubble: 29, lilypad: 7, lily: 8});
 // how shiny (glazed vases, chrome, glass bottles, wet fish) and which pass (the see-through ones last)
 const CM_SP = {cmVase1: .9, cmVase2: .9, cmVase3: .9, cmVase4: .9, cmUrn: .7, cmTap: 1, cmBottle: 1, cmStool: .6, fish: .7, cmCan: .6, cmSpray: .8, cmArch: .3, rock: .15};
@@ -4584,8 +4658,8 @@ function cmProps(R) {
     for (const [x, y, dd, s, c] of RK) put('rock', x, y, dd, rnd() * 6, s, rnd() * 9, 0, 0, H(c));
     for (let k = 0; k < 26; k++) put('rock', 29 + rnd() * 5.6, sand - .02, 31.5 + rnd() * 3, rnd() * 6, .08 + rnd() * .09, rnd() * 9, 0, 0, H([0x8a8478, 0x5a5650, 0xa89a80, 0x3a3a3a][k % 4]));
     put('cmFern', 36.25, 2.05, 33.25, rnd() * 6, .55, 1); put('tuft', 35.9, 1.95, 32.5, 0, .5, 2); put('tuft', 36.5, 1.5, 33.9, 0, .45, 3);
-    put('cmFall', 35.72, 2.12, 32.9, ty, 1, 0); put('cmFoam', 35.5, wl + .01, 32.9, 0, 1, 0);
-    for (let k = 0; k < 10; k++) put('bubble', 35.45 + (rnd() - .5) * .3, wl - .5, 32.9 + (rnd() - .5) * .35, 0, .035 + rnd() * .03, rnd(), .5, .9 + rnd() * .5, [.9, .97, 1]);
+    put('cmSpout', 36.38, 2.12, 32.9, ty, 1, 0); put('cmFall', 35.74, 2.1, 32.9, ty, 1, 0); put('cmFoam', 35.64, wl + .01, 32.9, 0, .55, 0);
+    for (let k = 0; k < 10; k++) put('bubble', 35.62 + (rnd() - .5) * .2, wl - .5, 32.9 + (rnd() - .5) * .2, 0, .035 + rnd() * .03, rnd(), .5, .9 + rnd() * .5, [.9, .97, 1]);
     for (let k = 0; k < 16; k++) put('bubble', 29.5 + (rnd() - .5) * .08, sand, 31.75 + (rnd() - .5) * .08, 0, .025 + rnd() * .03, k / 16, wl - sand, .28, [.9, .97, 1]);
     for (const [x, dd] of [[29.6, 34.35], [30.6, 34.3], [31.7, 34.4], [33.0, 34.3], [34.1, 34.35], [29.4, 31.7], [31.2, 31.65], [33.6, 31.7]]) put('cmWeed', x, sand, dd, rnd() * 6, .9 + rnd() * .5, rnd() * 9);
     const KOI = [0xff6a1a, 0xf4f0ea, 0xffb020, 0xe0402a, 0xff8a3d, 0xfff2d0, 0xd8501a];
@@ -4803,10 +4877,11 @@ function cmFixMore(R, H) {
     if (cnv) { S(-W, W, y - Hh, y + Hh, 0, .06, LC('#2a1c3a')); S(-W - .004, W + .004, y - Hh - .004, y + Hh + .004, .005, .055, LC('#1a1226')); }   // a stretched canvas: no frame, its painted edges
     else {
     S(-W - bw + .02, W + bw - .02, y - Hh - bw + .02, y + Hh + bw - .02, 0, .05, fc);
-    S(-W - bw, W + bw, y + Hh - .01, y + Hh + bw, .02, .1, fc); S(-W - bw, W + bw, y - Hh - bw, y - Hh + .01, .02, .1, fc);
-    S(-W - bw, -W + .01, y - Hh + .01, y + Hh - .01, .02, .1, fc); S(W - .01, W + bw, y - Hh + .01, y + Hh - .01, .02, .1, fc);
-    S(-W + .01, W - .01, y + Hh - .03, y + Hh - .01, .055, .085, lip, 1); S(-W + .01, W - .01, y - Hh + .01, y - Hh + .03, .055, .085, lip, 1);
-    S(-W + .01, -W + .03, y - Hh + .03, y + Hh - .03, .055, .085, lip, 1); S(W - .03, W - .01, y - Hh + .03, y + Hh - .03, .055, .085, lip, 1); }
+    const e = .022;   // (the gilt edge, just outside the picture: nothing covers the picture itself)
+    S(-W - bw, W + bw, y + Hh + e, y + Hh + bw, .02, .1, fc); S(-W - bw, W + bw, y - Hh - bw, y - Hh - e, .02, .1, fc);
+    S(-W - bw, -W - e, y - Hh - e, y + Hh + e, .02, .1, fc); S(W + e, W + bw, y - Hh - e, y + Hh + e, .02, .1, fc);
+    S(-W - e, W + e, y + Hh, y + Hh + e, .04, .085, lip, 1); S(-W - e, W + e, y - Hh - e, y - Hh, .04, .085, lip, 1);
+    S(-W - e, -W, y - Hh, y + Hh, .04, .085, lip, 1); S(W, W + e, y - Hh, y + Hh, .04, .085, lip, 1); }
     const lw = Math.min(w * .32, 1.4), ty = y + Hh + (cnv ? .02 : bw);
     for (const a of [-lw * .75, lw * .75]) S(a - .02, a + .02, ty, ty + .06, .04, .16, K.brass);
     S(-lw, lw, ty + .06, ty + .12, .12, .26, K.brass); S(-lw + .02, lw - .02, ty + .055, ty + .06, .14, .24, LC('#fff1cf'), 2);
@@ -4820,7 +4895,7 @@ function cmFixMore(R, H) {
     for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) B(cx - .28 + i * .07, cx - .21 + i * .07, .25, .255, cd - .28 + j * .07, cd - .21 + j * .07, (i + j) % 2 ? LC('#e8dcc0') : LC('#3a2410'));
     for (const s of [-1, 1]) { const d0 = cd + s * .7; B(cx - .24, cx + .24, -.03, .02, d0 - .22, d0 + .22, K.leather); B(cx - .24, cx + .24, .02, .62, d0 + s * .18, d0 + s * .23, K.leather); for (const e of [-.2, .2]) for (const f of [-.18, .18]) B(cx + e - .02, cx + e + .02, -.45, -.03, d0 + f - .02, d0 + f + .02, K.brass); } }
   // the hall: plinths for the bull and the bear, lit from above; glass cases on plinths (the pizza, the coin), named
-  for (const s of [-1, 1]) { const x = s * 12.4; B(x - .9, x + .9, .9, 1.7, 43.6, 44.8, K.dmarble); B(x - .92, x + .92, 1.68, 1.72, 43.58, 44.82, K.brass); light(x, 4.6, 43.4, 0xffe2b8, 1.4, 5.5, [0, -1, .3], .55); }
+  for (const s of [-1, 1]) { const x = s * 12.4; B(x - 1.2, x + 1.2, .9, 1.62, 42.9, 45.3, K.dmarble); B(x - 1.24, x + 1.24, 1.62, 1.72, 42.86, 45.34, K.dmarble); B(x - 1.245, x + 1.245, 1.58, 1.6, 42.855, 45.345, K.brass, 1); light(x, 4.6, 43.4, 0xffe2b8, 1.4, 5.5, [0, -1, .3], .55); }
   for (const s of [-1, 1]) { const x = s * 12; B(x - .45, x + .45, .9, 1.9, 31.15, 32.05, K.dmarble); B(x - .47, x + .47, 1.88, 1.92, 31.13, 32.07, K.brass);
     const p = s < 0 ? R.pl.pizza : R.pl.coin; tiles(x - s * .46, 1.42, 31.6, -s, 0, .21, p.x, p.y, 128, 4); light(x, 3.7, 31.6, 0xfff4e0, 1.3, 3.5, [0, -1, 0], .6); }
   for (const s of [-1, 1]) B(s * 15.7 - .04, s * 15.7 + .04, 11.36, 11.44, 35.6, 37.4, K.brass);
@@ -4864,7 +4939,7 @@ function cmPropsMore(R, put, rnd, F, H, VC) {
   put('cmCat', -15.3, -.43, 8.6, F(1, 0), 1, 0);
   put('cmUrn', -5.5, -.45, 3.55, 0, .6, 0, 0, 0, VC.terracotta); put('cmPalm', -5.5, .12, 3.55, rnd() * 6, .72, rnd() * 9);
   // the hall's bronzes, the cases' treasures
-  put('cmBull', -12.4, 1.72, 44.2, F(0, -1) + .5, 1.3, 0); put('cmBear', 12.4, 1.72, 44.2, F(0, -1) - .5, 1.3, 0);
+  put('cmBull', -12.4, 1.72, 44.1, F(0, -1) + .5, 1.3, 0); put('cmBear', 12.4, 1.72, 44.1, F(0, -1) - .5, 1.3, 0);
   for (const s of [-1, 1]) put('cmCase', s * 12, 1.92, 31.6, 0, 1, 0);
   put('cmSign', 4.4, 0, 19.275, F(-.82, -.57), 1, 0); put('cmJuke', CM.JB[0], 1.82, CM.JB[1], F(0, 1), 1.15, 0); put('cmMBall', -32, 7.05, 35, 0, 1, 0); put('cmUrn', -5.6, -.45, 13.0, 0, .7, 0, 0, 0, VC.terracotta); put('cmPampas', -5.6, .2, 13.0, 1.3, 1.0, 2); put('cmPizza', -12.12, 1.95, 31.5, 0, 1, 0); put('cmPizza', -11.9, 1.97, 31.72, .7, .95, 0); put('cmCoin', 12, 2.3, 31.6, 0, 1, 0);
   // the bar: a game of pool set up, cues on the table; high tables with neon rims
@@ -5194,6 +5269,14 @@ function cmQuads(R) {
     q.push(o); R.live.push({name, url, q: o, kind: 'art', at: V3(x + fx * 2.2, y, dd + fd * 2.2)});
   }
 }
+// the block rooms' floor, written only into the depth (so whatever lies below it, behind the far wall, stays hidden)
+function rmFloorDepth(VP) {
+  if (!room) return; gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.colorMask(false, false, false, false); gl.depthMask(true); gl.depthFunc(gl.LESS);
+  gl.useProgram(cmQP.p); gl.uniformMatrix4fv(cmQP.u.uVP, false, VP); gl.uniform1i(cmQP.u.uMd, 7); gl.bindVertexArray(cmQV);
+  for (const R of room.rooms) { if (!R || R.common || R.z0 == null || !R.L) continue;
+    gl.uniform3f(cmQP.u.uO, -RW / 2 - WT, 0, R.z0 + WT / 2); gl.uniform3f(cmQP.u.uX, RW + 2 * WT, 0, 0); gl.uniform3f(cmQP.u.uY, 0, 0, -(R.L + WT)); gl.drawArrays(gl.TRIANGLES, 0, 6); }
+  gl.bindVertexArray(null); gl.colorMask(true, true, true, true); gl.enable(gl.CULL_FACE);
+}
 function cmQDraw(VP, eye, tn) {
   cm.VP = VP; cmJobRun(); if (tn - cmS.t > .25) { cmS.t = tn; cmSounds(); }
   const R = room.rooms.find(q => q && q.ready && q.common); if (!R || !R.q) return;
@@ -5317,7 +5400,6 @@ function cmAct(sx, sy) {
   if (ray) {
     let best = null, bt = 1e9;
     const consider = (t, o, max) => { if (t > 0 && t < max && t < bt) { bt = t; best = o; } };
-    consider(cmRayQ(ray, C.scr), {a: 'screen', label: cm.sc ? 'use the screen' : 'play something on the big screen'}, 42);
     for (const L of C.live) { const on = cm.sel && cm.sel.L === L; consider(cmRayQ(ray, L.q), {a: 'play', L, label: L.kind === 'game' ? (on ? 'carry on playing' : 'play this game') : on ? 'put it away' : 'show this inscription'}, 7); }
     const tb = (bx, by, bd, hx, hy, hd, o, max) => { const [wx, wz] = cmW(C, bx, bd); consider(rmHit([wx, by, C.z0 + wz], [hx, hy, hd], ray), o, max); };
     if (!cm.pint) tb(CM.TAP[0], 3.26, CM.TAP[1], .4, .35, .4, {a: 'pour', label: 'pour a pint'}, 4);
@@ -5437,8 +5519,8 @@ const cmIns = s => { s = (s || '').trim().toLowerCase(); const m = s.match(/([0-
 function cmShare(ev) { if (crew.on) toPage({type: 'event', ev: Object.assign({list: 'cm'}, ev)}); }
 function cmGot(ev) {   // from your crew (or from before you joined)
   if (!ev || ev.list !== 'cm') return;
-  if (ev.k === 'screen' && (ev.m === 'live' || (ev.m === 'yt' && /^[A-Za-z0-9_-]{11}$/.test(ev.v)) || (ev.m === 'ins' && /^[0-9a-f]{64}i\d+$/.test(ev.v)))) { cm.media = {k: ev.m, v: ev.v, t0: +ev.t0 || Date.now()}; cmScreen(); }
-  if (ev.k === 'music' && (ev.m === 'off' || (ev.m === 'tune' && CM_TUNES[ev.v | 0]) || (ev.m === 'ins' && /^[0-9a-f]{64}i\d+$/.test(ev.v)))) { cm.music = {k: ev.m, v: ev.m === 'tune' ? ev.v | 0 : ev.v, t0: +ev.t0 || Date.now()}; cmMusic(); }
+  if (ev.k === 'screen' && ev.m === 'live') { cm.media = {k: 'live'}; cmScreen(); }
+  if (ev.k === 'music' && (ev.m === 'off' || (ev.m === 'tune' && CM_TUNES[ev.v | 0]))) { cm.music = {k: ev.m, v: ev.m === 'tune' ? ev.v | 0 : ev.v, t0: +ev.t0 || Date.now()}; cmMusic(); }
 }
 // the page laid over the screen: YouTube (from the time it was started, so everyone is at the same moment), or an inscription
 function cmScreen() {
@@ -5464,32 +5546,27 @@ function cmAsk(what) {
   if (document.pointerLockElement) document.exitPointerLock();
   const scr = what === 'screen';
   $cmd.innerHTML = '<div class="t"></div><div class="r tunes"></div><div class="r"><input autocomplete="off" spellcheck="false"></div><div class="r b"></div><div class="n"></div>';
-  $cmd.querySelector('.t').textContent = scr ? 'THE BIG SCREEN' : 'BLOCK BEATS · THE MUSIC BOX';
+  $cmd.querySelector('.t').textContent = scr ? 'THE BIG SCREEN' : 'BLOCK BEATS · THE JUKEBOX';
   const inp = $cmd.querySelector('input'), note = $cmd.querySelector('.n'), row = $cmd.querySelector('.b'), tunes = $cmd.querySelector('.tunes');
-  inp.placeholder = scr ? 'a YouTube link, or an inscription ID' : 'a music inscription ID';
+  inp.placeholder = 'a YouTube link'; if (!scr) inp.parentNode.style.display = 'none';
   const btn = (t, f, main) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; if (main) b.className = 'go'; b.onclick = f; row.appendChild(b); return b; };
   const close = () => $cmd.classList.remove('on');
   if (scr) {
-    btn('PLAY', () => { const y = cmYT(inp.value), i = y ? null : cmIns(inp.value); if (!y && !i) { note.textContent = 'that is not a YouTube link or an inscription ID'; return; } cm.media = {k: y ? 'yt' : 'ins', v: y || i, t0: Date.now()}; cmScreen(); cmShare({k: 'screen', m: cm.media.k, v: cm.media.v, t0: cm.media.t0}); close(); }, true);
+    btn('PLAY', () => { const y = cmYT(inp.value); if (!y) { note.textContent = 'that is not a YouTube link'; return; } cm.media = {k: 'yt', v: y, t0: Date.now()}; cmScreen(); cmShare({k: 'screen', m: 'yt', v: y, t0: cm.media.t0}); close(); }, true);
     btn('LIVE BLOCKS', () => { cm.media = {k: 'live'}; cmScreen(); cmShare({k: 'screen', m: 'live', t0: Date.now()}); close(); });
-    if (location.protocol === 'file:') note.textContent = 'YouTube only plays when the cube is opened from the portal online: inscriptions play anywhere'; else if (!/github\.io$|^localhost$|^127\./.test(location.hostname)) note.textContent = 'YouTube may not play here: inscriptions do';
+    if (location.protocol === 'file:') note.textContent = 'YouTube only plays when the cube is opened from the portal online'; else if (!/github\.io$|^localhost$|^127\./.test(location.hostname)) note.textContent = 'YouTube may not play here';
   } else {
     tunes.style.flexWrap = 'wrap';
     CM_TUNES.forEach((T, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = T.n; if (cm.music.k === 'tune' && cm.music.v === i) b.className = 'on'; b.onclick = () => { cm.music = {k: 'tune', v: i, t0: Date.now()}; cmMusic(); cmShare({k: 'music', m: 'tune', v: i, t0: cm.music.t0}); close(); }; tunes.appendChild(b); });
-    btn('PLAY', () => { const i = cmIns(inp.value); if (!i) { note.textContent = 'paste a music inscription ID'; return; } cm.music = {k: 'ins', v: i, t0: Date.now()}; cmMusic(); cmShare({k: 'music', m: 'ins', v: i, t0: cm.music.t0}); close(); }, true);
     btn('STOP', () => { cm.music = {k: 'off'}; cmMusic(); cmShare({k: 'music', m: 'off', t0: Date.now()}); close(); });
   }
   btn('CLOSE', close);
   inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') row.querySelector('.go').click(); else if (e.key === 'Escape') close(); });
-  $cmd.classList.add('on'); setTimeout(() => inp.focus(), 50);
+  $cmd.classList.add('on'); if (scr) setTimeout(() => inp.focus(), 50);
 }
 
 /* ---- the music box's own tunes: made as they play, the same for everyone from the moment one was chosen ---- */
-const CM_TUNES = [
-  {n: 'GENESIS DRIFT', bpm: 72, root: 50, prog: [[0, 3, 7, 10], [-4, 0, 3, 7], [-7, -3, 0, 5], [-2, 2, 5, 9]], bass: [0, 6, 8, 14], kick: [0, 8, 11], hat: 2, lofi: 1},
-  {n: 'MEMPOOL RAIN', bpm: 80, root: 45, prog: [[0, 3, 7, 10], [5, 8, 12, 15], [3, 7, 10, 14], [-2, 2, 5, 9]], bass: [0, 3, 8, 11], kick: [0, 7, 10], hat: 1, lofi: 1},
-  {n: 'HALVING SUNSET', bpm: 88, root: 48, prog: [[0, 4, 7, 11], [-3, 0, 4, 7], [5, 9, 12, 16], [7, 11, 14, 17]], bass: [0, 6, 8, 12], kick: [0, 8], hat: 2, lofi: 0},
-  {n: 'NODE LIGHTS', bpm: 100, root: 43, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [-4, 0, 3, 7], [-2, 2, 5, 9]], bass: [0, 2, 8, 10, 14], kick: [0, 4, 8, 12], hat: 1, lofi: 0}];
+const CM_TUNES = [{n: 'BLOCK PARTY · CLUB MIX'}];
 const cmA = {gain: null, lp: null, next: -1, timer: 0, noise: null, crack: null, el: null, key: ''};
 const cmHz = m => 440 * Math.pow(2, (m - 69) / 12);
 const cmRnd = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
@@ -5514,8 +5591,21 @@ function cmMusic() {
     }
     return;
   }
-  cmA.next = -1;
-  if (!cmA.timer) cmA.timer = setInterval(cmTick, 110);
+  cmSong(a, m);
+  if (!cmA.timer) cmA.timer = setInterval(cmTick, 200);
+}
+// the track: made once (in a worker, so nothing stutters), then played from where everyone else is in it
+const cmSongS = {data: null, busy: false, buf: null, src: null, key: ''};
+function cmSong(a, m) {
+  if (cmSongS.src && cmSongS.key !== m.k + m.t0) { try { cmSongS.src.stop(); } catch (e) {} cmSongS.src = null; }
+  if (!cmSongS.data) { if (cmSongS.busy) return; cmSongS.busy = true;
+    const done = d => { cmSongS.data = d; cmSongS.busy = false; if (cm.music.k === 'tune') cmMusic(); };
+    try { const w = new Worker(URL.createObjectURL(new Blob([CM_SONGGEN + '\nonmessage = () => { const s = makeSong(32000); postMessage(s, [s.buffer]); };'], {type: 'text/javascript'}))); w.onmessage = e => { done(e.data); w.terminate(); }; w.onerror = () => { w.terminate(); done(new Function(CM_SONGGEN + '; return makeSong(32000);')()); }; w.postMessage(0); }
+    catch (e) { setTimeout(() => done(new Function(CM_SONGGEN + '; return makeSong(32000);')()), 50); }
+    return; }
+  if (cmSongS.src) return;
+  if (!cmSongS.buf) { cmSongS.buf = a.createBuffer(1, cmSongS.data.length, 32000); cmSongS.buf.copyToChannel(cmSongS.data, 0); }
+  const src = a.createBufferSource(); src.buffer = cmSongS.buf; src.loop = true; src.connect(cmA.gain); src.start(0, ((Date.now() - m.t0) / 1000) % cmSongS.buf.duration); cmSongS.src = src; cmSongS.key = m.k + m.t0;
 }
 // a voice: an oscillator (or noise) through a filter and an envelope, starting at `at` (seconds on the audio clock)
 function cmVoice(a, at, o) {
@@ -5527,35 +5617,23 @@ function cmVoice(a, at, o) {
   src.connect(out || g); src.start(at); src.stop(at + (o.att || .005) + (o.hold || 0) + (o.dec || .2) * 6);
 }
 function cmTick() {
-  const a = au, m = cm.music; if (!a || m.k !== 'tune' || !cmA.gain) { clearInterval(cmA.timer); cmA.timer = 0; return; }
-  // loud in the room, quieter and muffled through its open door, silent further off
-  const C = room && room.at, nearC = room && room.rooms.some(R => cmOn(R) && R.ready), inC = cmOn(C);
-  cmA.gain.gain.setTargetAtTime(inC ? .55 : nearC ? .12 : 0, a.currentTime, .4); cmA.lp.frequency.setTargetAtTime(inC ? 9000 : 700, a.currentTime, .4);
-  if (!inC && !nearC) return;
-  const T = CM_TUNES[m.v], sd = 60 / T.bpm / 4, now = Date.now(), until = now + 400;
-  let s = Math.max(cmA.next, Math.ceil((now - m.t0) / 1000 / sd));
-  for (; m.t0 + s * sd * 1000 < until; s++) {
-    const at = a.currentTime + (m.t0 + s * sd * 1000 - now) / 1000 + .02, bar = Math.floor(s / 16), st = s % 16, ch = T.prog[bar % T.prog.length], R0 = T.root;
-    const sw = st % 2 ? sd * .12 : 0;
-    if (st === 0) for (const n of ch) for (const det of [-7, 7]) cmVoice(a, at, {f: cmHz(R0 + 12 + n), type: 'sawtooth', det, filter: 'lowpass', ff: 900, vol: .018, att: .5, hold: sd * 13, dec: .5});
-    if (T.bass.includes(st)) cmVoice(a, at, {f: cmHz(R0 - 12 + ch[0] + (st > 8 && cmRnd(bar) > .6 ? 7 : 0)), type: 'triangle', vol: .16, att: .01, hold: sd * 1.5, dec: .18});
-    if (T.kick.includes(st)) cmVoice(a, at, {f: 120, f2: 42, slide: .12, vol: .32, dec: .14});
-    if (st === 4 || st === 12) { cmVoice(a, at, {noise: 1, filter: 'bandpass', ff: 1900, q: .8, vol: .1, dec: .07}); cmVoice(a, at, {f: 190, type: 'triangle', vol: .05, dec: .05}); }
-    if (st % T.hat === 0) cmVoice(a, at + sw, {noise: 1, filter: 'highpass', ff: 7500, vol: st % 4 === 2 ? .03 : .018, dec: .018});
-    if ([0, 3, 6, 10, 13].includes(st) && cmRnd(s * 1.7) > .35) { const n = ch[Math.floor(cmRnd(s) * ch.length)] + (cmRnd(s + 3) > .6 ? 12 : 0); cmVoice(a, at + sw, {f: cmHz(R0 + 24 + n), type: 'sine', vol: .045, dec: .35}); cmVoice(a, at + sw, {f: cmHz(R0 + 36 + n), type: 'sine', vol: .012, dec: .12}); }
-    if (T.lofi && st === 0 && bar % 2 === 0) { const c = a.createBufferSource(), g = a.createGain(); c.buffer = cmA.crack; g.gain.value = .5; c.connect(g); g.connect(cmA.gain); c.start(at); }
-  }
-  cmA.next = s;
+  const a = au, m = cm.music; if (!a || m.k !== 'tune' || !cmA.gain) { clearInterval(cmA.timer); cmA.timer = 0; if (cmSongS.src && m.k !== 'tune') { try { cmSongS.src.stop(); } catch (e) {} cmSongS.src = null; } return; }
+  // loud in the bar where the jukebox stands, muffled through the walls in the other rooms, silent once you leave
+  const C = room && room.at, inC = cmOn(C) && C.ready, nearC = room && room.rooms.some(R => cmOn(R) && R.ready); let inBar = false;
+  if (inC) { const [x] = cmL(C, room.p.x, room.p.z); inBar = x < -23.6; }
+  cmA.gain.gain.setTargetAtTime(inBar ? .6 : inC ? .16 : nearC ? .05 : 0, a.currentTime, .35); cmA.lp.frequency.setTargetAtTime(inBar ? 14000 : 650, a.currentTime, .35);
 }
 
 // leaving the rooms: the pages over the room go, the music stops
-function cmLeave() { cmUse(false); cmJobs.length = 0; cmSoundsOff(); if (cm.sc) { cm.sc.remove(); cm.sc = null; cm.scKey = ''; } if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } cmSelOff(); $cmd.classList.remove('on'); if (cmA.el) { cmA.el.remove(); cmA.el = null; cmA.key = ''; } if (cmA.gain && au) cmA.gain.gain.setTargetAtTime(0, au.currentTime, .2); cm.pour = null; }
+function cmLeave() { cmUse(false); cmJobs.length = 0; cmSoundsOff(); if (cm.sc) { cm.sc.remove(); cm.sc = null; cm.scKey = ''; } if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } cmSelOff(); $cmd.classList.remove('on'); if (cmSongS.src) { try { cmSongS.src.stop(); } catch (e) {} cmSongS.src = null; } if (cmA.el) { cmA.el.remove(); cmA.el = null; cmA.key = ''; } if (cmA.gain && au) cmA.gain.gain.setTargetAtTime(0, au.currentTime, .2); cm.pour = null; }
 
 
 // the statues' sculpting, run in a worker
 const CM_SCULPT = "// smooth sculpted statues: shapes (ellipsoids, tapered capsules) blended together, then a surface pulled out of them (surface nets)\n// returns the cube's own mesh format: x y z, nx ny nz, r g b, wind (10 numbers a corner)\nfunction sculptMesh(prims, B, cell, colf, rough = 0) {\n  const smin = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * .25; };\n  const P = prims.map(q => { const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9], m = (q.k || .08) + .02;\n    const pts = q.t === 'e' ? [[q.c[0] - q.r[0], q.c[1] - q.r[1], q.c[2] - q.r[2]], [q.c[0] + q.r[0], q.c[1] + q.r[1], q.c[2] + q.r[2]]].map(p => p) : [q.a, q.b];\n    const ext = q.t === 'e' ? Math.max(...q.r) : Math.max(q.ra, q.rb), cc = q.t === 'e' ? [q.c, q.c] : pts;\n    for (const p of cc) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i] - ext - m); hi[i] = Math.max(hi[i], p[i] + ext + m); }\n    if (q.t === 'e' && q.rx) { q.cs = Math.cos(q.rx); q.sn = Math.sin(q.rx); }\n    if (q.t === 'c') { q.ba = [q.b[0] - q.a[0], q.b[1] - q.a[1], q.b[2] - q.a[2]]; q.l2 = q.ba[0] ** 2 + q.ba[1] ** 2 + q.ba[2] ** 2; }\n    return Object.assign(q, {lo, hi}); });\n  const one = (q, x, y, z) => {\n    if (q.t === 'e') { let dx = x - q.c[0], dy = y - q.c[1], dz = z - q.c[2]; if (q.cs !== undefined) { const ny = dy * q.cs - dz * q.sn, nz = dy * q.sn + dz * q.cs; dy = ny; dz = nz; }\n      const kx = dx / q.r[0], ky = dy / q.r[1], kz = dz / q.r[2], k0 = Math.sqrt(kx * kx + ky * ky + kz * kz), k1 = Math.sqrt(kx * kx / q.r[0] / q.r[0] + ky * ky / q.r[1] / q.r[1] + kz * kz / q.r[2] / q.r[2]);\n      return k1 > 1e-9 ? k0 * (k0 - 1) / k1 : -q.r[0]; }\n    const px = x - q.a[0], py = y - q.a[1], pz = z - q.a[2]; let h = (px * q.ba[0] + py * q.ba[1] + pz * q.ba[2]) / q.l2; h = h < 0 ? 0 : h > 1 ? 1 : h;\n    const dx = px - q.ba[0] * h, dy = py - q.ba[1] * h, dz = pz - q.ba[2] * h; return Math.sqrt(dx * dx + dy * dy + dz * dz) - (q.ra + (q.rb - q.ra) * h);\n  };\n  // which shapes reach each 0.2 m bin (so each point only looks at the shapes near it)\n  const BS = .2, bx0 = B[0][0], by0 = B[0][1], bz0 = B[0][2], bnx = Math.ceil((B[1][0] - bx0) / BS) + 1, bny = Math.ceil((B[1][1] - by0) / BS) + 1, bnz = Math.ceil((B[1][2] - bz0) / BS) + 1, bins = [];\n  for (let k = 0; k < bnz; k++) for (let j = 0; j < bny; j++) for (let i = 0; i < bnx; i++) { const x0 = bx0 + i * BS, y0 = by0 + j * BS, z0 = bz0 + k * BS;\n    bins.push(P.filter(q => q.hi[0] >= x0 && q.lo[0] <= x0 + BS && q.hi[1] >= y0 && q.lo[1] <= y0 + BS && q.hi[2] >= z0 && q.lo[2] <= z0 + BS)); }\n  const binOf = (x, y, z) => { const i = Math.min(bnx - 1, Math.max(0, Math.floor((x - bx0) / BS))), j = Math.min(bny - 1, Math.max(0, Math.floor((y - by0) / BS))), k = Math.min(bnz - 1, Math.max(0, Math.floor((z - bz0) / BS))); return bins[(k * bny + j) * bnx + i]; };\n  const f = (x, y, z) => { let d = 1e9; for (const q of binOf(x, y, z)) { if (x < q.lo[0] || x > q.hi[0] || y < q.lo[1] || y > q.hi[1] || z < q.lo[2] || z > q.hi[2]) continue; const e = one(q, x, y, z); d = d > 1e8 ? e : (q.sub ? Math.max(d, -e) : smin(d, e, q.k || .08)); }\n    if (rough && d < .05) d += rough * (Math.sin(x * 61 + Math.sin(z * 23) * 2) * Math.sin(y * 57 + x * 9) + .6 * Math.sin(z * 83 + y * 31));   // sculpted fur / hide\n    return Math.max(d, -y); };\n  const nx = Math.ceil((B[1][0] - B[0][0]) / cell) + 1, ny = Math.ceil((B[1][1] - B[0][1]) / cell) + 1, nz = Math.ceil((B[1][2] - B[0][2]) / cell) + 1;\n  const V = new Float32Array(nx * ny * nz), id = (i, j, k) => (k * ny + j) * nx + i, X = i => B[0][0] + i * cell, Yy = j => B[0][1] + j * cell, Z = k => B[0][2] + k * cell;\n  // coarse first (every 4th corner); only near the surface is every corner worked out exactly\n  const G = 4, cx = Math.ceil((nx - 1) / G) + 1, cy = Math.ceil((ny - 1) / G) + 1, cz = Math.ceil((nz - 1) / G) + 1, CV = new Float32Array(cx * cy * cz), cidx = (i, j, k) => (k * cy + j) * cx + i;\n  for (let k = 0; k < cz; k++) for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) CV[cidx(i, j, k)] = f(X(i * G), Yy(j * G), Z(k * G));\n  const far = 1.9 * G * cell;\n  for (let K = 0; K < cz - 1; K++) for (let J = 0; J < cy - 1; J++) for (let I = 0; I < cx - 1; I++) {\n    let mn = 1e9; for (let c = 0; c < 8; c++) mn = Math.min(mn, Math.abs(CV[cidx(I + (c & 1), J + (c >> 1 & 1), K + (c >> 2))]));\n    const sgn = CV[cidx(I, J, K)], exact = mn < far;\n    for (let k = K * G; k <= Math.min(nz - 1, K * G + G); k++) for (let j = J * G; j <= Math.min(ny - 1, J * G + G); j++) for (let i = I * G; i <= Math.min(nx - 1, I * G + G); i++) V[id(i, j, k)] = exact ? f(X(i), Yy(j), Z(k)) : sgn;\n  }\n  const VI = new Int32Array((nx - 1) * (ny - 1) * (nz - 1)).fill(-1), cid = (i, j, k) => (k * (ny - 1) + j) * (nx - 1) + i, pos = [];\n  const E = [[0, 0, 0, 1, 0, 0], [0, 1, 0, 1, 1, 0], [0, 0, 1, 1, 0, 1], [0, 1, 1, 1, 1, 1], [0, 0, 0, 0, 1, 0], [1, 0, 0, 1, 1, 0], [0, 0, 1, 0, 1, 1], [1, 0, 1, 1, 1, 1], [0, 0, 0, 0, 0, 1], [1, 0, 0, 1, 0, 1], [0, 1, 0, 0, 1, 1], [1, 1, 0, 1, 1, 1]];\n  for (let k = 0; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {\n    let neg = 0; for (let c = 0; c < 8; c++) if (V[id(i + (c & 1), j + (c >> 1 & 1), k + (c >> 2))] < 0) neg++; if (neg === 0 || neg === 8) continue;\n    let sx = 0, sy = 0, sz = 0, n = 0;\n    for (const [a, b, c, d, e, g] of E) { const v0 = V[id(i + a, j + b, k + c)], v1 = V[id(i + d, j + e, k + g)]; if ((v0 < 0) === (v1 < 0)) continue; const t = v0 / (v0 - v1);\n      sx += X(i + a) + (X(i + d) - X(i + a)) * t; sy += Yy(j + b) + (Yy(j + e) - Yy(j + b)) * t; sz += Z(k + c) + (Z(k + g) - Z(k + c)) * t; n++; }\n    if (n) { VI[cid(i, j, k)] = pos.length / 3; pos.push(sx / n, sy / n, sz / n); }\n  }\n  // a smooth normal at each corner (the slope of the shape there), and how tucked-in it is (for darker bronze in the folds)\n  const nrm = [], occ = [], hh = cell * .5;\n  for (let p = 0; p < pos.length; p += 3) { const x = pos[p], y = pos[p + 1], z = pos[p + 2];\n    let gx = f(x + hh, y, z) - f(x - hh, y, z), gy = f(x, y + hh, z) - f(x, y - hh, z), gz = f(x, y, z + hh) - f(x, y, z - hh); const L = Math.hypot(gx, gy, gz) || 1; gx /= L; gy /= L; gz /= L; nrm.push(gx, gy, gz);\n    let o = 0; for (const s of [.03, .07, .13]) o += Math.min(1, Math.max(0, f(x + gx * s, y + gy * s, z + gz * s) / s)); occ.push(o / 3); }\n  const out = [], put = (vi) => { const x = pos[vi * 3], y = pos[vi * 3 + 1], z = pos[vi * 3 + 2]; const c = colf(x, y, z, nrm[vi * 3], nrm[vi * 3 + 1], nrm[vi * 3 + 2], occ[vi]); out.push(x, y, z, nrm[vi * 3], nrm[vi * 3 + 1], nrm[vi * 3 + 2], c[0], c[1], c[2], 0); };\n  const quad = (a, b, c, d, flip) => { if (a < 0 || b < 0 || c < 0 || d < 0) return; if (flip) { put(a); put(c); put(b); put(a); put(d); put(c); } else { put(a); put(b); put(c); put(a); put(c); put(d); } };\n  for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {\n    const v0 = V[id(i, j, k)] < 0;\n    if (i < nx - 1 && (V[id(i + 1, j, k)] < 0) !== v0) quad(VI[cid(i, j - 1, k - 1)], VI[cid(i, j, k - 1)], VI[cid(i, j, k)], VI[cid(i, j - 1, k)], !v0);\n    if (j < ny - 1 && (V[id(i, j + 1, k)] < 0) !== v0) quad(VI[cid(i - 1, j, k - 1)], VI[cid(i - 1, j, k)], VI[cid(i, j, k)], VI[cid(i, j, k - 1)], !v0);\n    if (k < nz - 1 && (V[id(i, j, k + 1)] < 0) !== v0) quad(VI[cid(i - 1, j - 1, k)], VI[cid(i, j - 1, k)], VI[cid(i, j, k)], VI[cid(i - 1, j, k)], !v0);\n  }\n  return out;\n}\n\n// the bronze bull (charging: head down, horns forward, tail whipped up) and the bear (a grizzly, walking), facing +z, feet flat on y 0\nconst E = (c, r, k, rx) => ({t: 'e', c, r, k, rx}), Cp = (a, b, ra, rb, k) => ({t: 'c', a, b, ra, rb, k}), S = (c, r) => ({t: 'e', c, r, sub: 1});\nconst chain = (pts, rs, k) => { const o = []; for (let i = 0; i + 1 < pts.length; i++) o.push(Cp(pts[i], pts[i + 1], rs[i], rs[i + 1], k)); return o; };\nconst mir = f => [...f(1), ...f(-1)];\nfunction bullPrims() {\n  const leg = (x, top, knee, fet, hoofZ, rs) => [...chain([top, knee, fet], rs, .1), E([(top[0] + knee[0]) / 2, (top[1] * .6 + knee[1] * .4), (top[2] + knee[2]) / 2], [rs[0] * .8, .2, rs[0] * .85], .1), Cp(fet, [x, .07, hoofZ], .068, .075, .04), E([x, .055, hoofZ + .015], [.09, .06, .11], .03)];\n  return [\n    // the body: a deep chest, a great hump of shoulder, the back falling to narrow hips\n    E([0, .95, .14], [.42, .45, .62], .12), E([0, 1.22, .4], [.37, .36, .42], .14), ...mir(s => [E([s * .2, 1.0, .5], [.22, .34, .32], .1)]),\n    E([0, .72, .55], [.28, .3, .32], .1), E([0, 1.16, -.18], [.32, .22, .5], .12), E([0, 1.04, -.55], [.34, .37, .38], .12),\n    ...mir(s => [E([s * .22, 1.17, -.58], [.14, .14, .18], .08)]), E([0, .78, -.1], [.34, .3, .52], .12),\n    // the neck, thick and low; the head down: a long face, a broad flat brow facing forward, eyes set at the sides, a wide muzzle\n    E([0, 1.0, .86], [.3, .36, .32], .12, .5), E([0, .78, .8], [.12, .22, .17], .08),\n    Cp([0, .9, 1.0], [0, .48, 1.29], .215, .16, .08), E([0, .84, 1.09], [.26, .13, .11], .06, .75), E([0, .54, 1.17], [.17, .12, .21], .07),\n    E([0, .45, 1.32], [.175, .125, .14], .06),\n    ...mir(s => [E([s * .12, .68, 1.06], [.1, .14, .14], .07), E([s * .18, .77, 1.12], [.045, .04, .045], .03), S([s * .065, .43, 1.42], [.033, .026, .035]), E([s * .26, .9, 1.0], [.1, .04, .065], .03),\n      ...chain([[s * .15, .93, 1.02], [s * .33, .96, 1.0], [s * .48, 1.03, 1.08], [s * .56, 1.16, 1.24], [s * .52, 1.27, 1.42]], [.09, .072, .055, .036, .014], .05)]),\n    // legs: the left fore reaching, the right fore drawn under; hind legs driving back\n    ...leg(.26, [.24, .9, .54], [.26, .44, .74], [.26, .2, .84], .87, [.18, .1, .075]),\n    ...leg(-.26, [-.24, .9, .46], [-.26, .44, .36], [-.26, .2, .45], .48, [.18, .1, .075]),\n    ...mir(s => [E([s * .24, 1.12, .42], [.14, .26, .2], .1)]),\n    ...mir(s => { const b = s > 0 ? -.1 : 0; return [E([s * .2, .93, -.5], [.2, .33, .3], .1), ...leg(s * .25, [s * .23, .72, -.4 + b * .4], [s * .25, .42, -.8 + b], [s * .25, .2, -.74 + b], -.71 + b, [.14, .095, .075])]; }),\n    // the tail, roped and whipped up over the back, its tuft\n    ...chain([[0, 1.2, -.86], [.02, 1.36, -1.02], [.08, 1.56, -1.05], [.16, 1.7, -.96], [.22, 1.75, -.83]], [.056, .044, .036, .03, .024], .04), E([.25, 1.74, -.75], [.05, .05, .1], .03),\n  ];\n}\nfunction bearPrims() {\n  const leg = (x, top, mid, low, pz, rs) => [...chain([top, mid, low], rs, .1), E([x, .065, pz], [.13, .07, .17], .06), ...[-.06, -.02, .02, .06].map(o => E([x + o, .035, pz + .15], [.022, .03, .04], .02))];\n  return [\n    E([0, .78, 0], [.38, .38, .62], .12), E([0, 1.03, .3], [.34, .3, .32], .14), E([0, .85, -.45], [.36, .38, .37], .12), E([0, .63, 0], [.32, .25, .5], .12),\n    E([0, .84, .63], [.24, .26, .27], .1), E([0, .78, .9], [.2, .19, .21], .08), E([0, .72, .95], [.22, .14, .15], .07),\n    Cp([0, .75, 1.0], [0, .68, 1.24], .11, .066, .06), E([0, .69, 1.3], [.05, .037, .03], .02),\n    ...mir(s => [E([s * .13, .96, .84], [.065, .065, .035], .04), S([s * .085, .82, 1.04], [.025, .02, .02])]),\n    ...leg(.24, [.22, .82, .45], [.24, .42, .6], [.24, .12, .66], .7, [.16, .125, .11]),\n    ...leg(-.23, [-.22, .82, .42], [-.23, .42, .38], [-.23, .12, .36], .41, [.16, .125, .11]),\n    ...leg(.24, [.2, .88, -.45], [.24, .46, -.3], [.24, .12, -.5], -.45, [.2, .13, .105]),\n    ...leg(-.24, [-.2, .88, -.45], [-.24, .46, -.48], [-.24, .12, -.36], -.31, [.2, .13, .105]),\n    E([0, .93, -.8], [.06, .06, .06], .04),\n  ];\n}\nfunction bronze(pol) { return (x, y, z, nx, ny, nz, o) => { const base = [.14, .07, .024], dark = [.022, .01, .004], hi = [.34, .19, .07];\n  const t = Math.pow(o, 1.5), c = base.map((b, i) => dark[i] + (b - dark[i]) * t), up = Math.max(0, ny) * .4 * t; for (let i = 0; i < 3; i++) c[i] += (hi[i] - c[i]) * up;\n  if (pol(x, y, z)) for (let i = 0; i < 3; i++) c[i] = c[i] * .3 + [.62, .38, .12][i] * .7; return c; }; }";
 // the rooms' sounds, made in a worker
 const CM_SNDGEN = "// the rooms' sounds, made from scratch: a fire, a fish tank, a summer meadow (loops that join without a seam)\nfunction makeSounds(sr) {\n  let q = 12345; const R = () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296, W = () => R() * 2 - 1;\n  const smooth = (t, s) => .5 + .22 * Math.sin(t * .31 + s) + .17 * Math.sin(t * .77 + s * 2) + .11 * Math.sin(t * 1.93 + s * 3);\n  const seam = (b, n) => { const x = Math.floor(sr * .25); for (let i = 0; i < x; i++) { const k = i / x; b[i] = b[i] * k + b[n + i] * (1 - k); } return b.slice(0, n); };\n  const burst = (b, at, f) => { const n = b.length; for (let i = 0; i < f.len && at + i < n; i++) b[at + i] += f(i / sr); };\n  // the fire: a low roar that swells, a soft hiss, crackles of every size, now and then a pop\n  const fire = (() => { const n = Math.floor(sr * 8), m = n + Math.floor(sr * .25), b = new Float32Array(m); let br = 0, l1 = 0, l2 = 0, h = 0;\n    for (let i = 0; i < m; i++) { const t = i / sr, sw = .55 + .45 * smooth(t, 1); br = br * .997 + W() * .03; l1 += (br - l1) * .04; l2 += (l1 - l2) * .04; const w = W(); h += (w - h) * .5; b[i] = l2 * 1.2 * sw + (w - h) * .02 * sw; }\n    for (let k = 0; k < 900; k++) { const at = Math.floor(R() * m), A = Math.pow(R(), 2.2) * .5 + .03, tau = .0008 + R() * .004, f0 = 900 + R() * 4200; let ph = 0;\n      const g = t => A * Math.exp(-t / tau) * (Math.sin(ph += 6.2832 * f0 / sr) * .6 + W() * .4); g.len = Math.floor(sr * tau * 6); burst(b, at, g); }\n    for (let k = 0; k < 9; k++) { const at = Math.floor(R() * m), f0 = 70 + R() * 70; const g = t => .55 * Math.exp(-t / .035) * Math.sin(6.2832 * f0 * t) + (t < .004 ? W() * .5 : 0); g.len = Math.floor(sr * .2); burst(b, at, g); }\n    return seam(b, n); })();\n  // the tank: water trickling over the rocks, bubbles rising (little rising notes), the pump's faint hum\n  const water = (() => { const n = Math.floor(sr * 8), m = n + Math.floor(sr * .25), b = new Float32Array(m); let a1 = 0, a2 = 0, j = 0;\n    for (let i = 0; i < m; i++) { const t = i / sr, w = W(); a1 += (w - a1) * .25; a2 += (a1 - a2) * .25; if (i % 400 === 0) j = .5 + R() * .5; b[i] = (a1 - a2) * .9 * j * (.75 + .25 * smooth(t * 3, 4)) + Math.sin(6.2832 * 50 * t) * .004; }\n    for (let k = 0; k < 160; k++) { const at = Math.floor(R() * m), f0 = 500 + R() * 1400, d = .02 + R() * .05, A = .05 + R() * .12; let ph = 0;\n      const g = t => A * Math.sin(ph += 6.2832 * f0 * (1 + t / d * 1.2) / sr) * Math.sin(Math.PI * Math.min(1, t / d)); g.len = Math.floor(sr * d); burst(b, at, g); }\n    return seam(b, n); })();\n  // the meadow: a breeze through long grass, songbirds trilling, a two-note whistler, chirps, crickets\n  const meadow = (() => { const n = Math.floor(sr * 12), m = n + Math.floor(sr * .25), b = new Float32Array(m); let l1 = 0, l2 = 0, p = 0;\n    for (let i = 0; i < m; i++) { const t = i / sr, w = W(); p = p * .98 + w * .2; l1 += (p - l1) * .08; l2 += (l1 - l2) * .08; const gust = .25 + .75 * Math.pow(smooth(t * .5, 7), 2); b[i] = l2 * .22 * gust; }\n    const note = (at, f0, f1, d, A, vib) => { let ph = 0; const g = t => { const k = t / d, f = f0 + (f1 - f0) * k + Math.sin(t * 6.2832 * 38) * vib; ph += 6.2832 * f / sr; return A * Math.sin(ph) * Math.sin(Math.PI * k); }; g.len = Math.floor(sr * d); burst(b, Math.floor(at * sr), g); };\n    for (let t = .4; t < 12; t += 2.2 + R() * 2.4) { const base = 3200 + R() * 1600, A = .05 + R() * .05; for (let k = 0, tt = t; k < 7 + R() * 7; k++, tt += .07 + R() * .04) note(tt, base * (1 + (k % 2) * .18), base * (1.12 + (k % 3) * .1), .05 + R() * .03, A, 80); }\n    for (let t = 1.3; t < 12; t += 3.1 + R() * 3) { note(t, 2600, 2900, .22, .045, 20); note(t + .3, 2300, 1700, .32, .045, 20); }\n    for (let t = .9; t < 12; t += 1.6 + R() * 2) for (let k = 0; k < 3; k++) note(t + k * .09, 5200 + R() * 1500, 6400 + R() * 900, .025, .03, 0);\n    for (const [f0, off, A] of [[4650, 0, .012], [4420, .21, .008]]) for (let t = off; t < 12; t += .45) for (let k = 0; k < 4; k++) note(t + k * .034, f0, f0, .022, A, 0);\n    return seam(b, n); })();\n  return {fire, water, meadow};\n}\n";
+// the jukebox's club track, made in a worker
+const CM_SONGGEN = "// the jukebox's song: a club track, rendered whole (32 bars at 126 bpm): intro, groove, breakdown with a riser, the drop\nfunction makeSong(sr) {\n  const BPM = 126, beat = 60 / BPM, bar = beat * 4, BARS = 32, n = Math.floor(BARS * bar * sr), L = new Float32Array(n), Rv = new Float32Array(n), K = new Float32Array(n), KK = new Float32Array(n);\n  let q = 777; const rnd = () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296, W = () => rnd() * 2 - 1, hz = m => 440 * Math.pow(2, (m - 69) / 12);\n  const add = (buf, t0, len, f) => { const a = Math.floor(t0 * sr), m = Math.min(n - a, Math.floor(len * sr)); for (let i = 0; i < m; i++) buf[a + i] += f(i / sr, i); };\n  // a 2-pole filter, run over one voice\n  const lpRun = (x, fc, res) => { let a = 0, b = 0; const g = Math.min(.99, 2 * Math.sin(Math.PI * Math.min(fc, sr * .24) / sr)); for (let i = 0; i < x.length; i++) { const hp = x[i] - a - res * b; b += g * hp; a += g * b; x[i] = a; } return x; };\n  const sec = b => b < 8 ? 'intro' : b < 16 ? 'groove' : b < 24 ? 'break' : 'drop';\n  // the chords: Am, F, C, G (two bars each), voiced in the middle\n  const CH = [[57, 60, 64, 67], [53, 57, 60, 64], [55, 60, 64, 67], [55, 59, 62, 67]], ROOT = [45, 41, 48, 43];\n  for (let b = 0; b < BARS; b++) { const s = sec(b), t0 = b * bar, ci = Math.floor(b / 2) % 4, ch = CH[ci], rt = ROOT[ci], last = b === BARS - 1 || b === 15 || b === 23;\n    // the kick: four to the floor (not in the breakdown), a click, the pitch dropping; it marks the ducking for everything else\n    if (s !== 'break') for (let k = 0; k < 4; k++) { const tk = t0 + k * beat; let ph = 0; add(KK, tk, .45, (t, i) => { ph += 6.2832 * (48 + 110 * Math.exp(-t / .035)) / sr; return Math.tanh(1.6 * Math.sin(ph) * Math.exp(-t / .2)) * .95 + (i < 60 ? W() * .3 * (1 - i / 60) : 0); });\n      add(K, tk, .4, t => Math.exp(-t / .12)); }\n    // the clap on two and four (with a short room tail), hats: closed on the sixteenths, open on the offbeats\n    if (s !== 'intro' || b >= 4) for (const k of [1, 3]) { const tc = t0 + k * beat, x = new Float32Array(Math.floor(sr * .3)); for (let i = 0; i < x.length; i++) { const t = i / sr; x[i] = W() * (t < .03 ? (Math.exp(-(t % .01) / .003)) : Math.exp(-(t - .03) / .09)) * (s === 'break' ? .35 : .55); }\n      lpRun(x, 2600, .4); add(L, tc, .3, (t, i) => x[i]); add(Rv, tc, .3, (t, i) => x[i] * .6); }\n    for (let k = 0; k < 16; k++) { const th = t0 + k * beat / 4, open = k % 4 === 2, A = s === 'break' ? .25 : (k % 2 ? .12 : .07); if (s === 'intro' && b < 2 && !open) continue; let hp = 0;\n      add(L, th + (k % 2 ? .012 : 0), open ? .2 : .05, t => { const w = W(), o = w - hp; hp = w * .2 + hp * .8; return o * A * (open ? 1.6 : 1) * Math.exp(-t / (open ? .07 : .016)); }); }\n    // the bass: rolling on the offbeats, a filtered saw, in the groove and the drop\n    if (s === 'groove' || s === 'drop') for (let k = 0; k < 8; k++) { const tb = t0 + k * beat / 2 + beat / 4, m = rt + (k === 7 ? 12 : k === 5 ? 7 : 0), x = new Float32Array(Math.floor(sr * beat * .45)); let ph = 0;\n      for (let i = 0; i < x.length; i++) { ph += hz(m) / sr; x[i] = ((ph % 1) * 2 - 1) * .5 + Math.sin(ph * 6.2832) * .5; } lpRun(x, 380 + (s === 'drop' ? 260 : 0), .55);\n      add(L, tb, beat * .45, (t, i) => x[i] * .8 * Math.min(1, t / .004) * Math.min(1, (beat * .45 - t) / .02)); }\n    // house stabs: short chords, syncopated, bright then closing, with echo\n    if (s === 'groove' || s === 'drop') for (const p of [.5, 1.5, 2.25, 3.0, 3.5]) { const ts = t0 + p * beat, len = .28, x = new Float32Array(Math.floor(sr * len));\n      for (const m of ch) for (const dt of [-.08, .08]) { let ph = rnd(); for (let i = 0; i < x.length; i++) { ph += hz(m + 12 + dt) / sr; x[i] += ((ph % 1) * 2 - 1) * .07; } }\n      { let a = 0, b2 = 0; for (let i = 0; i < x.length; i++) { const t = i / sr, fc = 600 + 3800 * Math.exp(-t / .05), g = 2 * Math.sin(Math.PI * fc / sr), hp = x[i] - a - .3 * b2; b2 += g * hp; a += g * b2; x[i] = a * Math.exp(-t / .11); } }\n      add(L, ts, len, (t, i) => x[i] * (s === 'drop' ? .9 : .7)); add(Rv, ts, len, (t, i) => x[i] * .55); }\n    // the breakdown: a warm pad, an arpeggio over it, a rising rush of noise into the drop\n    if (s === 'break' || s === 'drop') { const len = bar, x = new Float32Array(Math.floor(sr * len)); for (const m of ch) for (const dt of [-.12, 0, .12]) { let ph = rnd(); for (let i = 0; i < x.length; i++) { ph += hz(m + dt) / sr; x[i] += ((ph % 1) * 2 - 1) * .035; } }\n      lpRun(x, s === 'break' ? 700 + 1800 * ((b - 16) / 8) : 1400, .2); add(L, t0, len, (t, i) => x[i] * Math.min(1, t / .3) * Math.min(1, (len - t) / .1) * (s === 'drop' ? .55 : .9)); add(Rv, t0, len, (t, i) => x[i] * .4); }\n    if (s === 'break' || s === 'drop') for (let k = 0; k < 16; k++) { const m = ch[(k * 3) % 4] + 12 + (k % 8 >= 4 ? 12 : 0), ta = t0 + k * beat / 4; let ph = 0;\n      add(L, ta, .14, t => { ph += hz(m) / sr; return (ph % 1 < .5 ? 1 : -1) * .045 * Math.exp(-t / .05) * (s === 'drop' ? .7 : 1); }); add(Rv, ta, .14, t => Math.sin(6.2832 * hz(m) * t) * .03 * Math.exp(-t / .05)); }\n    if (b === 22 || b === 23) { const x = new Float32Array(Math.floor(sr * bar)); for (let i = 0; i < x.length; i++) x[i] = W(); lpRun(x, 1500, .3); const st = (b - 22) * bar; add(L, t0, bar, (t, i) => x[i] * .02 * Math.pow((st + t) / (2 * bar), 2) * 6); }\n    // the drop's hook: a plucked lead\n    if (s === 'drop') { const MEL = [[0, 76], [.75, 72], [1.5, 74], [2.0, 76], [2.75, 79], [3.25, 76]]; for (const [p, m0] of MEL) { const m = m0 - (ci === 1 ? 4 : ci === 3 ? 2 : 0), tl = t0 + p * beat; let ph = 0, ph2 = 0;\n      add(L, tl, .35, t => { ph += hz(m) / sr; ph2 += hz(m) * 1.005 / sr; return (((ph % 1) * 2 - 1) + ((ph2 % 1) * 2 - 1)) * .06 * Math.exp(-t / .16); }); add(Rv, tl, .35, t => Math.sin(6.2832 * hz(m) * t) * .05 * Math.exp(-t / .16)); } }\n    if (last) { const tf = t0 + bar - beat; add(L, tf, beat, t => W() * .04 * (t / beat)); }   // a little lift into the next part\n  }\n  // the room: echoes (four combs, two all-passes) on what was sent to it\n  const comb = [1557, 1617, 1491, 1422].map(d => Math.floor(d * sr / 44100)), ap = [225, 556].map(d => Math.floor(d * sr / 44100)), rev = new Float32Array(n);\n  for (const d of comb) { let st = 0; const bf = new Float32Array(d); let k = 0; for (let i = 0; i < n; i++) { const y = bf[k]; st = y * .8 + st * .2; bf[k] = Rv[i] + st * .78; k = (k + 1) % d; rev[i] += y * .25; } }\n  for (const d of ap) { const bf = new Float32Array(d); let k = 0; for (let i = 0; i < n; i++) { const y = bf[k], x = rev[i]; bf[k] = x + y * .5; rev[i] = y - x * .5; k = (k + 1) % d; } }\n  // everything but the kick ducks under it, then the whole is warmed and kept from clipping\n  const out = new Float32Array(n); let pk = 0; for (let i = 0; i < n; i++) { const duck = 1 - .5 * Math.min(1, K[i]); out[i] = Math.tanh((KK[i] + (L[i] + rev[i] * .9) * duck) * 1.05); if (Math.abs(out[i]) > pk) pk = Math.abs(out[i]); }\n  for (let i = 0; i < n; i++) out[i] = out[i] / (pk || 1) * .9;\n  return out;\n}\n";
 /* ---- the bull and the bear: sculpted smooth in the background (a worker, so nothing stutters), swapped in for the plain ones when ready ---- */
 (() => {
   const job = `${CM_SCULPT}\nonmessage = () => { const bull = new Float32Array(sculptMesh(bullPrims(), [[-.7, -.02, -1.15], [.7, 1.8, 1.5]], .028, bronze((x, y, z) => z > 1.2 && y < .62 || Math.abs(x) > .4 && y > 1.0 && z > 1.0)));
