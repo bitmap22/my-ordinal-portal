@@ -212,6 +212,7 @@ body.tiny #fw,body.tiny #top,body.tiny #strip,body.tiny #nav,body.tiny #kinds,bo
 #rx,#rl,#rh,#rj,#rs{display:none}
 #th{position:fixed;left:calc(18px + env(safe-area-inset-left));top:calc(18px + env(safe-area-inset-top));width:40px;height:40px;border-radius:20px;z-index:20}#th svg{width:20px;height:20px}
 #th.on{background:rgba(247,147,26,.85);color:#140c05}
+@media (pointer:coarse),(max-width:600px){#th{left:calc(4px + env(safe-area-inset-left));top:calc(4px + env(safe-area-inset-top))}body.room:not(.crewpage) #pt{left:calc(50px + env(safe-area-inset-left));top:calc(4px + env(safe-area-inset-top))}}   /* phones: the house in the very corner, clear of the blocks strip */
 /* playing together: the people button (in the room, when the cube is on its own), crewmates' names over their heads */
 #pt{display:none}body.room:not(.crewpage) #pt{display:flex;position:fixed;left:calc(66px + env(safe-area-inset-left));top:calc(18px + env(safe-area-inset-top));width:40px;height:40px;border-radius:20px;z-index:20}#pt svg{width:20px;height:20px}
 #crt{position:fixed;inset:0;pointer-events:none;z-index:4;overflow:hidden}body:not(.room) #crt{display:none}
@@ -227,7 +228,7 @@ body.room #rl{display:block;position:fixed;left:50%;top:calc(50% + 16px);transfo
 body.room #rl.on{opacity:1}
 body.room #top{transform:scale(.72);transform-origin:0 0;opacity:.82}
 @media (max-width:760px){body.crewpage.room #top{top:156px}}   /* (inside the together page on a phone: below the players strip and the crew's buttons) */body.room #st,body.room #mn{display:none}body.room.holding #rl{opacity:0}
-body.room #rh{display:block;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:max-content;max-width:92vw;text-align:center;font:500 11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#cbb9a0;background:rgba(14,9,5,.6);border:1px solid rgba(247,147,26,.18);border-radius:10px;padding:6px 12px;pointer-events:none;z-index:4}
+body.room #rh{display:none;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:max-content;max-width:92vw;text-align:center;font:500 11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#cbb9a0;background:rgba(14,9,5,.6);border:1px solid rgba(247,147,26,.18);border-radius:10px;padding:6px 12px;pointer-events:none;z-index:4}
 #rh .t,#rh .hd,#rh .hdt,body.coarse #rh .d,body.room.holding #rh .d,body.room.holding #rh .t{display:none}body.coarse #rh .t,body.room.holding #rh .hd{display:inline}body.coarse.room.holding #rh .hd{display:none}body.coarse.room.holding #rh .hdt{display:inline}
 body.room.holding #rh{bottom:auto;top:14px}
 body.room.coarse #rj{display:block;position:fixed;left:22px;bottom:30px;width:124px;height:124px;border-radius:50%;border:2px solid rgba(247,147,26,.45);background:radial-gradient(circle,rgba(247,147,26,.14),rgba(14,9,5,.5) 70%);touch-action:none;z-index:6}
@@ -1106,17 +1107,17 @@ async function scanBytes(X, h) {
           }
           if (!enc && bl && bl <= 1000) {
             const txt = U8D.decode(catB(body)).trim();
-            if (/^\d{1,7}\.bitmap$/.test(txt)) { set(TF.bitmap); if (r.word) r.word = {k: 'bitmap', a: txt.split('.')[0], b: '.bitmap'}; }
+            if (/^\d{1,7}\.bitmap$/.test(txt)) { set(TF.bitmap); if (r.word && !r.wj) r.word = {k: 'bitmap', a: txt.split('.')[0], b: '.bitmap'}; }
             // BRC-420: a mint is only a link to the original (/content/ and its id). The block can't show it was paid for or
             // that a deploy exists, so it is a maybe, and said so
-            else if (/^\/content\/[0-9a-f]{64}i\d+$/i.test(txt)) { set(TF.brc420); r.b4 = 'mint'; r.word = {k: 'b420', a: 'MINT?', b: 'not checked'}; }
+            else if (/^\/content\/[0-9a-f]{64}i\d+$/i.test(txt)) { set(TF.brc420); r.b4 = 'mint'; if (!r.wj) r.word = {k: 'b420', a: 'MINT?', b: 'not checked'}; }
             else if (txt[0] === '{') try {
               const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase(), wb = [o.op, o.amt != null ? o.amt : o.max].filter(x => x != null && x !== '').map(String).join(' ').slice(0, 40);
               if (pr === 'brc-420') {
                 set(TF.brc420); r.b4 = String(o.op || '').toLowerCase() === 'deploy' ? 'deploy' : 'mint';
-                r.word = r.b4 === 'deploy' ? {k: 'b420', a: String(o.name || 'DEPLOY').slice(0, 24), b: 'deploy' + (o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')} : {k: 'b420', a: 'MINT?', b: 'not checked'};
+                if (!r.wj) r.word = r.b4 === 'deploy' ? {k: 'b420', a: String(o.name || 'DEPLOY').slice(0, 24), b: 'deploy' + (o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')} : {k: 'b420', a: 'MINT?', b: 'not checked'};
               }
-              else if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word) r.word = {k: 'brc20', a: r.tick, b: wb}; }
+              else if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word && !r.wj) r.word = {k: 'brc20', a: r.tick, b: wb}; }
               else if (pr === 'tap') {
                 set(TF.tap);
                 const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));
@@ -1125,10 +1126,11 @@ async function scanBytes(X, h) {
                 if (isNat(r.tick) || items.some(x => x && isNat(x.tick))) r.nat = true;
                 const b2 = items.length ? (String(o.op || '') + (items.length > 1 ? ' ×' + items.length : ' ' + (items[0].amt != null ? items[0].amt : ''))).trim().slice(0, 40) : wb;
                 const dmtB = /^dmt-/i.test(String(o.op || '')) && /^\d{1,8}$/.test(String(o.blk || '')) ? 'block ' + Number(o.blk).toLocaleString('en-US') : '';   // a DMT mint is made from a block: which one
-                if (r.word) r.word = r.nat ? {k: 'nat', a: 'NAT', b: dmtB || b2, dmt: !!dmtB} : {k: 'tap', a: r.tick, b: dmtB || b2, dmt: !!dmtB};
+                if (r.word && !r.wj) r.word = r.nat ? {k: 'nat', a: 'NAT', b: dmtB || b2, dmt: !!dmtB} : {k: 'tap', a: r.tick, b: dmtB || b2, dmt: !!dmtB};
               }
-              else if (pr && r.word) r.word = {k: 'json', a: String(o.tick || o.name || o.p).slice(0, 24), b: (pr !== String(o.tick || o.name || o.p).toLowerCase() ? pr + ' ' : '') + wb};
+              else if (pr && r.word && !r.wj) r.word = {k: 'json', a: String(o.tick || o.name || o.p).slice(0, 24), b: (pr !== String(o.tick || o.name || o.p).toLowerCase() ? pr + ' ' : '') + wb};
             } catch (e) {}
+            if (r.word && r.word.k !== 'text') r.wj = true;   // (a transaction with many inscriptions: its tile tells of the first, the same one its tablet reads out)
           }
           if (/^image\//.test(ty) && !enc && !del && bl > 0 && bl <= 400000 && !r.art && artN < 2048 && artB < 64e6) { r.art = {ct, bytes: catB(body)}; artN++; artB += bl; }
         }
@@ -2747,7 +2749,8 @@ float fd=smoothstep(15.2,12.8,length(b.xz));vF=exp(-pow(length(b.xz)/10.,2.)*.5)
 if(uRm.x>.5){   // in the walk-in rooms: the ring laid along the hall (twice: turned a quarter and moved on half a stretch, so there is no gap), the stretch nearest you
  if(uRm.y>.5){b=vec3(b.z,b.y,-b.x);R=RY(1.5708)*R;}
  b.z+=uRm.z;b.z+=floor((uRm.w-b.z)/32.+.5)*32.;
- fd=(T==6?1.:smoothstep(3.55,2.95,abs(b.x)))*smoothstep(16.,12.5,abs(b.z-uRm.w));vF=1.;}
+ fd=(T==6?1.:smoothstep(3.55,2.95,abs(b.x)))*smoothstep(16.,12.5,abs(b.z-uRm.w));vF=1.;
+ if(T==4||T==5||T==6||T==9||T==11||T==12||T==14||T==15)sc*=.25;}   // (indoors the creatures and crystals are a quarter the size)
 sc*=fd;
 vec3 wp;
 if(uT==99){wp=vec3(b.x,0.,b.z)+vec3(p.x,.012,p.z)*uSR*sc;vA=w*g*fd;vF=1.;vN=vec3(0.,1.,0.);vC=vec3(0.);vE=0.;vP=wp;gl_Position=uVP*vec4(wp,1.);return;}
@@ -3991,7 +3994,7 @@ function crewPose(tn, dt, VP, W, H) {
   const out = [], pn = performance.now(), hear = {}, eye = room.view && room.view.eye;
   if (!CHM.torso) chBuild();
   for (const M of crew.mates.values()) {
-    const s = M.s, C = s && s.in && pn - s.t < 15000 ? room.rooms.find(R => R && R.ready && R.h === s.h) : null;
+    const s = M.s, C = s && s.in ? room.rooms.find(R => R && R.ready && R.h === s.h) : null;   // (someone whose page is in the background stays where they were)
     if (!C) { M.shown = false; M.tag.style.display = 'none'; hear[M.id] = 999; continue; }
     const tx = s.x, tz = C.z0 + s.z, R = M.R;
     if (!M.shown || Math.hypot(R.p[0] - tx, R.p[2] - tz) > 4) { R.p = [tx, 0, tz]; R.st = null; }
