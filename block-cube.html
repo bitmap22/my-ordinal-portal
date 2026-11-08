@@ -1237,7 +1237,7 @@ async function scanBlock(B) {
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
       const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
-      if (r.art) t.art = r.art; else if (r.word) t.word = r.word;
+      if (r.art) t.art = r.art; if (r.word) t.word = r.word;
       if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
     });
@@ -1276,10 +1276,12 @@ const wRank = w => w.k === 'rune' ? w.s || 4 : w.k === 'alk' || w.k === 'cp' ? 1
 const artWant = (t, pic) => {
   const m = t.d ? Math.max(t.d[0], t.d[1], t.d[2]) : 1, s = m >= 6 ? 128 : m >= 3 ? 64 : 32; return s;   // pictures and word tiles alike
 };
+// a parcel shows its picture, unless it stands on a token's shelf and has that token's own face
+const artPic = t => !!t.art && !(t.word && tokC(t) >= 0);
 async function loadArt(B) {
   const my = ++artGen, live = () => my === artGen && cur === B;
   // pictures first (block order), then words: people's own words and tokens, then Alkanes and Counterparty, new runes, rune mints, rune moves
-  const pics = B.txs.filter(t => t.art), words = B.txs.filter(t => t.word && !t.art).map((t, i) => [t, i]).sort((a, b) => wRank(a[0].word) - wRank(b[0].word) || a[1] - b[1]).map(a => a[0]);
+  const pics = B.txs.filter(t => artPic(t)), words = B.txs.filter(t => t.word && !artPic(t)).map((t, i) => [t, i]).sort((a, b) => wRank(a[0].word) - wRank(b[0].word) || a[1] - b[1]).map(a => a[0]);
   const items = pics.map(t => ({t, pic: true, s: artWant(t, true)})).concat(words.map(t => ({t, pic: false, s: artWant(t, false)})));
   // if the sheet can't hold them all, make the last ones smaller (down to 16 px) before leaving any out
   const CS = 128, G = ATLAS / CS, cap = (G * G - 4) * (CS / 16) ** 2, units = n => (n / 16) * (n / 16);
@@ -3745,7 +3747,7 @@ async function nearTick(tn) {
       const sl = near.free.pop(); near.slot.set(t, sl);
       const x = (sl % NCN) * 256, y = Math.floor(sl / NCN) * 256;
       let cvs, sm = true;
-      if (t.art) {
+      if (artPic(t)) {
         let img; try { img = await decodeArt(t.art); } catch (e) { img = null; }
         if (!room || near.slot.get(t) !== sl) { if (img && img.close) img.close(); continue; }
         if (!img) { near.slot.delete(t); near.free.push(sl); continue; }
