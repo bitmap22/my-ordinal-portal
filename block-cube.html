@@ -3954,7 +3954,7 @@ function cmMake(of, side) {
     await cmJob(() => { gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D); }); if (gone()) return;
     cmProps(R); await yieldNow(); if (gone()) return;
     cmQuads(R); await yieldNow(); if (gone()) return;
-    for (const q of R.q) if (q.mk) { await cmJob(() => { q.tex = cmTex(q.mk()); q.mk = null; }); if (gone()) return; }
+    for (const q of R.q) if (q.mk) { if (cmTexC[q.key]) { q.tex = cmTexC[q.key]; q.mk = null; continue; } await cmJob(() => { q.tex = cmTexC[q.key] || (cmTexC[q.key] = cmTex(q.mk())); q.mk = null; }); if (gone()) return; }
     R.ready = true; room.dirty = room.fixDirty = true;
     if (R === room.rooms[1]) rmCurrent(R);
     rmSigns();
@@ -4936,18 +4936,18 @@ function cmShutter(w, h) {
 // the rooms' flat pictures, in the world: from a corner (layout x, height, depth) along two edges
 function cmQuads(R) {
   const V3 = (x, y, dd) => { const [wx, wz] = cmW(R, x, dd); return [wx, y, R.z0 + wz]; }, D3 = (x, y, dd) => R.door === 'back' ? [x, y, -dd] : [-x, y, dd];
-  const Q = (o, u, v, md, b, tex) => tex && tex.mk ? {o: V3(...o), u: D3(...u), v: D3(...v), md, b, tex: null, mk: tex.mk} : {o: V3(...o), u: D3(...u), v: D3(...v), md, b, tex};
-  const TX = f => ({mk: f});   // (pictures painted a few at a time as the rooms are built, so no moment stalls)
+  const Q = (o, u, v, md, b, tex) => tex && tex.mk ? {o: V3(...o), u: D3(...u), v: D3(...v), md, b, tex: null, mk: tex.mk, key: tex.key} : {o: V3(...o), u: D3(...u), v: D3(...v), md, b, tex};
+  let tn = 0; const TX = f => ({mk: f, key: 'q' + tn++});   // (pictures painted a few at a time, kept for next time: same order every time, so the same names)
   const q = R.q = [], S = CM.SCR;
   R.scr = Q([-S.w / 2, S.y0, S.d], [S.w, 0, 0], [0, S.h, 0], 3, 1.15, TX(() => cmBoard())); q.push(R.scr);
   // your Atlas window high on the hall's west wall over the stairs, its colours thrown on the walk below; stained glass of the cube's own in the other windows
-  const w1 = Q([-15.8, 5.7, 23.6], [0, 0, 4.8], [0, 6.4, 0], 1, 1.3, null); cmImg(CM_WIN[0].src, w1); q.push(w1); R.win = w1;
+  const w1 = Q([-15.8, 5.7, 23.6], [0, 0, 4.8], [0, 6.4, 0], 1, 1.3, null); if (!R.dummy) cmImg(CM_WIN[0].src, w1); q.push(w1); R.win = w1;
   R.pool = Q([-13.15, .935, 23.6], [0, 0, 4.8], [3.9, 0, 0], 4, .4, null); q.push(R.pool);
   q.push(Q([15.8, 5.95, 27.65], [0, 0, -3.3], [0, 5.7, 0], 1, 1.15, TX(() => cmGlassArt('sun', 384, 664))));
   q.push(Q([-15.8, 5.4, 42.55], [0, 0, 2.9], [0, 6.0, 0], 1, 1.1, TX(() => cmGlassArt('chain', 384, 794))));
   q.push(Q([15.8, 5.4, 45.45], [0, 0, -2.9], [0, 6.0, 0], 1, 1.1, TX(() => cmGlassArt('koi', 384, 794))));
   // your bear and bull over the fireplace
-  const art = Q([-17.18, 2.0, 6.55], [0, 0, 2.9], [0, 2.61, 0], 0, 1.15, null); cmImg(CM_ART[0].src, art); q.push(art);
+  const art = Q([-17.18, 2.0, 6.55], [0, 0, 2.9], [0, 2.61, 0], 0, 1.15, null); if (!R.dummy) cmImg(CM_ART[0].src, art); q.push(art);
   // neon in the bar
   q.push(Q([-31, 5.3, 22.17], [-5, 0, 0], [0, 1.25, 0], 2, 1, TX(() => cmNeon('HODL', '#ff4fd8', 1024, 256))));
   q.push(Q([-38, 4.25, 47.83], [12, 0, 0], [0, 1.0, 0], 2, 1, TX(() => cmNeon("DON'T TRUST · VERIFY", '#27e1ff', 1024, 86))));
@@ -4986,6 +4986,16 @@ function cmQDraw(VP, eye, tn) {
   if (R === room.at && R.tick && tn - (cm.tickAt || 0) > 20) { cm.tickAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.tick.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmTicker()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
   // the live board, redrawn every couple of seconds while you are in the rooms
   if (R === room.at && cm.media.k === 'live' && tn - (cm.boardAt || 0) > 2) { cm.boardAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.scr.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmBoard()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
+}
+
+// the rooms' pictures are painted once and kept: begun quietly, one every so often, as soon as you go into any room
+const cmTexC = {};
+function cmPrewarm() {
+  if (cmPrewarm.on) return; cmPrewarm.on = true;
+  const R = {door: 'back', z0: 0, L: CM.L, dummy: true}; cmQuads(R);
+  const todo = R.q.filter(q => q.mk && !cmTexC[q.key]);
+  const step = () => { if (!room) { cmPrewarm.on = false; return; } const q = todo.shift(); if (!q) return; if (!cmTexC[q.key]) cmTexC[q.key] = cmTex(q.mk()); setTimeout(step, 150); };
+  setTimeout(step, 1500);
 }
 
 // laying a page over a flat picture in the room, exactly over its four corners (as Blockipelago's TV does)
@@ -5352,6 +5362,7 @@ const $rf = document.getElementById('rf'), $rl = document.getElementById('rl'), 
 const coarse = matchMedia('(pointer: coarse)').matches;
 const rmFade = on => new Promise(r => { $rf.classList.toggle('on', on); setTimeout(r, on ? 420 : 0); });
 async function roomEnter(h, spot) {
+  cmPrewarm();
   if (h !== COMMON && (!(h >= 0) || h > tipH)) h = mode === 'block' && want >= 0 ? want : tipH;
   if (h !== COMMON && !(h >= 0)) return;
   if (flipping) setFlip(false);
