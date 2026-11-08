@@ -833,6 +833,8 @@ function kindsOf(t) { const m = kmask(t); return KINDS.filter((k, i) => (m >> i)
 // the parcel-type row: three tabs of chips, each chip lights up the parcels that have it
 const tfl = f => t => t.sc != null && ((t.sc >> f) & 1) === 1, kdi = n => { const i = KINDS.findIndex(k => k.name === n); return t => ((kmask(t) >> i) & 1) === 1; };
 const kcss = n => KINDS.find(k => k.name === n).css, REG_CSS = '#7d8cab';
+// a new rune etched together with a picture (shown on its parcel): these have a section of their own in the rooms
+const etchPic = t => t.sc != null && ((t.sc >> TF.etch) & 1) === 1 && !!t.art;
 const TYPES = [
   {g: 0, name: 'inscriptions', css: kcss('inscriptions'), test: kdi('inscriptions')}, {g: 0, name: 'images', css: '#ff9f1c', test: tfl(TF.img)},
   {g: 0, name: 'text', css: '#e9dcc8', test: tfl(TF.txt)}, {g: 0, name: 'HTML', css: '#3a86ff', test: tfl(TF.html)},
@@ -847,6 +849,7 @@ const TYPES = [
   {g: 1, name: 'Atomicals', css: kcss('Atomicals'), test: kdi('Atomicals')}, {g: 1, name: 'SRC-20', css: kcss('SRC-20'), test: kdi('SRC-20')},
   {g: 1, name: 'Stamps', css: kcss('Stamps'), test: kdi('Stamps')}, {g: 1, name: 'Counterparty', css: kcss('Counterparty'), test: kdi('Counterparty')},
   {g: 1, name: 'CAT-21', css: kcss('CAT-21'), test: kdi('CAT-21')}, {g: 1, name: 'Labitbu', css: kcss('Labitbu'), test: kdi('Labitbu')},
+  {g: 3, name: 'with pictures', css: '#e0aaff', test: t => etchPic(t)},
   {g: 2, name: 'taproot', css: '#a78bfa', test: tfl(TF.taproot)}, {g: 2, name: 'segwit', css: '#4cc9f0', test: tfl(TF.segwit)},
   {g: 2, name: 'legacy', css: '#9aa5b1', test: tfl(TF.legacy)}, {g: 2, name: 'consolidations', css: '#ffd166', test: tfl(TF.consol)},
   {g: 2, name: 'batch payouts', css: '#06d6a0', test: tfl(TF.batch)}, {g: 2, name: 'multisig', css: '#ef476f', test: tfl(TF.msig)},
@@ -1276,8 +1279,9 @@ const wRank = w => w.k === 'rune' ? w.s || 4 : w.k === 'alk' || w.k === 'cp' ? 1
 const artWant = (t, pic) => {
   const m = t.d ? Math.max(t.d[0], t.d[1], t.d[2]) : 1, s = m >= 6 ? 128 : m >= 3 ? 64 : 32; return s;   // pictures and word tiles alike
 };
-// a parcel shows its picture, unless it stands on a token's shelf and has that token's own face
-const artPic = t => !!t.art && !(t.word && tokC(t) >= 0);
+// a parcel shows its picture, unless it stands on a token's shelf and has that token's own face (a new rune etched with a
+// picture shows its picture: it stands in RUNE ETCHINGS)
+const artPic = t => !!t.art && (etchPic(t) || !(t.word && tokC(t) >= 0));
 async function loadArt(B) {
   const my = ++artGen, live = () => my === artGen && cur === B;
   // pictures first (block order), then words: people's own words and tokens, then Alkanes and Counterparty, new runes, rune mints, rune moves
@@ -3224,13 +3228,15 @@ function frame() {
 const RW = 7.6, RH = 7, BAY = 1.3, DEEP = .46, DOOR = 2.4, DOORH = 4.2, EYE = 1.62, WT = .3, END = 1.8, CASEH = 2.62;
 const PLANKS = [2.1, 1.7, 1.3, .9, .5, .1];   // shelf tops, top to bottom
 const SECT = ['bitmaps', 'images', 'text', 'HTML', 'JSON', 'audio / video', '3D models', 'other files', 'delegates', 'inscriptions'].map(n => TYPES.findIndex(T => T.name === n));
-const SECT_ALL = SECT.concat(TOK_IDX, TX_IDX, [REG]);
-const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS', '#4cc9f0']];
+const ETCHP = TYPES.findIndex(T => T.name === 'with pictures'), SECT_ALL = SECT.concat([ETCHP], TOK_IDX, TX_IDX, [REG]);
+const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS', '#4cc9f0'], ['RUNE ETCHINGS', '#e0aaff']];
 const LC = h => lin(hexc(parseInt(h.slice(1), 16)));
 const RCG = {wall: LC('#0b0906'), back: LC('#120d06'), wood: LC('#3b2a13'), post: LC('#21170a'), pillar: LC('#100c07'), neon: LC('#ffc94a'), neon2: LC('#e3a72c'), dim: LC('#7a5a14'), trim: LC('#ffd36b'), door: LC('#171007'), sign: LC('#0d0805')};   // block 0: gold
 const RC = {wall: LC('#0a0708'), back: LC('#100a07'), wood: LC('#3b2313'), post: LC('#1e120a'), pillar: LC('#0e0a0b'), neon: LC('#ff8a1e'), neon2: LC('#d9741c'), dim: LC('#6a3612'), trim: LC('#ff9a2e'), door: LC('#140d08'), sign: LC('#0d0805')};
-// every transaction gets exactly one shelf: its token, else what kind of inscription it is, else what kind of transaction
+// every transaction gets exactly one shelf: a new rune etched with a picture in RUNE ETCHINGS, else its token, else what kind of
+// inscription it is, else what kind of transaction
 function shelfOf(t) {
+  if (etchPic(t)) return ETCHP;
   const k = tokC(t); if (k >= 0) return k;
   if (kmask(t)) { for (const i of SECT) if (TYPES[i].test(t)) return i; return SECT[SECT.length - 1]; }
   const x = txC(t); return x >= 0 ? x : REG;
@@ -3558,12 +3564,12 @@ function rmFix(R) {
 // the block's facts, on boards either side of each door (the counts per tab say which shelves they are on)
 function rmFacts(B) {
   const r = B.txs.filter(t => t.fee > 0).map(t => t.rate), cb = B.cb || {}, d = new Date((B.time || 0) * 1000);
-  const tabs = [0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
+  const tabs = [0, 0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
   const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS IN ALL'], [(B.height === 0 ? 'SATOSHI NAKAMOTO' : cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
     [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})], [B.size < 1e5 ? fmt(B.size) + ' BYTES' : (B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
   if (r.length) out.push([r1(Math.min(...r)) + '–' + r1(Math.max(...r)), 'SAT/VB PAID']);
-  const nEt = B.txs.reduce((n, t) => n + (t.sc != null && (t.sc >> TF.etch) & 1 ? 1 : 0), 0);   // new runes
-  tabs.forEach((n, g) => { if (n) out.push([fmt(n), 'ON THE ' + CATS[g][0] + ' SHELVES' + (g === 1 && nEt ? ' · ' + fmt(nEt) + (nEt === 1 ? ' NEW RUNE' : ' NEW RUNES') : '')]); });
+  for (const g of [0, 3, 1, 2]) if (tabs[g]) out.push([fmt(tabs[g]), 'ON THE ' + CATS[g][0] + ' SHELVES']);   // (in the order the bookcases stand)
+  if (out.length + (cb.words ? 2 : 0) > 10) { out[1] = [out[1][0], 'MINED IT · ' + out[2][0] + ' ' + out[2][1]]; out.splice(2, 1); }   // (one board too many: when goes with who)
   const f = out.slice(0, cb.words ? 8 : 10).map(([a, b]) => ({a, b}));
   if (cb.words) f.push({a: '“' + cb.words + '”', b: 'THE MINER WROTE', big: 1});   // the miner's whole message, on a board twice as tall
   return f;
