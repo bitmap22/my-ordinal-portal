@@ -240,6 +240,17 @@ body.room.coarse #rh{bottom:auto;top:calc(8px + env(safe-area-inset-top))}
 #rs input{width:150px;font:700 24px ui-monospace,Menlo,Consolas,monospace;text-align:center;color:#f7efe3;background:#0b0705;border:1px solid rgba(247,147,26,.4);border-radius:10px;padding:6px}
 #rs button{min-width:44px;padding:8px 12px;font:700 13px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;color:#ffb04a;background:rgba(247,147,26,.1);border:1px solid rgba(247,147,26,.4);border-radius:10px;cursor:pointer}
 #rs #rsg{background:rgba(247,147,26,.85);color:#140c05}
+.cmov{position:fixed;left:0;top:0;border:0;transform-origin:0 0;z-index:1;background:#000;visibility:hidden;pointer-events:none}
+#cmd{display:none}#cmd.on{display:block;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;width:min(560px,calc(100vw - 24px));box-sizing:border-box;padding:16px 18px;border-radius:16px;background:rgba(14,9,5,.95);border:1px solid rgba(247,147,26,.45);box-shadow:0 0 40px rgba(247,147,26,.25);font:600 12px ui-monospace,Menlo,Consolas,monospace;color:#ffb04a;letter-spacing:.12em;text-align:center}
+#cmd .r{display:flex;gap:8px;justify-content:center;margin-top:12px}#cmd .r:empty{display:none}
+#cmd input{width:100%;box-sizing:border-box;font:600 15px ui-monospace,Menlo,Consolas,monospace;text-align:center;color:#f7efe3;background:#0b0705;border:1px solid rgba(247,147,26,.4);border-radius:10px;padding:9px}
+#cmd button{min-width:44px;padding:8px 12px;font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;color:#ffb04a;background:rgba(247,147,26,.1);border:1px solid rgba(247,147,26,.4);border-radius:10px;cursor:pointer}
+#cmd button.go,#cmd button.on{background:rgba(247,147,26,.85);color:#140c05}#cmd .n{margin-top:8px;color:#cdbca3;font-size:11px;min-height:1em;letter-spacing:.04em}
+#cmpl{position:fixed;inset:max(3vh,10px) max(3vw,10px);z-index:40;display:flex;flex-direction:column;background:#05040a;border:1px solid rgba(247,147,26,.5);border-radius:14px;box-shadow:0 0 60px rgba(0,0,0,.85);overflow:hidden}
+#cmpl .h{display:flex;justify-content:space-between;align-items:center;padding:8px 10px 8px 14px;font:700 13px ui-monospace,Menlo,Consolas,monospace;color:#ffb04a;letter-spacing:.12em}
+#cmpl button{width:40px;height:34px;font:700 16px ui-monospace,Menlo,Consolas,monospace;color:#ffb04a;background:rgba(247,147,26,.12);border:1px solid rgba(247,147,26,.45);border-radius:10px;cursor:pointer}
+#cmpl iframe{flex:1;width:100%;border:0;background:#000}
+@media (max-width:640px){#cmpl{inset:0;border-radius:0}}
 /* in the room the card becomes the tablet in your hands */
 body.room #card{box-sizing:border-box;left:50%;right:auto;bottom:14px;width:min(640px,96vw);max-height:82vh;padding:16px 18px 14px;border:10px solid #0c0805;border-radius:28px;background:rgba(10,7,4,.94);box-shadow:0 0 0 1px rgba(247,147,26,.6),0 0 50px rgba(247,147,26,.3),0 30px 90px rgba(0,0,0,.8);transform:translate(-50%,70px)}
 body.room #card.on{transform:translate(-50%,0)}
@@ -527,6 +538,22 @@ if(uGold>.01){   // over block 0: the first star, bright, with long glints
  c+=vec3(1.,.88,.62)*uGold*tw*(exp(-sr*sr*12000.)*3.+exp(-sr*sr*700.)*.4+exp(-sr*14.)*.07+(exp(-abs(sp.x)*900.)*exp(-abs(sp.y)*22.)+exp(-abs(sp.y)*900.)*exp(-abs(sp.x)*22.))*.55);}
 c+=(h(gl_FragCoord.xy+uNow)-.5)/255.;o=vec4(c,0.);}`);
 // transactions. iF.w = how this box is moving: 0 settling/staying, 1 just joined (lights up as it lands), 2 leaving, 3 filling in, 4 sealed block lifting away
+const CML = `uniform highp vec4 uCmT;uniform highp sampler2D uCL;uniform highp sampler2D uCC;uniform vec4 uZR[8];uniform vec3 uZA[8];uniform float uCmN;
+vec2 cmQ(vec3 w){return vec2(uCmT.x*w.x,uCmT.x>0.?uCmT.y-w.z:w.z-uCmT.y+uCmT.z);}
+int cmZ(vec2 q){for(int i=0;i<8;i++){vec4 r=uZR[i];if(q.x>=r.x&&q.x<=r.y&&q.y>=r.z&&q.y<=r.w)return i;}return -1;}
+vec3 cmLit(vec3 K,vec3 n,vec3 w,vec3 vd,int z,vec2 q,float sp){
+vec3 c=K*uZA[z]*(.62+.38*n.y);
+int ci=int(clamp(floor(q.y*.5),0.,23.))*42+int(clamp(floor((q.x+42.)*.5),0.,41.));
+for(int k=0;k<3;k++){vec4 ix=texelFetch(uCC,ivec2(ci,k),0);
+for(int j=0;j<4;j++){float f=j==0?ix.x:j==1?ix.y:j==2?ix.z:ix.w;if(f<.5)return c;int li=int(f+.5)-1;
+vec4 A=texelFetch(uCL,ivec2(li,2),0);float zw=floor(A.w+.5),fl=floor(zw/16.);if(int(zw-fl*16.)!=z)continue;
+vec4 P=texelFetch(uCL,ivec2(li,0),0);vec3 l=P.xyz-w;float d=length(l);if(d>=P.w)continue;l/=max(d,1e-4);
+vec4 L=texelFetch(uCL,ivec2(li,1),0);float at=1.-d/P.w;at*=at;
+if(fl>.5&&fl<1.5)at*=.74+.15*sin(uCmN*9.3+float(li))+.11*sin(uCmN*23.1+float(li)*2.);
+else if(fl>1.5)at*=.78+.22*sin(w.x*3.1+uCmN*1.7)*sin(w.z*2.7-uCmN*1.3+w.y*1.9);
+if(L.w>0.)at*=smoothstep(L.w,L.w+.3,dot(-l,A.xyz));
+float nl=dot(n,l);c+=L.rgb*at*(K*(max(nl,0.)*.92+.08)+sp*pow(max(dot(reflect(-l,n),vd),0.),32.)*step(0.,nl));}}
+return c;}`;
 const parP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;
 layout(location=2) in vec3 iC;layout(location=3) in vec3 iS;layout(location=4) in vec4 iK;layout(location=5) in vec4 iF;layout(location=6) in float iG;layout(location=7) in vec4 iA;
 uniform mat4 uVP;uniform float uNow,uOpen,uMir;uniform int uSel;
@@ -542,6 +569,7 @@ vec3 s=iS*sc;vFl=fl;vSl=uSel<0?0.:gl_InstanceID==uSel?1.:-1.;
 vec3 w=pos+aP*s,nn=aN;if(uMir>.5){w.y=-w.y;nn.y=-nn.y;}
 vN=nn;vQ=aP*s;vS=s;vK=iK.rgb;vA=iA;vG=iG;vW=w;gl_Position=uVP*vec4(w,1.);}`,
   V + `in vec3 vN;in vec3 vQ;in vec3 vS;in vec3 vK;in vec3 vW;in float vFl;in float vSl;in float vG;in vec4 vA;in float vAo;uniform sampler2D uArt;uniform sampler2D uArt2;uniform vec3 uE;uniform float uMir,uXr,uGa,uRf,uAmb;out vec4 o;
+${CML}
 void main(){vec3 K=vK;vec3 an0=abs(normalize(vN));vec3 sn=sign(vN);vec2 fu=an0.x>.5?vec2(-sn.x*vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,-sn.y*vQ.z/vS.z):vec2(sn.z*vQ.x/vS.x,vQ.y/vS.y);
 bool nr=vA.w>2.5;float aw=nr?vA.w-2.:vA.w;
 vec2 ts=nr?vec2(textureSize(uArt2,0)):vec2(textureSize(uArt,0)),tz=vec2(vA.z,vA.z*ts.x/ts.y),p=(vA.xy+vec2(fu.x+.5,.5-fu.y)*tz)*ts,dd=fwidth(p);
@@ -552,17 +580,18 @@ float fw=fwidth(m),es=.25+.75*smoothstep(.3,1.4,min(vS.x,min(vS.y,vS.z))),edge=(
 vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
 float dif=max(dot(n,L),0.),fil=max(dot(n,F),0.),sky=.5+.5*n.y;
 vec3 c=K*(.12*sky+1.08*dif)+K*vec3(.95,.72,.55)*.26*fil+K*uAmb;
-vec3 vd=normalize(uE-vW);c+=vec3(1.,.58,.2)*pow(1.-max(dot(n,vd),0.),3.)*.16;
-c+=vec3(1.,.8,.55)*pow(max(dot(reflect(-L,n),vd),0.),28.)*.22;
+vec3 vd=normalize(uE-vW);int cz=-1;vec2 cq=vec2(0.);if(uCmT.w>.5&&uMir<.5){cq=cmQ(vW);cz=cmZ(cq);}
+if(cz>=0){c=cmLit(K,n,vW,vd,cz,cq,.12);if(vA.w>.5&&min(vS.x,min(vS.y,vS.z))<.03)c+=K*.5;}else{c+=vec3(1.,.58,.2)*pow(1.-max(dot(n,vd),0.),3.)*.16;
+c+=vec3(1.,.8,.55)*pow(max(dot(reflect(-L,n),vd),0.),28.)*.22;}
 float sd=1.-an.y;c*=mix(1.,vAo*(vA.w>.5?1.:.88+.12*smoothstep(-.5,.5,vQ.y/vS.y)),sd);
-c=mix(c,c*1.6+.05,edge*.5);
+c=mix(c,c*1.6+(cz>=0?.004:.05),edge*.5);
 c+=(K*.7+.06)*vFl;c=mix(c,K*1.3,vG*.3*gA);
 float g=edge*.08+vFl*.35+vG*.28*gA;if(vG>1.5){c=K*(1.7+edge*.6);g=.95;}
 if(vSl>.5){c=c*1.3+K*.35+edge*.6;g+=.85;}else if(vSl<-.5){c=mix(vec3(dot(c,vec3(.3,.5,.2))),c,.35)*.3;g*=.15;}
 if(uXr>.5){float rim=pow(1.-abs(dot(n,vd)),2.);vec3 gc=K*(.3+.7*dif)*.6+K*edge*1.6+K*rim*.35+vec3(1.,.6,.25)*edge*.15;
 float ga=(.06+edge*.62+rim*.08)*uGa;if(vSl>.5){gc=K*1.6+.25;ga=.95;}gc=gc*(1.+gc/6.)/(1.+gc);o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),ga);return;}
 float al=clamp(g,0.,1.);if(uMir>.5){float f=clamp(1.+vW.y/${(S * 0.45).toFixed(2)},0.,1.);c*=.75;al=min(.32*f*f*uRf,.8);}
-if(uAmb>0.){float fd=length(vW-uE);c=mix(c,vec3(.022,.013,.01),1.-exp(-fd*.034));}
+if(uAmb>0.){float fd=length(vW-uE);c=mix(c,vec3(.022,.013,.01),1.-exp(-fd*(cz>=0?.012:.034)));}
 c*=1.35;c=c*(1.+c/6.)/(1.+c);
 o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),al);}`);
 const lnP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;uniform float uY;void main(){vec3 p=aP;p.y*=uY;gl_Position=uVP*vec4(p,1.);}`,
@@ -1895,7 +1924,7 @@ async function showBlock(h) {
 function setTip(h) {
   if (!(h > tipH)) return;
   tipH = h;
-  if (room && room.rooms[1] && room.rooms[1].ready) rmNeighbours();   // in the rooms: a door that said 'not mined yet' opens onto the new block
+  if (room && room.rooms[1] && room.rooms[1].ready) rmNeighbours();   // in the rooms: past the newest block, a new block's room slots in (and the common room moves on past it)
   if (mode === 'live' && feedDown) showBlock(tipH);   // no live feed here: follow the newest mined block instead
   nav(); head();
 }
@@ -2212,6 +2241,7 @@ function setHeat() {
 }
 function head(msg) {
   drawKinds(); setHeat();
+  if (room && cmOn(room.at)) { $tgt.textContent = 'THE COMMON ROOM'; if (document.activeElement !== $h) $h.value = ''; $ot.innerHTML = ''; $mn.textContent = ''; $st.textContent = msg || 'the bar · the Forum · the big screen · the music box · the arcade'; document.body.classList.remove('halv'); return; }
   const hvNow = mode === 'block' ? isHalving(want) : wsLive && tipH >= 0 && isHalving(tipH + 1 + liveIdx);
   themeT = hvNow ? 1 : 0; document.body.classList.toggle('halv', !!hvNow);
   const isLive = mode === 'live' && wsLive;
@@ -2775,13 +2805,13 @@ const LIFE = (() => {
     seed = keep; }
   // particles per season: [count, style]
   const DUST = [900, 220, 160, 340, 760, 700, 650];
-  return {MESH, SEASONS, DUST, rnd, XMAS};
+  return {MESH, SEASONS, DUST, rnd, XMAS, make, lathe, blob, tri, TR, C, mixc, blade};
 })();
 // the moving parts live in the shader: each kind of thing (uT) has its own little motion
 const LTYPE = {xmastree: 16, snowman: 17, magma: 12, snowrock: 10, tuft: 0, flower: 1, tree: 2, pine: 3, penguin: 4, icecrystal: 5, fish: 6, lilypad: 7, lily: 8, butterfly: 9, cactus: 10, tumbleweed: 11, rock: 12, burnt: 13, bubble: 14, shard: 15};
 const lifeP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec3 aC;layout(location=3) in float aW;
 layout(location=4) in vec4 iP;layout(location=5) in vec4 iS;layout(location=6) in vec3 iC;
-uniform mat4 uVP;uniform float uNow,uW,uSR;uniform int uT,uST;uniform vec4 uRm,uWl;
+uniform mat4 uVP;uniform float uNow,uW,uSR;uniform int uT,uST;uniform vec4 uRm,uWl;uniform vec2 uCm;
 out vec3 vN;out vec3 vC;out vec3 vP;out float vE;out float vA;out float vF;
 mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0.,-s,0.,1.,0.,s,0.,c);}
 mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1.,0.,0.,0.,c,s,0.,-s,c);}
@@ -2848,12 +2878,35 @@ if(T==4){
  float a=t*.7+ph,ca=cos(a),sa=sin(a);p.xz=vec2(ca*p.x-sa*p.z,sa*p.x+ca*p.z);n.xz=vec2(ca*n.x-sa*n.z,sa*n.x+ca*n.z);   // the star turns slowly
 }else if(T==17&&w>.01){
  p.x+=w*.045*sin(t*2.9+ph*2.+p.y*7.);p.z+=w*.03*sin(t*2.2+ph);   // the scarf's end in the wind
+}else if(T==21||T==22){   // a pint (iS.z: how full; iS.w: how far it is tipped up to drink)
+ if(T==21){if(iS.z<.02)sc=0.;if(w<.2)p.y*=iS.z;else p.y=.16*iS.z+(p.y-.16);}
+ L=RX(iS.w);
+}else if(T==23){   // the chain of blocks circling slowly over the Forum
+ float a=iS.z+t*.07;b=vec3(iP.x+cos(a)*iS.w,iP.y+.35*sin(t*.5+ph),iP.z+sin(a)*iS.w);R=RY(-a-1.5708)*RX(.15*sin(t*.3+ph));
+}else if(T==24){   // beer running from the tap
+ sc*=iS.z;p.x+=.0015*sin(t*50.+p.y*40.);
+}else if(T==26){   // ferns and vines stirring in the air
+ p.x+=w*.06*sin(t*1.1+ph+p.y*1.7);p.z+=w*.04*sin(t*.8+ph*1.3);
+}else if(T==27){   // flames: each tongue licking up at its own pace
+ float k=.7+.3*sin(t*8.3+ph*5.+aP.x*9.+aP.z*5.)*sin(t*4.7+ph*2.+aP.z*7.);p.y*=mix(1.,k*(1.+.18*sin(t*13.+ph+aP.z*3.)),clamp(w*1.5,0.,1.));p.x+=w*.05*sin(t*6.1+ph+aP.z*8.);p.z+=w*.035*sin(t*5.3+ph*1.7+aP.x*7.);
+}else if(T==28){   // koi in the tank: round and round, each its own way, pace and depth, the body waving to the tail
+ float tt=t+ph*7.,dir=fract(ph*.53)>.5?1.:-1.,sp=.3+.14*fract(ph*.71),s=ph*2.4+dir*(tt*sp+.25*sin(tt*.6+ph)),A=iS.z*(.72+.28*fract(ph*.37)),Bz=iS.w*(.6+.4*fract(ph*.61));
+ b=vec3(iP.x+cos(s)*A,iP.y+.3*sin(tt*.21+ph*3.),iP.z+sin(s)*Bz);vec2 dv=dir*vec2(-sin(s)*A,cos(s)*Bz);R=RY(atan(dv.x,dv.y));L=RX(-.08*cos(tt*.21+ph*3.));
+ p.x+=(.012+w*.12)*sin(tt*6.+p.z*7.+ph);
+}else if(T==29){   // bubbles rising through the water
+ float cc=fract(t*iS.w+ph);b.y=iP.y+cc*iS.z;b.x+=.03*sin(t*3.+ph*9.+cc*6.);b.z+=.03*cos(t*2.6+ph*7.+cc*5.);sc*=smoothstep(0.,.08,cc)*(1.-smoothstep(.92,1.,cc))*(.7+.6*cc);
+}else if(T==30){   // the water's top rippling
+ if(w>.5)p.y+=.014*sin(t*2.1+(b.x+p.x)*5.)*sin(t*1.6+(b.z+p.z)*4.3);
+}else if(T==31){   // the waterfall shivering as it pours
+ p.x+=.01*sin(t*11.+p.y*17.+p.z*9.);
+}else if(T==32){   // turning slowly in its case
+ R=RY(iP.w+t*.6);b.y+=.02*sin(t*1.3+ph);
 }
 float fd=smoothstep(15.2,12.8,length(b.xz));vF=exp(-pow(length(b.xz)/10.,2.)*.5);
-if(uRm.x>.5){   // in the walk-in rooms: the ring laid along the hall (twice: turned a quarter and moved on half a stretch, so there is no gap), the stretch nearest you
+if(uRm.x>1.5){fd=1.;vF=1.;}else if(uRm.x>.5){   // in the walk-in rooms: the ring laid along the hall (twice: turned a quarter and moved on half a stretch, so there is no gap), the stretch nearest you
  if(uRm.y>.5){b=vec3(b.z,b.y,-b.x);R=RY(1.5708)*R;}
  b.z+=uRm.z;b.z+=floor((uRm.w-b.z)/32.+.5)*32.;
- fd=(T==6?1.:smoothstep(3.55,2.95,abs(b.x)))*smoothstep(16.,12.5,abs(b.z-uRm.w));vF=1.;
+ fd=(T==6?1.:smoothstep(3.55,2.95,abs(b.x)))*smoothstep(16.,12.5,abs(b.z-uRm.w));vF=1.;if(b.z>uCm.x&&b.z<uCm.y)fd=0.;   // (and none of it in the common room)
  if(T==4||T==5||T==6||T==9||T==11||T==12||T==14||T==15)sc*=.25;
  if(T==16||T==17){sc*=.5;fd*=smoothstep(.95,1.45,min(min(abs(b.z-uWl.x),abs(b.z-uWl.y)),min(abs(b.z-uWl.z),abs(b.z-uWl.w))));}}   // (little ones indoors, and never in a wall or a doorway)   // (indoors the creatures and crystals are a quarter the size)
 sc*=fd;
@@ -2869,18 +2922,23 @@ else if(T==14){float hy=aP.y/.41;em=.35+.75*hy*hy;c=mix(iC*vec3(.6,.25,.12),iC*1
 if(T==6){float dp=clamp(-b.y*.4+.1,0.,.45);c=mix(c*1.25,vec3(.03,.16,.3),dp);}
 else if(T==15){em=(.18+.42*w)*(.8+.2*sin(t*2.+ph));c=iC*(.55+.6*w);}
 else if(T==16){if(w>.97){em=1.3+.25*sin(t*2.3+ph);c=vec3(1.,.74,.26);}else if(w>.45){float k=floor((w-.5)*20.+.5);em=.12+1.15*smoothstep(.15,.95,sin(t*1.9-k*.785+ph));}}
+else if(T==20||T==23){if(w>.45)em=(w-.45)*2.2;}else if(T==25){if(w>.45){float k=floor(w*100.+.5);em=step(.5,fract(sin(k*12.9898+floor(t*(1.2+fract(k*.37)*2.5)+k))*43758.5))*1.2;}}else if(T==21){em=.28;}else if(T==27){em=1.5-.7*w;}else if(T==29){em=.3;}else if(T==31){em=.16+.6*smoothstep(.45,1.,sin(aP.y*15.+t*8.+sin(aP.z*31.)*2.5));}else if(T==30&&w>.5){em=.05;}
 vN=wn;vC=c;vE=em;vA=1.;vP=wp;gl_Position=uVP*vec4(wp,1.);}`,
-  V + `in vec3 vN;in vec3 vC;in vec3 vP;in float vE;in float vA;in float vF;uniform vec3 uE;uniform highp int uT;uniform vec4 uRm;out vec4 o;
+  V + `in vec3 vN;in vec3 vC;in vec3 vP;in float vE;in float vA;in float vF;uniform vec3 uE;uniform highp int uT;uniform vec4 uRm;uniform float uGl,uSp,uNow;out vec4 o;
+${CML}
 void main(){
 if(uT==99){o=vec4(0.,0.,0.,vA*.36);return;}
 vec3 n=normalize(vN);if(!gl_FrontFacing)n=-n;
 vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
 float dif=max(dot(n,L),0.),fil=max(dot(n,F),0.),sky=.5+.5*n.y;
 vec3 vd=normalize(uE-vP);float rim=pow(1.-max(dot(n,vd),0.),3.);
+if(uGl>1.5){float fr=pow(1.-abs(dot(n,vd)),2.)*(n.y<-.5?.25:1.);vec3 gc=vC*(.3+.35*dif)+vec3(.8,.95,1.)*fr*.28+vec3(.92,.98,1.)*vE;if(uCmT.w>.5){vec2 q=cmQ(vP);int z=cmZ(q);if(z>=0)gc=cmLit(vC,n,vP,vd,z,q,.9)*1.25+vec3(.8,.95,1.)*fr*.2+vec3(.92,.98,1.)*vE;}gc*=1.25;gc=gc*(1.+gc/6.)/(1.+gc);o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),clamp(.34+.3*fr+vE*.6,0.,.95));return;}
+if(uGl>.5){float fr=pow(1.-abs(dot(n,vd)),2.5);vec3 gc=vec3(.8,.9,.95)*(.16+.45*dif)+vec3(1.)*fr*.55;o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),.1+.55*fr);return;}
 vec3 c=vC*(.2*sky+1.02*dif)+vC*vec3(.95,.72,.55)*.24*fil+vec3(1.,.62,.3)*rim*.12+vC*vE*1.8;
-c*=1.35*mix(.35,1.,vF);if(uRm.x>.5)c=mix(c,vec3(.022,.013,.01),1.-exp(-length(vP-uE)*.034));c=c*(1.+c/6.)/(1.+c);o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),clamp(vE*.75,0.,1.));}`);
+if(uCmT.w>.5&&uRm.x>1.5){vec2 q=cmQ(vP);int z=cmZ(q);if(z>=0)c=cmLit(vC,n,vP,vd,z,q,uSp)+vC*vE*1.8;}
+c*=1.35*mix(.35,1.,vF);if(uRm.x>.5)c=mix(c,vec3(.022,.013,.01),1.-exp(-length(vP-uE)*(uRm.x>1.5?.012:.034)));c=c*(1.+c/6.)/(1.+c);o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),clamp(vE*.75,0.,1.));}`);
 // glowing specks: snow, glints on the water, fireflies, dust, flames and embers, sparks and ash, plasma wisps
-const dustP = prog(V + `layout(location=0) in vec4 aA;layout(location=1) in vec4 aB;uniform mat4 uVP;uniform float uNow,uW,uH;uniform int uT;uniform vec4 uRm;out vec3 vC;out float vA;
+const dustP = prog(V + `layout(location=0) in vec4 aA;layout(location=1) in vec4 aB;uniform mat4 uVP;uniform float uNow,uW,uH;uniform int uT;uniform vec4 uRm;uniform vec2 uCm;out vec3 vC;out float vA;
 void main(){float t=uNow,sz=aA.w,a=1.;vec3 p,c=vec3(1.);
 if(uT==0){p=vec3(aA.x+sin(t*.6+aA.z*6.)*.5,11.-mod(t*(.45+aB.x*.5)+aA.z*11.,11.),aA.y+cos(t*.5+aA.z*5.)*.5);c=vec3(.95,.98,1.);a=.8;}
 else if(uT==1){p=vec3(aA.x,.05,aA.y);a=pow(max(0.,sin(t*(1.1+aB.x*2.)+aA.z*40.)),14.)*1.4;c=vec3(.8,.95,1.);}
@@ -2891,7 +2949,7 @@ else if(uT==4){float lf=fract(t*(.25+aB.x*.35)+aA.z);bool fl=aB.w<.45;p=vec3(aA.
 else if(uT==5){if(aB.w<.55){float lf=fract(t*(.4+aB.x*.5)+aA.z);p=vec3(aA.x+sin(aA.z*30.)*lf*1.5,lf*(2.-lf)*4.,aA.y+cos(aA.z*30.)*lf*1.5);c=vec3(1.,.5,.1);a=1.-lf;sz*=.7;}
  else{p=vec3(aA.x+sin(t*.4+aA.z*6.)*.8,9.-mod(t*(.3+aB.x*.3)+aA.z*9.,9.),aA.y+cos(t*.3+aA.z*5.)*.8);c=vec3(.3,.28,.27);a=.55;sz*=.8;}}
 else{float an=aA.z*6.2832+t*(.15+.25*aB.x)*(aB.y>.5?1.:-1.),r=6.6+aB.z*8.4;p=vec3(cos(an)*r,.4+aB.w*6.+sin(t*.8+aA.z*12.)*.6,sin(an)*r);c=mix(vec3(.3,.9,1.),vec3(1.,.3,.9),aB.y);a=.75+.25*sin(t*3.+aA.z*20.);}
-if(uRm.x>.5){if(uRm.y>.5)p=vec3(p.z,p.y,-p.x);p.z+=uRm.z;p.z+=floor((uRm.w-p.z)/32.+.5)*32.;a*=uW*smoothstep(3.7,3.,abs(p.x))*smoothstep(16.,12.5,abs(p.z-uRm.w));}
+if(uRm.x>.5){if(uRm.y>.5)p=vec3(p.z,p.y,-p.x);p.z+=uRm.z;p.z+=floor((uRm.w-p.z)/32.+.5)*32.;a*=uW*smoothstep(3.7,3.,abs(p.x))*smoothstep(16.,12.5,abs(p.z-uRm.w));if(p.z>uCm.x&&p.z<uCm.y)a=0.;}
 else a*=uW*smoothstep(17.,13.5,length(p.xz));vC=c;vA=a;gl_Position=uVP*vec4(p,1.);gl_PointSize=clamp(sz*uH*1.3/gl_Position.w,1.,56.);}`,
   V + `in vec3 vC;in float vA;uniform float uG;uniform highp int uT;out vec4 o;void main(){vec2 q=gl_PointCoord*2.-1.;float d=dot(q,q);if(d>1.)discard;float f=exp(-d*3.2);
 if(uT==1){vec2 a=abs(q);f=exp(-d*16.)+max(0.,1.-a.x*9.)*max(0.,1.-a.y)+max(0.,1.-a.y*9.)*max(0.,1.-a.x);}
@@ -2935,7 +2993,7 @@ function lifeWeights(h) {
 let LROOM = [0, 0, 0, 0], LWALL = [1e5, 1e5, -1e5, -1e5];   // in the rooms: [on, turned a quarter, moved on, where you are along the hall]
 const LTALL = new Set(['pine', 'tree', 'cactus', 'rock', 'snowrock', 'burnt']);   // (trees and rocks stay outside: the rooms get what lives on and under the floor)
 function lifeUniforms(VP, eye, tn) {
-  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform4fv(lifeP.u.uWl, LWALL);
+  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform4fv(lifeP.u.uWl, LWALL); gl.uniform2fv(lifeP.u.uCm, LCM);
 }
 // solid things: under = true draws only what lives below the water (drawn before the water surface)
 function lifeDraw(VP, eye, tn, LW, under) {
@@ -2966,7 +3024,7 @@ function lifeDust(VP, tn, LW, H) {
   let set = false;
   LW.forEach((w, k) => {
     if (w < 0.01) return;
-    if (!set) { gl.useProgram(dustP.p); gl.uniformMatrix4fv(dustP.u.uVP, false, VP); gl.uniform1f(dustP.u.uNow, tn); gl.uniform1f(dustP.u.uH, H); gl.uniform4fv(dustP.u.uRm, LROOM); set = true; }
+    if (!set) { gl.useProgram(dustP.p); gl.uniformMatrix4fv(dustP.u.uVP, false, VP); gl.uniform1f(dustP.u.uNow, tn); gl.uniform1f(dustP.u.uH, H); gl.uniform4fv(dustP.u.uRm, LROOM); gl.uniform2fv(dustP.u.uCm, LCM); set = true; }
     gl.uniform1f(dustP.u.uW, w); gl.uniform1i(dustP.u.uT, k); gl.uniform1f(dustP.u.uG, [0.15, 0.6, 0.9, 0.05, 0.8, 0.7, 0.9][k]);
     gl.bindVertexArray(LDUST[k].vao); gl.drawArrays(gl.POINTS, 0, LDUST[k].n);
   });
@@ -3270,10 +3328,12 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
   if (rmCache.size > 7) rmCache.delete(rmCache.keys().next().value);
   return p;
 }
-const rmOk = h => h >= 0 && h <= tipH;
+const rmOk = h => h === COMMON || (h >= 0 && h <= tipH);
 // a room for block h, joined to room `of` on its `side` ('back' or 'front'), or standing at z = 0 if it is the first
 function rmMake(h, of, side) {
-  const R = {h, of, side, ready: false, back: {to: h - 1, o: 0}, front: {to: h + 1, o: 0}};
+  if (h === COMMON) return cmMake(of, side);
+  const R = {h, of, side, ready: false, back: {to: h - 1, o: 0}, front: {to: h + 1 > tipH && tipH >= 0 ? COMMON : h + 1, o: 0}};
+  R.autoC = R.front.to === COMMON;   // (the door past the newest block: the common room, until the next block is mined)
   if (side === 'front') R.back.to = of.h; else if (side === 'back') R.front.to = of.h;
   R.slot = rmSlots.indexOf(null); if (R.slot < 0) R.slot = 0; rmSlots[R.slot] = R;
   rmLoad(h).then(async B => {   // built a step at a time, so walking never stutters while the next room goes up
@@ -3305,6 +3365,7 @@ function rmFree(R) { if (R && rmSlots[R.slot] === R) rmSlots[R.slot] = null; }
 // the room you are in becomes the block on screen: header, tiles and pictures follow it
 function rmCurrent(R) {
   room.at = R;
+  if (R.common) { head(); cmScreen(); if (cm.music.k !== 'off') cmMusic(); return; }
   if (!R.B) return;
   cur = R.B; want = R.h; mode = 'block'; nav(); head();
   if (R.B.scan && R.B.scan.ok) setTimeout(() => { if (room && room.at === R && cur === R.B) loadArt(R.B); }, 90);   // (measured: head and the pictures' set-up together took 17 ms in one go)
@@ -3497,10 +3558,12 @@ function rmSignPaint(R, quiet) {
   if (!R.signs) return;
   for (const end of ['back', 'front']) {
     const s = R.signs[end], D = R[end], N = rmNear(R, end), nx = end === 'front' ? R.h + 1 : R.h - 1;
+    if (!s) continue;
     let sub = !rmOk(D.to) ? (D.to > tipH ? 'not mined yet' : 'no block') : N && N.h === D.to && N.ready ? (D.to === nx ? (end === 'front' ? 'next block' : 'previous block') : 'jump') + ' · tap to change'
       : N && N.failed ? "can't load · tap to change" : N && N.h === D.to ? 'loading…' : 'tap to change';
     let txt = (end === 'back' ? '◀ ' : '') + 'BLOCK ' + fmt(D.to) + (end === 'front' ? ' ▶' : '');
     if (R.h === 0 && end === 'back' && D.to < 0) { txt = 'THE BEGINNING'; sub = 'there is no block before this one'; }
+    if (D.to === COMMON) { txt = (end === 'back' ? '◀ ' : '') + 'THE COMMON ROOM' + (end === 'front' ? ' ▶' : ''); sub = R.autoC ? 'past the newest block · hang out here' : 'hang out here · tap to change'; }
     if (R.h === 0 && end === 'front' && D.to === 1 && N && N.h === 1 && N.ready && N.B.time > R.B.time) {
       const g = N.B.time - R.B.time; sub = 'came ' + Math.floor(g / 86400) + ' days ' + Math.floor(g % 86400 / 3600) + ' hrs ' + Math.floor(g % 3600 / 60) + ' min later';
     }
@@ -3515,6 +3578,7 @@ function rmSigns() { if (room) for (const R of room.rooms) if (R && R.ready) rmS
 function rmNeighbours() {
   const r = room.rooms, C = r[1];
   if (!C) return;
+  if (!C.common && C.autoC && C.front.to === COMMON && C.h + 1 <= tipH) { C.front.to = C.h + 1; C.autoC = false; }   // (a block was mined: it goes before the common room)
   for (const [i, end] of [[0, 'back'], [2, 'front']]) {
     const to = C[end].to, N = r[i];
     if (N && N.h === to) continue;
@@ -3522,7 +3586,7 @@ function rmNeighbours() {
     if (rmOk(to)) r[i] = rmMake(to, C, end);
   }
   room.fixDirty = room.dirty = true; rmSigns();
-  for (const h of [C.front.to + 1, C.back.to - 1]) if (rmOk(h)) rmLoad(h).catch(() => {});   // and the blocks one door further on, data only
+  for (const h of [C.front.to + 1, C.back.to - 1]) if (h >= 0 && h <= tipH) rmLoad(h).catch(() => {});   // and the blocks one door further on, data only
 }
 // walking through a door: the room ahead becomes the one you are in, and the one two doors back is let go
 function rmCross(dir) {
@@ -3576,7 +3640,7 @@ function rmFill(tn) {
   if (room.fixDirty) {
     room.fixDirty = false;
     const C = room.rooms[1], fs = [C, room.rooms[0], room.rooms[2]].filter(R => R && R.ready).map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
-    room.nFixCur = C && C.ready ? C.fix.length / NF : 0;
+    room.nFixCur = C && C.ready && !C.common ? C.fix.length / NF : 0;   // (the common room's carpet shows no reflection)
     let o = 0; for (const f of fs) { all.set(f, o); o += f.length; }
     gl.bindBuffer(gl.ARRAY_BUFFER, rmFixBuf); gl.bufferData(gl.ARRAY_BUFFER, all, gl.STATIC_DRAW); room.nFix = n / NF;
   }
@@ -3647,6 +3711,7 @@ function rmDoors(dt) {
   for (let i = 0; i < 3; i++) {
     const R = r[i]; if (!R || !R.ready) continue;
     for (const end of ['back', 'front']) {
+      if (R.common && end !== R.door) continue;
       const N = rmNear(R, end), zd = end === 'back' ? R.z0 : R.z0 - R.L;
       const want = N && N.ready && N.h === R[end].to && Math.hypot(p.x, p.z - zd) < 3.4 ? 1 : 0;
       R[end].o += (want - R[end].o) * Math.min(1, dt * 5);
@@ -3666,6 +3731,8 @@ function rmStep(dt) {
   p.vx += (tx - p.vx) * k; p.vz += (tz - p.vz) * k;
   let nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
   const v = Math.hypot(p.vx, p.vz); p.ph += v * dt * 2.3; p.bob = Math.sin(p.ph * 2) * .007 * Math.min(1, v / 2.7);   // (a gentle bob: the view stays steady as you walk)
+  if (cmOn(C) && C.ready) { if (p.sit && (f || s)) p.sit = false; if (p.sit) { p.vx = p.vz = 0; return; } cmMove(C, p, nx, nz, dt); return; }
+  p.lv = 0; p.y = 0; p.sit = false;
   if (lifeWeights(heatS)[0] > .5) for (const [hx, hz, r] of LIFE.XMAS) {
     const z = hz + Math.round((nz - hz) / 32) * 32, rad = r * .5 + .22, dx = nx - hx, dz = nz - z, d = Math.hypot(dx, dz);
     if (d < rad && Math.min(...room.rooms.flatMap(R => R && R.z0 != null ? [Math.abs(z - R.z0), Math.abs(z - R.z0 + R.L)] : [9])) > 1.2) { const k = d > 1e-4 ? rad / d : 0; nx = hx + (k ? dx * k : rad); nz = z + dz * k; }
@@ -3692,7 +3759,7 @@ function roomFrame(W, H, tn, dpr) {
   const dt = Math.min(.05, Math.max(0, tn - (rmLast || tn))); rmLast = tn;
   rmStep(dt);
   const p = room.p, cp = Math.cos(p.pitch), dir = [-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp];
-  const eye = [p.x, EYE + p.bob, p.z], asp = W / H, fov = asp < 1 ? 1.3 : 1.12;
+  const eye = [p.x, EYE + p.bob + (p.y || 0) - (p.sit ? .62 : 0), p.z], asp = W / H, fov = asp < 1 ? 1.3 : 1.12;
   const VP = mul(persp(fov, asp, .05, 400), look(eye, [eye[0] + dir[0], eye[1] + dir[1], eye[2] + dir[2]]));
   room.view = {eye, dir, fov, asp};
   rmDoors(dt);
@@ -3718,14 +3785,14 @@ function roomFrame(W, H, tn, dpr) {
   const all = mir => {
     gl.useProgram(parP.p); gl.uniformMatrix4fv(parP.u.uVP, false, VP); gl.uniform3fv(parP.u.uE, eye);
     gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, 0); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uRf, rf); gl.uniform1f(parP.u.uXr, 0);
-    gl.uniform1f(parP.u.uGa, 1); gl.uniform1i(parP.u.uSel, -1); gl.uniform1f(parP.u.uAmb, .3);
+    gl.uniform1f(parP.u.uGa, 1); gl.uniform1i(parP.u.uSel, -1); gl.uniform1f(parP.u.uAmb, .3); cmLU(parP, tn, !mir);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, labTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
     const nf = mir ? room.nFixCur || 0 : room.nFix, np = mir ? room.nParCur || 0 : room.nPar;
     if (nf) { gl.bindVertexArray(rmFixVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, nf); }
     if (room.nDoor) { gl.bindVertexArray(rmDoorVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nDoor); }
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.activeTexture(gl.TEXTURE0);
     if (np) { gl.bindVertexArray(rmParVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, np); }
-    gl.uniform1f(parP.u.uAmb, 0); gl.uniform1f(parP.u.uMir, 0);
+    gl.uniform1f(parP.u.uAmb, 0); gl.uniform1f(parP.u.uMir, 0); cmLU(parP, tn, false);
     if (crewList.length) { chDraw(crewList, VP, eye, mir, rf); if (mir) gl.cullFace(gl.BACK); }
   };
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
@@ -3741,6 +3808,7 @@ function roomFrame(W, H, tn, dpr) {
   gl.frontFace(gl.CCW); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
   // the floor's life: both copies of the ring, laid along the hall (fish first: they swim under the water)
   const [R0, R1, R2] = room.rooms, wz = (R, f, d) => R && R.z0 != null ? R.z0 - (f ? R.L : 0) : d;
+  { const Rc = room.rooms.find(q => cmOn(q) && q.ready); LCM = Rc ? [Rc.z0 - Rc.L - .3, Rc.z0 + .3] : [1e9, -1e9]; }
   const rings = f => { LWALL = [wz(R0, 0, 1e5), wz(R1, 0, 1e5), wz(R1, 1, -1e5), wz(R2, 1, -1e5)]; for (const [q, z] of [[0, 0], [1, 16]]) { LROOM = [1, q, z, p.z]; f(); } LROOM = [0, 0, 0, 0]; LWALL = [1e5, 1e5, -1e5, -1e5]; };
   if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, tn, LW, true));
   gl.disable(gl.DEPTH_TEST);
@@ -3757,9 +3825,1446 @@ function roomFrame(W, H, tn, dpr) {
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
   all(0);
   gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, tn, LW, false));
+  cmDraw(VP, eye, tn); cmQDraw(VP, eye, tn);
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); rings(() => lifeDust(VP, tn, LW, H)); gl.depthMask(true); gl.disable(gl.BLEND);
   gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
+  cmOverlays(VP, W, H);
 }
+
+/* ================= THE COMMON ROOMS: past the newest block's door (and wherever a crewmate is), a place to hang out =================
+   A group of rooms of their own, joined to the block room you came from by their one door, each in its own style and on its own level:
+   the ENTRANCE ARCADE (gilded barrel vaults on carved arches, walnut, green floral carpet), the GRAND HALL (a sunken Roman Forum
+   under a coffered ceiling open to the sky in a ring, the big screen, a raised walk round three sides, a balcony with stairs either
+   side), THE MEMPOOL (a neon bar up a flight of steps to the west), the KOI GARDEN (a glasshouse down a flight to the east, a big
+   tank of koi with a waterfall in it), the FIRESIDE LOUNGE (a few steps down off the arcade: sofas, a fire, the music box) and the
+   way to THE WAREHOUSE (Block Paint; its door comes later).
+   Laid out in their own frame: x across, d deep from the door (0 at the door); turned to fit whichever way the door faces. */
+const COMMON = -2, NODOOR = -9;
+const CM = {L: 48, PD: 33, CELL: .3, PR: [7.2, 6.3, 5.4, 4.5], STEP: .4, BY: 5.4, BD0: 16, BD1: 21, SX0: 13.2, SD0: 30, NST: 23,
+  HG: 12.5, SCR: {w: 16, h: 9, y0: 2.4, d: 47.79}, TAP: [-39.62, 35], JB: [-5.6, 12.9], TANK: [33, 33, 8.4, 3.4, 2.7]};
+CM.RUN = (CM.SD0 - CM.BD1) / CM.NST; CM.RISE = (CM.BY - .9) / CM.NST;
+const cmOn = R => R && R.common;
+const CM_PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
+const CM_WIN = [{src: 'block-cube-window-1.jpg', w: 768, h: 1024}], CM_ART = [{src: 'block-cube-art-1.jpg', w: 1024, h: 922}];
+// the layout's frame to the room's own (x, z from z0), and back; how "into the rooms" turns in the world
+const cmW = (R, x, d) => R.door === 'back' ? [x, -d] : [-x, -R.L + d];
+const cmL = (R, wx, wz) => { const zl = wz - R.z0; return R.door === 'back' ? [wx, -zl] : [-wx, zl + R.L]; };
+const cmYaw = R => R.door === 'back' ? 0 : Math.PI;
+const cmClamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// the Forum: which step a spot is on (0 the floor round it, 4 the sunken middle), per 30 cm stone
+function cmLevel(x, d) {
+  const c = CM.CELL, cx = (Math.floor(x / c) + .5) * c, cd = (Math.floor((d - CM.PD) / c) + .5) * c, r = Math.hypot(cx, cd);
+  return r >= CM.PR[0] ? 0 : r >= CM.PR[1] ? 1 : r >= CM.PR[2] ? 2 : r >= CM.PR[3] ? 3 : 4;
+}
+// how high the floor is (lv 1: on the balcony or its stairs)
+const cmStep3 = e => e >= .9 ? .9 : e >= .6 ? .6 : e >= .3 ? .3 : 0;
+function cmH(x, d, lv) {
+  if (lv) { if (d <= CM.BD1) return CM.BY; return .9 + Math.min(CM.NST, Math.max(0, Math.ceil((CM.SD0 - d) / CM.RUN - 1e-6))) * CM.RISE; }
+  if (d < 16) {   // the arcade, the lounge (three low steps down), the way to the warehouse
+    if (x < -4) return x >= -4.3 ? -.15 : x >= -4.6 ? -.3 : -.45;
+    return 0;
+  }
+  if (x < -16) return x > -19.4 ? .9 : x > -20.3 ? .9 + .3 * Math.ceil((-19.4 - x) / .3 - 1e-6) : 1.8;   // up to the bar
+  if (x > 16) return x < 18.2 ? .9 : x < 20 ? .9 - .3 * Math.ceil((x - 18.2) / .3 - 1e-6) : -.9;   // down to the garden
+  const ax = Math.abs(x), e = Math.max(ax >= 7.7 ? Math.min(ax - 7.7, d - 21.3) : -1, d - 41.3);
+  if (e >= 0) return cmStep3(e);
+  return -CM.STEP * cmLevel(x, d);
+}
+// where you can walk: rooms and the ways between them (a spot must be in one of them), and what stands in the way
+const CM_WALK = [[-3.7, 3.7, .3, 15.7], [-4.7, -3.3, 5.3, 10.7], [-17.7, -4.3, 2.3, 13.7], [3.3, 4.7, 5.3, 10.7], [4.3, 14.7, 5.3, 10.7],
+  [-2.7, 2.7, 15.5, 16.5], [-15.7, 15.7, 16.3, 47.7], [-16.7, -15.3, 33.8, 39.2], [-24.3, -16.3, 33.8, 39.2], [-24.7, -23.3, 33.8, 39.2], [-41.7, -24.3, 22.3, 47.7],
+  [15.3, 16.7, 33.8, 39.2], [16.3, 24.3, 33.8, 39.2], [23.3, 24.7, 33.8, 39.2], [24.3, 41.7, 22.3, 47.7]];
+const CM_UP = [[-15.7, 15.7, 16.3, 20.7], [-15.7, -13.5, 20.4, 30.2], [13.5, 15.7, 20.4, 30.2]];
+const CM_UPB = [[-12 - 1.35, -12 + 1.35, 16, 16.95], [-6 - 1.35, -6 + 1.35, 16, 16.95], [6 - 1.35, 6 + 1.35, 16, 16.95], [12 - 1.35, 12 + 1.35, 16, 16.95]];   // (the balcony's planters)
+const CM_BLOCK = [[13.2, 16, 21, 30], [-16, -13.2, 21, 30]];   // (under the stairs)
+for (const x of [-10.5, -5, 5, 10.5]) CM_BLOCK.push([x - .45, x + .45, 20.55, 21.45]);   // the balcony's pillars
+for (let i = 0; i < 8; i++) { const a = (i + .5) / 8 * 6.2832, x = Math.cos(a) * 8.1, d = CM.PD + Math.sin(a) * 8.1; CM_BLOCK.push([x - .5, x + .5, d - .5, d + .5]); }   // the Forum's block pillars
+for (const s of [-1, 1]) { CM_BLOCK.push([s > 0 ? 9 : -10.6, s > 0 ? 10.6 : -9, 45.7, 47.8], [s > 0 ? 13.6 : -15.9, s > 0 ? 15.9 : -13.6, 44.9, 47.8]); }   // speakers, planters by the screen
+for (const d of [1.2, 4.6, 11.4, 14.8]) for (const s of [-1, 1]) CM_BLOCK.push([s * 3.62 - .4, s * 3.62 + .4, d - .4, d + .4]);   // the arcade's carved pillars
+for (const s of [-1, 1]) CM_BLOCK.push([s * 3.6 - .25, s * 3.6 + .25, 2.2, 3.6]);   // its console tables
+CM_BLOCK.push([-3.85, -3.35, 12.4, 13.8]);
+// the bar: its counter, the back bar, the stools; booths along the far wall
+CM_BLOCK.push([-40.3, -39, 25.8, 44.2], [-42, -41.2, 25.5, 44.5]);
+for (let d = 27; d <= 43; d += 2) CM_BLOCK.push([-38.65, -38.05, d - .3, d + .3]);
+for (const x of [-36, -31, -26.5]) CM_BLOCK.push([x - 1.6, x + 1.6, 45.6, 48]);
+// the lounge: the hearth, the sofas round the fire, the table, the lamps, the books, the music box
+CM_BLOCK.push([-18, -16.3, 5.5, 10.5], [-11.45, -10.35, 4.95, 11.05], [-14.85, -10.95, 3.55, 4.65], [-14.85, -10.95, 11.35, 12.45], [-14.05, -11.95, 6.85, 9.15],
+  [-6.4, -4.8, 12.3, 13.7], [-10.75, -10.35, 3.6, 4.0], [-10.75, -10.35, 12.0, 12.4], [-16.8, -7.6, 13.5, 14.2]);
+// the garden: the tank, planters, benches
+{ const [x, d, lx, ld] = CM.TANK; CM_BLOCK.push([x - lx / 2 - .25, x + lx / 2 + .25, d - ld / 2 - .25, d + ld / 2 + .25]); }
+for (const [x, d] of [[26.2, 24.2], [39.8, 24.2], [26.2, 45.8], [39.8, 45.8]]) CM_BLOCK.push([x - 1.2, x + 1.2, d - 1.2, d + 1.2]);
+CM_BLOCK.push([27.6, 30.4, 40.2, 40.8], [35.6, 38.4, 40.2, 40.8], [27.6, 30.4, 25.2, 25.8], [35.6, 38.4, 25.2, 25.8]);
+for (const [x, d] of [[28.0, 30.4], [38.0, 30.4], [28.0, 35.7], [38.0, 35.7]]) CM_BLOCK.push([x - .35, x + .35, d - .35, d + .35]);   // the stone lanterns
+CM_BLOCK.push([-28.2, -25.3, 22, 23.1]);   // the mining racks
+for (const s of [-1, 1]) CM_BLOCK.push([s > 0 ? 10.3 : -11.1, s > 0 ? 11.1 : -10.3, 25.4, 28.6], [s * 9.6 - .4, s * 9.6 + .4, 22.2, 23.0], [s * 9.6 - .4, s * 9.6 + .4, 42.4, 43.2]);   // the hall's benches, its big vases
+CM_BLOCK.push([12.6, 14.9, 9.2, 10.9], [4.2, 5.4, 9.5, 10.9]);   // crates and paint by the warehouse door
+
+// the games, in arcade cabinets, and the art, in frames, spread through the rooms
+// a game: [name, link, x, depth, facing x, facing depth, floor]; the art: [name, link, x, depth, height of its middle, size, facing x, facing depth]
+const CM_GAMES = [['Poker', 'https://ordinals.com/preview/19361c7171a9dd3f21600f2daa47c74718392ca0bf442eb1b36235f6753bfe08i0', -37.6, 22.55, 0, 1, 1.8],
+  ['Poker Dice', 'https://ordinals.com/preview/6242b636af7ebda7c4cffe9803ab474cc8b156280e97a08f927a5201b32cc51ai0', -35.9, 22.55, 0, 1, 1.8],
+  ['Midnight Pool', 'https://static.unisat.space/preview/14c4198ef68bd238f5137787e201f3ef9aa7088e2f48e1c72e49d720c6ddffeci0', -34.2, 22.55, 0, 1, 1.8],
+  ['Bitcoin Miner', 'https://static.unisat.space/preview/50e2e0bb9ce760fed4a82d0a074d3c6d49555bc7a313c960f9633df09f2071c0i0', 8.0, 10.45, 0, -1, 0],
+  ['Block War', 'https://static.unisat.space/preview/c20979addb9b57c4d18f66dbf120bce9d0359ee456eb9d3343d26cfa5eedd11ai0', 10.2, 10.45, 0, -1, 0],
+  ['Consensus Rush', 'https://static.unisat.space/preview/1c97e21d1e617ccd66058d13bfdce066dda6deb2977b93b22635c8aa2221999ci0', -15.45, 43.4, 1, 0, .9],
+  ['Bitcoin Escape', 'https://static.unisat.space/preview/bd00d017da23ca29c21d8824ecb2bad66dc347364b2c70aa6ad9262cc2c78e1ei0', 15.45, 43.4, -1, 0, .9],
+  ['Bit Hop', 'https://static.unisat.space/preview/1ba248b050421df179734fe00b5b820a5a435c63212026769dc91ec8906cbb37i0', 41.2, 30.5, -1, 0, -.9],
+  ['Colour Blocks', 'https://static.unisat.space/preview/72305b0debb8dd8377549ebe2989d92b32b040f7c97eb8f7ed0bd35906b64534i0', 41.2, 39.5, -1, 0, -.9],
+  ['Gallows Night', 'https://static.unisat.space/preview/db8a09925263799e5ae8195899596189d92b24eac2e9ddf8c8085c2150880868i0', -7.0, 2.55, 0, 1, -.45]];
+const CM_INSART = [['Chinese Guardian Lion', 'https://static.unisat.space/preview/49ac7c8647451f9a7ed75007203d581d59c88d5512e07a2a21816e67b970720bi0', 3.8, 13.1, 2.35, 1.5, -1, 0],
+  ['Chameleon', 'https://static.unisat.space/preview/a7d1d9ff9f97596ee182b6482f6d739f535b36ddad48221b73a83e366abbaf2ci0', -13, 2.2, 2.1, 1.6, 0, 1],
+  ['Satoshi Garden', 'https://static.unisat.space/preview/87f36f72e22d587a038c7d0254a4002664027a2cffd9f79089bc6c3d1e25cc30i0', 41.62, 35, 1.6, 2.0, -1, 0]];
+for (const g of CM_GAMES) { const ax = g[4] ? .45 : .55, ad = g[4] ? .55 : .45; CM_BLOCK.push([g[2] - ax, g[2] + ax, g[3] - ad, g[3] + ad]); }
+// framed prints in the arcade: [which, x, depth, height of its middle, width, height, facing x, facing depth]
+const CM_PRINTS = [['genesis', -3.8, 2.9, 2.35, 1.0, 1.3, 1, 0], ['paper', 3.8, 2.9, 2.35, 1.0, 1.3, -1, 0], ['first', -3.8, 13.1, 2.4, 1.2, .95, 1, 0]];
+// what the filler stands on
+for (const s of [-1, 1]) CM_BLOCK.push([s * 3 - .4, s * 3 + .4, 15.15, 15.95], [s * 12.4 - .95, s * 12.4 + .95, 43.55, 44.85], [s * 12 - .5, s * 12 + .5, 31.1, 32.1]);
+CM_BLOCK.push([-9.0, -8.2, 10.0, 12.0], [-5.75, -4.85, 2.35, 3.25], [-15.6, -15.0, 8.3, 8.9], [-33.1, -29.9, 30.1, 31.9], [25.35, 25.85, 34.15, 34.65], [25.35, 25.85, 38.35, 38.85],
+  [29.4, 36.6, 42.2, 45.8], [24.3, 25.1, 28.1, 28.9], [24.3, 25.1, 42.6, 43.4], [4.5, 6.2, 5.2, 6.5], [13.1, 14.5, 5.3, 6.7], [7.3, 7.7, 6.0, 6.4], [11.8, 12.2, 5.6, 6.0], [5.7, 6.3, 10.6, 10.9]);
+for (const [x, d] of [[-35, 39.5], [-28.5, 41.5], [-27, 30]]) CM_BLOCK.push([x - .45, x + .45, d - .45, d + .45]);
+// places to sit: [x, depth, floor, facing x, facing depth, how much higher the seat is, where you stand up to (x, depth), how near you must be]
+const CM_SEATS = [];
+for (const d of [6.3, 8, 9.7]) CM_SEATS.push([-10.95, d, -.45, -1, 0, 0, -11.8, d === 8 ? 6.45 : d, 1.7]);
+for (const x of [-13.9, -11.9]) CM_SEATS.push([x, 4.2, -.45, 0, 1, 0, x, 5.0, 1.7], [x, 11.8, -.45, 0, -1, 0, x, 11.0, 1.7]);
+for (let d = 27; d <= 43; d += 2) CM_SEATS.push([-38.35, d, 1.8, -1, 0, .6, -37.3, d, 1.1]);
+for (const x of [-36, -31, -26.5]) for (const o of [-.7, .7]) CM_SEATS.push([x + o, 47.15, 1.8, 0, -1, 0, x + o, 45.2, 2.4]);
+for (const x of [29, 37]) for (const o of [-.65, .65]) CM_SEATS.push([x + o, 25.55, -.9, 0, 1, 0], [x + o, 40.45, -.9, 0, -1, 0]);
+for (const s of [-1, 1]) for (const d of [26.2, 27.8]) CM_SEATS.push([s * 10.7, d, .9, -s, 0, 0]);
+CM_SEATS.push([-8.6, 10.3, -.45, 0, 1, 0, -8.6, 9.55], [-8.6, 11.7, -.45, 0, -1, 0, -8.6, 12.45]);   // (the chess table's chairs)
+
+/* ---- making it: joined to block room `of` on its `side` (or standing alone, its door to the block on screen) ---- */
+function cmMake(of, side) {
+  const R = {h: COMMON, common: true, of, side, ready: false, back: {to: NODOOR, o: 0}, front: {to: NODOOR, o: 0}};
+  if (side === 'front') { R.door = 'back'; R.back.to = of.h; }
+  else if (side === 'back') { R.door = 'front'; R.front.to = of.h; }
+  else { R.door = 'back'; R.back.to = want >= 0 ? want : tipH; }
+  R.slot = rmSlots.indexOf(null); if (R.slot < 0) R.slot = 0; rmSlots[R.slot] = R;
+  R.plan = {items: [], labs: [], cats: [], nb: 0, side: 0, L: CM.L}; R.L = CM.L;
+  R.z0 = !of ? 0 : side === 'front' ? of.z0 - of.L - WT : of.z0 + WT + R.L;
+  (async () => {
+    const gone = () => !room || !room.rooms.includes(R);
+    await yieldNow(); if (gone()) return;
+    cmLabels(R); await yieldNow(); if (gone()) return;
+    cmFix(R); cmLightsUp(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
+    for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); if (gone()) return; }
+    gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D);
+    cmProps(R); await yieldNow(); if (gone()) return;
+    cmQuads(R); await yieldNow(); if (gone()) return;
+    R.ready = true; room.dirty = room.fixDirty = true;
+    if (R === room.rooms[1]) rmCurrent(R);
+    rmSigns();
+  })();
+  return R;
+}
+
+/* ---- the labels and the floor coverings (painted into the rooms' part of the label sheet) ---- */
+function cmLabels(R) {
+  const y0 = R.slot * LSLOT, c = labCx, rnd = (() => { let q = 5; return () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296; })();
+  c.clearRect(0, y0, LT, LSLOT);
+  R.signs = {}; R.signs[R.door] = {x: 0, y: y0};
+  const sheet = (x, y, n, f) => { c.save(); c.beginPath(); c.rect(x, y, n, n); c.clip(); f(x, y, n); c.restore(); return {x, y, n}; };
+  // the arcade's carpet: deep green, red and pink flowers on curling stems (like the grand old halls)
+  R.tGreen = sheet(512, y0, 256, (x, y, n) => {
+    c.fillStyle = '#2f5a3a'; c.fillRect(x, y, n, n);
+    for (let i = 0; i < 1600; i++) { c.fillStyle = `rgba(${(30 + rnd() * 40) | 0},${(80 + rnd() * 50) | 0},${(50 + rnd() * 30) | 0},.25)`; c.fillRect(x + rnd() * n, y + rnd() * n, 2, 2); }
+    c.strokeStyle = 'rgba(160,210,170,.45)'; c.lineWidth = 2.2;
+    for (let k = 0; k < 7; k++) { c.beginPath(); let px = x + rnd() * n, py = y + rnd() * n; c.moveTo(px, py); for (let j = 0; j < 5; j++) { const a = rnd() * 6.28; c.quadraticCurveTo(px + Math.cos(a) * 30, py + Math.sin(a) * 30, px += Math.cos(a + 1) * 34, py += Math.sin(a + 1) * 34); } c.stroke(); }
+    const flower = (fx, fy, r, col, ctr) => { c.fillStyle = col; for (let p = 0; p < 5; p++) { const a = p / 5 * 6.2832; c.beginPath(); c.ellipse(fx + Math.cos(a) * r * .55, fy + Math.sin(a) * r * .55, r * .5, r * .32, a, 0, 6.29); c.fill(); } c.fillStyle = ctr; c.beginPath(); c.arc(fx, fy, r * .22, 0, 6.29); c.fill(); };
+    for (let k = 0; k < 9; k++) flower(x + rnd() * n, y + rnd() * n, 12 + rnd() * 6, rnd() < .5 ? '#c43a3a' : '#d9566a', '#f2c46a');
+    for (let k = 0; k < 22; k++) flower(x + rnd() * n, y + rnd() * n, 4 + rnd() * 3, rnd() < .5 ? '#f0b8b0' : '#f7e6c8', '#c43a3a');
+  });
+  // the Grand Hall's carpet: plum, a gold border, blocks and chains woven in
+  R.tPlum = sheet(768, y0, 256, (x, y, n) => {
+    c.fillStyle = '#2a0f2c'; c.fillRect(x, y, n, n);
+    for (let i = 0; i < 1400; i++) { c.fillStyle = `rgba(${(90 + rnd() * 60) | 0},${(30 + rnd() * 30) | 0},${(80 + rnd() * 50) | 0},.18)`; c.fillRect(x + rnd() * n, y + rnd() * n, 2, 2); }
+    c.strokeStyle = '#c9952e'; c.lineWidth = 6; c.strokeRect(x + 10, y + 10, n - 20, n - 20); c.lineWidth = 2; c.strokeRect(x + 22, y + 22, n - 44, n - 44);
+    c.fillStyle = '#5a2350'; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2 === 0) c.fillRect(x + 40 + i * 46, y + 40 + j * 46, 38, 38);
+    c.strokeStyle = '#e0a83a'; c.lineWidth = 3; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2 === 0) c.strokeRect(x + 46 + i * 46, y + 46 + j * 46, 26, 26);
+  });
+  // the lounge's rug: Art Deco, a gold sunburst on deep teal
+  R.tDeco = sheet(1024, y0, 256, (x, y, n) => {
+    c.fillStyle = '#0f3a3e'; c.fillRect(x, y, n, n); c.strokeStyle = '#d4a849'; c.lineWidth = 3;
+    for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI; c.beginPath(); c.moveTo(x + n / 2, y + n); c.lineTo(x + n / 2 + Math.cos(a) * n, y + n - Math.sin(a) * n); c.stroke(); }
+    for (const r of [40, 70, 100]) { c.beginPath(); c.arc(x + n / 2, y + n, r, Math.PI, 0); c.stroke(); }
+    c.lineWidth = 8; c.strokeRect(x + 4, y + 4, n - 8, n - 8);
+  });
+  // the bar's floor: black glass, a grid of light
+  R.tGrid = sheet(1280, y0, 128, (x, y, n) => { c.fillStyle = '#07060a'; c.fillRect(x, y, n, n); c.strokeStyle = '#ff2fb4'; c.lineWidth = 2; c.strokeRect(x + 1, y + 1, n - 2, n - 2); c.strokeStyle = 'rgba(39,225,255,.5)'; c.lineWidth = 1; c.beginPath(); c.moveTo(x + n / 2, y); c.lineTo(x + n / 2, y + n); c.moveTo(x, y + n / 2); c.lineTo(x + n, y + n / 2); c.stroke(); });
+  // the garden's floor: pale stone flags with moss in the joints
+  R.tStone = sheet(1408, y0, 128, (x, y, n) => { c.fillStyle = '#4a6a3a'; c.fillRect(x, y, n, n); for (const [a, b, w, h] of [[3, 3, 60, 58], [66, 3, 59, 40], [66, 46, 59, 79], [3, 64, 60, 61]]) { c.fillStyle = `rgb(${190 + (rnd() * 20 | 0)},${184 + (rnd() * 20 | 0)},${168 + (rnd() * 20 | 0)})`; c.fillRect(x + a, y + b, w, h); } });
+  // the way to the warehouse: concrete, old paint
+  R.tConc = sheet(1536, y0, 128, (x, y, n) => { c.fillStyle = '#5a5856'; c.fillRect(x, y, n, n); for (let i = 0; i < 500; i++) { c.fillStyle = `rgba(${rnd() < .5 ? 30 : 120},${rnd() < .5 ? 30 : 110},${rnd() < .5 ? 30 : 100},.15)`; c.fillRect(x + rnd() * n, y + rnd() * n, 3, 3); } c.fillStyle = 'rgba(255,79,216,.25)'; c.beginPath(); c.arc(x + 90, y + 40, 14, 0, 6.29); c.fill(); });
+  // stone laid in courses (travertine, pitted along its grain): the Grand Hall's walls and walk, the chimney breast
+  R.tAsh = sheet(1664, y0, 256, (x, y, n) => { c.fillStyle = '#9a8c72'; c.fillRect(x, y, n, n);
+    for (let r = 0; r < 4; r++) for (let k = -1; k < 2; k++) { const bx = x + k * 128 + (r % 2 ? 64 : 0), by = y + r * 64, t = rnd();
+      c.fillStyle = `rgb(${(204 + t * 20) | 0},${(190 + t * 18) | 0},${(162 + t * 16) | 0})`; c.fillRect(bx + 2, by + 2, 124, 60);
+      for (let v = 0; v < 7; v++) { c.fillStyle = `rgba(140,120,90,${.12 + rnd() * .22})`; c.fillRect(bx + 4 + rnd() * 96, by + 5 + rnd() * 52, 6 + rnd() * 34, 1 + rnd() * 2); } } });
+  // leaves, thick, a few flowers: the garden's living walls (drawn wrapped, so the squares meet without a seam)
+  R.tLeaf = sheet(0, y0 + 832, 192, (x, y, n) => { c.fillStyle = '#123214'; c.fillRect(x, y, n, n);
+    const leaf = (lx, ly, s, a, col) => { for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { c.fillStyle = col; c.beginPath(); c.ellipse(lx + ox, ly + oy, s, s * .45, a, 0, 6.29); c.fill(); } };
+    for (let i = 0; i < 520; i++) { const g = rnd(); leaf(x + rnd() * n, y + rnd() * n, 5 + rnd() * 9, rnd() * 6.28, `rgb(${(28 + g * 52) | 0},${(84 + g * 96) | 0},${(32 + g * 42) | 0})`); }
+    for (let i = 0; i < 12; i++) leaf(x + rnd() * n, y + rnd() * n, 2.6, 0, ['#ff8ab0', '#ffe07a', '#f4f0ff'][i % 3]); });
+  // raked gravel, the lines curving round
+  R.tRake = sheet(192, y0 + 832, 128, (x, y, n) => { c.fillStyle = '#cfc8b8'; c.fillRect(x, y, n, n); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${rnd() < .5 ? 90 : 255},${rnd() < .5 ? 85 : 250},80,.18)`; c.fillRect(x + rnd() * n, y + rnd() * n, 1.5, 1.5); }
+    c.strokeStyle = 'rgba(120,110,95,.55)'; c.lineWidth = 2; for (let k = 0; k < 16; k++) { c.beginPath(); for (let i = 0; i <= 32; i++) { const px = x + i * n / 32, py = y + k * 8 + 4 + Math.sin(i / 32 * 6.2832) * 2; i ? c.lineTo(px, py) : c.moveTo(px, py); } c.stroke(); } });
+  const plate = (x, y, w, h, a, col, b) => labPaint(x, y, w, h, a, col, null, b, col);
+  R.pl = {};
+  [['hall', 'THE GRAND HALL', '#ffd36b', 'the Forum · the big screen · the balcony'], ['bar', 'THE MEMPOOL', '#ff4fd8', 'the bar · pour your own pint'], ['koi', 'KOI GARDEN', '#7dff4a', 'the glasshouse · the koi tank'],
+   ['lounge', 'FIRESIDE LOUNGE', '#ffb04a', 'sofas · the fire · the music box'], ['jb', 'BLOCK BEATS', '#ff4fd8', 'the music box · click to choose'], ['forum', 'THE FORUM', '#ffd36b', 'sit on the steps and talk'],
+   ['ware', 'THE WAREHOUSE', '#27e1ff', 'Block Paint · the door opens soon'], ['scr', 'THE BIG SCREEN', '#4cc9f0', 'click it to play something'], ['arc', 'THE ENTRANCE ARCADE', '#ffd36b', 'the common rooms'],
+   ['pizza', 'TWO PIZZAS', '#ffd36b', '10,000 BTC · 22 May 2010'], ['coin', 'A PHYSICAL BITCOIN', '#ffd36b', 'its key sealed under a hologram']]
+    .forEach(([k, a, col, b], i) => { const x = (i % 4) * 512, y = y0 + 256 + Math.floor(i / 4) * 128; plate(x, y, 512, 128, a, col, b); R.pl[k] = {x, y}; });
+  const CM_FAMOUS = [[0, 'GENESIS'], [170, 'FIRST TRANSACTION'], [57043, 'PIZZA DAY'], [210000, '1ST HALVING'], [420000, '2ND HALVING'], [630000, '3RD HALVING'], [709632, 'TAPROOT'], [840000, '4TH HALVING']];
+  R.famous = CM_FAMOUS.map(([h, t], i) => { const x = (i % 5) * 384, y = y0 + 640 + Math.floor(i / 5) * 96; labPaint(x, y, 384, 96, 'BLOCK ' + fmt(h), '#ffd36b', null, t, '#ffd36b'); return {x, y}; });
+}
+
+
+/* ---- the rooms' build: floors, walls, steps, the Forum, the stairs and balcony, the bar, the lounge, the garden; and their lights ---- */
+const CMK = {wall: LC('#0c090a'), stone: LC('#cdbfa4'), stone2: LC('#b9aa8e'), trav: LC('#d8cbb0'), marble: LC('#cfc6b4'), marble2: LC('#bdb3a0'), dmarble: LC('#3a3430'),
+  gold: LC('#ffc94a'), brass: LC('#c9952e'), amber: LC('#ff8a1e'), pink: LC('#ff4fd8'), cyan: LC('#27e1ff'), green: LC('#7dff4a'), walnut: LC('#4a2a16'), dwalnut: LC('#2a170c'),
+  steel: LC('#3a3d44'), dark: LC('#0a0a0d'), velvet: LC('#1f4a3a'), mustard: LC('#c9952e'), leaf: [LC('#1f5a2a'), LC('#2c7a35'), LC('#3f9440'), LC('#245f2c'), LC('#4fae4a')],
+  solar: LC('#0d1b3d'), frame: LC('#9aa3b2'), brick: LC('#5a2a20'), cream: LC('#e8dcc0'), deco: LC('#101418'), leather: LC('#5a1a3a'), wood: LC('#7a5230')};
+function cmFix(R) {
+  const d = [], z0 = R.z0, K = CMK, LIT = [];
+  const box = (x, y, dd, sx, sy, sz, k, g, a, m) => { const [wx, wz] = cmW(R, x, dd); d.push(wx, y, z0 + wz, sx, sy, sz, k[0], k[1], k[2], 0, wx, y, z0 + wz, 0, g || 0, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : m ? 1 : 0, a ? 2 : 0); };
+  const B0 = (x0, x1, y0, y1, d0, d1, k, g, a, m) => box((x0 + x1) / 2, (y0 + y1) / 2, (d0 + d1) / 2, x1 - x0, y1 - y0, d1 - d0, k, g, a, m);
+  const B = B0;
+  const tex = t => [t.x / LT, t.y / LH, t.n / LT];
+  const TB = (x0, x1, y0, y1, d0, d1, t, S = 2) => {   // a box covered in a texture, cut into squares of about S m
+    const L = [x1 - x0, y1 - y0, d1 - d0], th = L.indexOf(Math.min(...L)), ax = [0, 1, 2].filter(i => i !== th), n = ax.map(i => Math.max(1, Math.ceil(L[i] / S - .01))), lo = [x0, y0, d0];
+    for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) { const p = lo.slice(), q = [x1, y1, d1];
+      p[ax[0]] = lo[ax[0]] + L[ax[0]] * i / n[0]; q[ax[0]] = lo[ax[0]] + L[ax[0]] * (i + 1) / n[0]; p[ax[1]] = lo[ax[1]] + L[ax[1]] * j / n[1]; q[ax[1]] = lo[ax[1]] + L[ax[1]] * (j + 1) / n[1];
+      B(p[0], q[0], p[1], q[1], p[2], q[2], K.dark, 0, tex(t)); }
+  };
+  // a label of square tiles side by side, facing along the layout's x (fx = ±1) or into the rooms (fd = ±1)
+  const tiles = (cx, cy, cd, fx, fd, s, px, py, ts, n) => {
+    const flip = R.door === 'back' ? 1 : -1, nx = fx * flip, nz = fd ? -fd * flip : 0, w0 = cmW(R, cx, cd), rx = nx ? 0 : (nz > 0 ? 1 : -1), rz = nx ? (nx > 0 ? -1 : 1) : 0;
+    for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2) * s, wx = w0[0] + rx * o, wz = w0[1] + rz * o; d.push(wx, cy, z0 + wz, nx ? .012 : s, s, nz ? .012 : s, K.dark[0], K.dark[1], K.dark[2], 0, wx, cy, z0 + wz, 0, 0, (px + k * ts) / LT, py / LH, ts / LT, 2); }
+  };
+  // a wall along d at x (or along x at d), with holes [from, to, bottom, top]
+  const wallX = (x, d0, d1, y0, y1, holes, k = K.wall, t = .3, tx) => {
+    const B = (a, b, c, d, e, f, k) => tx ? TB(a, b, c, d, e, f, tx) : B0(a, b, c, d, e, f, k); let a = d0; for (const [h0, h1, hy0, hy1] of (holes || []).slice().sort((p, q) => p[0] - q[0])) { if (h0 > a) B(x - t / 2, x + t / 2, y0, y1, a, h0, k); if (hy1 < y1) B(x - t / 2, x + t / 2, hy1, y1, h0, h1, k); if (hy0 > y0) B(x - t / 2, x + t / 2, y0, hy0, h0, h1, k); a = h1; }
+    if (a < d1) B(x - t / 2, x + t / 2, y0, y1, a, d1, k);
+  };
+  const wallD = (dd, x0, x1, y0, y1, holes, k = K.wall, t = .3, tx) => {
+    const B = (a, b, c, d, e, f, k) => tx ? TB(a, b, c, d, e, f, tx) : B0(a, b, c, d, e, f, k); let a = x0; for (const [h0, h1, hy0, hy1] of (holes || []).slice().sort((p, q) => p[0] - q[0])) { if (h0 > a) B(a, h0, y0, y1, dd - t / 2, dd + t / 2, k); if (hy1 < y1) B(h0, h1, hy1, y1, dd - t / 2, dd + t / 2, k); if (hy0 > y0) B(h0, h1, y0, hy0, dd - t / 2, dd + t / 2, k); a = h1; }
+    if (a < x1) B(a, x1, y0, y1, dd - t / 2, dd + t / 2, k);
+  };
+  // a light: where (layout), colour, how strong, how far it reaches; a spot is aimed (layout direction) with a cone
+  const light = (x, y, dd, col, i, r, aim, cone, fl) => LIT.push({p: [x, y, dd], c: lin(hexc(col)), i, r, aim, cone, fl: fl || 0, z: cmZoneOf(x, dd)});
+  const floorT = (x0, x1, d0, d1, y, t, n = 2, skip) => { for (let x = x0; x < x1 - .01; x += n) for (let dd = d0; dd < d1 - .01; dd += n) if (!skip || !skip(x + n / 2, dd + n / 2)) B(x, Math.min(x + n, x1), y - .02, y, dd, Math.min(dd + n, d1), K.dark, 0, tex(t)); };
+
+  /* the ENTRANCE ARCADE */
+  floorT(-4, 4, 0, 16, .02, R.tGreen);
+  wallX(-4, 0, 16, -.45, 5.6, [[5, 11, -.45, 4.0]], K.dwalnut); wallX(4, 0, 16, 0, 5.6, [[5, 11, 0, 4.0]], K.dwalnut);
+  for (const s of [-1, 1]) B(s > 0 ? DOOR / 2 : -4.15, s > 0 ? 4.15 : -DOOR / 2, 0, 8.6, -WT / 2, 0, K.dwalnut);
+  B(-DOOR / 2, DOOR / 2, DOORH, 8.6, -WT / 2, 0, K.dwalnut);
+  for (const s of [-1, 1]) { B(s * (DOOR / 2 + .02) - .05, s * (DOOR / 2 + .02) + .05, 0, DOORH + .02, .02, .08, K.gold, 2); }
+  B(-DOOR / 2 - .1, DOOR / 2 + .1, DOORH, DOORH + .1, .02, .08, K.gold, 2);
+  // walnut panelling to dado height with a brass rail; carved pillars where the arches land, gilded capitals; brass sconces between
+  for (const s of [-1, 1]) for (const [a, b] of [[0, 5], [11, 16]]) { B(s * 3.85 - .05, s * 3.85 + .05, 0, 1.1, a, b, K.walnut, 0, null, 1); B(s * 3.79 - .02, s * 3.79 + .02, 1.1, 1.14, a, b, K.brass, 1); }
+  for (const dd of [1.2, 4.6, 11.4, 14.8]) for (const s of [-1, 1]) {
+    const x = s * 3.62; B(x - .38, x + .38, 0, .35, dd - .38, dd + .38, K.dwalnut); B(x - .3, x + .3, .35, 3.9, dd - .3, dd + .3, K.walnut, 0, null, 1);
+    for (const y of [.9, 2.2]) B(x - s * .31 - .01, x - s * .31 + .01, y, y + .9, dd - .17, dd + .17, K.dwalnut);
+    B(x - .4, x + .4, 3.9, 4.12, dd - .4, dd + .4, K.brass, 1); B(x - .44, x + .44, 4.12, 4.4, dd - .44, dd + .44, K.cream);
+  }
+  for (const [s, dd] of [[-1, 2.9], [1, 2.9], [-1, 13.1]]) { B(s > 0 ? 3.35 : -3.85, s > 0 ? 3.85 : -3.35, .8, .86, dd - .6, dd + .6, K.walnut, 0, null, 1); for (const e of [-.52, .52]) B(s * 3.43 - .025, s * 3.43 + .025, 0, .8, dd + e - .025, dd + e + .025, K.brass, 1); }
+  for (const dd of [2, 6, 10, 14]) for (const s of [-1, 1]) light(s * 3.3, 4.3, dd, 0xffd29a, 1.3, 5.5, [0, 1, 0], .2);   // cove light thrown up into the vaults
+  tiles(0, 3.4, 15.9, 0, -1, .42, R.pl.arc.x, R.pl.arc.y, 128, 4);
+
+  /* the FIRESIDE LOUNGE (three steps down) */
+  B(-18, -4, -1, -.45, 2, 14, K.dwalnut, 0, null, 1);
+  for (let k = 1; k <= 2; k++) B(-4 - .3 * k, -4 - .3 * (k - 1), -1, -.15 * k, 5, 11, K.walnut, 0, null, 1);
+  for (let k = 1; k <= 2; k++) B(-4 - .3 * k + .02, -4 - .3 * (k - 1) - .02, -.15 * k - .01, -.15 * k + .005, 5.05, 10.95, K.gold, 2);
+  floorT(-16, -10, 5, 11, -.43, R.tDeco, 2);
+  wallX(-18, 2, 14, -.45, 5.6, null, K.deco); wallD(2, -18, -4, -.45, 5.6, null, K.deco); wallD(14, -18, -4, -.45, 5.6, null, K.deco);
+  B(-18, -4, 5.5, 5.62, 2, 14, K.deco);
+  for (let x = -17; x < -4.5; x += 2) B(x - .06, x + .06, 5.3, 5.5, 2, 14, K.brass);   // the ceiling's gold ribs
+  for (let dd = 3; dd < 14; dd += 2) B(-18, -4, 5.3, 5.5, dd - .06, dd + .06, K.brass);
+  for (const s of [2.15, 13.85]) B(-17.85, -4.15, 4.9, 4.94, s - .02, s + .02, K.gold, 2);   // a cove of light round the room's top
+  B(-17.85, -17.81, 4.9, 4.94, 2.2, 13.8, K.gold, 2);
+  // the fireplace: a stone chimney breast to the ceiling, a deep firebox, a walnut mantel; the bear and the bull hang over it
+  TB(-18, -17.2, -.45, 5.5, 5.8, 6.7, R.tAsh, 1.2); TB(-18, -17.2, -.45, 5.5, 9.3, 10.2, R.tAsh, 1.2); TB(-18, -17.2, 1.0, 5.5, 6.7, 9.3, R.tAsh, 1.3);
+  B(-18, -17.7, -.45, 1.0, 6.7, 9.3, LC('#2a1208')); B(-17.75, -17.7, -.4, .6, 6.9, 9.1, LC('#ff6a1a'), 2);
+  B(-17.25, -16.35, -.45, -.25, 5.6, 10.4, K.stone); B(-17.32, -16.9, 1.55, 1.72, 5.5, 10.5, K.walnut, 0, null, 1);
+  light(-16.6, .5, 8, 0xff7a2a, 2.6, 9.5, null, 0, 1); light(-16.4, 4.7, 8, 0xffe2b0, 1.6, 3.2, [-.4, -1, 0], .55);
+  // the sofas round the fire (a U open to it), a low table, lamps, a chandelier over it all
+  const sofa = (x0, x1, d0, d1, back) => { B(x0, x1, -.45, -.02, d0, d1, K.velvet); if (back === 'x+') B(x1 - .32, x1, -.45, .48, d0, d1, K.velvet); if (back === 'd-') B(x0, x1, -.45, .48, d0, d0 + .32, K.velvet); if (back === 'd+') B(x0, x1, -.45, .48, d1 - .32, d1, K.velvet);
+    for (let k = 0; k < 3; k++) { const t = (k + .5) / 3; if (back === 'x+') B(x0 + .1, x1 - .4, -.02, .09, d0 + (d1 - d0) * (t - .15), d0 + (d1 - d0) * (t + .15), K.mustard); else B(x0 + (x1 - x0) * (t - .15), x0 + (x1 - x0) * (t + .15), -.02, .09, d0 + .1, d1 - .1, K.mustard); } };
+  sofa(-11.4, -10.4, 5, 11, 'x+'); sofa(-14.8, -11.0, 3.6, 4.6, 'd-'); sofa(-14.8, -11.0, 11.4, 12.4, 'd+');
+  B(-14.0, -12.0, -.45, -.1, 6.9, 9.1, K.dwalnut, 0, null, 1); B(-13.95, -12.05, -.1, -.08, 6.95, 9.05, LC('#1a1a1e'));
+  for (const dd of [3.8, 12.2]) { B(-10.6, -10.5, -.45, 1.3, dd - .05, dd + .05, K.brass); B(-10.8, -10.3, 1.3, 1.65, dd - .25, dd + .25, LC('#ffe2a8'), 2); light(-10.55, 1.7, dd, 0xffc98a, 1.2, 4.2); }
+  { const cx = -13, cd = 8; B(cx - .02, cx + .02, 4.1, 5.3, cd - .02, cd + .02, K.brass);
+    for (let k = 0; k < 12; k++) { const a = k / 12 * 6.2832; B(cx + Math.cos(a) * .8 - .06, cx + Math.cos(a) * .8 + .06, 3.9, 4.15, cd + Math.sin(a) * .8 - .06, cd + Math.sin(a) * .8 + .06, LC('#fff1cf'), 2); }
+    for (let k = 0; k < 8; k++) { const a = k / 8 * 6.2832 + .2; B(cx + Math.cos(a) * .45 - .05, cx + Math.cos(a) * .45 + .05, 3.6, 3.8, cd + Math.sin(a) * .45 - .05, cd + Math.sin(a) * .45 + .05, LC('#fff1cf'), 2); }
+    light(cx, 3.9, cd, 0xffd6a0, 1.5, 8.5); }
+  // books on walnut shelves along the far wall, the music box in the corner
+  for (let x = -16.8; x < -7.6; x += 1.2) { B(x, x + 1.15, -.45, 3.2, 13.55, 13.95, K.dwalnut); for (let y = -.3; y < 3; y += .65) { B(x + .02, x + 1.13, y, y + .04, 13.5, 13.95, K.walnut); let bx = x + .05; const fr = v => v - Math.floor(v); while (bx < x + 1.08) { const w = .05 + fr(bx * 37) * .06, hgt = .3 + fr(bx * 53) * .2, cc = [0xa33a2a, 0x2a4a7a, 0x3a6a3a, 0xc9952e, 0x5a1a3a, 0xe8dcc0][Math.floor(fr(bx * 9.1) * 6)]; B(bx, Math.min(bx + w, x + 1.1), y + .04, y + .04 + hgt, 13.62, 13.92, LC('#' + cc.toString(16).padStart(6, '0'))); bx += w + .006; } } }
+  light(-12.2, 4.8, 12.6, 0xffe0b0, 1.3, 5.5, [0, -.6, .8], .45);
+  { const [x, dd] = CM.JB; B(x - .8, x + .8, -.45, 1.55, dd - .55, dd + .65, K.dark); B(x - .6, x + .6, -.05, .45, dd - .56, dd - .55, LC('#2a2030')); B(x - .6, x + .6, .7, 1.4, dd - .56, dd - .55, LC('#1a0f22'));
+    for (const s of [-1, 1]) B(x + s * .78 - .03, x + s * .78 + .03, -.45, 1.55, dd - .58, dd - .52, K.pink, 2); B(x - .75, x + .75, 1.52, 1.58, dd - .58, dd - .52, K.cyan, 2);
+    tiles(x, 2.55, dd - .62, 0, -1, .42, R.pl.jb.x, R.pl.jb.y, 128, 4); light(x, 1.4, dd - 1.2, 0xff4fd8, 1.0, 4); }
+  tiles(-11, 4.3, 2.18, 0, 1, .4, R.pl.lounge.x, R.pl.lounge.y, 128, 4);
+
+  /* the way to THE WAREHOUSE */
+  floorT(4, 15, 5, 11, .02, R.tConc, 1.5);
+  wallD(5, 4, 15, 0, 5, null, K.brick); wallD(11, 4, 15, 0, 5, null, K.brick); B(4, 15, 4.95, 5.1, 5, 11, LC('#1a1716'));
+  for (const dd of [5.8, 6.3]) B(4.2, 14.8, 4.5, 4.7, dd - .1, dd + .1, K.steel);
+  B(4.2, 14.8, 4.3, 4.5, 10.2 - .1, 10.2 + .1, LC('#8a3a1a'));
+  B(14.85, 15.15, 0, 5, 5, 11, K.dark);
+  for (let y = .15; y < 4.1; y += .22) B(14.6, 14.8, y, y + .18, 6.1, 9.9, LC('#7a7f88'));   // the roller shutter
+  for (let k = 0; k < 10; k++) { const yy = k * .44; B(14.6, 14.85, yy, yy + .44, 5.75, 6.1, k % 2 ? LC('#1a1a1a') : LC('#f2c31a')); B(14.6, 14.85, yy, yy + .44, 9.9, 10.25, k % 2 ? LC('#f2c31a') : LC('#1a1a1a')); }
+  B(14.6, 14.85, 4.1, 4.5, 5.75, 10.25, LC('#f2c31a'));
+  B(12.6, 13.8, 0, 1.2, 9.2, 10.4, K.wood); B(12.7, 13.7, 1.2, 1.25, 9.3, 10.3, LC('#5a3a20')); B(13.9, 14.55, 0, .9, 9.7, 10.85, LC('#6a4628')); B(12.9, 13.5, 1.25, 1.85, 9.5, 10.1, LC('#8a6236'));
+  for (const [a, b] of [[12.6, 13.8], [13.9, 14.55]]) for (const y of [.15, .75]) B(a - .01, b + .01, y, y + .06, 9.18, 10.42, K.steel);
+  tiles(14.55, 4.75, 8, -1, 0, .38, R.pl.ware.x, R.pl.ware.y, 128, 4);
+  for (const x of [6.5, 11.5]) { B(x - .02, x + .02, 4.2, 4.95, 7.98, 8.02, K.steel); B(x - .18, x + .18, 3.9, 4.2, 7.82, 8.18, LC('#fff4dd'), 2); light(x, 3.8, 8, 0xe8f0ff, 1.4, 6.5); }
+
+  /* the GRAND HALL */
+  const inForum = (x, dd) => Math.hypot(Math.max(Math.abs(x) - 1, 0), Math.max(Math.abs(dd - CM.PD) - 1, 0)) < 8.4;
+  floorT(-16, 16, 16, 21.6, .02, R.tPlum); floorT(-8, 8, 21.6, 41.6, .02, R.tPlum, 2, inForum);
+  // the raised walk round three sides, in travertine, three steps up from the floor, a light under each step's edge
+  for (let k = 1; k <= 3; k++) { const e = 7.7 + .3 * k, y = .3 * k, dA = 21.3 + .3 * k, dF = 41.3 + .3 * k, st = k === 3 ? K.trav : K.stone2;
+    if (k === 3) { for (const s of [-1, 1]) TB(s > 0 ? e : -16, s > 0 ? 16 : -e, 0, y, dA, dF, R.tAsh); TB(-16, 16, 0, y, dF, 48, R.tAsh); }
+    else { for (const s of [-1, 1]) B(s > 0 ? e : -16, s > 0 ? 16 : -e, 0, y, dA, 48, st); B(-16, 16, 0, y, dF, 48, st); }
+    for (const s of [-1, 1]) { B(s > 0 ? e - .02 : -e - .01, s > 0 ? e + .01 : -e + .02, y - .06, y - .035, dA, dF, K.gold, 2); B(s > 0 ? e : -16, s > 0 ? 16 : -e, y - .06, y - .035, dA - .02, dA + .01, K.gold, 2); }
+    B(-e, e, y - .06, y - .035, dF - .02, dF + .01, K.gold, 2); }
+  // the Forum: steps down all round a sunken floor, 30 cm stones, a line of light along every edge
+  const c = CM.CELL, N = Math.ceil(10.4 / c), skip = (x, dd) => Math.abs(x) < 8 && dd > 21.6 && dd < 41.6 && inForum(-8 + (Math.floor((x + 8) / 2) + .5) * 2, 21.6 + (Math.floor((dd - 21.6) / 2) + .5) * 2);
+  const lv = (i, j) => { const x = (i + .5) * c, dd = CM.PD + (j + .5) * c, h = c / 2 - .001; return skip(x - h, dd - h) || skip(x + h, dd - h) || skip(x - h, dd + h) || skip(x + h, dd + h) ? cmLevel(x, dd) : -1; };
+  const top = l => -CM.STEP * l;
+  for (let j = -N; j < N; j++) { let i = -N; while (i < N) { const l = lv(i, j); if (l < 0) { i++; continue; } let e = i + 1; while (e < N && lv(e, j) === l) e++;
+    const x0 = i * c, x1 = e * c, dd = CM.PD + (j + .5) * c, t = top(l); box((x0 + x1) / 2, (t - 1.7) / 2, dd, x1 - x0, t + 1.7, c, l === 0 ? K.dmarble : l === 4 ? K.marble2 : (l % 2 ? K.marble : LC('#c7bda9'))); i = e; } }
+  for (let j = -N; j < N; j++) for (let i = -N; i < N; i++) { const l = lv(i, j); if (l < 0) continue; const x = (i + .5) * c, dd = CM.PD + (j + .5) * c, G = l < 2 ? K.gold : K.amber;
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = lv(i + di, j + dj); if (n > l && n >= 0) { if (di) box(di > 0 ? (i + 1) * c - .01 : i * c + .01, top(l) - .02, dd, .03, .025, c, G, 2); else box(x, top(l) - .02, dj > 0 ? CM.PD + (j + 1) * c - .01 : CM.PD + j * c + .01, c, .025, .03, G, 2); } } }
+  // the Forum's eight pillars: famous blocks, stacked; each lit from its foot (grazing light up the stone)
+  for (let i = 0; i < 8; i++) {
+    const a = (i + .5) / 8 * 6.2832, x = Math.cos(a) * 8.1, dd = CM.PD + Math.sin(a) * 8.1;
+    for (let k = 0; k < 4; k++) { const jx = Math.sin(i * 7 + k * 3) * .05, jz = Math.cos(i * 5 + k * 2) * .05; box(x + jx, .45 + k * .92, dd + jz, .9, .9, .9, k === 3 ? K.amber : K.dmarble, k === 3 ? 1 : 0); if (k) box(x, k * .92 - .01, dd, .82, .02, .82, K.gold, 2); }
+    const f = R.famous[i], fx = -Math.cos(a), fd = -Math.sin(a); if (Math.abs(fx) > Math.abs(fd)) tiles(x + Math.sign(fx) * .46, 1.4, dd, Math.sign(fx), 0, .21, f.x, f.y, 96, 4); else tiles(x, 1.4, dd + Math.sign(fd) * .46, 0, Math.sign(fd), .21, f.x, f.y, 96, 4);
+    light(x + fx * .75, .15, dd + fd * .75, 0xffb060, 1.2, 4.2, [-fx * .35, 1, -fd * .35], .55);
+  }
+  tiles(0, .55, CM.PD - 7.45, 0, -1, .32, R.pl.forum.x, R.pl.forum.y, 128, 4);
+  // its walls: travertine, pilasters with gilded capitals, a cornice of light; openings to the bar and the garden; the arcade's mouth
+  wallX(-16, 16, 48, 0, CM.HG, [[33.5, 39.5, 0, 7.6]], K.trav, .3, R.tAsh); wallX(16, 16, 48, 0, CM.HG, [[33.5, 39.5, 0, 7.6]], K.trav, .3, R.tAsh);
+  wallD(48, -16, 16, 0, CM.HG, null, K.trav, .3, R.tAsh); wallD(16, -16, 16, 0, CM.HG, [[-3, 3, 0, 4.6]], K.trav, .3, R.tAsh);
+  for (const s of [-1, 1]) for (const dd of [31.5, 41.5, 46.6]) { B(s * 15.85 - .15, s * 15.85 + .15, .9, CM.HG - .6, dd - .35, dd + .35, K.stone2); B(s * 15.8 - .2, s * 15.8 + .2, CM.HG - .9, CM.HG - .6, dd - .45, dd + .45, K.brass, 1); }
+  for (const s of [-1, 1]) B(s * 15.8 - .03, s * 15.8 + .03, CM.HG - .52, CM.HG - .48, 16, 48, K.gold, 2);
+  B(-16, 16, CM.HG - .52, CM.HG - .48, 47.8, 47.84, K.gold, 2);
+  for (const s of [-1, 1]) { B(s * 3.1 - .12, s * 3.1 + .12, 0, 4.6, 15.8, 16.25, K.brass); } B(-3.2, 3.2, 4.6, 4.85, 15.8, 16.25, K.brass);
+  for (const s of [-1, 1]) { B(s * 16 - .15, s * 16 + .15, .9, 7.8, 33.3, 33.6, K.brass); B(s * 16 - .15, s * 16 + .15, .9, 7.8, 39.4, 39.7, K.brass); B(s * 16 - .15, s * 16 + .15, 7.6, 7.85, 33.3, 39.7, K.brass); }
+  // the coffered ceiling, open to the sky in a ring over the Forum (the oculus), a gold ring of light round its edge
+  for (let x = -16; x < 16; x += 2) for (let dd = 16; dd < 48; dd += 2) { if (Math.hypot(x + 1, dd + 1 - CM.PD) < 7.6) continue; B(x, x + 2, CM.HG + .05, CM.HG + .15, dd, dd + 2, LC('#2a1c14')); B(x + .9, x + 1.1, CM.HG - .02, CM.HG + .05, dd + .9, dd + 1.1, K.gold, 1); }
+  for (let x = -16; x <= 16; x += 2) for (let dd = 16; dd < 48; dd += .5) if (Math.hypot(x, dd + .25 - CM.PD) >= 7.6) B(x - .14, x + .14, CM.HG - .25, CM.HG + .05, dd, dd + .5, K.cream);
+  for (let dd = 16; dd <= 48; dd += 2) for (let x = -16; x < 16; x += .5) if (Math.hypot(x + .25, dd - CM.PD) >= 7.6) B(x, x + .5, CM.HG - .25, CM.HG + .05, dd - .14, dd + .14, K.cream);
+  for (let k = 0; k < 72; k++) { const a = k / 72 * 6.2832, x = Math.cos(a) * 7.5, dd = CM.PD + Math.sin(a) * 7.5; box(x, CM.HG - .2, dd, .5, .12, .5, K.gold, 2); }
+  light(0, CM.HG - 1, CM.PD, 0xcfe0ff, 1.0, 15);   // moonlight down through the oculus
+  // the balcony over the arcade's mouth, on four block pillars; a glass rail, gold on top; downlights under it, pooling on the carpet
+  B(-16, 16, CM.BY - .3, CM.BY, CM.BD0, CM.BD1, K.stone2); B(-16, 16, CM.BY - .32, CM.BY - .3, CM.BD1 - .04, CM.BD1, K.gold, 2);
+  floorT(-16, 16, CM.BD0, CM.BD1, CM.BY + .02, R.tPlum, 2);
+  for (const x of [-10.5, -5, 5, 10.5]) for (let k = 0; k < 6; k++) { box(x, .43 + k * .85, CM.BD1, .8, .85, .8, k === 5 ? K.amber : K.dmarble, k === 5 ? 1 : 0); if (k) box(x, k * .85, CM.BD1, .74, .02, .74, K.gold, 2); }
+  for (let x = -13.1; x <= 13.1; x += 1.3) B(x - .02, x + .02, CM.BY, CM.BY + 1, CM.BD1 - .07, CM.BD1 - .03, K.steel);
+  B(-13.2, 13.2, CM.BY + 1, CM.BY + 1.06, CM.BD1 - .1, CM.BD1, K.brass); B(-13.2, 13.2, CM.BY + .975, CM.BY + .99, CM.BD1 - .08, CM.BD1 - .02, K.gold, 2); B(-13.2, 13.2, CM.BY + .48, CM.BY + .52, CM.BD1 - .07, CM.BD1 - .03, K.brass);
+  B(-16, 16, CM.BY - .78, CM.BY - .3, CM.BD1 - .12, CM.BD1, K.stone); B(-16, 16, CM.BY - .8, CM.BY - .78, CM.BD1 - .12, CM.BD1 + .01, K.gold, 2);
+  for (const x of [-12, -6, 0, 6, 12]) { B(x - .25, x + .25, CM.BY - .33, CM.BY - .31, 18.25, 18.75, LC('#fff1cf'), 2); light(x, CM.BY - .6, 18.5, 0xffd8a8, 1.2, 5.5, [0, -1, 0], .5); }
+  for (const x of [-12, -6, 6, 12]) { B(x - 1.3, x + 1.3, CM.BY, CM.BY + .6, 16.15, 16.85, K.walnut, 0, null, 1); B(x - 1.25, x + 1.25, CM.BY + .6, CM.BY + .62, 16.2, 16.8, LC('#1c3a12')); }
+  // the grand stairs either side, up to the balcony: solid stone, gold on every nose, a brass rail stepping up beside them
+  for (const s of [-1, 1]) for (let k = 1; k <= CM.NST; k++) { const d1 = CM.SD0 - (k - 1) * CM.RUN, d0 = CM.SD0 - k * CM.RUN, y = .9 + k * CM.RISE;
+    B(s > 0 ? CM.SX0 : -16, s > 0 ? 16 : -CM.SX0, .9, y, d0, d1, k % 2 ? K.trav : K.stone2); B(s > 0 ? CM.SX0 : -16, s > 0 ? 16 : -CM.SX0, y - .015, y + .005, d1 - .03, d1, K.gold, 2);
+    B(s * CM.SX0 - .025, s * CM.SX0 + .025, y + .92, y + .96, d0, d1 + .01, K.brass, 1); if (k % 3 === 0) B(s * CM.SX0 - .02, s * CM.SX0 + .02, y, y + .94, d1 - .02, d1 + .02, K.brass); }
+  for (const s of [-1, 1]) light(s * 14.6, 7.5, 25.5, 0xffe0b8, 1.2, 7);
+  // the big screen's frame, its speakers; your stained glass up high; washes of light down the walls
+  { const S = CM.SCR, y1 = S.y0 + S.h; B(-S.w / 2 - .25, S.w / 2 + .25, S.y0 - .25, y1 + .25, 47.82, 47.92, K.dark);
+    B(-S.w / 2 - .25, S.w / 2 + .25, y1 + .17, y1 + .23, 47.8, 47.84, K.cyan, 2); B(-S.w / 2 - .25, S.w / 2 + .25, S.y0 - .23, S.y0 - .17, 47.8, 47.84, K.cyan, 2);
+    for (const sx of [-1, 1]) { B(sx * (S.w / 2 + .2) - .03, sx * (S.w / 2 + .2) + .03, S.y0 - .25, y1 + .25, 47.8, 47.84, K.cyan, 2); B(sx * 9.8 - .8, sx * 9.8 + .8, .9, 3.9, 45.8, 47.6, K.dark);
+      for (const y of [1.6, 2.9]) { B(sx * 9.8 - .45, sx * 9.8 + .45, y - .45, y + .45, 45.77, 45.79, LC('#16161c')); B(sx * 9.8 - .25, sx * 9.8 + .25, y - .25, y + .25, 45.75, 45.77, LC('#26262e')); B(sx * 9.8 - .45, sx * 9.8 + .45, y + .46, y + .48, 45.75, 45.77, K.pink, 2); } }
+    tiles(-S.w / 2 + 1.2, S.y0 - .55, 47.78, 0, -1, .3, R.pl.scr.x, R.pl.scr.y, 128, 4); light(0, 6.5, 46, 0x6fb8ff, 1.4, 14); }
+  B(-15.95, -15.82, 5.6, 12.2, 23.4, 28.6, K.dmarble); B(-15.95, -15.82, 5.55, 5.7, 23.3, 28.7, K.gold, 1);
+  B(15.82, 15.95, 5.9, 11.7, 24.3, 27.7, K.dmarble); B(-15.95, -15.82, 5.3, 11.5, 42.5, 45.5, K.dmarble); B(15.82, 15.95, 5.3, 11.5, 42.5, 45.5, K.dmarble);
+  light(-14.2, 7.5, 26, 0xffc04a, 1.5, 8); light(14.2, 7.5, 26, 0x6ad0ff, 1.2, 7); light(-14.4, 7, 44, 0xffa020, 1, 6); light(14.4, 7, 44, 0xffa020, 1, 6);
+  for (const s of [-1, 1]) for (const dd of [36.5, 44]) light(s * 13.6, 9.5, dd, 0xffe6c0, 1.0, 8, [s * .8, -.6, 0], .4);
+  for (const s of [-1, 1]) { B(s * 14.75 - 1.15, s * 14.75 + 1.15, .9, 1.7, 45.2, 47.6, K.walnut, 0, null, 1); B(s * 14.75 - 1.1, s * 14.75 + 1.1, 1.7, 1.72, 45.25, 47.55, LC('#2a1c10')); }
+  for (const s of [-1, 1]) { B(s > 0 ? 10.3 : -11.1, s > 0 ? 11.1 : -10.3, 1.24, 1.36, 25.4, 28.6, K.marble); for (const dd of [25.85, 28.15]) B(s > 0 ? 10.45 : -10.95, s > 0 ? 10.95 : -10.45, .9, 1.24, dd - .25, dd + .25, K.marble2); }
+  tiles(0, CM.BY - .54, CM.BD1 + .02, 0, 1, .4, R.pl.hall.x, R.pl.hall.y, 128, 4);
+
+  /* the arcades to the wings (barrel vaults like the entrance's), steps up to the bar, down to the garden */
+  for (const s of [-1, 1]) { wallD(33.5, s > 0 ? 16 : -24, s > 0 ? 24 : -16, -1.7, 5.6, null, K.dwalnut); wallD(39.5, s > 0 ? 16 : -24, s > 0 ? 24 : -16, -1.7, 5.6, null, K.dwalnut); }
+  B(-24, -16, 0, .9, 33.5, 39.5, K.stone2);
+  for (let k = 1; k <= 3; k++) B(-24, -19.4 - .3 * (k - 1), .9, .9 + .3 * k, 33.5, 39.5, K.trav);
+  for (let k = 1; k <= 3; k++) B(-19.4 - .3 * (k - 1) - .03, -19.4 - .3 * (k - 1), .9 + .3 * k - .02, .9 + .3 * k, 33.6, 39.4, K.gold, 2);
+  B(16, 18.2, 0, .9, 33.5, 39.5, K.stone2);
+  for (let k = 1; k <= 6; k++) B(18.2 + .3 * (k - 1), 18.2 + .3 * k, -1.7, .9 - .3 * k, 33.5, 39.5, K.trav);
+  for (let k = 0; k < 6; k++) B(18.2 + .3 * k, 18.2 + .3 * k + .03, .9 - .3 * k - .02, .9 - .3 * k, 33.6, 39.4, K.gold, 2);
+  B(20, 24, -1.7, -.9, 33.5, 39.5, K.stone2);
+  floorT(-24, -20.3, 33.5, 39.5, 1.82, R.tGreen, 1.5); floorT(-19.4, -16, 33.5, 39.5, .92, R.tGreen, 1.7); floorT(20, 24, 33.5, 39.5, -.88, R.tGreen, 1.5);
+  for (const s of [-1, 1]) for (const dd of [34, 39]) for (const x of [s * 17, s * 23]) light(x, (s < 0 ? 1.8 : 0) + 3.6, dd, 0xffd29a, .9, 4.5, [0, 1, 0], .25);
+
+  /* THE MEMPOOL (the bar, up to the west): black glass and neon */
+  B(-42, -24, 0, 1.8, 22, 48, K.dark); floorT(-42, -24, 22, 48, 1.82, R.tGrid, 2);
+  wallX(-42, 22, 48, 1.8, 8.3, null, LC('#0a0710')); wallD(22, -42, -24, 1.8, 8.3, null, LC('#0a0710')); wallD(48, -42, -24, 1.8, 8.3, null, LC('#0a0710'));
+  wallX(-24, 22, 48, 0, 8.3, [[33.5, 39.5, 0, 6.4]], LC('#0a0710'));
+  B(-42, -24, 8.25, 8.4, 22, 48, LC('#08060c'));
+  for (let x = -40; x < -24; x += 3) B(x - .02, x + .02, 8.15, 8.2, 22, 48, x % 2 ? K.pink : K.cyan, 2);
+  for (const dd of [24, 46]) B(-42, -24, 7.9, 8.05, dd - .12, dd + .12, K.steel);
+  // the counter: 18 m of it along the west wall, lit along its foot and under its lip; the back bar's glowing shelves; the stools
+  B(-40.3, -39.0, 1.8, 2.9, 25.8, 44.2, LC('#141018'), 0); B(-40.4, -38.85, 2.9, 2.96, 25.7, 44.3, LC('#26202e'));
+  B(-39.02, -38.98, 1.85, 1.9, 25.8, 44.2, K.pink, 2); B(-38.9, -38.86, 2.84, 2.88, 25.7, 44.3, K.cyan, 2);
+  B(-42, -41.25, 1.8, 6.6, 25.5, 44.5, LC('#120c16'));
+  for (const y of [3.0, 3.7, 4.4, 5.1]) { B(-41.3, -40.85, y, y + .04, 25.6, 44.4, LC('#2a1a30')); B(-40.9, -40.86, y - .03, y, 25.6, 44.4, y % 1.4 > .7 ? K.pink : K.cyan, 2); }
+  for (const dd of [29, 35, 41]) { B(-39.65, -39.6, 5.0, 8.25, dd - .02, dd + .02, K.steel); B(-39.9, -39.35, 4.85, 5.0, dd - .28, dd + .28, LC('#ffe2a8'), 2); light(-39.6, 4.8, dd, 0xffd2a0, 1.3, 4.5, [0, -1, 0], .5); }
+  light(-40.6, 6, 35, 0xff2fb4, 1.6, 10); light(-25, 5, 26, 0x27e1ff, 1.3, 9); light(-33, 7.6, 44, 0xb06bff, 1.1, 9);
+  // booths along the far wall under a window on a rainy neon city; a lamp on each table
+  for (const x of [-36, -31, -26.5]) { B(x - 1.5, x + 1.5, 1.8, 2.25, 46.9, 47.7, K.leather); B(x - 1.5, x + 1.5, 1.8, 3.1, 47.55, 47.8, K.leather);
+    for (const s of [-1, 1]) { B(x + s * 1.35 - .15, x + s * 1.35 + .15, 1.8, 2.9, 45.6, 47.8, K.leather); }
+    B(x - .9, x + .9, 2.5, 2.56, 45.8, 46.8, LC('#1a1420')); B(x - .05, x + .05, 1.8, 2.5, 46.25, 46.35, K.steel);
+    B(x - .08, x + .08, 2.56, 2.76, 46.22, 46.38, LC('#ffd29a'), 2); light(x, 2.9, 46.3, 0xffc890, 1.1, 2.8); }
+  // racks of mining machines along the south-east, lights blinking
+  for (const x of [-27.5, -26.0]) { B(x - .65, x + .65, 1.8, 4.0, 22.2, 23.0, K.dark); }
+  tiles(-41.2, 6.95, 35, 1, 0, .5, R.pl.bar.x, R.pl.bar.y, 128, 4);
+
+  /* the KOI GARDEN (the glasshouse, down to the east) */
+  B(24, 42, -1.7, -.9, 22, 48, K.dark); floorT(24, 42, 22, 48, -.88, R.tStone, 2);
+  wallX(42, 22, 48, -1.7, 9, null, LC('#2a3a24')); wallD(22, 24, 42, -1.7, 9, null, LC('#2a3a24')); wallD(48, 24, 42, -1.7, 9, null, LC('#2a3a24'));
+  wallX(24, 22, 48, -1.7, 9, [[33.5, 39.5, -1.7, 4.6]], LC('#2a3a24'));
+  // the roof: a frame of steel, solar panels laid over every other bay, the rest open to the sky
+  for (let x = 24; x <= 42; x += 3) B(x - .08, x + .08, 8.8, 9.0, 22, 48, K.frame);
+  for (let dd = 22; dd <= 48; dd += 2.6) B(24, 42, 8.8, 9.0, dd - .08, dd + .08, K.frame);
+  for (let x = 24; x < 42; x += 3) for (let dd = 22; dd < 47.9; dd += 2.6) if ((Math.round((x - 24) / 3) + Math.round((dd - 22) / 2.6)) % 2 === 0) { B(x + .1, x + 2.9, 8.95, 9.0, dd + .1, dd + 2.5, K.solar); B(x + 1.48, x + 1.52, 8.94, 8.96, dd + .1, dd + 2.5, K.frame); }
+  // living walls of green all round (with a trellis of wood), the stone below
+  for (const [x0, x1, d0, d1] of [[41.72, 41.85, 22.25, 47.75], [24.2, 41.8, 22.15, 22.28], [24.2, 41.8, 47.72, 47.85]]) TB(x0, x1, -.3, 6.7, d0, d1, R.tLeaf, 1.6);
+  for (let x = 25; x < 42; x += 2.2) B(x - .05, x + .05, -.9, 6.6, 22.3, 22.4, K.wood);
+  // the tank: on a dark wood plinth, a bed of sand inside, a hood with a light over it (its glass, water, rocks, koi and waterfall are props)
+  { const [x, dd, lx, ld, h] = CM.TANK; B(x - lx / 2 - .2, x + lx / 2 + .2, -.9, -.35, dd - ld / 2 - .2, dd + ld / 2 + .2, K.dwalnut, 0, null, 1);
+    B(x - lx / 2, x + lx / 2, -.35, -.2, dd - ld / 2, dd + ld / 2, LC('#c9b58a'));
+    for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(x + a * lx / 2 - .05, x + a * lx / 2 + .05, -.35, h - .35, dd + b * ld / 2 - .05, dd + b * ld / 2 + .05, K.frame);
+    B(x - lx / 2 - .1, x + lx / 2 + .1, h - .35, h - .1, dd - ld / 2 - .1, dd + ld / 2 + .1, K.dark); B(x - lx / 2 + .05, x + lx / 2 - .05, h - .37, h - .35, dd - ld / 2 + .05, dd + ld / 2 - .05, LC('#0c1a20')); for (const o of [-.8, .8]) B(x - lx / 2 + .3, x + lx / 2 - .3, h - .4, h - .37, dd + o - .03, dd + o + .03, LC('#9fdcff'), 2);
+    light(x, h - .6, dd, 0x5ad0ff, 1.6, 7, null, 0, 2); light(x - lx / 2 + 1, 1.2, dd, 0x3aa0ff, 1, 4, null, 0, 2); }
+  // planters with trees in the corners, benches facing the tank, stone lanterns lit warm, a path of stepping stones
+  for (const [x, dd] of [[26.2, 24.2], [39.8, 24.2], [26.2, 45.8], [39.8, 45.8]]) { B(x - 1.1, x + 1.1, -.9, -.1, dd - 1.1, dd + 1.1, K.wood, 0, null, 1); B(x - 1.05, x + 1.05, -.1, -.08, dd - 1.05, dd + 1.05, LC('#2a1c10')); }
+  for (const [x, dd] of [[29, 25.5], [37, 25.5], [29, 40.5], [37, 40.5]]) { B(x - 1.35, x + 1.35, -.9, -.48, dd - .28, dd + .28, K.wood, 0, null, 1); for (const s of [-1, 1]) B(x + s * 1.2 - .1, x + s * 1.2 + .1, -.9, -.5, dd - .25, dd + .25, K.dwalnut); }
+  for (const [x, dd] of [[28.0, 30.4], [38.0, 30.4], [28.0, 35.7], [38.0, 35.7]]) { B(x - .25, x + .25, -.9, -.2, dd - .25, dd + .25, K.stone2); B(x - .32, x + .32, -.2, -.1, dd - .32, dd + .32, K.stone); B(x - .18, x + .18, -.1, .25, dd - .18, dd + .18, LC('#ffd29a'), 2); B(x - .34, x + .34, .25, .37, dd - .34, dd + .34, K.stone2); light(x, .1, dd, 0xffb870, 1, 3.2); }
+  for (let k = 0; k < 9; k++) { const t = k / 8, x = 25.2 + t * 2.6, dd = 36.5 + Math.sin(t * 3) * .8; B(x - .3, x + .3, -.9, -.84, dd - .26, dd + .26, K.stone); }
+  light(33, 8.2, 26, 0xeef6ff, 1.2, 13); light(33, 8.2, 41, 0xeef6ff, 1.2, 13);
+  tiles(41.7, 4.2, 35, -1, 0, .5, R.pl.koi.x, R.pl.koi.y, 128, 4);
+
+  /* the arcade cabinets and the frames for inscriptions, wherever they stand */
+  for (const [name, url, x, dd, fx, fd, y0] of CM_GAMES) {
+    const wx = fx ? .8 : 1.0, col = [K.cyan, K.pink, K.gold, K.green][CM_GAMES.findIndex(g => g[0] === name) % 4], rt = [-fd, fx];
+    box(x, y0 + .95, dd, wx, 1.9, fx ? 1.0 : .8, K.dark);
+    box(x + fx * .52, y0 + .99, dd + fd * .52, fx ? .24 : .96, .07, fx ? .96 : .24, LC('#16121c'));
+    box(x + fx * .2, y0 + 1.86, dd + fd * .2, fx ? .44 : 1.02, .1, fx ? 1.02 : .44, col, 2);
+    for (const s of [-1, 1]) box(x + fx * .41 + rt[0] * s * .49, y0 + .95, dd + fd * .41 + rt[1] * s * .49, .03, 1.9, .03, col, 2);
+    box(x + fx * .405, y0 + .45, dd + fd * .405, fx ? .01 : .7, .5, fx ? .7 : .01, LC('#1c1626'));
+  }
+  for (const [name, url, x, dd, y, sz, fx, fd] of CM_INSART) { box(x - fx * .06, y, dd - fd * .06, fx ? .06 : sz + .24, sz + .24, fx ? sz + .24 : .06, LC('#3a2a12')); box(x + fx * .1, y + sz / 2 + .22, dd + fd * .1, fx ? .2 : .45, .05, fx ? .45 : .2, K.gold, 2); light(x + fx * .45, y + sz / 2 + .2, dd + fd * .45, 0xfff0d8, 1.2, 2.6, [-fx * .5, -1, -fd * .5], .55); }
+  // the door's own sign (over the door, on the inside)
+  const sg = R.signs[R.door]; tiles(0, DOORH + .42, .05, 0, 1, .42, sg.x, sg.y, 128, 4);
+  cmFixMore(R, {B, TB, tiles, light, K});
+  R.fix = new Float32Array(d);
+  // the lights, in the world
+  R.lights = LIT.map(L => { const [wx, wz] = cmW(R, L.p[0], L.p[2]); const a = L.aim ? (R.door === 'back' ? [L.aim[0], L.aim[1], -L.aim[2]] : [-L.aim[0], L.aim[1], L.aim[2]]) : null, n = a ? Math.hypot(...a) : 1;
+    return {p: [wx, L.p[1], z0 + wz], c: L.c, i: L.i, r: L.r, a: a ? a.map(v => v / n) : [0, 0, 0], cone: L.cone || 0, z: L.z, fl: L.fl}; });
+}
+
+/* ---- the props: shapes made like the floor's life (the taps, glasses, stools, bottles, plants, the chain of blocks)
+   and drawn with its shader: uT 20 still, 21 the beer (how full, tipped), 22 the glass, 23 circling over the Forum,
+   24 the pour, 25 blinking lights, 26 swaying in the air ---- */
+const CMS = (() => {
+  const {make, lathe, blob, tri, TR, C, mixc, blade} = LIFE, M = {};
+  const bx = (v, x, y, z, sx, sy, sz, col, w) => {
+    const P = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(p => [x + p[0] * sx / 2, y + p[1] * sy / 2, z + p[2] * sz / 2]), ref = [x, y, z];
+    for (const f of [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]) { tri(v, P[f[0]], P[f[1]], P[f[2]], col, w, ref); tri(v, P[f[0]], P[f[2]], P[f[3]], col, w, ref); }
+  };
+  const CHROME = C(0xc9ced6), DCHROME = C(0x8a9099);
+  // the taps: a chrome column with a bar across the top, three handles in three colours, spouts over a drip tray (front: +z)
+  make('cmTap', v => {
+    bx(v, 0, .012, .04, .56, .024, .2, DCHROME, 0);
+    lathe(v, [[.035, 0], [.03, .44], [0, .46]], 10, () => CHROME, 0);
+    bx(v, 0, .45, 0, .52, .06, .07, CHROME, 0);
+    [[-.18, 0xff8a1e], [0, 0xffc94a], [.18, 0xe0263a]].forEach(([x, c]) => {
+      lathe(v, [[.012, 0], [.012, .07], [0, .075]], 6, () => DCHROME, 0, TR([1, 1, 1], [Math.PI, 0, 0], [x, .43, .06]));
+      lathe(v, [[.022, 0], [.026, .16], [.02, .2], [0, .21]], 8, () => C(c), .62, TR([1, 1, 1], [0, 0, 0], [x, .48, .02]));
+    });
+  });
+  // a pint glass (drawn see-through, last) and the beer in it (how full is set as it is drawn; the head stays on top)
+  make('cmGlass', v => lathe(v, [[0, .002], [.05, .002], [.052, .01], [.066, .17], [.068, .19]], 16, () => C(0xdff0f5), 0));
+  make('cmBeer', v => {
+    lathe(v, [[0, 0], [.047, 0], [.061, .152]], 14, () => C(0xd9901c), 0, TR([1, 1, 1], [0, 0, 0], [0, .008, 0]));
+    lathe(v, [[.061, .16], [.0635, .183], [0, .185]], 14, () => C(0xfbf3dc), .3);
+  });
+  make('cmStream', v => lathe(v, [[.006, -.3], [.006, 0]], 6, () => C(0xe0a020), 0));
+  // a bar stool: a round red seat on a chrome post, a ring for your feet
+  make('cmStool', v => {
+    lathe(v, [[.2, 0], [.2, .02], [.05, .05], [0, .05]], 14, () => DCHROME, 0);
+    lathe(v, [[.03, .04], [.03, .7]], 8, () => CHROME, 0);
+    lathe(v, [[.14, .3], [.16, .31], [.16, .33], [.14, .34]], 14, () => CHROME, 0);
+    lathe(v, [[.19, .7], [.21, .74], [.2, .79], [0, .8]], 16, (i) => i % 2 ? C(0xa3162a) : C(0x8a1224), 0);
+  });
+  // a bottle (in the instance's own colour), with a label and a gold cap
+  make('cmBottle', v => {
+    lathe(v, [[.035, 0], [.038, .16], [.034, .19], [.013, .24], [.013, .3], [0, .3]], 10, (i, a, y) => y > .07 && y < .14 ? C(0xf2e6c0) : [0, 0, 0], p => p[1] > .07 && p[1] < .14 ? 0 : 2.15);
+    lathe(v, [[.015, .295], [.015, .32], [0, .32]], 8, () => C(0xd8b04a), 0);
+  });
+  // a fern: fronds arching out of its pot
+  make('cmFern', v => { for (let i = 0; i < 14; i++) blade(v, .5 + (i % 3) * .12, .06, .55, i / 14 * 6.2832, C(0x1e5a24), C(0x5fae46)); });
+  // vines hanging down off the balcony: a few strands of leaves, swinging a little in the air
+  make('cmVine', v => {
+    for (let k = 0; k < 4; k++) { const x0 = (k - 1.5) * .18, L = 1.1 + ((k * 7) % 5) * .17;
+      for (let j = 0; j < 9; j++) { const y = -j / 9 * L, w = j / 9, a = j * 1.9 + k, s = .07 + .02 * Math.sin(j + k);
+        tri(v, [x0, y, 0], [x0 + Math.cos(a) * s, y - s * .6, Math.sin(a) * s], [x0 + Math.cos(a + .6) * s * .4, y - s * 1.2, Math.sin(a + .6) * s * .4], j % 2 ? C(0x2c7a35) : C(0x4fae4a), w);
+        tri(v, [x0, y, 0], [x0 - Math.cos(a) * s, y - s * .5, -Math.sin(a) * s], [x0, y - s * 1.1, 0], j % 3 ? C(0x3f9440) : C(0x245f2c), w); }
+      lathe(v, [[.006, -L], [.006, 0]], 4, () => C(0x2a4a1a), 0, TR([1, 1, 1], [0, 0, 0], [x0, 0, 0])); }
+  });
+  // the blocks circling over the Forum: dark cubes edged in light (the instance's colour), and the chain links between them
+  make('cmBlock', v => {
+    bx(v, 0, 0, 0, .8, .8, .8, C(0x121016), 0);
+    const e = .42, t = .05;
+    for (const a of [-1, 1]) for (const b of [-1, 1]) { bx(v, 0, a * e, b * e, .86, t, t, [0, 0, 0], 2.9); bx(v, a * e, 0, b * e, t, .86, t, [0, 0, 0], 2.9); bx(v, a * e, b * e, 0, t, t, .86, [0, 0, 0], 2.9); }
+    bx(v, 0, 0, .405, .3, .3, .01, [0, 0, 0], 2.75); bx(v, 0, 0, -.405, .3, .3, .01, [0, 0, 0], 2.75);
+  });
+  make('cmLink', v => { const S = C(0x9aa3b2); bx(v, 0, .14, 0, .5, .05, .05, S, 0); bx(v, 0, -.14, 0, .5, .05, .05, S, 0); bx(v, -.25, 0, 0, .05, .33, .05, S, 0); bx(v, .25, 0, 0, .05, .33, .05, S, 0); });
+  // blinking lights on the front of the mining racks (each light its own pace)
+  make('cmLeds', v => { for (let i = 0; i < 7; i++) for (let j = 0; j < 12; j++) { const k = (i * 12 + j) % 40; bx(v, (j - 5.5) * .1, (i - 3) * .26, 0, .03, .03, .01, (i + j) % 3 ? C(0x27e1ff) : C(0x7dff4a), .5 + k / 100); } });
+  // the music box's arch: bands of light round its top, a dome glowing in the middle (front: +z)
+  make('cmArch', v => {
+    for (let i = 0; i < 18; i++) { const a0 = i / 18 * Math.PI, a1 = (i + 1) / 18 * Math.PI, P = (a, r) => [Math.cos(a) * r, 2.0 + Math.sin(a) * r * .8, 0];
+      for (const [r0, r1, c] of [[.62, .7, 0xff4fd8], [.5, .56, 0x27e1ff], [.4, .45, 0xffc94a]]) { tri(v, P(a0, r0), P(a1, r0), P(a1, r1), C(c), .95, [0, 2, -1]); tri(v, P(a0, r0), P(a1, r1), P(a0, r1), C(c), .95, [0, 2, -1]); } }
+    for (let i = 0; i < 12; i++) { const a0 = i / 12 * Math.PI, a1 = (i + 1) / 12 * Math.PI; tri(v, [0, 2.0, .01], [Math.cos(a0) * .38, 2.0 + Math.sin(a0) * .3, .01], [Math.cos(a1) * .38, 2.0 + Math.sin(a1) * .3, .01], C(0xff8a1e), .75, [0, 2, -1]); }
+  });
+  // an arcade cabinet's marquee and buttons (the cabinet itself is boxes)
+  make('cmPad', v => { for (const [x, c] of [[-.18, 0xff2d55], [-.06, 0xffd23f], [.06, 0x27e1ff], [.18, 0x7dff4a]]) lathe(v, [[.03, 0], [.03, .015], [0, .02]], 8, () => C(c), .7, TR([1, 1, 1], [0, 0, 0], [x, 0, 0])); lathe(v, [[.012, 0], [.01, .08], [.03, .1], [0, .12]], 8, () => C(0x15151a), 0, TR([1, 1, 1], [0, 0, 0], [-.32, 0, 0])); });
+  return {bx};
+})();
+// the props' shapes go to the graphics card like the life's do
+for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad']) {
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
+}
+const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
+const cmGrp = (mesh, inst) => { const ib = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst.length ? inst.flat() : new Array(11).fill(0)), gl.STATIC_DRAW); return {mesh, t: CMT[mesh], n: inst.length, ib, vao: lifeVAO(lifeGeo[mesh], ib)}; };
+// which way something faces in the world, from which way it faces in the room's layout
+const cmFace = (R, fx, fd) => { const w = R.door === 'back' ? [fx, -fd] : [-fx, fd]; return Math.atan2(w[0], w[1]); };
+
+
+/* ---- the lights: real lamps in the rooms. Each lights the walls, floors, furniture and people near it, in its own room only
+   (so none shines through a wall). The floor plan is cut into 2 m squares; each square keeps the 12 lights that reach it. ---- */
+const CM_ZONES = [[-4, 4, 0, 16], [-18, -4, 2, 14], [4, 15, 5, 11], [-16, 16, 16, 48], [-24, -16, 33.5, 39.5], [-42, -24, 22, 48], [16, 24, 33.5, 39.5], [24, 42, 22, 48]];
+// the light that is always there, a little, in each: warm in the arcades and the hall, firelit in the lounge, cold by the warehouse, violet in the bar, green in the garden
+const CM_AMB = [[.15, .115, .08], [.075, .05, .035], [.07, .075, .085], [.13, .11, .09], [.13, .1, .07], [.06, .04, .095], [.13, .1, .07], [.075, .105, .1]];
+const CM_ZR = new Float32Array(CM_ZONES.flat()), CM_ZA = new Float32Array(CM_AMB.flat());
+const cmZoneOf = (x, d) => CM_ZONES.findIndex(r => x >= r[0] && x <= r[1] && d >= r[2] && d <= r[3]);
+const CM_NX = 42, CM_ND = 24, CM_ML = 12;
+let cmLT = null, cmCT = null, cmLR = null;
+function cmLightsUp(R) {
+  const L = R.lights.filter(l => l.z >= 0), n = L.length, a = new Float32Array(n * 12);
+  L.forEach((l, i) => { a.set([l.p[0], l.p[1], l.p[2], l.r], i * 4); a.set([l.c[0] * l.i, l.c[1] * l.i, l.c[2] * l.i, l.cone], (n + i) * 4); a.set([l.a[0], l.a[1], l.a[2], l.z + 16 * l.fl], (2 * n + i) * 4); });
+  const c = new Float32Array(CM_NX * CM_ND * 12), lay = L.map(l => cmL(R, l.p[0], l.p[2])); let worst = 0, most = 0;
+  for (let j = 0; j < CM_ND; j++) for (let i = 0; i < CM_NX; i++) {
+    const x0 = -42 + i * 2, d0 = j * 2, cand = [];
+    L.forEach((l, k) => {
+      const Z = CM_ZONES[l.z]; if (Z[0] > x0 + 2 || Z[1] < x0 || Z[2] > d0 + 2 || Z[3] < d0) return;
+      const [lx, ld] = lay[k], dist = Math.hypot(Math.max(x0 - lx, 0, lx - x0 - 2), Math.max(d0 - ld, 0, ld - d0 - 2)); if (dist >= l.r) return;
+      cand.push([l.i * (1 - dist / l.r) ** 2, k]);
+    });
+    cand.sort((p, q) => q[0] - p[0]); most = Math.max(most, cand.length); if (cand.length > CM_ML) worst = Math.max(worst, cand[CM_ML][0]);
+    const ci = j * CM_NX + i; cand.slice(0, CM_ML).forEach(([, k], s) => { c[(Math.floor(s / 4) * CM_NX * CM_ND + ci) * 4 + s % 4] = k + 1; });
+  }
+  const up = (t, w, h, data) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); };
+  if (!cmLT) { cmLT = gl.createTexture(); cmCT = gl.createTexture(); }
+  gl.activeTexture(gl.TEXTURE6); up(cmLT, n, 3, a); up(cmCT, CM_NX * CM_ND, 3, c); gl.activeTexture(gl.TEXTURE0);
+  cmLR = R; R.lightInfo = {n, worst, most};
+}
+// a program's lights on (in the common rooms) or off
+function cmLU(P, tn, on) {
+  const R = on && cmLR && room && room.rooms.includes(cmLR) && cmLR.ready ? cmLR : null;
+  gl.uniform4f(P.u.uCmT, R ? (R.door === 'back' ? 1 : -1) : 0, R ? R.z0 : 0, R ? R.L : 0, R ? 1 : 0);
+  if (!R) return;
+  gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, cmLT); gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, cmCT); gl.activeTexture(gl.TEXTURE0);
+  gl.uniform1i(P.u.uCL, 6); gl.uniform1i(P.u.uCC, 7); gl.uniform4fv(P.u['uZR[0]'], CM_ZR); gl.uniform3fv(P.u['uZA[0]'], CM_ZA); gl.uniform1f(P.u.uCmN, tn);
+}
+
+/* ---- more shapes for the rooms: the arcades' gilded vaults, the fire, the koi tank and its waterfall, vases, bamboo, pampas, paper lanterns ---- */
+LIFE.MESH && (() => {
+  const {make, lathe, blob, tri, TR, C, mixc, blade} = LIFE, T2 = 2;
+  // a four-sided piece facing n
+  const q4 = (v, A, B, Cc, D, n, col, w) => { const f = dot(crs(sub(B, A), sub(Cc, A)), n) < 0, P = f ? [A, D, Cc, B] : [A, B, Cc, D];
+    for (const k of [0, 1, 2, 0, 2, 3]) { const p = P[k]; v.push(p[0], p[1], p[2], n[0], n[1], n[2], col[0], col[1], col[2], w); } };
+  // a barrel vault (inside face), springing at y 0, running along +z: gilded coffers with a rosette in each, walnut arches with gold edges, a gold cornice
+  const vault = (name, r, len, arches) => make(name, v => {
+    const NA = 46, NL = Math.round(len / .2), dl = len / NL;
+    const GOLD = C(0xc9a24a), GOLD2 = C(0xe6bf62), CREAM = C(0xf2e7cb), WAL = C(0x4a2a16);
+    const edges = [0, ...arches.flatMap(a => [a - .22, a + .22]).filter(z => z > 0 && z < len), len].sort((p, q) => p - q);
+    const kindL = j => { const z = (j + .5) * dl; for (const a of arches) { const e = Math.abs(z - a); if (e < .22) return e < .13 ? 'arch' : 'archE'; }
+      let b0 = 0, b1 = len; for (let k = 0; k + 1 < edges.length; k++) if (z >= edges[k] && z <= edges[k + 1]) { b0 = edges[k]; b1 = edges[k + 1]; }
+      const nb = Math.max(1, Math.round((b1 - b0) / 1.3)), cl = (b1 - b0) / nb, f = ((z - b0) / cl) % 1;
+      return f * cl < .2 || b1 - z < .2 ? 'rim' : Math.abs(f - .5) * cl < .21 ? 'mid' : 'in'; };
+    const cell = (i, j) => {
+      if (i < 2 || i >= NA - 2) return [.07, GOLD];
+      const L = kindL(j); if (L === 'arch') return [.17, WAL]; if (L === 'archE') return [.17, GOLD2];
+      const fi = (i - 2) % 6, rimA = fi === 0 || i === NA - 3, midA = fi === 2 || fi === 3;
+      if (rimA || L === 'rim') return [0, GOLD];
+      if (midA && L === 'mid') return [-.05, GOLD2];
+      return [-.1, CREAM];
+    };
+    const th = i => Math.PI * i / NA, P = (a, z, rr) => [Math.cos(a) * rr, Math.sin(a) * rr, z];
+    for (let i = 0; i < NA; i++) for (let j = 0; j < NL; j++) {
+      const [h, col] = cell(i, j), rr = r - h, a0 = th(i), a1 = th(i + 1), z0 = j * dl, z1 = (j + 1) * dl, am = (a0 + a1) / 2;
+      q4(v, P(a0, z0, rr), P(a1, z0, rr), P(a1, z1, rr), P(a0, z1, rr), [-Math.cos(am), -Math.sin(am), 0], col, 0);
+      if (i + 1 < NA) { const [h2, c2] = cell(i + 1, j); if (h2 !== h) { const t = [-Math.sin(a1), Math.cos(a1), 0], n = h2 < h ? t : t.map(x => -x); q4(v, P(a1, z0, r - h), P(a1, z0, r - h2), P(a1, z1, r - h2), P(a1, z1, r - h), n, h > h2 ? col : c2, 0); } }
+      if (j + 1 < NL) { const [h2, c2] = cell(i, j + 1); if (h2 !== h) { const n = h2 < h ? [0, 0, 1] : [0, 0, -1]; q4(v, P(a0, z1, r - h), P(a1, z1, r - h), P(a1, z1, r - h2), P(a0, z1, r - h2), n, h > h2 ? col : c2, 0); } }
+    }
+  });
+  vault('cmVaultE', 3.85, 16, [1.2, 4.6, 8, 11.4, 14.8]);
+  vault('cmVaultS', 2.85, 8, [.22, 4, 7.78]);
+  // the fire: tongues of flame licking up (each at its own pace), logs glowing underneath on an iron grate
+  make('cmFlame', v => { for (let k = 0; k < 11; k++) { const a = k * 2.4, ox = Math.cos(a) * (.04 + (k % 3) * .05), oz = (k - 5) * .085, h = .32 + ((k * 7) % 5) * .075;
+    for (const r of [0, 1.5708]) blade(v, h, .1 - (k % 2) * .025, 0, r + k * .3, k % 3 ? C(0xffc860) : C(0xfff0b0), C(0xff3a08), TR([1, 1, 1], [0, 0, 0], [ox, 0, oz])); } });
+  make('cmLogs', v => {
+    const CH = C(0x3a2416), EM = C(0xff5a1a); let e = 0;
+    for (const [x, y, rz, ry] of [[-.08, .07, 0, .12], [.1, .07, 0, -.1], [0, .19, 0, .05]]) lathe(v, [[0, -.46], [.075, -.45], [.075, .45], [0, .46]], 9, (i, a, yy) => { e = Math.sin(a) < -.3 && (i * 7 + Math.round(yy * 9)) % 3 === 0; return e ? EM : CH; }, () => e ? .95 : 0, TR([1, 1, 1], [1.5708, ry, rz], [x, y, 0]));
+    for (const z of [-.42, 0, .42]) { lathe(v, [[.012, 0], [.012, .2]], 5, () => C(0x1a1a1c), 0, TR([1, 1, 1], [0, 0, 0], [-.18, 0, z])); lathe(v, [[.012, 0], [.012, .2]], 5, () => C(0x1a1a1c), 0, TR([1, 1, 1], [0, 0, 0], [.18, 0, z])); }
+  });
+  // vases, in the instance's own colour, glazed: a bottle, a moon, a tall one, a gourd; and a big urn for the floor
+  const vase = (name, prof, rim) => make(name, v => { lathe(v, prof, 22, () => [0, 0, 0], T2); if (rim) { const [r, y] = prof[prof.length - 2]; lathe(v, [[r + .004, y - .012], [r + .006, y + .004], [r - .01, y + .006]], 22, () => C(0xd8b04a), 0); } });
+  vase('cmVase1', [[0, 0], [.09, 0], [.14, .05], [.16, .18], [.13, .32], [.06, .42], [.045, .55], [.06, .58], [0, .58]], true);
+  vase('cmVase2', [[0, 0], [.08, 0], [.17, .06], [.2, .18], [.17, .3], [.08, .36], [.06, .4], [.07, .42], [0, .42]], true);
+  vase('cmVase3', [[0, 0], [.1, 0], [.11, .02], [.1, .62], [.12, .66], [0, .66]], false);
+  vase('cmVase4', [[0, 0], [.1, 0], [.17, .08], [.18, .17], [.12, .27], [.13, .35], [.09, .43], [.04, .48], [.05, .52], [0, .52]], true);
+  vase('cmUrn', [[0, 0], [.17, 0], [.25, .1], [.34, .35], [.32, .6], [.21, .8], [.15, .9], [.19, .95], [0, .95]], true);
+  // pampas grass: stems arching out of a vase, soft plumes at their tips
+  make('cmPampas', v => { for (let k = 0; k < 13; k++) { const a = k * 2.399, h = .7 + (k % 4) * .12, ln = .18 + (k % 3) * .07, tip = TR([1, 1, 1], [0, a, 0], [0, 0, 0])([0, h, ln * h]);
+    blade(v, h, .008, ln, a, C(0xb59a6a), C(0xd8c39a));
+    for (let p = 0; p < 4; p++) blade(v, .34 + (p % 2) * .08, .045, .35, a + (p - 1.5) * .45, C(0xe6d8bc), C(0xfbf3e2), TR([1, 1, 1], [0, 0, 0], [tip[0], tip[1] - .08, tip[2]])); } });
+  // bamboo: green canes with darker joints, leaves at the top
+  make('cmBamboo', v => { for (let k = 0; k < 8; k++) { const a = k * 2.399, rr = .08 + (k % 3) * .09, x = Math.cos(a) * rr, z = Math.sin(a) * rr, H = 2.4 + (k % 4) * .35, P = [];
+    for (let y = 0; y <= H; y += .4) P.push([.032, y], [.036, y + .02], [.032, y + .04]);
+    lathe(v, P.concat([[0, H + .05]]), 7, (i, aa, yy, j) => j % 3 === 1 ? C(0x4a7a2a) : C(0x7aa64a), p => p[1] / H, TR([1, 1, 1], [0, 0, 0], [x, 0, z]));
+    for (let l = 0; l < 7; l++) blade(v, .32, .045, .5, a + l * .9, C(0x2c6e2b), C(0x6fae46), TR([1, 1, 1], [0, 0, 0], [x, H * (.62 + l * .055), z])); } });
+  // a paper lantern on a cord
+  make('cmOrb', v => { lathe(v, [[0, -.24], [.12, -.21], [.21, -.12], [.24, 0], [.21, .12], [.12, .21], [0, .24]], 14, (i, a, y, j) => j % 2 ? C(0xffe0b0) : C(0xffd09a), .95);
+    lathe(v, [[.06, .2], [.06, .27], [0, .27]], 8, () => C(0x1a1a1c), 0); lathe(v, [[.005, .27], [.005, 3]], 4, () => C(0x1a1a1c), 0);
+    lathe(v, [[.06, -.27], [.06, -.2], [0, -.2]], 8, () => C(0x1a1a1c), 0); });
+  // water plants: long ribbons, swaying slowly
+  make('cmWeed', v => { for (let k = 0; k < 12; k++) blade(v, .7 + (k % 5) * .16, .028, .12 + (k % 3) * .1, k * 2.4, C(0x1f5a24), C(0x6ab04a), TR([1, 1, 1], [0, 0, 0], [Math.cos(k) * .12, 0, Math.sin(k * 1.7) * .12]), 6); });
+  // the koi tank (its centre at x 0, its sand at y 0): the water's sides, its rippling top, the glass; laid out in the rooms' own frame
+  const [, , LX, LD, TH] = CM.TANK, WL = 1.8, gx = LX / 2, gz = LD / 2;
+  make('cmWater', v => { const W = C(0x2a8a9a), x = gx - .03, z = gz - .03;
+    q4(v, [-x, 0, -z], [x, 0, -z], [x, WL, -z], [-x, WL, -z], [0, 0, -1], W, 0); q4(v, [-x, 0, z], [x, 0, z], [x, WL, z], [-x, WL, z], [0, 0, 1], W, 0);
+    q4(v, [-x, 0, -z], [-x, 0, z], [-x, WL, z], [-x, WL, -z], [-1, 0, 0], W, 0); q4(v, [x, 0, -z], [x, 0, z], [x, WL, z], [x, WL, -z], [1, 0, 0], W, 0);
+    const NX = 28, NZ = 10; for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) { const xa = -x + 2 * x * i / NX, xb = -x + 2 * x * (i + 1) / NX, za = -z + 2 * z * j / NZ, zb = -z + 2 * z * (j + 1) / NZ;
+      q4(v, [xa, WL, za], [xb, WL, za], [xb, WL, zb], [xa, WL, zb], [0, 1, 0], C(0x3a9aaa), 1); } });
+  make('cmTankGlass', v => { const G = C(0xdff0f5), y1 = TH - .15;
+    q4(v, [-gx, 0, -gz], [gx, 0, -gz], [gx, y1, -gz], [-gx, y1, -gz], [0, 0, -1], G, 0); q4(v, [-gx, 0, gz], [gx, 0, gz], [gx, y1, gz], [-gx, y1, gz], [0, 0, 1], G, 0);
+    q4(v, [-gx, 0, -gz], [-gx, 0, gz], [-gx, y1, gz], [-gx, y1, -gz], [-1, 0, 0], G, 0); q4(v, [gx, 0, -gz], [gx, 0, gz], [gx, y1, gz], [gx, y1, -gz], [1, 0, 0], G, 0); });
+  // the waterfall: a sheet pouring off a lip of rock, curving out as it falls (falling toward -x), and the foam where it lands
+  make('cmFall', v => { const NW = 6, NH = 18, W = .5, H = .62; for (let i = 0; i < NW; i++) for (let j = 0; j < NH; j++) {
+    const P = (a, b) => { const f = b / NH; return [-.16 * Math.sqrt(f) - .02 * Math.sin(a * 2.1), -f * H, (a / NW - .5) * W * (1 + .25 * f)]; };
+    q4(v, P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1), [-1, 0, 0], C(0xd8f4ff), 0); } });
+  make('cmFoam', v => { for (let i = 0; i < 16; i++) { const a0 = i / 16 * 6.2832, a1 = (i + 1) / 16 * 6.2832; for (const [r0, r1] of [[0, .16], [.16, .34]]) q4(v, [Math.cos(a0) * r0, 0, Math.sin(a0) * r0], [Math.cos(a1) * r0, 0, Math.sin(a1) * r0], [Math.cos(a1) * r1, 0, Math.sin(a1) * r1], [Math.cos(a0) * r1, 0, Math.sin(a0) * r1], [0, 1, 0], C(0xf4fbff), 1); } });
+  // paint: tins (in the instance's colour, a silver lid) and spray cans
+  make('cmCan', v => { lathe(v, [[0, 0], [.1, 0], [.1, .22], [0, .22]], 14, () => [0, 0, 0], T2); lathe(v, [[.101, .2], [.101, .23], [0, .23]], 14, () => C(0xb8bcc4), 0); lathe(v, [[.06, .17], [.09, .24]], 10, () => C(0x8a9099), 0); });
+  make('cmSpray', v => { lathe(v, [[0, 0], [.033, 0], [.033, .18], [.024, .21], [0, .215]], 10, () => [0, 0, 0], T2); lathe(v, [[.018, .21], [.018, .25], [0, .25]], 8, () => C(0xe8e8ea), 0); });
+})();
+for (const k of ['cmVaultE', 'cmVaultS', 'cmFlame', 'cmLogs', 'cmVase1', 'cmVase2', 'cmVase3', 'cmVase4', 'cmUrn', 'cmPampas', 'cmBamboo', 'cmOrb', 'cmWeed', 'cmWater', 'cmTankGlass', 'cmFall', 'cmFoam', 'cmCan', 'cmSpray']) {
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
+}
+Object.assign(CMT, {cmVaultE: 20, cmVaultS: 20, cmFlame: 27, cmLogs: 20, cmVase1: 20, cmVase2: 20, cmVase3: 20, cmVase4: 20, cmUrn: 20, cmPampas: 26, cmBamboo: 26, cmOrb: 20, cmWeed: 26,
+  cmWater: 30, cmTankGlass: 22, cmFall: 31, cmFoam: 30, cmCan: 20, cmSpray: 20, fish: 28, rock: 12, bubble: 29, lilypad: 7, lily: 8});
+// how shiny (glazed vases, chrome, glass bottles, wet fish) and which pass (the see-through ones last)
+const CM_SP = {cmVase1: .9, cmVase2: .9, cmVase3: .9, cmVase4: .9, cmUrn: .7, cmTap: 1, cmBottle: 1, cmStool: .6, fish: .7, cmCan: .6, cmSpray: .8, cmArch: .3, rock: .15};
+const CM_PASS = {cmWater: 2, cmFall: 2, cmFoam: 2, cmTankGlass: 1};
+
+/* ---- the props: put in the rooms ---- */
+function cmProps(R) {
+  if (R.pg) for (const g of R.pg) { gl.deleteBuffer(g.ib); gl.deleteVertexArray(g.vao); }
+  const P = {}, Y = cmYaw(R), put = (mesh, x, y, dd, yaw, s, ph, a, b, col) => { const [wx, wz] = cmW(R, x, dd); (P[mesh] || (P[mesh] = [])).push([wx, y, R.z0 + wz, yaw, s, ph, a || 0, b || 0, ...(col || [1, 1, 1])]); };
+  const rnd = (() => { let q = 77; return () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296; })(), F = (fx, fd) => cmFace(R, fx, fd), H = h => lin(hexc(h));
+  const VC = {cobalt: H(0x2a4fd6), mustard: H(0xe0a526), sage: H(0x8fae8b), blush: H(0xf2a7b3), terracotta: H(0xc8553d), teal: H(0x1f8a8a), lilac: H(0xb39ddb), black: H(0x1c1c1e), cream: H(0xefe6d4), coral: H(0xff7a5c)};
+  // the arcades' vaults
+  put('cmVaultE', 0, 4.4, 0, F(0, 1), 1, 0); put('cmVaultS', -24, 4.6, 36.5, F(1, 0), 1, 0); put('cmVaultS', 16, 4.6, 36.5, F(1, 0), 1, 0);
+  // vases on the arcade's console tables
+  for (const [m, x, dd, s, c] of [['cmVase1', -3.6, 2.55, 1, 'cobalt'], ['cmVase2', -3.6, 3.25, .8, 'mustard'], ['cmVase4', 3.6, 2.6, 1, 'blush'], ['cmVase3', 3.6, 3.2, .9, 'sage'], ['cmVase2', -3.6, 12.75, 1, 'terracotta'], ['cmVase1', -3.6, 13.45, .8, 'teal']]) put(m, x, .86, dd, rnd() * 6, s, 0, 0, 0, VC[c]);
+  // the lounge: the fire, vases on the mantel and the table, a fern in an urn, the music box's crown of light
+  put('cmLogs', -17.45, -.45, 8, F(0, 1), 1, 0); put('cmFlame', -17.45, -.3, 8, F(0, 1), 1.1, 0); put('cmFlame', -17.5, -.3, 8, F(0, 1) + 1.6, .8, 2.3);
+  for (const [m, dd, s, c] of [['cmVase3', 6.0, .7, 'lilac'], ['cmVase2', 6.55, .55, 'mustard'], ['cmVase1', 9.55, .65, 'teal'], ['cmVase4', 10.05, .6, 'blush']]) put(m, -17.1, 1.72, dd, rnd() * 6, s, 0, 0, 0, VC[c]);
+  put('cmVase2', -13.3, -.08, 7.5, 0, .6, 0, 0, 0, VC.terracotta); put('cmVase4', -12.6, -.08, 8.5, 0, .5, 0, 0, 0, VC.cream);
+  put('cmUrn', -17.2, -.45, 3.0, 0, .55, 0, 0, 0, VC.sage); put('cmFern', -17.2, .07, 3.0, rnd() * 6, 1.15, rnd() * 9);
+  put('cmUrn', -8.0, -.45, 12.9, 0, .5, 0, 0, 0, VC.black); put('cmPampas', -8.0, .02, 12.9, rnd() * 6, .9, rnd() * 9);
+  put('cmArch', CM.JB[0], -.45, CM.JB[1] - .62, F(0, -1), 1, 0);
+  // by the warehouse door: tins of paint, spray cans on the crate
+  [[4.55, 9.75, 'coral'], [4.85, 10.15, 'teal'], [4.5, 10.5, 'mustard'], [5.1, 9.65, 'lilac'], [5.15, 10.55, 'cobalt']].forEach(([x, dd, c], k) => put('cmCan', x, 0, dd, rnd() * 6, 1, k, 0, 0, VC[c]));
+  [[13.0, 9.6, 'coral'], [13.15, 9.75, 'cobalt'], [13.3, 9.62, 'mustard'], [13.45, 9.78, 'sage'], [13.2, 9.95, 'black']].forEach(([x, dd, c], k) => put('cmSpray', x, 1.85, dd, rnd() * 6, 1, k, 0, 0, VC[c]));
+  // the Grand Hall: the chain of blocks circling over the Forum, vines down the balcony, trees by the screen, big vases of pampas, ferns on the balcony
+  const [pcx, pcz] = cmW(R, 0, CM.PD);
+  for (let i = 0; i < 12; i++) { (P.cmBlock || (P.cmBlock = [])).push([pcx, 8.2, R.z0 + pcz, 0, .9, i, i / 12 * 6.2832, 5.6, ...H(i % 3 ? 0xff8a1e : 0xffc94a)]); (P.cmLink || (P.cmLink = [])).push([pcx, 8.2, R.z0 + pcz, 0, 1.1, i + .5, (i + .5) / 12 * 6.2832, 5.6, 1, 1, 1]); }
+  for (let x = -12.6; x < 12.7; x += 1.05 + rnd() * .35) put('cmVine', x, CM.BY - .3, CM.BD1 + .06, rnd() * 6, 1 + rnd() * .35, rnd() * 9);
+  for (const s of [-1, 1]) { put('tree', s * 14.75, 1.72, 46.4, rnd() * 6, .95, rnd() * 9); for (let k = 0; k < 7; k++) put('flower', s * 14.75 + (rnd() - .5) * 2, 1.72, 46.4 + (rnd() - .5) * 2.2, rnd() * 6, 1, rnd() * 9, 0, 0, H([0xff6fa5, 0xffd23f, 0xf7f3ff, 0xff8a3d][k % 4])); }
+  for (const s of [-1, 1]) for (const dd of [22.6, 42.8]) { put('cmUrn', s * 9.6, .9, dd, rnd() * 6, 1.25, 0, 0, 0, dd < 30 ? VC.terracotta : VC.black); put('cmPampas', s * 9.6, .9 + 1.16, dd, rnd() * 6, 1.15, rnd() * 9); }
+  for (const x of [-12, -6, 6, 12]) { put('cmFern', x, CM.BY + .62, 16.5, rnd() * 6, 1.25, rnd() * 9); for (let k = 0; k < 6; k++) { const fx = x + (rnd() - .5) * 2.3, fd = 16.5 + (rnd() - .5) * .45; if (k < 3) put('flower', fx, CM.BY + .62, fd, rnd() * 6, .9, rnd() * 9, 0, 0, H([0xff6fa5, 0xffd23f, 0xb28dff][k])); else put('tuft', fx, CM.BY + .62, fd, rnd() * 6, .7, rnd() * 9); } }
+  // THE MEMPOOL: the taps, the stools, bottles all along the back bar, the racks' blinking lights, vases at the counter's ends
+  put('cmTap', CM.TAP[0], 2.96, CM.TAP[1], F(1, 0), 1, 0);
+  for (let dd = 27; dd <= 43; dd += 2) put('cmStool', -38.35, 1.8, dd, 0, 1, 0);
+  const BC = [0x1f8a3a, 0x7a3a12, 0x2a6aa8, 0xd9d2c0, 0x9a1f2a, 0x3a2a1a, 0xc9a23a, 0x6a2a8a].map(H);
+  for (const y of [3.04, 3.74, 4.44, 5.14]) for (let dd = 25.75; dd < 44.3; dd += .26 + rnd() * .07) if (Math.abs(dd - 35) > .7 || y > 4) put('cmBottle', -41.05, y, dd, rnd() * 6, .85 + rnd() * .35, 0, 0, 0, BC[Math.floor(rnd() * BC.length)]);
+  for (const x of [-27.5, -26.0]) put('cmLeds', x, 2.95, 23.03, F(0, 1), 1, x);
+  put('cmVase1', -39.65, 2.96, 26.3, 0, .9, 0, 0, 0, VC.cobalt); put('cmVase3', -39.65, 2.96, 43.7, 0, .8, 0, 0, 0, VC.lilac);
+  // the KOI GARDEN: bamboo and trees in the planters, paper lanterns hanging from the roof, flowers along the living walls
+  put('cmBamboo', 26.2, -.08, 24.2, 0, 1.1, 1); put('cmBamboo', 39.8, -.08, 45.8, 2, 1.15, 4); put('tree', 39.8, -.08, 24.2, rnd() * 6, 1.25, rnd() * 9); put('tree', 26.2, -.08, 45.8, rnd() * 6, 1.3, rnd() * 9);
+  for (const [x, dd, y] of [[27.5, 28, 6.1], [31, 27.2, 5.7], [35, 27.6, 6.3], [38.6, 28.3, 5.9], [27.4, 42, 5.8], [31.2, 42.8, 6.2], [35.2, 42.3, 5.75], [38.7, 41.5, 6.05]]) put('cmOrb', x, y, dd, rnd() * 6, 1, 0);
+  for (const dd of [22.55, 47.45]) for (let x = 27.8; x < 38.5; x += .45 + rnd() * .3) { if (rnd() < .45) put('flower', x, -.9, dd + (rnd() - .5) * .3, rnd() * 6, 1, rnd() * 9, 0, 0, H([0xff6fa5, 0xffd23f, 0xf7f3ff, 0xb28dff, 0xff8a3d][Math.floor(rnd() * 5)])); else put('tuft', x, -.9, dd + (rnd() - .5) * .3, rnd() * 6, .8, rnd() * 9); }
+  // the tank: water, glass, sand with pebbles; a hill of rock at the east end with a waterfall pouring off it; weed, koi, bubbles, lily pads
+  { const [tx, td] = CM.TANK, sand = -.2, wl = sand + 1.8, ty = cmYaw(R);
+    put('cmWater', tx, sand, td, ty, 1, 0); put('cmTankGlass', tx, sand, td, ty, 1, 0);
+    const RK = [[36.2, -.2, 32.2, .95, 0x4a4a48], [36.3, -.2, 34.0, .9, 0x56584e], [34.9, -.2, 33.2, .75, 0x4a5a3a], [36.2, .55, 33.0, .85, 0x5a5a56], [35.6, .4, 32.0, .6, 0x4a5a3a],
+      [36.3, 1.25, 33.2, .7, 0x4e4e4a], [36.1, 1.75, 32.9, .55, 0x5a5a56], [35.3, 1.1, 33.9, .5, 0x4a5a3a]];
+    for (const [x, y, dd, s, c] of RK) put('rock', x, y, dd, rnd() * 6, s, rnd() * 9, 0, 0, H(c));
+    for (let k = 0; k < 26; k++) put('rock', 29 + rnd() * 5.6, sand - .02, 31.5 + rnd() * 3, rnd() * 6, .08 + rnd() * .09, rnd() * 9, 0, 0, H([0x8a8478, 0x5a5650, 0xa89a80, 0x3a3a3a][k % 4]));
+    put('cmFern', 36.25, 2.05, 33.25, rnd() * 6, .55, 1); put('tuft', 35.9, 1.95, 32.5, 0, .5, 2); put('tuft', 36.5, 1.5, 33.9, 0, .45, 3);
+    put('cmFall', 35.72, 2.12, 32.9, ty, 1, 0); put('cmFoam', 35.5, wl + .01, 32.9, 0, 1, 0);
+    for (let k = 0; k < 10; k++) put('bubble', 35.45 + (rnd() - .5) * .3, wl - .5, 32.9 + (rnd() - .5) * .35, 0, .035 + rnd() * .03, rnd(), .5, .9 + rnd() * .5, [.9, .97, 1]);
+    for (let k = 0; k < 16; k++) put('bubble', 29.5 + (rnd() - .5) * .08, sand, 31.75 + (rnd() - .5) * .08, 0, .025 + rnd() * .03, k / 16, wl - sand, .28, [.9, .97, 1]);
+    for (const [x, dd] of [[29.6, 34.35], [30.6, 34.3], [31.7, 34.4], [33.0, 34.3], [34.1, 34.35], [29.4, 31.7], [31.2, 31.65], [33.6, 31.7]]) put('cmWeed', x, sand, dd, rnd() * 6, .9 + rnd() * .5, rnd() * 9);
+    const KOI = [0xff6a1a, 0xf4f0ea, 0xffb020, 0xe0402a, 0xff8a3d, 0xfff2d0, 0xd8501a];
+    KOI.forEach((c, k) => put('fish', tx - .8, sand + .55 + (k % 3) * .3, td, 0, .62 + (k % 3) * .08, k * .9 + .3, 3.0, 1.2, H(c)));
+    for (const [x, dd, s] of [[29.8, 32.2, .45], [30.6, 34.0, .4], [29.3, 33.7, .35]]) put('lilypad', x, wl + .005, dd, rnd() * 6, s, rnd() * 9);
+    put('lily', 30.6, wl + .01, 34.0, 0, .45, 1, 0, 0, H(0xffb0c8)); }
+  // the arcade cabinets' buttons
+  for (const g of CM_GAMES) put('cmPad', g[2] + g[4] * .5, g[6] + 1.03, g[3] + g[5] * .5, F(g[4], g[5]), 1, 0);
+  cmPropsMore(R, put, rnd, F, H, VC);
+  R.pg = Object.entries(P).map(([m, l]) => Object.assign(cmGrp(m, l), {sp: CM_SP[m] || 0, pass: CM_PASS[m] || 0}));
+  R.pc = [pcx, R.z0 + pcz];
+}
+
+
+/* ---- filler, so no room is bare: chandeliers and palms in the arcade, framed prints of Bitcoin's first days; a chess game, candles and a
+   sleeping cat by the fire; a bronze bull and bear, glass cases (the pizza, a physical bitcoin) and banners in the hall; a pool table,
+   high tables and a live ticker in the bar; a torii gate, a raked gravel garden, bonsai and butterflies among the koi; barrels, cones,
+   pallets and a ladder by the warehouse door ---- */
+(() => {
+  const {make, lathe, blob, tri, TR, C, blade} = LIFE, T2 = 2;
+  const BR = C(0xc9952e), FL = C(0xffd27a), WAX = C(0xf4ecd8);
+  // a chandelier, hung from its top (y 0) down to about -1.3: brass arms in two rings, candles, crystal drops and swags
+  make('cmChand', v => {
+    lathe(v, [[0, 0], [.03, 0], [.03, -.25], [.06, -.3], [.04, -.5], [.09, -.62], [.05, -.85], [.12, -1.05], [.08, -1.2], [0, -1.32]], 12, () => BR, 0);
+    lathe(v, [[.008, 0], [.008, 2.4], [0, 2.4]], 4, () => C(0x5a4a2a), 0);
+    for (const [R0, y, n] of [[.78, -1.0, 10], [.46, -.62, 7]]) for (let k = 0; k < n; k++) {
+      const a = k / n * 6.2832, cx = Math.cos(a) * R0, cz = Math.sin(a) * R0;
+      lathe(v, [[.014, 0], [.014, R0]], 5, () => BR, 0, TR([1, 1, 1], [0, -a, -1.5708], [0, y, 0]));
+      lathe(v, [[0, 0], [.05, 0], [.06, .04], [0, .04]], 8, () => BR, 0, TR([1, 1, 1], [0, 0, 0], [cx, y, cz]));
+      lathe(v, [[.022, 0], [.022, .16], [0, .16]], 7, () => WAX, 0, TR([1, 1, 1], [0, 0, 0], [cx, y + .04, cz]));
+      lathe(v, [[0, 0], [.018, .03], [.012, .07], [0, .1]], 6, () => FL, .95, TR([1, 1, 1], [0, 0, 0], [cx, y + .2, cz]));
+      const drop = (x, yy, z, s) => { const P = [[x, yy + s, z], [x + s * .6, yy, z], [x, yy, z + s * .6], [x - s * .6, yy, z], [x, yy, z - s * .6], [x, yy - s * 1.6, z]];
+        for (const [p, q] of [[1, 2], [2, 3], [3, 4], [4, 1]]) { tri(v, P[0], P[p], P[q], C(0xe8f6ff), .75, [x, yy, z]); tri(v, P[5], P[p], P[q], C(0xcfe8ff), .7, [x, yy, z]); } };
+      drop(cx, y - .1, cz, .035);
+      const a2 = (k + 1) / n * 6.2832; for (let j = 1; j < 5; j++) { const f = j / 5, aa = a + (a2 - a) * f; drop(Math.cos(aa) * R0, y - .03 - Math.sin(f * 3.1416) * .16, Math.sin(aa) * R0, .016); }
+    }
+  });
+  // a kentia palm: a short ringed trunk, long fronds arching out
+  make('cmPalm', v => {
+    lathe(v, [[.09, 0], [.08, .3], [.07, .6], [.06, .82], [0, .86]], 9, (i, a, y, j) => j % 2 ? C(0x6a4a2a) : C(0x8a6a3a), p => p[1] / 3);
+    for (let k = 0; k < 15; k++) blade(v, 1.15 + (k % 4) * .2, .13 + (k % 2) * .03, .8 + (k % 3) * .15, k * 2.399, C(0x1a4e20), C(0x5aa846), TR([1, 1, 1], [0, 0, 0], [0, .78, 0]), 6);
+  });
+  // chess pieces (in the instance's colour): a pawn, and a king for the back rows
+  make('cmPiece', v => lathe(v, [[0, 0], [.022, 0], [.022, .006], [.012, .012], [.008, .034], [.014, .042], [.01, .054], [0, .058]], 10, () => [0, 0, 0], T2));
+  make('cmKingP', v => { lathe(v, [[0, 0], [.025, 0], [.025, .007], [.013, .015], [.01, .062], [.018, .068], [.012, .078], [0, .08]], 10, () => [0, 0, 0], T2); lathe(v, [[.004, .078], [.004, .102], [0, .102]], 4, () => [0, 0, 0], T2); });
+  // a candle, lit
+  make('cmCandle', v => { lathe(v, [[0, 0], [.028, 0], [.028, .14], [.02, .146], [0, .146]], 10, () => WAX, 0); lathe(v, [[0, .15], [.012, .17], [.008, .2], [0, .215]], 6, () => FL, .95); });
+  // a ginger cat, curled up asleep
+  make('cmCat', v => {
+    const O = C(0xe8892e), S = C(0xb5601a), W = C(0xf6e6cc);
+    blob(v, 2, .03, (i, a, b, c) => Math.sin((a[0] + b[0] + c[0]) / 3 * 38) > .55 ? S : O, 0, TR([.27, .12, .21], [0, 0, 0], [0, .11, 0]));
+    blob(v, 2, .02, (i, a, b, c) => (a[2] + b[2] + c[2]) / 3 > .17 ? W : O, 0, TR([.095, .08, .09], [0, 0, 0], [.17, .12, .12]));
+    for (const s of [-1, 1]) tri(v, [.17 + s * .05, .18, .1], [.17 + s * .08, .25, .1], [.17 + s * .02, .2, .13], O, 0, [.17, .12, .12]);
+    for (let k = 0; k < 9; k++) { const a = -.3 + k * .33, r = .25; blob(v, 1, 0, () => k > 6 ? S : O, 0, TR([.042, .036, .042], [0, 0, 0], [Math.cos(a) * r - .02, .045, Math.sin(a) * r * .8 - .03])); }
+  });
+  // bronze statues: a bull charging and a bear (they face +z)
+  const BZ = () => Math.random() < .5 ? C(0x8a5a2a) : C(0x7a4e24), BZ2 = () => C(0x5e3c1c);
+  make('cmBull', v => {
+    blob(v, 2, .04, BZ, 0, TR([.3, .31, .58], [0, 0, 0], [0, .76, 0])); blob(v, 2, .03, BZ, 0, TR([.3, .27, .3], [0, 0, 0], [0, 1.0, .28]));
+    blob(v, 2, .03, BZ, 0, TR([.16, .17, .22], [.45, 0, 0], [0, .72, .74])); blob(v, 1, .02, BZ2, 0, TR([.1, .08, .08], [0, 0, 0], [0, .62, .9]));
+    for (const s of [-1, 1]) { lathe(v, [[.045, 0], [.035, .16], [.022, .3], [.01, .42], [0, .46]], 8, () => C(0xb08040), 0, TR([1, 1, 1], [.75, 0, -s * .95], [s * .12, .84, .8])); for (const z of [-.34, .34]) lathe(v, [[.07, 0], [.055, .25], [.065, .5], [0, .53]], 8, BZ, 0, TR([1, 1, 1], [z > 0 ? -.25 : .2, 0, 0], [s * .16, 0, z])); }
+    lathe(v, [[.025, 0], [.02, .5], [.04, .56], [0, .6]], 6, BZ2, 0, TR([1, 1, 1], [2.6, 0, 0], [0, .95, -.52]));
+  });
+  make('cmBear', v => {
+    blob(v, 2, .04, BZ, 0, TR([.34, .34, .52], [0, 0, 0], [0, .72, 0])); blob(v, 2, .03, BZ, 0, TR([.21, .2, .21], [0, 0, 0], [0, .9, .58]));
+    blob(v, 1, .02, BZ2, 0, TR([.085, .07, .11], [0, 0, 0], [0, .84, .78])); for (const s of [-1, 1]) blob(v, 1, 0, BZ2, 0, TR([.06, .06, .035], [0, 0, 0], [s * .13, 1.07, .55]));
+    for (const s of [-1, 1]) for (const z of [-.3, .3]) lathe(v, [[.1, 0], [.085, .3], [.09, .5], [0, .54]], 8, BZ, 0, TR([1, 1, 1], [0, 0, 0], [s * .18, 0, z]));
+  });
+  // a glass case (drawn see-through), its own size .8 m
+  { const q4 = (v, A, B, Cc, D, n) => { const f = dot(crs(sub(B, A), sub(Cc, A)), n) < 0, P = f ? [A, D, Cc, B] : [A, B, Cc, D]; for (const k of [0, 1, 2, 0, 2, 3]) { const p = P[k]; v.push(p[0], p[1], p[2], n[0], n[1], n[2], .85, .92, .95, 0); } };
+    make('cmCase', v => { const s = .4, h = .8; q4(v, [-s, 0, -s], [s, 0, -s], [s, h, -s], [-s, h, -s], [0, 0, -1]); q4(v, [-s, 0, s], [s, 0, s], [s, h, s], [-s, h, s], [0, 0, 1]);
+      q4(v, [-s, 0, -s], [-s, 0, s], [-s, h, s], [-s, h, -s], [-1, 0, 0]); q4(v, [s, 0, -s], [s, 0, s], [s, h, s], [s, h, -s], [1, 0, 0]); q4(v, [-s, h, -s], [s, h, -s], [s, h, s], [-s, h, s], [0, 1, 0]); }); }
+  // two pizzas (the famous ones), and a physical bitcoin standing up (it turns slowly)
+  make('cmPizza', v => {
+    lathe(v, [[0, 0], [.16, 0], [.17, .012], [.158, .022], [.148, .02], [0, .02]], 18, () => C(0xd9a050), 0);
+    lathe(v, [[0, .021], [.146, .021]], 18, (i) => i % 3 ? C(0xe8c050) : C(0xd84a20), 0);
+    for (let k = 0; k < 9; k++) { const a = k * 2.4, r = k ? .05 + (k % 3) * .03 : 0; lathe(v, [[0, .024], [.022, .024]], 8, () => C(0x9a1e14), 0, TR([1, 1, 1], [0, 0, 0], [Math.cos(a) * r, 0, Math.sin(a) * r])); }
+  });
+  make('cmCoin', v => {
+    lathe(v, [[0, -.012], [.115, -.012], [.12, -.006], [.12, .006], [.115, .012], [0, .012]], 28, () => C(0xd8b04a), 0, TR([1, 1, 1], [1.5708, 0, 0], [0, 0, 0]));
+    for (const z of [-.013, .013]) lathe(v, [[0, 0], [.06, 0]], 20, () => C(0xd8d4ff), .8, TR([1, 1, 1], [1.5708, 0, 0], [0, 0, z]));
+    for (const z of [-.0135, .0135]) lathe(v, [[.1, 0], [.108, 0]], 28, () => C(0xb88a2a), 0, TR([1, 1, 1], [1.5708, 0, 0], [0, 0, z]));
+  });
+  // pool: a ball (in the instance's colour), a cue lying along x
+  make('cmBall', v => lathe(v, [[0, -.035], [.018, -.03], [.03, -.018], [.035, 0], [.03, .018], [.018, .03], [0, .035]], 12, () => [0, 0, 0], T2));
+  make('cmCue', v => lathe(v, [[0, 0], [.006, 0], [.006, .02], [.007, .5], [.011, 1.0], [.016, 1.42], [0, 1.43]], 7, (i, a, y) => y < .02 ? C(0x3a6aff) : y < .95 ? C(0xe0c08a) : C(0x3a1a0a), 0, TR([1, 1, 1], [0, 0, -1.5708], [-.715, 0, 0])));
+  // a high table in the bar, a ring of neon round its top (in the instance's colour)
+  make('cmHiTable', v => { lathe(v, [[0, 0], [.25, 0], [.25, .03], [.05, .06], [0, .06]], 14, () => C(0x2a2d34), 0); lathe(v, [[.035, .06], [.035, 1.05]], 8, () => C(0x9aa3b2), 0);
+    lathe(v, [[0, 1.05], [.42, 1.05], [.42, 1.09], [0, 1.09]], 22, () => C(0x15121a), 0); lathe(v, [[.425, 1.052], [.432, 1.07], [.425, 1.088]], 22, () => [0, 0, 0], T2 + .95); });
+  // a barrel (in the instance's colour, steel bands) and a traffic cone
+  make('cmBarrel', v => { lathe(v, [[0, 0], [.27, 0], [.29, .1], [.3, .45], [.29, .8], [.27, .9], [0, .9]], 16, () => [0, 0, 0], T2); for (const y of [.2, .7]) lathe(v, [[.296, y - .02], [.308, y], [.296, y + .02]], 16, () => C(0x3a3d44), 0); });
+  make('cmCone', v => lathe(v, [[0, 0], [.2, 0], [.2, .03], [.12, .04], [.09, .2], [.07, .28], [.045, .4], [.03, .5], [0, .52]], 12, (i, a, y) => y > .2 && y < .3 ? C(0xf4f4f4) : C(0xff6a14), 0));
+})();
+for (const k of ['cmChand', 'cmPalm', 'cmPiece', 'cmKingP', 'cmCandle', 'cmCat', 'cmBull', 'cmBear', 'cmCase', 'cmPizza', 'cmCoin', 'cmBall', 'cmCue', 'cmHiTable', 'cmBarrel', 'cmCone']) {
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
+}
+Object.assign(CMT, {cmChand: 20, cmPalm: 26, cmPiece: 20, cmKingP: 20, cmCandle: 20, cmCat: 20, cmBull: 20, cmBear: 20, cmCase: 22, cmPizza: 20, cmCoin: 32, cmBall: 20, cmCue: 20, cmHiTable: 20, cmBarrel: 20, cmCone: 20, butterfly: 9});
+Object.assign(CM_SP, {cmChand: 1, cmPiece: .7, cmKingP: .7, cmBull: .8, cmBear: .8, cmCoin: 1, cmBall: 1, cmCue: .4, cmHiTable: .6, cmBarrel: .5});
+CM_PASS.cmCase = 1;
+
+// the extra fittings (boxes) and lights
+function cmFixMore(R, H) {
+  const {B, TB, tiles, light, K} = H;
+  // framed prints in the arcade, each under its own picture light
+  for (const [k, x, dd, y, w, h, fx, fd] of CM_PRINTS) { B(fx ? x - fx * .05 : x - w / 2 - .07, fx ? x - fx * .01 : x + w / 2 + .07, y - h / 2 - .07, y + h / 2 + .07, fx ? dd - w / 2 - .07 : dd - fd * .05, fx ? dd + w / 2 + .07 : dd - fd * .01, K.brass);
+    B(fx ? x + fx * .05 : x - .25, fx ? x + fx * .15 : x + .25, y + h / 2 + .14, y + h / 2 + .19, fx ? dd - .25 : dd + fd * .05, fx ? dd + .25 : dd + fd * .15, K.gold, 2); light(x + fx * .5, y + h / 2 + .25, dd + fd * .5, 0xfff0d8, 1.2, 2.8, [-fx * .5, -1, -fd * .5], .55); }
+  // the arcade's chandeliers
+  for (const dd of [4.6, 11.4]) light(0, 5.6, dd, 0xffd6a0, 1.5, 7.5);
+  // the lounge: gold lines down the walls (art deco); the chess table and its chairs
+  for (const x of [-16.6, -16.25, -9.75, -9.4]) B(x - .02, x + .02, .2, 4.7, 2.15, 2.19, K.gold, 2);
+  { const cx = -8.6, cd = 11; B(cx - .04, cx + .04, -.45, .2, cd - .04, cd + .04, K.brass); B(cx - .25, cx + .25, -.45, -.42, cd - .25, cd + .25, K.brass); B(cx - .38, cx + .38, .2, .25, cd - .38, cd + .38, K.dwalnut, 0, null, 1);
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) B(cx - .28 + i * .07, cx - .21 + i * .07, .25, .255, cd - .28 + j * .07, cd - .21 + j * .07, (i + j) % 2 ? LC('#e8dcc0') : LC('#3a2410'));
+    for (const s of [-1, 1]) { const d0 = cd + s * .7; B(cx - .24, cx + .24, -.03, .02, d0 - .22, d0 + .22, K.leather); B(cx - .24, cx + .24, .02, .62, d0 + s * .18, d0 + s * .23, K.leather); for (const e of [-.2, .2]) for (const f of [-.18, .18]) B(cx + e - .02, cx + e + .02, -.45, -.03, d0 + f - .02, d0 + f + .02, K.brass); } }
+  // the hall: plinths for the bull and the bear, lit from above; glass cases on plinths (the pizza, the coin), named
+  for (const s of [-1, 1]) { const x = s * 12.4; B(x - .9, x + .9, .9, 1.7, 43.6, 44.8, K.dmarble); B(x - .92, x + .92, 1.68, 1.72, 43.58, 44.82, K.brass); light(x, 4.6, 43.4, 0xffe2b8, 1.4, 5.5, [0, -1, .3], .55); }
+  for (const s of [-1, 1]) { const x = s * 12; B(x - .45, x + .45, .9, 1.9, 31.15, 32.05, K.dmarble); B(x - .47, x + .47, 1.88, 1.92, 31.13, 32.07, K.brass);
+    const p = s < 0 ? R.pl.pizza : R.pl.coin; tiles(x - s * .46, 1.42, 31.6, -s, 0, .21, p.x, p.y, 128, 4); light(x, 3.7, 31.6, 0xfff4e0, 1.3, 3.5, [0, -1, 0], .6); }
+  for (const s of [-1, 1]) B(s * 15.7 - .04, s * 15.7 + .04, 11.95, 12.05, 35.6, 37.4, K.brass);
+  // the bar: a pool table under its lamps
+  { const cx = -31.5, cd = 31, y = 1.8; for (const e of [-1.2, 1.2]) for (const f of [-.6, .6]) B(cx + e - .09, cx + e + .09, y, y + .62, cd + f - .09, cd + f + .09, LC('#2a1408'));
+    B(cx - 1.4, cx + 1.4, y + .62, y + .8, cd - .8, cd + .8, LC('#3a1a0a')); B(cx - 1.4, cx + 1.4, y + .8, y + .9, cd - .8, cd - .66, LC('#4a2410'), 0, null, 1); B(cx - 1.4, cx + 1.4, y + .8, y + .9, cd + .66, cd + .8, LC('#4a2410'), 0, null, 1);
+    B(cx - 1.4, cx - 1.26, y + .8, y + .9, cd - .66, cd + .66, LC('#4a2410'), 0, null, 1); B(cx + 1.26, cx + 1.4, y + .8, y + .9, cd - .66, cd + .66, LC('#4a2410'), 0, null, 1);
+    B(cx - 1.26, cx + 1.26, y + .8, y + .82, cd - .66, cd + .66, LC('#0e5a3a'));
+    for (const e of [-1.27, 0, 1.27]) for (const f of [-.67, .67]) B(cx + e - .06, cx + e + .06, y + .8, y + .905, cd + f - .06, cd + f + .06, LC('#050505'));
+    for (const e of [-.8, 0, .8]) { B(cx + e - .22, cx + e + .22, y + 2.0, y + 2.12, cd - .18, cd + .18, LC('#121016')); B(cx + e - .2, cx + e + .2, y + 1.99, y + 2.0, cd - .16, cd + .16, LC('#fff0d0'), 2); B(cx + e - .01, cx + e + .01, y + 2.12, 8.25, cd - .01, cd + .01, K.steel); }
+    light(cx, y + 1.8, cd, 0xfff0d0, 1.6, 4.5, [0, -1, 0], .45); }
+  // the garden: a torii gate where you come in, a bed of raked gravel, bonsai on stands
+  { const x = 25.6, red = LC('#c8321e'), blk = LC('#141414'); for (const dd of [34.4, 38.6]) { B(x - .2, x + .2, -.9, 3.6, dd - .2, dd + .2, red); B(x - .24, x + .24, -.9, -.6, dd - .24, dd + .24, blk); }
+    B(x - .15, x + .15, 2.85, 3.1, 33.9, 39.1, red); B(x - .3, x + .3, 3.6, 3.82, 33.3, 39.7, blk); B(x - .26, x + .26, 3.45, 3.6, 33.6, 39.4, red); B(x - .1, x + .1, 3.1, 3.45, 36.35, 36.65, blk); }
+  TB(29.5, 36.5, -.9, -.84, 42.3, 45.7, R.tRake, 1.75);
+  for (const [a, b, c, e] of [[29.4, 36.6, 42.2, 42.3], [29.4, 36.6, 45.7, 45.8], [29.4, 29.5, 42.3, 45.7], [36.5, 36.6, 42.3, 45.7]]) B(a, b, -.9, -.8, c, e, K.dwalnut);
+  for (const dd of [28.5, 43]) { B(24.35, 25.05, -.9, -.2, dd - .35, dd + .35, K.dwalnut, 0, null, 1); B(24.4, 25.0, -.2, -.1, dd - .3, dd + .3, LC('#2a3a4a')); }
+  // the warehouse door: pallets stacked, a ladder against the wall
+  for (let k = 0; k < 3; k++) { const y = k * .16; for (const dd of [5.45, 6.0, 6.55]) B(13.2, 14.4, y, y + .1, dd - .05, dd + .05, LC('#8a6a40')); for (const x of [13.25, 13.8, 14.35]) B(x - .05, x + .05, y + .1, y + .15, 5.4, 6.6, LC('#7a5a30')); }
+  for (const x of [5.75, 6.25]) B(x - .03, x + .03, 0, 3.3, 10.72, 10.8, LC('#c9a23a')); for (let y = .3; y < 3.2; y += .3) B(5.75, 6.25, y, y + .03, 10.73, 10.79, LC('#c9a23a'));
+}
+
+// the extra props
+function cmPropsMore(R, put, rnd, F, H, VC) {
+  for (const dd of [4.6, 11.4]) put('cmChand', 0, 6.55, dd, 0, 1, 0);
+  for (const s of [-1, 1]) { put('cmUrn', s * 3.0, 0, 15.55, 0, .75, 0, 0, 0, VC.black); put('cmPalm', s * 3.0, .7, 15.55, rnd() * 6, 1.25, rnd() * 9); }
+  // the chess game, half played
+  { const cx = -8.6, cd = 11, sq = .07, y = .255, P = (i, j) => [cx - .245 + i * sq, cd - .245 + j * sq];
+    const W = [[0, 0, 'k'], [1, 1], [2, 1], [3, 3], [5, 1], [6, 1], [7, 1], [4, 0, 'k'], [2, 2], [6, 0]], Bk = [[3, 7, 'k'], [0, 6], [1, 6], [2, 5], [4, 4], [5, 6], [6, 6], [7, 6], [5, 7], [1, 7]];
+    for (const [i, j, k] of W) { const [x, dd] = P(i, j); put(k ? 'cmKingP' : 'cmPiece', x, y, dd, 0, 1, 0, 0, 0, H(0xf7931a)); }
+    for (const [i, j, k] of Bk) { const [x, dd] = P(i, j); put(k ? 'cmKingP' : 'cmPiece', x, y, dd, 0, 1, 0, 0, 0, H(0xefe6d4)); } }
+  for (const dd of [7.15, 7.55, 8.45, 8.85]) put('cmCandle', -17.1, 1.72, dd, 0, .9 + rnd() * .5, 0);
+  for (const [x, dd] of [[-12.4, 7.2], [-12.55, 7.4], [-13.6, 8.8]]) put('cmCandle', x, -.08, dd, 0, 1 + rnd() * .6, 0);
+  put('cmCat', -15.3, -.43, 8.6, F(1, 0), 1, 0);
+  put('cmUrn', -5.3, -.45, 2.8, 0, .6, 0, 0, 0, VC.terracotta); put('cmPalm', -5.3, .12, 2.8, rnd() * 6, .9, rnd() * 9);
+  // the hall's bronzes, the cases' treasures
+  put('cmBull', -12.4, 1.72, 44.2, F(0, -1) + .5, 1.3, 0); put('cmBear', 12.4, 1.72, 44.2, F(0, -1) - .5, 1.3, 0);
+  for (const s of [-1, 1]) put('cmCase', s * 12, 1.92, 31.6, 0, 1, 0);
+  put('cmPizza', -12.12, 1.95, 31.5, 0, 1, 0); put('cmPizza', -11.9, 1.97, 31.72, .7, .95, 0); put('cmCoin', 12, 2.3, 31.6, 0, 1, 0);
+  // the bar: a game of pool set up, cues on the table; high tables with neon rims
+  { const cx = -31.5, cd = 31, y = 1.8 + .82 + .035, C = [0xf2c81a, 0x1a4ad8, 0xd8261a, 0x5a2a9a, 0xff7a1a, 0x1a8a3a, 0x7a1a1a, 0x101010, 0xf8e04a, 0x4a7aff, 0xff5a4a, 0x9a6ad8, 0xffaa5a, 0x4aba6a, 0xaa4a4a];
+    let k = 0; for (let r = 0; r < 5; r++) for (let c = 0; c <= r; c++) put('cmBall', cx + .55 + r * .061, y, cd + (c - r / 2) * .071, rnd() * 6, 1, 0, 0, 0, H(C[k++]));
+    put('cmBall', cx - .65, y, cd + .05, 0, 1, 0, 0, 0, H(0xf8f6f0));
+    put('cmCue', cx - .1, 2.67, cd - .5, cmYaw(R) + .08, 1, 0); put('cmCue', cx + .2, 2.67, cd + .52, cmYaw(R) - .05, 1, 0); }
+  [[-35, 39.5, 0xff4fd8], [-28.5, 41.5, 0x27e1ff], [-27, 30, 0xff4fd8]].forEach(([x, dd, c]) => put('cmHiTable', x, 1.8, dd, 0, 1, 0, 0, 0, H(c)));
+  // the garden: bonsai, rocks in the gravel, butterflies over the flowers
+  for (const dd of [28.5, 43]) put('tree', 24.7, -.1, dd, rnd() * 6, .32, rnd() * 9);
+  for (const [x, dd, s] of [[31.2, 43.4, .55], [34.6, 44.6, .42], [35.4, 43.0, .3]]) put('rock', x, -.86, dd, rnd() * 6, s, 0, 0, 0, H(0x5a5a56));
+  for (const [x, dd, c] of [[30, 23.2, 0xffb03a], [35, 46.8, 0x7ac8ff], [27, 46.5, 0xff8ad8], [39.5, 26.5, 0xffe04a], [32.5, 22.9, 0xffffff]]) put('butterfly', x, -.9, dd, rnd() * 6, .55, rnd() * 9, 0, 0, H(c));
+  // by the warehouse door: barrels, cones
+  put('cmBarrel', 5.0, 0, 6.0, rnd() * 6, 1, 0, 0, 0, H(0x1a5ad8)); put('cmBarrel', 5.75, 0, 5.75, rnd() * 6, 1, 0, 0, 0, H(0xff6a14));
+  put('cmCone', 7.5, 0, 6.2, 0, 1, 0); put('cmCone', 12.0, 0, 5.8, 0, 1, 0);
+}
+
+/* ---- the pictures for the prints, the banners and the bar's ticker ---- */
+function cmPrint(k, w, h) {
+  const [cv, c] = cmCv(w, h), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, serif = (wt, z) => `${wt} ${z}px Georgia,"Times New Roman",serif`;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  const wrap = (t, x, y, mw, lh) => { const ws = t.split(' '); let line = '', yy = y; for (const wd of ws) { if (c.measureText(line + wd).width > mw && line) { c.fillText(line.trim(), x, yy); line = ''; yy += lh; } line += wd + ' '; } c.fillText(line.trim(), x, yy); };
+  if (k === 'genesis') {   // block 0's message, as it sits in the chain: the bytes, and what they say
+    c.fillStyle = '#0b0a0d'; c.fillRect(0, 0, w, h); c.strokeStyle = '#ffc94a'; c.lineWidth = 6; c.strokeRect(16, 16, w - 32, h - 32);
+    c.fillStyle = '#ffc94a'; c.font = mono(800, w * .06); c.fillText('BLOCK 0 · THE GENESIS BLOCK', w / 2, h * .1);
+    c.fillStyle = '#7a6a50'; c.font = mono(600, w * .032); const hex = '5468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73';
+    for (let i = 0; i < 8; i++) c.fillText(hex.slice(i * 20, i * 20 + 20).replace(/(..)/g, '$1 '), w / 2, h * (.2 + i * .045));
+    c.fillStyle = '#f7efe3'; c.font = serif(700, w * .07); wrap('The Times 03/Jan/2009 Chancellor on brink of second bailout for banks', w / 2, h * .66, w * .8, w * .085);
+    c.fillStyle = '#ffd36b'; c.font = mono(600, w * .032); c.fillText('written into the first block, 3 January 2009', w / 2, h * .92);
+  } else if (k === 'paper') {   // the white paper's first page: its title, its author's name, the shape of its text, a chain of blocks
+    c.fillStyle = '#f6f2e8'; c.fillRect(0, 0, w, h); c.fillStyle = '#1a1a1a'; c.font = serif(700, w * .062); wrap('Bitcoin: A Peer-to-Peer Electronic Cash System', w / 2, h * .1, w * .8, w * .075);
+    c.font = serif(400, w * .04); c.fillText('Satoshi Nakamoto', w / 2, h * .25); c.font = serif(700, w * .036); c.fillText('Abstract', w / 2, h * .32);
+    c.fillStyle = '#9a968e'; for (let i = 0; i < 9; i++) c.fillRect(w * .14, h * (.36 + i * .028), w * (i === 8 ? .4 : .72), 3);
+    c.strokeStyle = '#1a1a1a'; c.lineWidth = 3; for (let i = 0; i < 3; i++) { const x = w * (.14 + i * .26); c.strokeRect(x, h * .68, w * .2, h * .14); c.fillStyle = '#9a968e'; c.fillRect(x + 8, h * .7, w * .2 - 16, 3); c.fillRect(x + 8, h * .74, w * .12, 3); if (i < 2) { c.beginPath(); c.moveTo(x + w * .2, h * .75); c.lineTo(x + w * .26, h * .75); c.stroke(); } }
+    c.fillStyle = '#6a665e'; c.font = serif(400, w * .03); c.fillText('31 October 2008', w / 2, h * .9);
+  } else {   // the first transaction: block 170, ten coins sent
+    const g = c.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#1a0f06'); g.addColorStop(1, '#3a1e08'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#ffd36b'; c.font = mono(800, w * .07); c.fillText('BLOCK 170', w / 2, h * .16); c.fillStyle = '#f7efe3'; c.font = mono(700, w * .045); c.fillText('THE FIRST BITCOIN TRANSACTION', w / 2, h * .3);
+    c.strokeStyle = '#f7931a'; c.lineWidth = 8; for (const x of [.22, .78]) { c.beginPath(); c.arc(w * x, h * .58, w * .1, 0, 6.29); c.stroke(); }
+    c.fillStyle = '#f7931a'; c.font = mono(900, w * .1); c.fillText('₿', w * .22, h * .59); c.fillText('₿', w * .78, h * .59);
+    c.beginPath(); c.moveTo(w * .36, h * .58); c.lineTo(w * .6, h * .58); c.stroke(); c.beginPath(); c.moveTo(w * .6, h * .53); c.lineTo(w * .65, h * .58); c.lineTo(w * .6, h * .63); c.fill();
+    c.fillStyle = '#ffd36b'; c.font = mono(800, w * .06); c.fillText('10 BTC', w / 2, h * .5); c.fillStyle = '#cdbca3'; c.font = mono(600, w * .035); c.fillText('12 January 2009', w / 2, h * .85);
+  }
+  return cv;
+}
+function cmBanner(title, col, kind) {
+  const [cv, c] = cmCv(256, 696), w = 256, h = 696; c.fillStyle = '#120a10'; c.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 4) { c.fillStyle = `rgba(255,255,255,${y % 8 ? .015 : .03})`; c.fillRect(0, y, w, 2); }
+  c.strokeStyle = '#c9952e'; c.lineWidth = 8; c.strokeRect(12, 12, w - 24, h - 80); c.fillStyle = '#c9952e'; c.beginPath(); c.moveTo(0, h - 70); c.lineTo(w / 2, h); c.lineTo(w, h - 70); c.lineTo(w, h); c.lineTo(0, h); c.fill(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.moveTo(0, h - 60); c.lineTo(w / 2, h - 2); c.lineTo(w, h - 60); c.lineTo(w, h); c.lineTo(0, h); c.fill(); c.globalCompositeOperation = 'source-over';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  if (kind === 'koi') { for (const [x, y, a] of [[.42, .3, 0], [.58, .42, 3.14]]) { c.save(); c.translate(w * x, h * y); c.rotate(a); c.fillStyle = '#ff6a1a'; c.beginPath(); c.ellipse(0, 0, 26, 62, 0, 0, 6.29); c.fill(); c.fillStyle = '#fff1e0'; c.beginPath(); c.ellipse(4, -20, 12, 18, 0, 0, 6.29); c.fill(); c.fillStyle = '#ff6a1a'; c.beginPath(); c.moveTo(0, 55); c.lineTo(-24, 92); c.lineTo(24, 92); c.fill(); c.restore(); }
+    c.strokeStyle = col; c.lineWidth = 5; c.beginPath(); c.arc(w / 2, h * .36, 100, 0, 6.29); c.stroke(); }
+  else { c.shadowColor = col; c.shadowBlur = 30; c.fillStyle = col; c.font = '900 190px Arial,sans-serif'; c.fillText('₿', w / 2, h * .36); c.shadowBlur = 0; c.fillStyle = 'rgba(39,225,255,.6)'; for (let i = 0; i < 6; i++) c.fillRect(30 + (i * 37) % 160, h * (.24 + i * .04), 40 + i * 9, 3); }
+  c.fillStyle = '#f7efe3'; c.font = '800 34px ui-monospace,Menlo,Consolas,monospace'; title.split(' ').forEach((t, i) => c.fillText(t, w / 2, h * .68 + i * 42));
+  return cv;
+}
+let cmTickCv = null;
+function cmTicker() {
+  const [cv, c] = cmTickCv || (cmTickCv = cmCv(2048, 64)); c.clearRect(0, 0, 2048, 64);
+  const tip = tipH >= 0 ? tipH : pastBlocks[0] ? pastBlocks[0].height : -1, f = futBlocks && futBlocks[0], nx = tip >= 0 ? (Math.floor(tip / 210000) + 1) * 210000 : 0;
+  const items = [tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING', f ? 'NEXT BLOCK ~' + Math.round(f.medianFee || 0) + ' sat/vB' : 'FEES: LIVE SOON', f ? fmt(f.nTx || 0) + ' TX WAITING' : '', tip >= 0 ? 'HALVING IN ' + fmt(nx - tip) + ' BLOCKS' : '', '21,000,000', 'STAY HUMBLE · STACK SATS'].filter(Boolean);
+  const text = items.join('   ·   ') + '   ·   '; c.font = '800 40px ui-monospace,Menlo,Consolas,monospace'; c.textBaseline = 'middle';
+  const tw = c.measureText(text).width; c.shadowColor = '#ff8a1e'; c.shadowBlur = 14; c.fillStyle = '#ffd6a0';
+  for (let x = 0; x < 2048; x += tw) c.fillText(text, x, 33);
+  return cv;
+}
+function cmQuadsMore(R, Q, q) {
+  for (const [k, x, dd, y, w, h, fx, fd] of CM_PRINTS) { const o = Q([x + fd * w / 2 + fx * .012, y - h / 2, dd - fx * w / 2 + fd * .012], [-fd * w, 0, fx * w], [0, h, 0], 0, 1.15, cmTex(cmPrint(k, Math.round(512 * w / Math.max(w, h)), Math.round(512 * h / Math.max(w, h))))); q.push(o); }
+  q.push(Q([-15.8, 8.1, 35.8], [0, 0, 1.4], [0, 3.8, 0], 5, .95, cmTex(cmBanner('THE MEMPOOL', '#ff4fd8', 'bar'))));
+  q.push(Q([15.8, 8.1, 37.2], [0, 0, -1.4], [0, 3.8, 0], 5, .95, cmTex(cmBanner('KOI GARDEN', '#7dff4a', 'koi'))));
+  R.tick = Q([-24.5, 6.95, 22.17], [-17, 0, 0], [0, .45, 0], 6, 1, cmTex(cmTicker())); q.push(R.tick);
+}
+
+// the pints and their glasses, the pour: worked out each moment (yours, your crew's, the empties put down)
+const cmDyn = {beer: cmGrp('cmBeer', []), glass: cmGrp('cmGlass', []), stream: cmGrp('cmStream', [])};
+for (const g of Object.values(cmDyn)) { g.cap = 24; gl.bindBuffer(gl.ARRAY_BUFFER, g.ib); gl.bufferData(gl.ARRAY_BUFFER, g.cap * 44, gl.DYNAMIC_DRAW); g.d = new Float32Array(g.cap * 11); }
+function cmDynSet(g, list) { const n = Math.min(list.length, g.cap); for (let i = 0; i < n; i++) g.d.set(list[i], i * 11); g.n = n; if (n) { gl.bindBuffer(gl.ARRAY_BUFFER, g.ib); gl.bufferSubData(gl.ARRAY_BUFFER, 0, g.d, 0, n * 11); } }
+let LCM = [1e9, -1e9];   // (the stretch of the hall the common room fills: the floor's life stays out of it)
+
+function cmDraw(VP, eye, tn) {
+  const R = room.rooms.find(q => q && q.ready && q.common); if (!R || !R.pg) return;
+  LROOM = [2, 0, 0, 0]; lifeUniforms(VP, eye, tn); gl.uniform1f(lifeP.u.uW, 1); gl.uniform1f(lifeP.u.uGl, 0); cmLU(lifeP, tn, true);
+  const draw = g => { if (!g.n) return; gl.uniform1i(lifeP.u.uT, g.t); gl.uniform1i(lifeP.u.uST, g.t); gl.uniform1f(lifeP.u.uSp, g.sp || 0); gl.bindVertexArray(g.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo[g.mesh].n, g.n); };
+  for (const g of R.pg) if (!g.pass) draw(g);
+  const B = [], G = [], S = [];
+  cmPints(R, B, G, S, tn);
+  cmDynSet(cmDyn.beer, B); cmDynSet(cmDyn.glass, G); cmDynSet(cmDyn.stream, S);
+  draw(cmDyn.beer); draw(cmDyn.stream);
+  // the see-through things last: the tank's water and its waterfall, then glass (the tank's, the pints')
+  gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.depthMask(false);
+  gl.uniform1f(lifeP.u.uGl, 2); for (const g of R.pg) if (g.pass === 2) draw(g);
+  gl.uniform1f(lifeP.u.uGl, 1); for (const g of R.pg) if (g.pass === 1) draw(g); if (cmDyn.glass.n) draw(cmDyn.glass);
+  gl.uniform1f(lifeP.u.uGl, 0); gl.depthMask(true); gl.disable(gl.BLEND);
+  cmLU(lifeP, tn, false); gl.uniform1f(lifeP.u.uSp, 0);
+  LROOM = [0, 0, 0, 0];
+}
+
+/* ---- flat pictures in the room: the big screen, the stained glass, the art, the neon, the cabinets' screens ----
+   md 0 = a picture under its own small light, 1 = glass lit from behind, 2 = neon (added on), 3 = a screen, 4 = coloured light on the floor */
+const cmQP = prog(V + `layout(location=0) in vec2 aU;uniform mat4 uVP;uniform vec3 uO,uX,uY;out vec2 vU;out vec3 vW;void main(){vU=aU;vec3 w=uO+uX*aU.x+uY*aU.y;vW=w;gl_Position=uVP*vec4(w,1.);}`,
+  V + `in vec2 vU;in vec3 vW;uniform sampler2D uTx;uniform int uMd;uniform float uB,uNow;uniform vec3 uE;out vec4 o;
+vec3 tm(vec3 c){c*=1.35;c=c*(1.+c/6.)/(1.+c);return pow(clamp(c,0.,1.),vec3(.4545));}
+vec3 fog(vec3 c){return mix(c,vec3(.022,.013,.01),1.-exp(-length(vW-uE)*.012));}
+void main(){vec2 t=vec2(vU.x,1.-vU.y);vec4 tx=texture(uTx,t);vec3 c=pow(tx.rgb,vec3(2.2));
+if(uMd==0){float l=.3+1.05*exp(-pow((1.-vU.y)*1.5,2.))*(1.-.45*pow(abs(vU.x-.5)*2.,2.));o=vec4(tm(fog(c*l*uB)),.04);return;}
+if(uMd==1){float f=.92+.08*sin(uNow*.35+vU.x*2.+vU.y*3.);o=vec4(tm(fog(c*uB*f)),.3);return;}
+if(uMd==2){o=vec4(tx.rgb*uB*tx.a,tx.a*.85);return;}
+if(uMd==3){float s=.94+.06*sin(vU.y*900.);o=vec4(tm(fog(c*uB*s)),.22);return;}
+if(uMd==5){o=vec4(tm(fog(c*uB*(.7+.45*vU.y))),.02);return;}
+if(uMd==6){vec4 t6=texture(uTx,vec2(fract(vU.x*2.+uNow*.018),1.-vU.y));o=vec4(t6.rgb*uB*t6.a,t6.a*.85);return;}
+vec4 sm=textureLod(uTx,t,6.);float e=smoothstep(0.,.3,min(min(vU.x,1.-vU.x),min(vU.y,1.-vU.y)));o=vec4(pow(sm.rgb,vec3(2.2))*uB*e,0.);}`);
+const cmQB = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cmQB); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]), gl.STATIC_DRAW);
+const cmQV = gl.createVertexArray(); gl.bindVertexArray(cmQV); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0); gl.bindVertexArray(null);
+function cmTex(src, mip = true) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  if (src) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); if (mip) gl.generateMipmap(gl.TEXTURE_2D); }
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([8, 6, 5, 255]));
+  return t;
+}
+const cmCv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; };
+// a picture kept beside this page (or on the portal, when this page is somewhere else): once it has come, it goes up
+function cmImg(src, q) {
+  const im = new Image(); im.crossOrigin = 'anonymous'; let tried = 0;
+  im.onload = () => { q.tex = cmTex(im); };
+  im.onerror = () => { if (!tried++ && !/github\.io$/.test(location.hostname)) im.src = CM_PORTAL + src; };
+  im.src = /github\.io$/.test(location.hostname) || location.protocol === 'file:' ? src : CM_PORTAL + src;
+}
+// stained glass of the cube's own: little panes of coloured glass in dark lead, a picture laid over them
+function cmGlassArt(theme, w, h) {
+  const [cv, c] = cmCv(w, h), rnd = (() => { let q = theme.length * 977 + 13; return () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296; })();
+  const col = (u, v) => {
+    if (theme === 'koi') {   // two koi circling in blue water, ripples of light
+      const k1 = Math.hypot((u - .38) * 1.5, (v - .34) * .8), k2 = Math.hypot((u - .62) * 1.5, (v - .66) * .8);
+      if (k1 < .13 || k2 < .13) return Math.sin(u * 40 + v * 23) > .2 ? '#ff6a1a' : '#fff1e0';
+      if (Math.abs(Math.sin(u * 13 + v * 5 + Math.sin(v * 9))) > .94) return '#9fe8ff';
+      return v < .5 ? (u < .5 ? '#1a4a8a' : '#20589a') : (u < .5 ? '#13606a' : '#1a6a7a');
+    }
+    if (theme === 'sun') {   // a sun rising over leaves, a chain of blocks along the bottom
+      const sx = u - .5, sy = v - .3, r = Math.hypot(sx, sy * 1.2), a = Math.atan2(sy, sx);
+      if (v > .86) return Math.floor(u * 6) % 2 ? '#e8a020' : '#7a3a12';
+      if (r < .13) return '#ffd23f'; if (r < .2) return '#ffb02e';
+      if (v < .62 && Math.abs(Math.sin(a * 8)) > .92 && r < .42) return '#ffe08a';
+      if (v > .62 && Math.abs(Math.sin(u * 9 + v * 6)) > .55) return (u * 7 + v * 5) % 1 > .5 ? '#2c8a3a' : '#5fbe46';
+      return v < .35 ? '#2a6ad8' : v < .62 ? '#41b0d8' : '#1f6a5a';
+    }
+    // a chain of blocks rising through a night of stars
+    const bx = Math.abs(u - .5 - .08 * Math.sin(v * 9)) < .17, by = (v * 5) % 1;
+    if (bx && by > .12 && by < .86) return Math.abs(u - .5 - .08 * Math.sin(v * 9)) < .1 && by > .3 && by < .68 ? '#ffd23f' : '#f7931a';
+    if (bx) return '#9aa3b2';
+    if (rnd() < .04) return '#fff6d0';
+    return v < .5 ? (u < .5 ? '#2a1a6a' : '#3a2a8a') : (u < .5 ? '#5a1a6a' : '#1a2a7a');
+  };
+  const G = 26, cw = w / G, ch = h / Math.round(G * h / w), R = Math.round(G * h / w), P = [];
+  for (let j = 0; j <= R; j++) for (let i = 0; i <= G; i++) { const e = i === 0 || i === G || j === 0 || j === R; P.push([i * cw + (e ? 0 : (rnd() - .5) * cw * .7), j * ch + (e ? 0 : (rnd() - .5) * ch * .7)]); }
+  const at = (i, j) => P[j * (G + 1) + i];
+  c.fillStyle = '#120c08'; c.fillRect(0, 0, w, h);
+  for (let j = 0; j < R; j++) for (let i = 0; i < G; i++) {
+    const q = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)], mx = (q[0][0] + q[2][0]) / 2 / w, my = (q[0][1] + q[2][1]) / 2 / h;
+    c.beginPath(); q.forEach((p, k) => k ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath();
+    c.fillStyle = col(mx, my); c.fill(); c.globalAlpha = .18 + rnd() * .2; c.fillStyle = rnd() < .5 ? '#ffffff' : '#000000'; c.fill(); c.globalAlpha = 1;
+    c.strokeStyle = '#140d08'; c.lineWidth = 3.2; c.stroke();
+  }
+  c.strokeStyle = '#2a1d10'; c.lineWidth = 14; c.strokeRect(7, 7, w - 14, h - 14);
+  return cv;
+}
+// neon writing: glowing tubes on nothing
+function cmNeon(text, colour, w, h) {
+  const [cv, c] = cmCv(w, h); let z = h * .62; c.font = `800 ${z}px ui-monospace,Menlo,Consolas,monospace`; while (c.measureText(text).width > w * .92) { z -= 2; c.font = `800 ${z}px ui-monospace,Menlo,Consolas,monospace`; }
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+  for (const [b, lw, a] of [[28, z * .14, .55], [12, z * .09, .8], [0, z * .045, 1]]) { c.shadowColor = colour; c.shadowBlur = b; c.strokeStyle = b ? colour : '#fff7ee'; c.globalAlpha = a; c.lineWidth = lw; c.strokeText(text, w / 2, h / 2); }
+  return cv;
+}
+// a card for a cabinet's screen or a frame, before the inscription itself comes alive on it
+function cmCard(name, kind) {
+  const [cv, c] = cmCv(512, 384), g = c.createLinearGradient(0, 0, 0, 384); g.addColorStop(0, '#120a1e'); g.addColorStop(1, '#04020a'); c.fillStyle = g; c.fillRect(0, 0, 512, 384);
+  c.strokeStyle = kind === 'game' ? '#27e1ff' : '#ffc94a'; c.lineWidth = 4; for (let y = 0; y < 384; y += 6) { c.globalAlpha = .05; c.beginPath(); c.moveTo(0, y); c.lineTo(512, y); c.stroke(); } c.globalAlpha = 1;
+  c.strokeRect(10, 10, 492, 364); c.textAlign = 'center'; c.textBaseline = 'middle';
+  let z = 64; c.font = `800 ${z}px ui-monospace,Menlo,Consolas,monospace`; while (c.measureText(name.toUpperCase()).width > 460) { z -= 2; c.font = `800 ${z}px ui-monospace,Menlo,Consolas,monospace`; }
+  c.shadowColor = kind === 'game' ? '#27e1ff' : '#ffc94a'; c.shadowBlur = 18; c.fillStyle = '#fff7ee'; c.fillText(name.toUpperCase(), 256, 170);
+  c.shadowBlur = 0; c.font = '600 22px ui-monospace,Menlo,Consolas,monospace'; c.fillStyle = kind === 'game' ? '#7ff0ff' : '#ffd36b'; c.fillText(kind === 'game' ? 'INSERT SATS · CLICK TO PLAY' : 'AN INSCRIPTION · CLICK TO SEE', 256, 262);
+  return cv;
+}
+// the big screen when nothing is playing: the chain, live — the next blocks waiting, the last ones mined, how long since, when the next halving comes
+const cmBoardCv = cmCv(1024, 576);
+function cmBoard() {
+  const [cv, c] = cmBoardCv, W = 1024, H = 576, mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`;
+  c.fillStyle = '#05060c'; c.fillRect(0, 0, W, H);
+  c.strokeStyle = 'rgba(76,201,240,.08)'; c.lineWidth = 1; for (let x = 0; x < W; x += 32) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); } for (let y = 0; y < H; y += 32) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+  c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = '#4cc9f0'; c.font = mono(800, 30); c.fillText('LIVE FROM THE BLOCKCHAIN', 40, 46);
+  const tip = tipH >= 0 ? tipH : pastBlocks[0] ? pastBlocks[0].height : -1;
+  c.textAlign = 'right'; c.fillStyle = '#ffb04a'; c.font = mono(800, 30); c.fillText(tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING…', W - 40, 46);
+  const ago = s => s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
+  const cube = (x, y, s, fill, edge) => { c.fillStyle = fill; c.fillRect(x, y, s, s); c.strokeStyle = edge; c.lineWidth = 3; c.strokeRect(x + 1.5, y + 1.5, s - 3, s - 3); };
+  c.textAlign = 'left'; c.font = mono(700, 20); c.fillStyle = '#9fe8ff'; c.fillText('WAITING TO BE MINED', 40, 104); c.fillStyle = '#ffd36b'; c.fillText('JUST MINED', 540, 104);
+  (futBlocks || []).slice(0, 3).forEach((b, i) => {
+    const y = 130 + i * 112; cube(40, y, 96, '#2a1606', '#f7931a');
+    c.fillStyle = '#ffd36b'; c.font = mono(800, 22); c.textAlign = 'center'; c.fillText(i ? '+' + (i + 1) : 'NEXT', 88, y + 48); c.textAlign = 'left';
+    c.fillStyle = '#f7efe3'; c.font = mono(700, 22); c.fillText('~' + Math.round(b.medianFee || 0) + ' sat/vB', 156, y + 24);
+    c.fillStyle = '#cdbca3'; c.font = mono(600, 17); c.fillText(fmt(b.nTx || 0) + ' transactions · ' + ((b.blockVSize || 0) / 1e6).toFixed(2) + ' MvB', 156, y + 54);
+    if (b.feeRange && b.feeRange.length) c.fillText(r1(b.feeRange[0]) + ' – ' + r1(b.feeRange[b.feeRange.length - 1]) + ' sat/vB', 156, y + 80);
+  });
+  if (!futBlocks || !futBlocks.length) { c.fillStyle = '#7a6853'; c.font = mono(600, 18); c.fillText("mempool.space's live feed isn't reachable here", 40, 150); }
+  pastBlocks.slice(0, 4).forEach((b, i) => {
+    const y = 130 + i * 84, x = 540, e = b.extras || {}; cube(x, y, 70, '#120d06', '#ffc94a');
+    c.fillStyle = '#ffd36b'; c.font = mono(800, 15); c.textAlign = 'center'; c.fillText(fmt(b.height), x + 35, y + 35); c.textAlign = 'left';
+    c.fillStyle = '#f7efe3'; c.font = mono(700, 19); c.fillText(fmt(b.tx_count || 0) + ' tx · ' + ago(Date.now() / 1000 - b.timestamp) + ' ago', x + 88, y + 20);
+    c.fillStyle = '#cdbca3'; c.font = mono(600, 16); c.fillText((e.pool && e.pool.name ? e.pool.name : 'unknown pool') + (e.medianFee ? ' · ~' + Math.round(e.medianFee) + ' sat/vB' : ''), x + 88, y + 48);
+  });
+  if (tip >= 0) {
+    const nx = (Math.floor(tip / 210000) + 1) * 210000, left = nx - tip;
+    c.fillStyle = 'rgba(255,201,74,.1)'; c.fillRect(40, 486, W - 80, 58); c.strokeStyle = '#ffc94a'; c.lineWidth = 2; c.strokeRect(40, 486, W - 80, 58);
+    c.fillStyle = '#ffd36b'; c.font = mono(800, 22); c.textAlign = 'left'; c.fillText('NEXT HALVING: BLOCK ' + fmt(nx), 60, 515);
+    c.textAlign = 'right'; c.fillText(fmt(left) + ' BLOCKS TO GO' + (pastBlocks[0] ? ' · LAST BLOCK ' + ago(Date.now() / 1000 - pastBlocks[0].timestamp) + ' AGO' : ''), W - 60, 515);
+  }
+  return cv;
+}
+
+
+// the warehouse's brick wall, sprayed: big letters, tags, drips (Block Paint is through the shutter)
+function cmGraffiti(w, h) {
+  const [cv, c] = cmCv(w, h), rnd = (() => { let q = 911; return () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296; })();
+  c.fillStyle = '#3a1c16'; c.fillRect(0, 0, w, h);
+  const bw = 46, bh = 20;
+  for (let r = 0; r * bh < h; r++) for (let k = -1; k * bw < w; k++) { const x = k * bw + (r % 2 ? bw / 2 : 0), y = r * bh, t = rnd();
+    c.fillStyle = `rgb(${(110 + t * 40) | 0},${(46 + t * 18) | 0},${(34 + t * 12) | 0})`; c.fillRect(x + 2, y + 2, bw - 4, bh - 4); c.fillStyle = 'rgba(0,0,0,.18)'; c.fillRect(x + 2, y + bh - 5, bw - 4, 3); }
+  const spray = (x, y, r, col, n) => { for (let i = 0; i < n; i++) { const a = rnd() * 6.28, d = Math.pow(rnd(), 2) * r; c.fillStyle = col; c.globalAlpha = .08 + rnd() * .1; c.fillRect(x + Math.cos(a) * d, y + Math.sin(a) * d, 2, 2); } c.globalAlpha = 1; };
+  const drip = (x, y, col) => { c.fillStyle = col; const L = 20 + rnd() * 60; c.fillRect(x, y, 3, L); c.beginPath(); c.arc(x + 1.5, y + L, 3.2, 0, 6.29); c.fill(); };
+  // the big piece: BLOCK PAINT in fat letters, pink to cyan, a black outline, a white shine
+  c.save(); c.translate(w * .5, h * .42); c.rotate(-.05); c.font = `900 ${h * .3}px Impact,"Arial Black",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+  const g = c.createLinearGradient(-w * .35, 0, w * .35, 0); g.addColorStop(0, '#ff2fb4'); g.addColorStop(.5, '#ffd23f'); g.addColorStop(1, '#27e1ff');
+  c.strokeStyle = '#0a0a0c'; c.lineWidth = h * .05; c.strokeText('BLOCK PAINT', 0, 0); c.fillStyle = g; c.fillText('BLOCK PAINT', 0, 0);
+  c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 3; c.strokeText('BLOCK PAINT', -3, -4); c.restore();
+  for (let i = 0; i < 9; i++) drip(w * (.18 + rnd() * .64), h * .55, ['#ff2fb4', '#ffd23f', '#27e1ff'][i % 3]);
+  // tags and smaller pieces
+  c.font = `italic 800 ${h * .1}px "Brush Script MT","Segoe Script",cursive`; c.fillStyle = '#7dff4a'; c.fillText('gm', w * .1, h * .22);
+  c.font = `900 ${h * .085}px Impact,sans-serif`; c.fillStyle = '#ffffff'; c.strokeStyle = '#ff2fb4'; c.lineWidth = 4; c.strokeText('WAGMI', w * .83, h * .82); c.fillText('WAGMI', w * .83, h * .82);
+  c.font = `800 ${h * .06}px ui-monospace,Menlo,Consolas,monospace`; c.fillStyle = '#ffd23f'; c.fillText('OFF-CHAIN · ON THE PORTAL', w * .38, h * .8);
+  // a sprayed coin, a train stencil
+  c.save(); c.translate(w * .1, h * .72); c.strokeStyle = '#f7931a'; c.lineWidth = 9; c.beginPath(); c.arc(0, 0, h * .12, 0, 6.29); c.stroke(); c.font = `900 ${h * .16}px Arial,sans-serif`; c.fillStyle = '#f7931a'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('₿', 0, 4); c.restore();
+  c.fillStyle = 'rgba(10,10,12,.85)'; const tx = w * .58, ty = h * .9;
+  c.fillRect(tx, ty - 40, 120, 34); c.fillRect(tx + 125, ty - 32, 90, 26); c.fillRect(tx + 220, ty - 32, 90, 26); for (const k of [0, 1, 2, 3, 4, 5]) { c.beginPath(); c.arc(tx + 15 + k * 55, ty - 2, 7, 0, 6.29); c.fill(); }
+  for (let i = 0; i < 14; i++) spray(rnd() * w, rnd() * h, 30 + rnd() * 40, ['#ff2fb4', '#27e1ff', '#ffd23f', '#7dff4a'][i % 4], 260);
+  return cv;
+}
+// the shutter, stencilled: what is behind it
+function cmShutter(w, h) {
+  const [cv, c] = cmCv(w, h); for (let y = 0; y < h; y += 18) { c.fillStyle = y % 36 ? '#6d727b' : '#7a7f88'; c.fillRect(0, y, w, 16); c.fillStyle = '#4a4e55'; c.fillRect(0, y + 16, w, 2); }
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#ffd23f'; c.font = `900 ${h * .17}px Impact,"Arial Black",sans-serif`; c.fillText('BLOCK PAINT', w / 2, h * .32);
+  c.fillStyle = '#ffffff'; c.font = `800 ${h * .085}px ui-monospace,Menlo,Consolas,monospace`; c.fillText('OPENING SOON', w / 2, h * .55);
+  c.fillStyle = '#27e1ff'; c.font = `700 ${h * .06}px ui-monospace,Menlo,Consolas,monospace`; c.fillText('the off-chain version, on the portal', w / 2, h * .72);
+  return cv;
+}
+// the rooms' flat pictures, in the world: from a corner (layout x, height, depth) along two edges
+function cmQuads(R) {
+  const V3 = (x, y, dd) => { const [wx, wz] = cmW(R, x, dd); return [wx, y, R.z0 + wz]; }, D3 = (x, y, dd) => R.door === 'back' ? [x, y, -dd] : [-x, y, dd];
+  const Q = (o, u, v, md, b, tex) => ({o: V3(...o), u: D3(...u), v: D3(...v), md, b, tex});
+  const q = R.q = [], S = CM.SCR;
+  R.scr = Q([-S.w / 2, S.y0, S.d], [S.w, 0, 0], [0, S.h, 0], 3, 1.15, cmTex(cmBoard())); q.push(R.scr);
+  // your Atlas window high on the hall's west wall over the stairs, its colours thrown on the walk below; stained glass of the cube's own in the other windows
+  const w1 = Q([-15.8, 5.7, 23.6], [0, 0, 4.8], [0, 6.4, 0], 1, 1.3, null); cmImg(CM_WIN[0].src, w1); q.push(w1); R.win = w1;
+  R.pool = Q([-13.15, .935, 23.6], [0, 0, 4.8], [3.9, 0, 0], 4, .4, null); q.push(R.pool);
+  q.push(Q([15.8, 5.95, 27.65], [0, 0, -3.3], [0, 5.7, 0], 1, 1.15, cmTex(cmGlassArt('sun', 384, 664))));
+  q.push(Q([-15.8, 5.4, 42.55], [0, 0, 2.9], [0, 6.0, 0], 1, 1.1, cmTex(cmGlassArt('chain', 384, 794))));
+  q.push(Q([15.8, 5.4, 45.45], [0, 0, -2.9], [0, 6.0, 0], 1, 1.1, cmTex(cmGlassArt('koi', 384, 794))));
+  // your bear and bull over the fireplace
+  const art = Q([-17.18, 2.0, 6.55], [0, 0, 2.9], [0, 2.61, 0], 0, 1.15, null); cmImg(CM_ART[0].src, art); q.push(art);
+  // neon in the bar
+  q.push(Q([-31, 5.3, 22.17], [-5, 0, 0], [0, 1.25, 0], 2, 1, cmTex(cmNeon('HODL', '#ff4fd8', 1024, 256))));
+  q.push(Q([-38, 4.25, 47.83], [12, 0, 0], [0, 1.0, 0], 2, 1, cmTex(cmNeon("DON'T TRUST · VERIFY", '#27e1ff', 1024, 86))));
+  q.push(Q([-24.17, 4.1, 30.2], [0, 0, -2.2], [0, 1.4, 0], 2, 1, cmTex(cmNeon('GM', '#7dff4a', 256, 160))));
+  q.push(Q([-41.15, 7.35, 30.5], [0, 0, 9], [0, .8, 0], 2, 1, cmTex(cmNeon('21,000,000', '#f7931a', 1024, 92))));
+  // the way to the warehouse: a sprayed wall, the stencilled shutter
+  q.push(Q([14.75, .05, 5.17], [-10.5, 0, 0], [0, 4.85, 0], 5, .62, cmTex(cmGraffiti(1024, 474))));
+  q.push(Q([14.58, .15, 9.9], [0, 0, -3.8], [0, 3.95, 0], 5, .7, cmTex(cmShutter(512, 532))));
+  cmQuadsMore(R, Q, q);
+  // the cabinets' screens and the inscriptions' frames: a card, and the inscription alive over it when you come near
+  R.live = [];
+  for (const g of CM_GAMES) {
+    const [name, url, x, dd, fx, fd, f0] = g, y0 = f0 + 1.18, rt = [-fd, fx];   // (looking at its front: rt is your right)
+    const sx = x + fx * .41 - rt[0] * .36, sd = dd + fd * .41 - rt[1] * .36, o = Q([sx, y0, sd], [rt[0] * .72, 0, rt[1] * .72], [0, .54, 0], 3, 1, cmTex(cmCard(name, 'game')));
+    q.push(o); R.live.push({name, url, q: o, kind: 'game', at: V3(x + fx * .8, y0, dd + fd * .8)});
+  }
+  for (const a of CM_INSART) {
+    const [name, url, x, dd, y, s, fx, fd] = a, o = Q([x + fd * s / 2, y - s / 2, dd - fx * s / 2], [-fd * s, 0, fx * s], [0, s, 0], 0, 1.15, cmTex(cmCard(name, 'art')));
+    q.push(o); R.live.push({name, url, q: o, kind: 'art', at: V3(x + fx * 2.2, y, dd + fd * 2.2)});
+  }
+}
+function cmQDraw(VP, eye, tn) {
+  const R = room.rooms.find(q => q && q.ready && q.common); if (!R || !R.q) return;
+  gl.useProgram(cmQP.p); gl.uniformMatrix4fv(cmQP.u.uVP, false, VP); gl.uniform3fv(cmQP.u.uE, eye); gl.uniform1f(cmQP.u.uNow, tn); gl.uniform1i(cmQP.u.uTx, 5);
+  gl.bindVertexArray(cmQV); gl.activeTexture(gl.TEXTURE5);
+  for (const pass of [0, 1]) for (const q of R.q) {
+    const add = q.md === 2 || q.md === 4 || q.md === 6; if ((pass === 1) !== add) continue;
+    const tex = q === R.pool ? R.win.tex : q.tex; if (!tex) continue;
+    if (pass) { gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); }
+    gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(cmQP.u.uMd, q.md); gl.uniform1f(cmQP.u.uB, q === R.scr && cm.media.k !== 'live' ? .02 : q.b);
+    gl.uniform3fv(cmQP.u.uO, q.o); gl.uniform3fv(cmQP.u.uX, q.u); gl.uniform3fv(cmQP.u.uY, q.v); gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (pass) { gl.depthMask(true); gl.disable(gl.BLEND); }
+  }
+  gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(null);
+  if (R === room.at && R.tick && tn - (cm.tickAt || 0) > 20) { cm.tickAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.tick.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmTicker()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
+  // the live board, redrawn every couple of seconds while you are in the rooms
+  if (R === room.at && cm.media.k === 'live' && tn - (cm.boardAt || 0) > 2) { cm.boardAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.scr.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmBoard()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
+}
+
+// laying a page over a flat picture in the room, exactly over its four corners (as Blockipelago's TV does)
+function cmLay(el, q, VP, W, H) {
+  const P = [[0, 1], [1, 1], [1, 0], [0, 0]].map(([a, b]) => { const p = [0, 1, 2].map(k => q.o[k] + q.u[k] * a + q.v[k] * b);
+    const cx = VP[0] * p[0] + VP[4] * p[1] + VP[8] * p[2] + VP[12], cy = VP[1] * p[0] + VP[5] * p[1] + VP[9] * p[2] + VP[13], w = VP[3] * p[0] + VP[7] * p[1] + VP[11] * p[2] + VP[15];
+    return w > .05 ? [(cx / w * .5 + .5) * innerWidth, (1 - (cy / w * .5 + .5)) * innerHeight] : null; });
+  if (P.some(p => !p) || (P[1][0] - P[0][0]) * (P[3][1] - P[0][1]) - (P[3][0] - P[0][0]) * (P[1][1] - P[0][1]) <= 300) { el.style.visibility = 'hidden'; return; }
+  const [[n, a], [s, l], [r, i], [c, h]] = P, d = s - r, f = c - r, p = l - i, u = h - i, m = n - s + r - c, M = a - l + i - h, b = d * u - f * p || 1e-9, g = (m * u - f * M) / b, w = (d * M - m * p) / b;
+  const y = s - n + g * s, k = c - n + w * c, O = l - a + g * l, v = h - a + w * h;
+  el.style.transform = 'matrix3d(' + [y / W, O / W, 0, g / W, k / H, v / H, 0, w / H, 0, 0, 1, 0, n, a, 0, 1].map(x => +x.toFixed(6)).join(',') + ')'; el.style.visibility = 'visible';
+}
+
+
+
+
+/* ---- being in the rooms: walking (the stairs, the balcony, the steps between rooms), what you can do where you stand ---- */
+const cm = {media: {k: 'live'}, music: {k: 'off'}, pint: null, pour: null, empties: [], act: null, sc: null, scKey: '', pv: null, pvUrl: '', boardAt: 0};
+const cmIn = (L, x, d) => L.some(q => x >= q[0] && x <= q[1] && d >= q[2] && d <= q[3]);
+const cmSnap = (L, x, d) => { let b = [x, d], bd = 1e9; for (const q of L) { const cx = cmClamp(x, q[0], q[1]), cd = cmClamp(d, q[2], q[3]), e = Math.hypot(cx - x, cd - d); if (e < bd) { bd = e; b = [cx, cd]; } } return b; };
+function cmMove(C, p, nx, nz, dt) {
+  const [ox, od] = cmL(C, p.x, p.z); let [x, d] = cmL(C, nx, nz); const r = .3;
+  if (p.seatOut) { [x, d] = p.seatOut; p.seatOut = null; }   // standing up from a seat: you step out of it
+  const N = rmNear(C, C.door), open = C[C.door].o > .85 && N && N.ready, xd = DOOR / 2 - .3;
+  const push = b => {
+    const cx = cmClamp(x, b[0], b[1]), cd = cmClamp(d, b[2], b[3]), dx = x - cx, dd = d - cd, dist = Math.hypot(dx, dd);
+    if (dist >= r) return;
+    if (dist > 1e-6) { x = cx + dx / dist * r; d = cd + dd / dist * r; return; }
+    const L = [x - b[0], b[1] - x, d - b[2], b[3] - d], k = L.indexOf(Math.min(...L));
+    if (k === 0) x = b[0] - r; else if (k === 1) x = b[1] + r; else if (k === 2) d = b[2] - r; else d = b[3] + r;
+  };
+  let lv = p.lv ? 1 : 0;
+  if (!lv && d < od && d < CM.SD0 + .34 && d > CM.SD0 - 1 && Math.abs(x) > CM.SX0 + .25 && Math.abs(x) < 16) { lv = 1; d = Math.min(d, CM.SD0 - .02); }   // on to the stairs, at their foot
+  else if (lv && d > od && d >= CM.SD0 - .06) { lv = 0; d = CM.SD0 + .31; }   // off them at the bottom
+  const W = lv ? CM_UP : CM_WALK;
+  if (!lv && d < .3 && open && Math.abs(x) < xd) x = cmClamp(x, -xd, xd);   // out through the open door
+  else {
+    const was = cmIn(W, ox, od);   // (somewhere you can't be, after a jump: on to the nearest floor)
+    if (!was) [x, d] = cmSnap(W, x, d);
+    else if (!cmIn(W, x, d)) { if (cmIn(W, x, od)) d = od; else if (cmIn(W, ox, d)) x = ox; else { x = ox; d = od; } }
+    for (const b of lv ? CM_UPB : CM_BLOCK) push(b);
+    if (!cmIn(W, x, d)) { if (was) { x = ox; d = od; } else [x, d] = cmSnap(W, x, d); }
+  }
+  p.lv = lv;
+  const [wx, wz] = cmW(C, x, d); p.x = wx; p.z = C.z0 + wz;
+  const ty = cmH(x, d, lv); p.y = (p.y || 0) + (ty - (p.y || 0)) * Math.min(1, dt * 12);
+  if (d < -WT / 2 && open) { p.lv = 0; p.y = 0; rmCross(C.door === 'back' ? -1 : 1); }
+}
+// where you stand in the rooms' own layout, and on which step of the Forum
+const cmHere = () => { const C = room && room.at; if (!cmOn(C) || !C.ready || !C.scr) return null; const [x, d] = cmL(C, room.p.x, room.p.z); return {C, x, d, lv: room.p.lv ? 1 : 0, step: room.p.lv ? 0 : cmLevel(x, d)}; };
+// a ray from your eye hitting a flat picture: how far along it
+function cmRayQ(ray, q) {
+  const n = [q.u[1] * q.v[2] - q.u[2] * q.v[1], q.u[2] * q.v[0] - q.u[0] * q.v[2], q.u[0] * q.v[1] - q.u[1] * q.v[0]], dn = n[0] * ray.d[0] + n[1] * ray.d[1] + n[2] * ray.d[2]; if (Math.abs(dn) < 1e-6) return -1;
+  const w = [q.o[0] - ray.e[0], q.o[1] - ray.e[1], q.o[2] - ray.e[2]], t = (n[0] * w[0] + n[1] * w[1] + n[2] * w[2]) / dn; if (t <= 0) return -1;
+  const p = [ray.e[0] + ray.d[0] * t - q.o[0], ray.e[1] + ray.d[1] * t - q.o[1], ray.e[2] + ray.d[2] * t - q.o[2]];
+  const uu = q.u[0] * q.u[0] + q.u[1] * q.u[1] + q.u[2] * q.u[2], vv = q.v[0] * q.v[0] + q.v[1] * q.v[1] + q.v[2] * q.v[2];
+  const a = (p[0] * q.u[0] + p[1] * q.u[1] + p[2] * q.u[2]) / uu, b = (p[0] * q.v[0] + p[1] * q.v[1] + p[2] * q.v[2]) / vv;
+  return a >= 0 && a <= 1 && b >= 0 && b <= 1 ? t : -1;
+}
+// what there is to do: what you are looking at first (the screen, a cabinet, a frame, the taps, the music box), then where you stand
+function cmAct(sx, sy) {
+  const H = cmHere(); if (!H) return null;
+  const p = room.p, ray = rmRay(sx, sy), C = H.C;
+  if (p.sit) return {a: 'stand', label: cm.pint ? 'sip your pint · move to stand up' : 'stand up'};
+  if (cm.pour) return null;
+  if (ray) {
+    let best = null, bt = 1e9;
+    const consider = (t, o, max) => { if (t > 0 && t < max && t < bt) { bt = t; best = o; } };
+    consider(cmRayQ(ray, C.scr), {a: 'screen', label: 'play something on the big screen'}, 42);
+    for (const L of C.live) consider(cmRayQ(ray, L.q), {a: 'play', L, label: (L.kind === 'game' ? 'play ' : 'see ') + L.name}, 6);
+    const tb = (bx, by, bd, hx, hy, hd, o, max) => { const [wx, wz] = cmW(C, bx, bd); consider(rmHit([wx, by, C.z0 + wz], [hx, hy, hd], ray), o, max); };
+    if (!cm.pint) tb(CM.TAP[0], 3.26, CM.TAP[1], .4, .35, .4, {a: 'pour', label: 'pour a pint'}, 4);
+    tb(CM.JB[0], .55, CM.JB[1], .8, 1.0, .6, {a: 'music', label: 'choose the music'}, 6);
+    if (best) return best;
+  }
+  if (!cm.pint && !H.lv && Math.hypot(H.x - (CM.TAP[0] + 1.6), H.d - CM.TAP[1]) < 1.4) return {a: 'pour', label: 'pour a pint'};
+  if (!H.lv && Math.hypot(H.x - CM.JB[0], H.d - (CM.JB[1] - 1.3)) < 1.4) return {a: 'music', label: 'choose the music'};
+  let seat = null, sd = 9;
+  for (const s of CM_SEATS) { const e = Math.hypot(H.x - s[0], H.d - s[1]); if (e < (s[8] || 1.25) && e < sd && Math.abs((p.y || 0) - s[2]) < .5) { sd = e; seat = s; } }
+  if (seat) return {a: 'seat', s: seat, label: 'sit down'};
+  if (!H.lv && H.step >= 1 && H.step <= 3) return {a: 'sit', label: 'sit on the step'};
+  if (cm.pint) return {a: 'sip', label: 'sip your pint'};
+  return null;
+}
+function cmDo(A) {
+  if (!A || !room) return;
+  const p = room.p;
+  if (A.a === 'stand') { if (cm.pint) { cmSip(); return; } p.sit = false; return; }
+  if (A.a === 'sit') { p.sit = true; p.vx = p.vz = 0; const H = cmHere(); if (H) { const a = Math.atan2(-H.x, -(H.d - CM.PD)); p.yaw = -a + cmYaw(H.C); } return; }   // (sitting down you face the middle of the Forum)
+  if (A.a === 'seat') {   // on a sofa, a stool, a bench, in a booth: you sit facing the way it faces
+    const H = cmHere(); if (!H) return; const s = A.s, [wx, wz] = cmW(H.C, s[0], s[1]), f = H.C.door === 'back' ? [s[3], -s[4]] : [-s[3], s[4]];
+    p.x = wx; p.z = H.C.z0 + wz; p.y = s[2] + s[5]; p.lv = 0; p.sit = true; p.vx = p.vz = 0; p.yaw = Math.atan2(-f[0], -f[1]); p.pitch = Math.min(p.pitch, .1);
+    p.seatOut = s.length > 6 ? [s[6], s[7]] : [s[0] + s[3] * .8, s[1] + s[4] * .8]; return;
+  }
+  if (A.a === 'sip') { cmSip(); return; }
+  if (A.a === 'pour') { cm.pour = {t0: performance.now()}; cmNoise(1.6, 900, .05); setTimeout(() => { cm.pour = null; cm.pint = {fill: 1, sipT: 0}; crew.last = ''; }, 1800); return; }
+  if (A.a === 'screen') { cmAsk('screen'); return; }
+  if (A.a === 'music') { cmAsk('music'); return; }
+  if (A.a === 'play') { cmPlay(A.L); return; }
+}
+function cmSip() {
+  const P = cm.pint; if (!P || P.sipT && performance.now() - P.sipT < 950) return;
+  P.sipT = performance.now(); cmNoise(.25, 1400, .03);
+  setTimeout(() => {
+    P.fill = Math.max(0, P.fill - .17);
+    if (P.fill <= .02 && cm.pint === P) {   // finished: the empty glass is put down, on the bar if you are at it, else at your feet
+      cm.pint = null; crew.last = '';
+      const H = cmHere(), p = room && room.p; if (!H || !p) return;
+      const f = [-Math.sin(p.yaw), -Math.cos(p.yaw)], atBar = !H.lv && H.x < -37.2 && H.x > -39 && H.d > 25.8 && H.d < 44.2;
+      let x, y, z;
+      if (atBar) { const [wx, wz] = cmW(H.C, -39.35, H.d); x = wx; y = 2.96; z = H.C.z0 + wz; }
+      else { x = p.x + f[0] * .45; z = p.z + f[1] * .45; const [lx, ld] = cmL(H.C, x, z); y = cmH(lx, ld, H.lv); }
+      cm.empties.push([x, y, z, Math.random() * 6]); if (cm.empties.length > 14) cm.empties.shift();
+    }
+  }, 600);
+}
+// the glasses to draw this moment: the one being poured, the one in your hand, your crew's, the empties
+function cmPints(R, B, G, S, tn) {
+  const add = (x, y, z, yaw, fill, tilt) => { B.push([x, y, z, yaw, 1, 0, fill, tilt, 1, 1, 1]); G.push([x, y, z, yaw, 1, 0, fill, tilt, 1, 1, 1]); };
+  if (cm.pour && cmOn(R)) {
+    const k = Math.min(1, (performance.now() - cm.pour.t0) / 1600), [wx, wz] = cmW(R, CM.TAP[0] + .06, CM.TAP[1]), x = wx, z = R.z0 + wz;
+    add(x, 2.985, z, 0, Math.max(.02, k), 0);
+    if (k < 1) S.push([x, 3.31, z, 0, 1, 0, 1, 0, 1, 1, 1]);
+  }
+  if (cm.pint && room.view) {
+    const v = room.view, e = v.eye, f = v.dir, yaw = room.p.yaw, rt = [Math.cos(yaw), 0, -Math.sin(yaw)], up = [rt[1] * f[2] - rt[2] * f[1], rt[2] * f[0] - rt[0] * f[2], rt[0] * f[1] - rt[1] * f[0]];
+    const st = cm.pint.sipT ? (performance.now() - cm.pint.sipT) / 950 : 1, k = st < 1 ? Math.sin(Math.PI * Math.min(1, st)) : 0, bob = Math.sin((room.p.ph || 0) * 2) * .01;
+    const a = [.2, -.25 + bob, .46], b = [.02, -.1, .24], m = a.map((q, i) => q + (b[i] - q) * k);
+    add(e[0] + rt[0] * m[0] + up[0] * m[1] + f[0] * m[2], e[1] + rt[1] * m[0] + up[1] * m[1] + f[1] * m[2] - .1, e[2] + rt[2] * m[0] + up[2] * m[1] + f[2] * m[2], yaw, cm.pint.fill, .15 + 1.15 * k);
+  }
+  for (const M of crew.mates.values()) if (M.shown && M.R.pintAt) add(M.R.pintAt[0], M.R.pintAt[1] - .02, M.R.pintAt[2], M.R.pintYaw || 0, .7, 0);
+  for (const e of cm.empties) G.push([e[0], e[1], e[2], e[3], 1, 0, 0, 0, 1, 1, 1]);
+}
+// little sounds (only with the cube's sound on): a pour, a sip
+function cmNoise(dur, f, vol) {
+  if (!sndOn) return; const a = audio(); if (!a) return;
+  const n = Math.floor(a.sampleRate * dur), b = a.createBuffer(1, n, a.sampleRate), q = b.getChannelData(0); for (let i = 0; i < n; i++) q[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const s = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain(); s.buffer = b; fl.type = 'bandpass'; fl.frequency.value = f; g.gain.value = vol; s.connect(fl); fl.connect(g); g.connect(a.destination); s.start();
+}
+
+/* ---- the big screen and the music box: what is on, shared with your crew (and set again for whoever joins later) ---- */
+const CM_CONTENT = /(^|\.)ordinals\.com$/.test(location.hostname) ? '/content/' : 'https://ordinals.com/content/';
+const cmYT = s => { s = (s || '').trim(); const m = s.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/); return m ? m[1] : /^[A-Za-z0-9_-]{11}$/.test(s) ? s : null; };
+const cmIns = s => { s = (s || '').trim().toLowerCase(); const m = s.match(/([0-9a-f]{64}i\d+)/); return m ? m[1] : null; };
+function cmShare(ev) { if (crew.on) toPage({type: 'event', ev: Object.assign({list: 'cm'}, ev)}); }
+function cmGot(ev) {   // from your crew (or from before you joined)
+  if (!ev || ev.list !== 'cm') return;
+  if (ev.k === 'screen' && (ev.m === 'live' || (ev.m === 'yt' && /^[A-Za-z0-9_-]{11}$/.test(ev.v)) || (ev.m === 'ins' && /^[0-9a-f]{64}i\d+$/.test(ev.v)))) { cm.media = {k: ev.m, v: ev.v, t0: +ev.t0 || Date.now()}; cmScreen(); }
+  if (ev.k === 'music' && (ev.m === 'off' || (ev.m === 'tune' && CM_TUNES[ev.v | 0]) || (ev.m === 'ins' && /^[0-9a-f]{64}i\d+$/.test(ev.v)))) { cm.music = {k: ev.m, v: ev.m === 'tune' ? ev.v | 0 : ev.v, t0: +ev.t0 || Date.now()}; cmMusic(); }
+}
+// the page laid over the screen: YouTube (from the time it was started, so everyone is at the same moment), or an inscription
+function cmScreen() {
+  const m = cm.media, here = room && cmOn(room.at);
+  if (!here || m.k === 'live') { if (cm.sc) { cm.sc.remove(); cm.sc = null; } cm.scKey = ''; return; }
+  const key = m.k + m.v + m.t0; if (cm.sc && cm.scKey === key) return; cm.scKey = key;
+  if (cm.sc) cm.sc.remove();
+  const f = cm.sc = document.createElement('iframe'); f.className = 'cmov'; f.style.width = '1280px'; f.style.height = '720px'; f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture'); f.title = 'The big screen';
+  document.body.appendChild(f);
+  if (m.k === 'yt') { const off = Math.max(0, Math.floor((Date.now() - m.t0) / 1000)); f.src = 'https://www.youtube-nocookie.com/embed/' + m.v + '?autoplay=1&playsinline=1&rel=0&modestbranding=1&start=' + off; return; }
+  const u = CM_CONTENT + m.v;
+  fetch(u, {method: 'HEAD'}).then(r => r.headers.get('content-type') || '').catch(() => '').then(c => {
+    if (cm.sc !== f) return; const vid = /^video\//.test(c);
+    if (/^image\/(?!svg)/.test(c) || vid) f.srcdoc = '<body style="margin:0;height:100vh;background:#000;overflow:hidden">' + (vid ? '<video autoplay loop playsinline' : '<img onload="this.naturalWidth<480&&(this.style.imageRendering=\'pixelated\')"') + ' src="' + u + '" style="display:block;width:100%;height:100%;object-fit:contain"></body>';
+    else f.src = u;
+  });
+}
+// the close-up page: an inscription in a frame or on a cabinet comes alive over it as you come near (one at a time)
+function cmOverlays(VP, W, H) {
+  const C = room && room.at;
+  if (!cmOn(C) || !C.ready) { if (cm.sc) cmScreen(); if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } return; }
+  if (cm.media.k !== 'live' && !cm.sc) cmScreen();
+  if (cm.sc) cmLay(cm.sc, C.scr, VP, 1280, 720);
+  const e = room.view.eye; let best = null, bd = 4.4;
+  for (const L of C.live) { const d = Math.hypot(L.at[0] - e[0], L.at[1] - e[1], L.at[2] - e[2]); if (d < bd) { bd = d; best = L; } }
+  if (!best || cm.playing) { if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } return; }
+  if (cm.pvUrl !== best.url) {
+    if (cm.pv) cm.pv.remove();
+    const f = cm.pv = document.createElement('iframe'); f.className = 'cmov'; const big = best.kind === 'game'; f.style.width = (big ? 640 : 600) + 'px'; f.style.height = (big ? 480 : 600) + 'px';
+    f.setAttribute('sandbox', 'allow-scripts allow-same-origin'); f.title = best.name; f.src = best.url; document.body.appendChild(f); cm.pvUrl = best.url; cm.pvL = best;
+  }
+  cmLay(cm.pv, best.q, VP, best.kind === 'game' ? 640 : 600, best.kind === 'game' ? 480 : 600);
+}
+// playing a game (or seeing an inscription) full size, over the room; X or Escape to step back in
+function cmPlay(L) {
+  if (document.pointerLockElement) document.exitPointerLock();
+  cmShut(); const w = document.createElement('div'); w.id = 'cmpl';
+  w.innerHTML = '<div class="h"><b></b><button type="button" aria-label="back to the room">✕</button></div><iframe allow="autoplay; fullscreen; gamepad" title=""></iframe>';
+  w.querySelector('b').textContent = L.name.toUpperCase(); w.querySelector('iframe').title = L.name; w.querySelector('iframe').src = L.url;
+  w.querySelector('button').onclick = cmShut; document.body.appendChild(w); cm.playing = w;
+  if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; }
+}
+function cmShut() { if (cm.playing) { cm.playing.remove(); cm.playing = null; } }
+addEventListener('keydown', e => { if (e.key === 'Escape' && cm.playing) cmShut(); });
+
+/* ---- the box that asks: what to play on the big screen, or what the music box plays ---- */
+const $cmd = document.createElement('div'); $cmd.id = 'cmd'; document.body.appendChild($cmd);
+function cmAsk(what) {
+  if (document.pointerLockElement) document.exitPointerLock();
+  const scr = what === 'screen';
+  $cmd.innerHTML = '<div class="t"></div><div class="r tunes"></div><div class="r"><input autocomplete="off" spellcheck="false"></div><div class="r b"></div><div class="n"></div>';
+  $cmd.querySelector('.t').textContent = scr ? 'THE BIG SCREEN' : 'BLOCK BEATS · THE MUSIC BOX';
+  const inp = $cmd.querySelector('input'), note = $cmd.querySelector('.n'), row = $cmd.querySelector('.b'), tunes = $cmd.querySelector('.tunes');
+  inp.placeholder = scr ? 'a YouTube link, or an inscription ID' : 'a music inscription ID';
+  const btn = (t, f, main) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; if (main) b.className = 'go'; b.onclick = f; row.appendChild(b); return b; };
+  const close = () => $cmd.classList.remove('on');
+  if (scr) {
+    btn('PLAY', () => { const y = cmYT(inp.value), i = y ? null : cmIns(inp.value); if (!y && !i) { note.textContent = 'that is not a YouTube link or an inscription ID'; return; } cm.media = {k: y ? 'yt' : 'ins', v: y || i, t0: Date.now()}; cmScreen(); cmShare({k: 'screen', m: cm.media.k, v: cm.media.v, t0: cm.media.t0}); close(); }, true);
+    btn('LIVE BLOCKS', () => { cm.media = {k: 'live'}; cmScreen(); cmShare({k: 'screen', m: 'live', t0: Date.now()}); close(); });
+    if (!/github\.io$|^localhost$|^127\./.test(location.hostname) && location.protocol !== 'file:') note.textContent = 'YouTube may not play here: inscriptions do';
+  } else {
+    tunes.style.flexWrap = 'wrap';
+    CM_TUNES.forEach((T, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = T.n; if (cm.music.k === 'tune' && cm.music.v === i) b.className = 'on'; b.onclick = () => { cm.music = {k: 'tune', v: i, t0: Date.now()}; cmMusic(); cmShare({k: 'music', m: 'tune', v: i, t0: cm.music.t0}); close(); }; tunes.appendChild(b); });
+    btn('PLAY', () => { const i = cmIns(inp.value); if (!i) { note.textContent = 'paste a music inscription ID'; return; } cm.music = {k: 'ins', v: i, t0: Date.now()}; cmMusic(); cmShare({k: 'music', m: 'ins', v: i, t0: cm.music.t0}); close(); }, true);
+    btn('STOP', () => { cm.music = {k: 'off'}; cmMusic(); cmShare({k: 'music', m: 'off', t0: Date.now()}); close(); });
+  }
+  btn('CLOSE', close);
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') row.querySelector('.go').click(); else if (e.key === 'Escape') close(); });
+  $cmd.classList.add('on'); setTimeout(() => inp.focus(), 50);
+}
+
+/* ---- the music box's own tunes: made as they play, the same for everyone from the moment one was chosen ---- */
+const CM_TUNES = [
+  {n: 'GENESIS DRIFT', bpm: 72, root: 50, prog: [[0, 3, 7, 10], [-4, 0, 3, 7], [-7, -3, 0, 5], [-2, 2, 5, 9]], bass: [0, 6, 8, 14], kick: [0, 8, 11], hat: 2, lofi: 1},
+  {n: 'MEMPOOL RAIN', bpm: 80, root: 45, prog: [[0, 3, 7, 10], [5, 8, 12, 15], [3, 7, 10, 14], [-2, 2, 5, 9]], bass: [0, 3, 8, 11], kick: [0, 7, 10], hat: 1, lofi: 1},
+  {n: 'HALVING SUNSET', bpm: 88, root: 48, prog: [[0, 4, 7, 11], [-3, 0, 4, 7], [5, 9, 12, 16], [7, 11, 14, 17]], bass: [0, 6, 8, 12], kick: [0, 8], hat: 2, lofi: 0},
+  {n: 'NODE LIGHTS', bpm: 100, root: 43, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [-4, 0, 3, 7], [-2, 2, 5, 9]], bass: [0, 2, 8, 10, 14], kick: [0, 4, 8, 12], hat: 1, lofi: 0}];
+const cmA = {gain: null, lp: null, next: -1, timer: 0, noise: null, crack: null, el: null, key: ''};
+const cmHz = m => 440 * Math.pow(2, (m - 69) / 12);
+const cmRnd = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+function cmMusic() {
+  const m = cm.music, a = audio();
+  if (cmA.el && (m.k !== 'ins' || cmA.key !== m.v)) { cmA.el.remove(); cmA.el = null; cmA.key = ''; }
+  if (m.k === 'off' || !a) { if (cmA.gain) cmA.gain.gain.setTargetAtTime(0, a ? a.currentTime : 0, .3); cmA.next = -1; return; }
+  if (!cmA.gain) {
+    cmA.gain = a.createGain(); cmA.gain.gain.value = 0; cmA.lp = a.createBiquadFilter(); cmA.lp.type = 'lowpass'; cmA.lp.frequency.value = 9000;
+    cmA.gain.connect(cmA.lp); cmA.lp.connect(a.destination);
+    const n = a.sampleRate, b = a.createBuffer(1, n, n), q = b.getChannelData(0); for (let i = 0; i < n; i++) q[i] = Math.random() * 2 - 1; cmA.noise = b;
+    const c = a.createBuffer(1, n * 2, n), cq = c.getChannelData(0); for (let i = 0; i < n * 2; i++) cq[i] = (Math.random() < .0006 ? (Math.random() - .5) * 1.4 : 0) + (Math.random() - .5) * .02; cmA.crack = c;
+  }
+  if (m.k === 'ins') {
+    if (!cmA.el) {
+      const u = CM_CONTENT + m.v; cmA.key = m.v;
+      fetch(u, {method: 'HEAD'}).then(r => r.headers.get('content-type') || '').catch(() => '').then(c => {
+        if (cm.music.k !== 'ins' || cm.music.v !== m.v) return;
+        if (/^audio\//.test(c)) { const el = cmA.el = new Audio(u); el.loop = true; el.crossOrigin = 'anonymous'; el.addEventListener('loadedmetadata', () => { if (el.duration > 0) el.currentTime = ((Date.now() - m.t0) / 1000) % el.duration; }); el.play().catch(() => {}); }
+        else { const f = cmA.el = document.createElement('iframe'); f.setAttribute('allow', 'autoplay'); f.style.cssText = 'position:fixed;width:2px;height:2px;left:-9px;top:-9px;opacity:0;pointer-events:none;border:0'; f.src = u; document.body.appendChild(f); }
+      });
+    }
+    return;
+  }
+  cmA.next = -1;
+  if (!cmA.timer) cmA.timer = setInterval(cmTick, 110);
+}
+// a voice: an oscillator (or noise) through a filter and an envelope, starting at `at` (seconds on the audio clock)
+function cmVoice(a, at, o) {
+  const g = a.createGain(), out = o.filter ? a.createBiquadFilter() : null;
+  if (out) { out.type = o.filter; out.frequency.value = o.ff || 1000; if (o.q) out.Q.value = o.q; out.connect(g); }
+  g.connect(cmA.gain); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(o.vol, at + (o.att || .005)); g.gain.setTargetAtTime(0, at + (o.att || .005) + (o.hold || 0), o.dec || .2);
+  const src = o.noise ? a.createBufferSource() : a.createOscillator();
+  if (o.noise) { src.buffer = cmA.noise; src.loop = true; } else { src.type = o.type || 'sine'; src.frequency.setValueAtTime(o.f, at); if (o.f2) src.frequency.exponentialRampToValueAtTime(o.f2, at + (o.slide || .1)); if (o.det) src.detune.value = o.det; }
+  src.connect(out || g); src.start(at); src.stop(at + (o.att || .005) + (o.hold || 0) + (o.dec || .2) * 6);
+}
+function cmTick() {
+  const a = au, m = cm.music; if (!a || m.k !== 'tune' || !cmA.gain) { clearInterval(cmA.timer); cmA.timer = 0; return; }
+  // loud in the room, quieter and muffled through its open door, silent further off
+  const C = room && room.at, nearC = room && room.rooms.some(R => cmOn(R) && R.ready), inC = cmOn(C);
+  cmA.gain.gain.setTargetAtTime(inC ? .55 : nearC ? .12 : 0, a.currentTime, .4); cmA.lp.frequency.setTargetAtTime(inC ? 9000 : 700, a.currentTime, .4);
+  if (!inC && !nearC) return;
+  const T = CM_TUNES[m.v], sd = 60 / T.bpm / 4, now = Date.now(), until = now + 400;
+  let s = Math.max(cmA.next, Math.ceil((now - m.t0) / 1000 / sd));
+  for (; m.t0 + s * sd * 1000 < until; s++) {
+    const at = a.currentTime + (m.t0 + s * sd * 1000 - now) / 1000 + .02, bar = Math.floor(s / 16), st = s % 16, ch = T.prog[bar % T.prog.length], R0 = T.root;
+    const sw = st % 2 ? sd * .12 : 0;
+    if (st === 0) for (const n of ch) for (const det of [-7, 7]) cmVoice(a, at, {f: cmHz(R0 + 12 + n), type: 'sawtooth', det, filter: 'lowpass', ff: 900, vol: .018, att: .5, hold: sd * 13, dec: .5});
+    if (T.bass.includes(st)) cmVoice(a, at, {f: cmHz(R0 - 12 + ch[0] + (st > 8 && cmRnd(bar) > .6 ? 7 : 0)), type: 'triangle', vol: .16, att: .01, hold: sd * 1.5, dec: .18});
+    if (T.kick.includes(st)) cmVoice(a, at, {f: 120, f2: 42, slide: .12, vol: .32, dec: .14});
+    if (st === 4 || st === 12) { cmVoice(a, at, {noise: 1, filter: 'bandpass', ff: 1900, q: .8, vol: .1, dec: .07}); cmVoice(a, at, {f: 190, type: 'triangle', vol: .05, dec: .05}); }
+    if (st % T.hat === 0) cmVoice(a, at + sw, {noise: 1, filter: 'highpass', ff: 7500, vol: st % 4 === 2 ? .03 : .018, dec: .018});
+    if ([0, 3, 6, 10, 13].includes(st) && cmRnd(s * 1.7) > .35) { const n = ch[Math.floor(cmRnd(s) * ch.length)] + (cmRnd(s + 3) > .6 ? 12 : 0); cmVoice(a, at + sw, {f: cmHz(R0 + 24 + n), type: 'sine', vol: .045, dec: .35}); cmVoice(a, at + sw, {f: cmHz(R0 + 36 + n), type: 'sine', vol: .012, dec: .12}); }
+    if (T.lofi && st === 0 && bar % 2 === 0) { const c = a.createBufferSource(), g = a.createGain(); c.buffer = cmA.crack; g.gain.value = .5; c.connect(g); g.connect(cmA.gain); c.start(at); }
+  }
+  cmA.next = s;
+}
+
+// leaving the rooms: the pages over the room go, the music stops
+function cmLeave() { if (cm.sc) { cm.sc.remove(); cm.sc = null; cm.scKey = ''; } if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } cmShut(); $cmd.classList.remove('on'); if (cmA.el) { cmA.el.remove(); cmA.el = null; cmA.key = ''; } if (cmA.gain && au) cmA.gain.gain.setTargetAtTime(0, au.currentTime, .2); cm.pour = null; }
 
 /* looking and picking: a ray from the eye (through the crosshair, or where you tapped) */
 function rmRay(sx, sy) {
@@ -3783,6 +5288,7 @@ function rmPick(sx, sy) {
   let best = null, bt = 1e9;
   for (const it of C.plan.items) { if (it.gone || it.t0 > now()) continue; const h = it.e / 2, t = rmHit(it.w, [h, h, h], ray); if (t >= 0 && t < bt) { bt = t; best = {it}; } }
   for (const end of ['back', 'front']) {   // the signs over the doors
+    if (C.common && end !== C.door) continue;
     const z = end === 'back' ? C.z0 - .03 : C.z0 - C.L + .03, t = rmHit([0, DOORH + .42, z], [.85, .23, .06], ray);
     if (t >= 0 && t < bt) { bt = t; best = {sign: end}; }
   }
@@ -3796,6 +5302,7 @@ function rmHover() {
   let s = '';
   if (h && h.it) { const t = h.it.t, w = t.word && t.word.a; s = TYPES[h.it.k].name + (w ? ' · ' + w.slice(0, 24) : '') + (t.fee >= 0 ? ' · ' + rt(ownRate(t)) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to hold'; }
   else if (h && h.sign) s = 'change where this door goes';
+  else if (cmOn(room.at)) { const A = cmAct(room.lock ? null : room.mx, room.lock ? null : room.my); if (A) s = A.label + ' · ' + (coarse ? 'tap' : A.ray || room.lock ? 'click or E' : 'E'); }
   if (s !== room.hov) { room.hov = s; $rl.textContent = s; $rl.classList.toggle('on', !!s); }
 }
 // holding a parcel: it flies from its shelf into your hands and becomes a tablet showing what it is
@@ -3818,7 +5325,7 @@ function rmPut() {
 const $rs = document.getElementById('rs'), $rsi = document.getElementById('rsi');
 function rmSign(end) {
   if (document.pointerLockElement) document.exitPointerLock();
-  room.signEnd = end; $rsi.value = room.rooms[1][end].to; $rs.classList.add('on'); setTimeout(() => { $rsi.focus(); $rsi.select(); }, 50);
+  room.signEnd = end; $rsi.value = room.rooms[1][end].to === COMMON ? '' : room.rooms[1][end].to; $rs.classList.add('on'); setTimeout(() => { $rsi.focus(); $rsi.select(); }, 50);
 }
 function rmSignSet(n) {
   $rs.classList.remove('on'); if (!room) return;
@@ -3838,8 +5345,8 @@ const $rf = document.getElementById('rf'), $rl = document.getElementById('rl'), 
 const coarse = matchMedia('(pointer: coarse)').matches;
 const rmFade = on => new Promise(r => { $rf.classList.toggle('on', on); setTimeout(r, on ? 420 : 0); });
 async function roomEnter(h, spot) {
-  if (!(h >= 0) || h > tipH) h = mode === 'block' && want >= 0 ? want : tipH;
-  if (!(h >= 0)) return;
+  if (h !== COMMON && (!(h >= 0) || h > tipH)) h = mode === 'block' && want >= 0 ? want : tipH;
+  if (h !== COMMON && !(h >= 0)) return;
   if (flipping) setFlip(false);
   select(null);
   await rmFade(true);
@@ -3847,12 +5354,13 @@ async function roomEnter(h, spot) {
   room = {rooms: [null, null, null], p: {x: 0, z: -1.1, yaw: 0, pitch: -.04, vx: 0, vz: 0, ph: 0, bob: 0}, dirty: true, fixDirty: true, nPar: 0, nFix: 0, nDoor: 0, hov: ''};
   document.body.classList.add('room'); $th.classList.add('on');
   const C = rmMake(h, null, null); room.rooms[1] = C; room.at = C;
-  head('walking into block ' + fmt(h) + '…');
+  head(h === COMMON ? 'walking into the common room…' : 'walking into block ' + fmt(h) + '…');
   const t = performance.now();
   while (room && !C.ready && !C.failed && performance.now() - t < 20000) await new Promise(r => setTimeout(r, 120));
   if (!room) return;
   if (C.failed) { roomExit(); head('block ' + fmt(h) + ' not reachable'); return; }
-  if (spot) { room.p.x = Math.max(-1.6, Math.min(1.6, spot.x)); room.p.z = Math.min(-.4, Math.max(-C.L + .4, spot.z)); }   // (going to a crewmate: next to them)
+  if (spot && spot.cm && C.common) { const [wx, wz] = cmW(C, spot.cm[0], spot.cm[1]); room.p.x = wx; room.p.z = C.z0 + wz; room.p.lv = spot.cm[2] || 0; room.p.y = cmH(spot.cm[0], spot.cm[1], room.p.lv); }
+  else if (spot) { room.p.x = Math.max(-1.6, Math.min(1.6, spot.x)); room.p.z = Math.min(-.4, Math.max(-C.L + .4, spot.z)); }   // (going to a crewmate: next to them)
   rmNeighbours();
   rmFade(false);
 }
@@ -3862,7 +5370,7 @@ async function roomExit() {
   const h = room.at && room.at.h;
   for (const R of room.rooms) rmFree(R);
   if (document.pointerLockElement) document.exitPointerLock();
-  room = null; select(null); nearClear();
+  room = null; select(null); nearClear(); cmLeave();
   document.body.classList.remove('room', 'holding'); $th.classList.remove('on'); $rs.classList.remove('on');
   if (h != null) go(h); else goLive();
   rmFade(false);
@@ -3899,9 +5407,10 @@ const rmUp = e => {
   const tap = room.lock || (q && Math.hypot(e.clientX - q.x0, e.clientY - q.y0) < 8 && performance.now() - q.t < 400);
   if (!tap) return;
   if (room.held) { rmPut(); return; }
-  const h = rmPick(room.lock ? null : e.clientX, room.lock ? null : e.clientY);
+  const h = rmPick(room.lock ? null : e.clientX, room.lock ? null : e.clientY); let A;
   if (h && h.it) rmHold(h.it);
   else if (h && h.sign) rmSign(h.sign);
+  else if (cmOn(room.at) && (A = cmAct(room.lock ? null : e.clientX, room.lock ? null : e.clientY)) && (A.ray || coarse || room.lock)) cmDo(A);
   else if (!coarse && !room.lock && cv.requestPointerLock) { try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (er) {} }
 };
 cv.addEventListener('pointerup', rmUp); cv.addEventListener('pointercancel', rmUp);
@@ -4123,11 +5632,12 @@ function chPose(R, t, dt) {
   u.ph += ((vf < -.2 * sp ? -1 : 1) * sp * 4.2 + 1.5 * tr * (1 - clamp(2 * walk, 0, 1))) * dt;
   const ph = u.ph, still = 1 - clamp(2 * gait, 0, 1), sway = Math.sin(.45 * t + sd), hold = R.held ? 1 : 0;
   u.hb = ease(u.hb, hold, hold ? 9 : 4, dt);
+  u.sit = ease(u.sit || 0, R.sit ? 1 : 0, 5, dt); const sit = u.sit; R.pintAt = null;
   // legs: swing, knee bend, a little roll when stepping sideways; the hips ride on the longer leg
   const LG = [-1, 1].map(s => { const e = ph + (s < 0 ? 0 : Math.PI), c = Math.max(0, Math.cos(e)), a = Math.sin(e) * (.5 * gait + .12 * run) * (.35 + .65 * fwd);
     const kb = .07 + gait * (.72 * c + .1) * (.35 + .65 * fwd) + .35 * run * c + still * Math.max(0, s * sway) * .13, roll = .28 * Math.sin(e) * gait * side;
-    return {s, a, kb, roll, reach: (.4 * Math.cos(a) + .33 * Math.cos(a - kb)) * Math.cos(roll) + .12}; });
-  const hipY = Math.max(LG[0].reach, LG[1].reach) - .004;
+    return {s, a: a + (1.45 - a) * sit, kb: kb + (1.5 - kb) * sit, roll: roll * (1 - sit), reach: (.4 * Math.cos(a) + .33 * Math.cos(a - kb)) * Math.cos(roll) + .12}; });
+  const hipY = (Math.max(LG[0].reach, LG[1].reach) - .004) * (1 - sit) + .1 * sit;
   const Y = qY(by), twist = .13 * Math.sin(ph) * gait, rollH = .045 * Math.cos(ph) * gait - .03 * still * sway;
   const pelvis = qm(Y, qm(qY(twist), qZ(rollH))), hip = at(p, Y, [.02 * -still * sway, hipY, 0]);
   const br = Math.sin(1.7 * t + sd) * (1 - .6 * walk), lean = .05 * walk + .14 * run + .012 * br + .05 * u.hb;
@@ -4154,7 +5664,7 @@ function chPose(R, t, dt) {
     const o = at(hip, pelvis, [.1 * g.s, -.02, 0]), q0 = qm(pelvis, qZ(g.roll)), qt = qm(q0, qX(-g.a)), kn = at(o, qt, [0, -.4, 0]), qs = qm(q0, qX(-(g.a - g.kb))), an = at(kn, qs, [0, -.33, 0]);
     put('thigh', o, qt, legs); put('pocket', o, g.s > 0 ? qt : qm(qt, qY(Math.PI)), legs);
     put('shin', kn, qs, legs); put('knee', kn, qs, armour); put('kneeGlow', kn, qs, glow);
-    const fy = Math.max(p[1], an[1] - .12), fq = qm(Y, qm(qY(.6 * twist), qX(clamp(5 * (fy - p[1]), 0, .35)))), f = [an[0], fy, an[2]];
+    const fy = Math.max(p[1] - .45 * sit, an[1] - .12), fq = qm(Y, qm(qY(.6 * twist), qX(clamp(5 * (fy - p[1]), 0, .35)))), f = [an[0], fy, an[2]];
     put('boot', f, fq, boots); put('sole', f, fq, [1, 1, 1]); put('soleGlow', f, fq, glow);
   }
   // arms: they swing against the legs; holding a parcel, both hands come up to hold it like a tablet
@@ -4168,7 +5678,9 @@ function chPose(R, t, dt) {
       const fwdv = qv(torso, [0, 0, 1]);
       ua = qslerp(ua, qAim(k.up, fwdv), u.hb); fa = qslerp(fa, qAim(k.fo, qv(torso, [0, 1, 0])), u.hb);
     }
+    if (R.pint && s > 0) { const k = chReach(sh, at(hip, torso, [.17, .34, .3]), at(hip, torso, [.6, -.4, -.3])); ua = qAim(k.up, qv(torso, [0, 0, 1])); fa = qAim(k.fo, qv(torso, [0, 1, 0])); }   // (a pint: held up in front)
     const el = at(sh, ua, [.012 * s, -.28, 0]), hd = at(el, fa, [0, -.25, 0]);
+    if (R.pint && s > 0) { R.pintAt = hd; R.pintYaw = by + Math.PI; }
     put('uarm', sh, ua, jacket); put('pad', sh, ua, armour); put('padRim', sh, ua, glow);
     put('farm', el, fa, jacket); put('cuff', el, fa, glow); put('hand', hd, fa, gloves, 1.2);
     if (s < 0) { put('wrist', el, fa, armour); put('screen', el, fa, vsc(glow, .8 + .2 * Math.sin(t * 2 + sd))); }
@@ -4250,10 +5762,11 @@ addEventListener('message', e => {
     if (!crew.on || m.id === crew.me || typeof m.id !== 'string') return;
     const M = mate(m.id), s = m.s || {};
     if (m.name) M.name = cleanS(m.name, 20);
-    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && TYPES[s.hk] ? s.hk : -1, in: !!s.in, t: performance.now()};
+    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && (TYPES[s.hk] || s.hk === 60) ? s.hk : -1, in: !!s.in, lv: s.lv ? 1 : 0, sit: s.sit ? 1 : 0, t: performance.now()};
     if (Array.isArray(s.look)) M.look = chLook(s.look);
     return;
   }
+  if (m.type === 'event') { if (m.ev) cmGot(m.ev); return; }
   if (m.type === 'left') { mateGone(m.id); return; }
   if (m.type === 'off') { crew.on = false; for (const id of [...crew.mates.keys()]) mateGone(id); return; }
   if (m.type === 'say') { if (m.id === crew.me) return; const M = crew.mates.get(m.id); if (M) { M.say = cleanS(m.text, 120); M.sayT = performance.now() + 7000; } return; }
@@ -4272,6 +5785,10 @@ function crewIn() {
 }
 async function goToMate(M) {
   const s = M.s; if (!s) return;
+  if (s.h === COMMON) {   // in the common room: to their side (into it, if you are elsewhere)
+    if (room && cmOn(room.at) && room.at.ready) { const C = room.at, x = s.x + (s.x > 0 ? -.8 : .8), d = -s.z, [wx, wz] = cmW(C, x, d); room.p.x = wx; room.p.z = C.z0 + wz; room.p.lv = s.lv; room.p.y = cmH(x, d, s.lv); room.p.vx = room.p.vz = 0; return; }
+    roomEnter(COMMON, {cm: [s.x + (s.x > 0 ? -.8 : .8), -s.z, s.lv]}); return;
+  }
   if (room && room.at && room.at.h === s.h && room.at.ready) { const p = room.p; p.x = Math.max(-1.6, Math.min(1.6, s.x + 1)); p.z = room.at.z0 + s.z + .8; p.vx = p.vz = 0; return; }
   if (room) { const C = room.rooms.find(R => R && R.ready && R.h === s.h); if (C) { room.p.x = s.x; room.p.z = C.z0 + s.z + .8; return; } }
   roomEnter(s.h, {x: s.x + (s.x > 0 ? -1 : 1), z: s.z + .9});
@@ -4280,7 +5797,8 @@ async function goToMate(M) {
 function crewSend(tn) {
   if (!crew.on) return;
   let s;
-  if (room && room.at && room.at.ready) { const p = room.p, H = room.held; s = {in: 1, h: room.at.h, x: +p.x.toFixed(2), z: +(p.z - room.at.z0).toFixed(2), y: +Math.atan2(Math.sin(p.yaw), Math.cos(p.yaw)).toFixed(3), p: +p.pitch.toFixed(2), hk: H && !H.back ? H.it.k : -1}; }
+  if (room && cmOn(room.at) && room.at.ready) { const p = room.p, [x, d] = cmL(room.at, p.x, p.z), y = p.yaw - cmYaw(room.at); s = {in: 1, h: COMMON, x: +x.toFixed(2), z: +(-d).toFixed(2), y: +Math.atan2(Math.sin(y), Math.cos(y)).toFixed(3), p: +p.pitch.toFixed(2), hk: cm.pint ? 60 : -1, lv: p.lv ? 1 : 0, sit: p.sit ? 1 : 0}; }
+  else if (room && room.at && room.at.ready) { const p = room.p, H = room.held; s = {in: 1, h: room.at.h, x: +p.x.toFixed(2), z: +(p.z - room.at.z0).toFixed(2), y: +Math.atan2(Math.sin(p.yaw), Math.cos(p.yaw)).toFixed(3), p: +p.pitch.toFixed(2), hk: H && !H.back ? H.it.k : -1}; }
   else s = {in: 0, h: cur && cur.height >= 0 ? cur.height : -1, x: 0, z: 0, y: 0, p: 0, hk: -1};
   s.look = crew.look;
   const k = JSON.stringify(s), moving = k !== crew.last;
@@ -4294,18 +5812,21 @@ function crewPose(tn, dt, VP, W, H) {
   for (const M of crew.mates.values()) {
     const s = M.s, C = s && s.in ? room.rooms.find(R => R && R.ready && R.h === s.h) : null;   // (someone whose page is in the background stays where they were)
     if (!C) { M.shown = false; M.tag.style.display = 'none'; hear[M.id] = 999; continue; }
-    const tx = s.x, tz = C.z0 + s.z, R = M.R;
-    if (!M.shown || Math.hypot(R.p[0] - tx, R.p[2] - tz) > 4) { R.p = [tx, 0, tz]; R.st = null; }
-    else R.p = [ease(R.p[0], tx, 10, dt), 0, ease(R.p[2], tz, 10, dt)];
+    let tx = s.x, tz = C.z0 + s.z, ty = 0; const R = M.R;
+    if (C.common) { const [wx, wz] = cmW(C, s.x, -s.z); tx = wx; tz = C.z0 + wz; ty = cmH(s.x, -s.z, s.lv); }
+    if (!M.shown || Math.hypot(R.p[0] - tx, R.p[2] - tz) > 4) { R.p = [tx, ty, tz]; R.st = null; }
+    else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true;
-    R.yaw = s.y + Math.PI; R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 ? TYPES[s.hk].lin : null; R.talk = pn < M.talkT;
+    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT;
     const pose = chPose(R, tn, dt);
     if (eye) { const dx = room.p.x - R.p[0], dz = room.p.z - R.p[2], dd = Math.hypot(dx, dz);   // crewmates are solid: you are kept a step apart
       if (dd < .5) { const k = (.5 - dd) / Math.max(dd, 1e-3); room.p.x += (dd > 1e-3 ? dx : .5) * k; room.p.z += (dd > 1e-3 ? dz : 0) * k; } }
     if (!eye || Math.hypot(R.p[0] - eye[0], R.p[2] - eye[2]) > .42) out.push(...pose);   // (never drawn from inside)
-    if (eye) hear[M.id] = +Math.hypot(R.p[0] - eye[0], 1.6 - eye[1], R.p[2] - eye[2]).toFixed(1);
+    if (eye) { let hd = Math.hypot(R.p[0] - eye[0], R.p[1] + 1.6 - eye[1], R.p[2] - eye[2]);
+      if (C.common && cmOn(room.at)) { const me = cmHere(); if (me && !me.lv && !s.lv && Math.hypot(me.x, me.d - CM.PD) < 7.4 && Math.hypot(s.x, -s.z - CM.PD) < 7.4) hd = Math.min(hd, 2); }   // (in the Forum everyone carries: you hear each other as if close by)
+      hear[M.id] = +hd.toFixed(1); }
     // the name over their head (and what they last said)
-    const P = [R.p[0], 2.02, R.p[2]], cx = VP[0] * P[0] + VP[4] * P[1] + VP[8] * P[2] + VP[12], cy = VP[1] * P[0] + VP[5] * P[1] + VP[9] * P[2] + VP[13], cw = VP[3] * P[0] + VP[7] * P[1] + VP[11] * P[2] + VP[15];
+    const P = [R.p[0], 2.02 + R.p[1] - (R.sit ? .55 : 0), R.p[2]], cx = VP[0] * P[0] + VP[4] * P[1] + VP[8] * P[2] + VP[12], cy = VP[1] * P[0] + VP[5] * P[1] + VP[9] * P[2] + VP[13], cw = VP[3] * P[0] + VP[7] * P[1] + VP[11] * P[2] + VP[15];
     const d = eye ? Math.hypot(R.p[0] - eye[0], R.p[2] - eye[2]) : 0;
     if (cw < .2 || d > 40) { M.tag.style.display = 'none'; continue; }
     const sx = (cx / cw * .5 + .5) * innerWidth, sy = (.5 - cy / cw * .5) * innerHeight;
@@ -4319,6 +5840,7 @@ function crewPose(tn, dt, VP, W, H) {
   if (pn - crew.hearAt > 250) { crew.hearAt = pn; toPage({type: 'hear', d: hear}); }
   return out;
 }
+addEventListener('keydown', e => { if ((e.key === 'e' || e.key === 'E') && room && cmOn(room.at) && e.target.tagName !== 'INPUT' && !cm.playing && !$cmd.classList.contains('on')) { const A = cmAct(room.lock ? null : room.mx, room.lock ? null : room.my); if (A) cmDo(A); } });
 // in the cube, Enter opens the crew's chat (on the page)
 addEventListener('keydown', e => { if (crew.on && e.key === 'Enter' && e.target.tagName !== 'INPUT') { e.preventDefault(); if (document.pointerLockElement) document.exitPointerLock(); toPage({type: 'chat-open'}); } });
 // on its own (not inside the together page), the people button in the room goes to it
