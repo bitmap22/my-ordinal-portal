@@ -1190,19 +1190,6 @@ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ATLAS, ATLAS, 0, gl.RGBA, gl.UNSIGNED_B
 // inside its own square and draws close-up pixels crisp, with soft 1-pixel edges
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.generateMipmap(gl.TEXTURE_2D);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-// a picture into a sheet together with its own smaller copies (the mipmaps for just that part), so the whole sheet never has
-// to be remade: remaking a 4096 px sheet's copies at once can stall a frame (the sheet must already be bound)
-const upCv = document.createElement('canvas'), upCx = upCv.getContext('2d');
-function texRegion(src, sx, sy, w, h, dx, dy, lv) {
-  for (let k = 0; k <= lv; k++) {
-    const x0 = dx >> k, y0 = dy >> k, nw = ((dx + w + (1 << k) - 1) >> k) - x0, nh = ((dy + h + (1 << k) - 1) >> k) - y0;
-    if (nw < 1 || nh < 1) break;
-    if (k === 0 && src.width === w && src.height === h && !sx && !sy) { gl.texSubImage2D(gl.TEXTURE_2D, 0, dx, dy, gl.RGBA, gl.UNSIGNED_BYTE, src); continue; }
-    upCv.width = nw; upCv.height = nh; upCx.imageSmoothingEnabled = k > 0; upCx.imageSmoothingQuality = 'high';
-    upCx.drawImage(src, sx + (x0 << k) - dx, sy + (y0 << k) - dy, nw << k, nh << k, 0, 0, nw, nh);
-    gl.texSubImage2D(gl.TEXTURE_2D, k, x0, y0, gl.RGBA, gl.UNSIGNED_BYTE, upCv);
-  }
-}
 const artCv = document.createElement('canvas'); artCv.width = artCv.height = 128;
 const artCx = artCv.getContext('2d');
 // raster images decode off the main thread; SVG goes through an <img>
@@ -1237,10 +1224,10 @@ async function loadArt(B) {
     list.forEach((x, j) => { const c = cell + Math.floor(j / inCell), k = j % inCell; x.x = (c % G) * CS + (k % per) * n; x.y = Math.floor(c / G) * CS + Math.floor(k / per) * n; });
     cell += Math.ceil(list.length / inCell);
   });
-  const put = (x, cvs, sm) => { gl.bindTexture(gl.TEXTURE_2D, artTex); texRegion(cvs, 0, 0, x.s, x.s, x.x, x.y, Math.log2(x.s)); x.t.artR = [x.x / ATLAS, x.y / ATLAS, x.s / ATLAS]; x.t.artG = my; x.t.artS = sm ? 2 : 1; };   // (sm: a picture to be shown smooth, not as crisp pixels)
+  const put = (x, cvs, sm) => { gl.bindTexture(gl.TEXTURE_2D, artTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x.x, x.y, gl.RGBA, gl.UNSIGNED_BYTE, cvs); x.t.artR = [x.x / ATLAS, x.y / ATLAS, x.s / ATLAS]; x.t.artG = my; x.t.artS = sm ? 2 : 1; };   // (sm: a picture to be shown smooth, not as crisp pixels)
   const picItems = items.filter(x => x.pic), wordItems = items.filter(x => !x.pic);
   let t0 = performance.now(), tr = t0, tm = t0;
-  const mips = () => { tm = performance.now(); };   // (each tile brings its own smaller copies)
+  const mips = () => { gl.bindTexture(gl.TEXTURE_2D, artTex); gl.generateMipmap(gl.TEXTURE_2D); tm = performance.now(); };
   const breathe = async () => {   // after each short burst: let the screen draw; show what is painted so far a few times a second
     if (performance.now() - tr > (room ? 1500 : 250)) { rebuild(); tr = performance.now(); }   // (walking in a room: less often, and in shorter bursts, so walking never jolts)
     if (performance.now() - tm > (room ? 3000 : 800)) mips();
@@ -3044,8 +3031,12 @@ const labCx = labCv.getContext('2d'), labTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, LT, LH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); gl.generateMipmap(gl.TEXTURE_2D);
+const labSt = document.createElement('canvas');   // a part of the sheet is copied here and sent to the graphics card from it (quicker than reading the pixels out)
 function labUp(x, y, w, h) {
-  gl.bindTexture(gl.TEXTURE_2D, labTex); texRegion(labCv, x, y, w, h, x, y, 7);   // (just this part, with its smaller copies)
+  if (labSt.width !== w || labSt.height !== h) { labSt.width = w; labSt.height = h; }
+  const c = labSt.getContext('2d'); c.clearRect(0, 0, w, h); c.drawImage(labCv, x, y, w, h, 0, 0, w, h);
+  gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, labSt);
+  gl.generateMipmap(gl.TEXTURE_2D);
 }
 // one label: a dark plate with a glowing edge, the words in their colour (and a count, or a second line)
 function labPaint(x, y, w, h, main, col, right, sub, edge) {
@@ -3112,7 +3103,7 @@ function rmMake(h, of, side) {
     await yieldNow(); if (gone()) return;
     rmLabels(R); await yieldNow(); if (gone()) return;
     rmFix(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
-    for (let i = 0; i < 4; i++) { labUp(0, R.slot * LSLOT + i * LSLOT / 4, LT, LSLOT / 4); await yieldNow(); if (gone()) return; }   // (a quarter at a time)
+    labUp(0, R.slot * LSLOT, LT, LSLOT);
     R.ready = true; room.dirty = room.fixDirty = true;
     if (R === room.rooms[1]) rmCurrent(R);
     rmSigns();
@@ -3363,10 +3354,14 @@ async function nearTick(tn) {
         cx.drawImage(img, (256 - w * sc) / 2, (256 - h * sc) / 2, w * sc, h * sc); if (img.close) img.close();
         cvs = c2; sm = Math.min(w, h) > 96;
       } else cvs = paintWord(t.word, 256);
-      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, nearTex); texRegion(cvs, 0, 0, 256, 256, x, y, 8); gl.activeTexture(gl.TEXTURE0);
-      t.nearR = [x / NEAR, y / NEAR, 256 / NEAR, sm ? 4 : 3]; n++;
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, nearTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, cvs); gl.activeTexture(gl.TEXTURE0);
+      near.pend.push([t, sl, [x / NEAR, y / NEAR, 256 / NEAR, sm ? 4 : 3]]); n++;   // (shown once the smaller copies are made too)
     }
-    if (n && room) room.dirty = true;
+    if (n) near.dirty = true;
+    // the sheet's smaller copies (for parcels further off) are remade at most a couple of times a second
+    if (near.dirty && room && tn - near.mip > .5) { near.mip = tn; near.dirty = false; gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, nearTex); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0);
+      for (const [t, sl, r] of near.pend.splice(0)) if (near.slot.get(t) === sl) t.nearR = r;
+      room.dirty = true; }
   } finally { near.busy = false; }
 }
 // the sliding doors: two panels per doorway that part when you come near (once the room behind is ready)
