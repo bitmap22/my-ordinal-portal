@@ -807,6 +807,28 @@ function cpKind(key, chunks) {
   const t = L1D.decode(rc4(key, catB(chunks))) + (chunks.length > 1 ? '\n' + L1D.decode(catB(chunks.map(c => rc4(key, c)))) : '');
   return /stamp:/i.test(t) ? TF.stamps : t.includes('CNTRPRTY') ? TF.cp : -1;
 }
+// a Bitcoin Stamp's picture, rebuilt from its own transaction (checked pixel for pixel against stampchain.io):
+// old style = "STAMP:" + base64 inside the Counterparty message in its multisig outputs (each output decrypted on its own);
+// new style (OLGA) = a 2-byte length, then the file itself, across its P2WSH outputs
+function stampArt(key, mso, wsh) {
+  let b = null;
+  if (mso) {
+    const msg = [];
+    for (const pk of mso) {
+      if (pk.length < 2) continue;
+      const d = rc4(key, catB(pk.slice(0, -1).map(k => k.subarray(1, k.length - 1)))), body = d.subarray(1, 1 + d[0]);
+      if (L1D.decode(body.subarray(0, 8)) === 'CNTRPRTY') msg.push(body.subarray(8));
+    }
+    const M = L1D.decode(catB(msg)), at = M.toLowerCase().indexOf('stamp:');
+    if (at >= 0) { const s64 = (M.slice(at + 6).match(/^[A-Za-z0-9+/=]+/) || [''])[0]; if (s64.length > 20) try { b = Uint8Array.from(atob(s64), c => c.charCodeAt(0)); } catch (e) {} }
+  }
+  if (!b && wsh && wsh.length) { const W = catB(wsh), L = W[0] << 8 | W[1]; if (L > 8 && L <= W.length - 2) b = W.subarray(2, 2 + L); }
+  if (!b || b.length < 8 || b.length > 400000) return null;
+  const top = L1D.decode(b.subarray(0, 300));
+  const ct = b[0] === 0x89 && b[1] === 0x50 ? 'image/png' : b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 ? 'image/gif' : b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg'
+    : top.slice(0, 4) === 'RIFF' && top.slice(8, 12) === 'WEBP' ? 'image/webp' : b[0] === 0x42 && b[1] === 0x4d ? 'image/bmp' : /<svg[\s>]/i.test(top) && !/<html/i.test(top) ? 'image/svg+xml' : null;
+  return ct ? {ct, bytes: b.slice()} : null;
+}
 // readable words: mostly printable characters
 function words(u) {
   if (u.length < 3) return null;
@@ -852,7 +874,7 @@ function scanBytes(X, h) {
     r.s = p;
     const nin = vi(), key = X.slice(p, p + 32).reverse(), isc = [];
     for (let i = 0; i < nin; i++) { p += 36; const l = vi(); isc.push([p, p + l]); p += l + 4; }
-    const nout = vi(); let ms = null, pay = 0;
+    const nout = vi(); let ms = null, mso = null, wsh = null, pay = 0;
     for (let i = 0; i < nout; i++) {
       p += 8; const l = vi(), q = p; p += l;
       if (!t) continue;
@@ -876,10 +898,12 @@ function scanBytes(X, h) {
         pay++;
         if (l >= 105 && X[p - 1] === 0xae && X[q] >= 0x51 && X[q] <= 0x53) {
           const P = pushes(X, q + 1, p - 2); for (const x of P) if (x[1] && x[1].length === 33) (ms = ms || []).push(x[1].subarray(1, 32));
-        }
+          (mso = mso || []).push(P.filter(x => x[1] && (x[1].length === 33 || x[1].length === 65)).map(x => x[1]));
+        } else if (l === 34 && X[q] === 0 && X[q + 1] === 32) (wsh = wsh || []).push(X.subarray(q + 2, p));
       }
     }
     if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
+    if ((r.sc >> TF.stamps) & 1 && artN < 256) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; } }
     r.e = p;
     let tap = false, ei = 0;
     for (let i = 0; i < nin; i++) {
