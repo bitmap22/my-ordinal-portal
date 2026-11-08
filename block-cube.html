@@ -323,7 +323,7 @@ function feeCol(t) {
 
 /* ---------- packing: the block filled by size and fee, in 3D ---------- */
 // The cube is one block (1,000,000 vB) on a 64 x 64 x 64 grid, with a little headroom for the gaps.
-// Each transaction is a box (sides differ by at most one step) whose volume matches its vsize.
+// Each transaction is a box (sides differ by at most one step, but see flexDims) whose volume matches its vsize.
 // Highest fee rate goes in first; every box takes the lowest space it fits (small ones fill gaps),
 // turning on its side if that sits lower. The very biggest boxes settle first so they don't stick out the top.
 const R = 64, HM = R * 2, LL = R * R, VPU = BLOCK_VB / Math.pow(R / 1.06, 3);
@@ -392,17 +392,28 @@ const rateKey = t => t.rate >= 0 ? t.rate : -t.idx;   // fee rate, or block orde
 let burst = 6;
 const yieldNow = () => new Promise(r => { const t = performance.now(), c = new MessageChannel(); c.port1.onmessage = () => { burst = Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); });
 // pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
+// If a block has many very big transactions, near-cube boxes can't stack inside (e.g. nine 59,000 vB boxes, 24 units a
+// side: only four fit across, so a third layer pokes out of the top). Then it is packed again with those big boxes
+// (14+ units) as flatter or taller blocks on a 16 or 32 square base, which tile the floor; their volume still matches.
+function flexDims(vsize) {
+  const d = dimsOf(vsize); if (Math.max(d[0], d[1], d[2]) < 14) return d;
+  const v = vsize / VPU; let best = d, be = 1e9;
+  for (const a of [16, 32]) { const h = Math.max(1, Math.min(R, Math.round(v / (a * a)))), e = Math.abs(Math.log(h / a)) + 4 * Math.abs(Math.log(a * a * h / v)); if (e < be) { be = e; best = [a, h, a]; } }
+  return best;
+}
 async function layoutAll(txs, alive) {
-  const g = new Grid();
-  for (const t of txs) t.d = dimsOf(t.vsize);
-  const big = t => Math.max(t.d[0], t.d[1], t.d[2]) >= 6 ? 1 : 0;
-  const order = txs.slice().sort((u, v) => (big(v) - big(u)) || (rateKey(v) - rateKey(u)) || ((u.idx || 0) - (v.idx || 0)));
-  let t0 = performance.now();
-  for (let i = 0; i < order.length; i++) {
-    g.place(order[i], 0);
-    if ((i & 15) === 15 && performance.now() - t0 > burst) { await yieldNow(); if (!alive()) return null; t0 = performance.now(); }
+  for (let flex = 0; flex < 2; flex++) {
+    const g = new Grid();
+    for (const t of txs) t.d = flex ? flexDims(t.vsize) : dimsOf(t.vsize);
+    const big = t => Math.max(t.d[0], t.d[1], t.d[2]) >= 6 ? 1 : 0;
+    const order = txs.slice().sort((u, v) => (big(v) - big(u)) || (rateKey(v) - rateKey(u)) || ((u.idx || 0) - (v.idx || 0)));
+    let t0 = performance.now(), top = 0;
+    for (let i = 0; i < order.length; i++) {
+      g.place(order[i], 0); const t = order[i]; if (t.y + t.h > top) top = t.y + t.h;
+      if ((i & 15) === 15 && performance.now() - t0 > burst) { await yieldNow(); if (!alive()) return null; t0 = performance.now(); }
+    }
+    if (top <= R || flex) return {g, order};
   }
-  return {g, order};
 }
 const centerOf = t => [((t.x + t.a / 2) / R - .5) * S, (t.y + t.h / 2) / R * S, ((t.z + t.c / 2) / R - .5) * S];
 
