@@ -4832,7 +4832,7 @@ function cmTex(src, mip = true) {
   else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([8, 6, 5, 255]));
   return t;
 }
-const cmCv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; };
+const cmCv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d', {willReadFrequently: true})]; };   // (painted on the processor: quick to paint and to hand over, no surprises later)
 // a picture kept beside this page (or on the portal, when this page is somewhere else): once it has come, it goes up
 function cmImg(src, q) {
   const im = new Image(); im.crossOrigin = 'anonymous'; let tried = 0;
@@ -4872,9 +4872,11 @@ function cmGlassArt(theme, w, h) {
   for (let j = 0; j < R; j++) for (let i = 0; i < G; i++) {
     const q = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)], mx = (q[0][0] + q[2][0]) / 2 / w, my = (q[0][1] + q[2][1]) / 2 / h;
     c.beginPath(); q.forEach((p, k) => k ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath();
-    c.fillStyle = col(mx, my); c.fill(); c.globalAlpha = .18 + rnd() * .2; c.fillStyle = rnd() < .5 ? '#ffffff' : '#000000'; c.fill(); c.globalAlpha = 1;
-    c.strokeStyle = '#140d08'; c.lineWidth = 3.2; c.stroke();
+    const k = parseInt(col(mx, my).slice(1), 16), a = .18 + rnd() * .2, wht = rnd() < .5, ch = v => Math.round(wht ? v + (255 - v) * a : v * (1 - a));
+    c.fillStyle = `rgb(${ch(k >> 16)},${ch(k >> 8 & 255)},${ch(k & 255)})`; c.fill();
   }
+  c.beginPath(); for (let j = 0; j < R; j++) for (let i = 0; i < G; i++) { const q = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]; q.forEach((p, k) => k ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); }
+  c.strokeStyle = '#140d08'; c.lineWidth = 3.2; c.stroke();
   c.strokeStyle = '#2a1d10'; c.lineWidth = 14; c.strokeRect(7, 7, w - 14, h - 14);
   return cv;
 }
