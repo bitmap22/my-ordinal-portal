@@ -356,8 +356,11 @@ function paintStart() {
   for (const [id, st] of Object.entries(voice.st)) if (id !== ME && inPaintSt(st) && net.players.has(id)) toPaint({ type: 'state', id, name: net.players.get(id).name, s: st });
 }
 const later = ms => new Promise(r => setTimeout(r, ms));
+let swapNext = null;
 async function swapTo(g) {
-  if (swapping || (g === 'paint') === inPaint) return; swapping = true;
+  if (swapping) { swapNext = g; return; }   // (asked again mid-swap: done right after)
+  if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive' }); return; }   // (already there: never left dark)
+  swapping = true;
   const fade = $('gfade'); fade.classList.add('on');
   (g === 'paint' ? toCube : toPaint)({ type: 'leave' });   // (the game you are leaving: dark and quiet)
   await later(340);
@@ -376,6 +379,7 @@ async function swapTo(g) {
     if (PHONE) { pframe.removeAttribute('src'); paintReady = false; paintQueue = []; try { pframe.contentWindow.location.replace('about:blank'); } catch (e) {} }
   }
   fade.classList.remove('on', 'wait'); swapping = false;
+  if (swapNext) { const n = swapNext; swapNext = null; setTimeout(() => swapTo(n), 0); }
   try { const f = inPaint ? pframe : frame; f.focus(); f.contentWindow.focus(); } catch (e) {}
   whereAt = 0; crewWhere();
 }
