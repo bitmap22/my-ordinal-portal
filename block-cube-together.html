@@ -409,7 +409,7 @@ const small = (v, d) => v === null || typeof v === 'boolean' || (typeof v === 'n
   (d < 3 && Array.isArray(v) && v.length <= 16 && v.every(x => small(x, d + 1))) || (d < 3 && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length <= 40 && Object.values(v).every(x => small(x, d + 1)));
 // where someone is in the cube: which block's room (h), where in it (x, z, in metres), which way they face (y) and look (p), what they hold (hk: its kind)
 const num = (v, a) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= a;
-const place = s => Number.isInteger(s.h) && s.h >= -1 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
+const place = s => Number.isInteger(s.h) && s.h >= -2 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
 function check(m) {
   if (!m || typeof m !== 'object') return null;
   if (m.t === 'state') return m.s && typeof m.s === 'object' && !Array.isArray(m.s) && place(m.s) && small(m.s, 0) ? { t: 'state', s: m.s } : null;
@@ -1033,7 +1033,7 @@ function playerRows(ul) {
     const p = net.players.get(id), mine = id === ME, host = id === net.hostId, mu = isMuted(id), nm = p.name || 'Runner', st = voice.st[id];
     const li = el('li', { class: [mine && 'me', host && 'host', p.sail && 'on', mu && 'muted'].filter(Boolean).join(' ') || null, data: { id } });
     li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), host ? el('span', { class: 'tag', text: 'Host' }) : null),
-      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : st && st.in ? 'Block ' + st.h.toLocaleString('en-US') : st && st.h >= 0 ? 'At the cube' : 'In' }));
+      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : st && st.in ? (st.h === -2 ? 'Lobby' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
     // (a crewmate in another block's room: go to them)
     const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && st.in && !(mst && mst.in && mst.h === st.h)) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
     if (!mine && p.fpk && p.fpk !== fpk) li.append(isFriend(p.fpk) ? el('span', { class: 'st frt', text: 'Friend' }) : el('button', { class: 'fr', text: 'Add friend', onclick: () => { addFriend({ pk: p.fpk, name: p.name }, true); toast('Added ' + nm + ' as a friend.', [], 4000); } }));
@@ -1057,7 +1057,7 @@ function drawTop() {
     const id = ids[k];
     if (!id) { box.append(el('div', { class: 'pl empty' }, el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), 'open'), el('span', { class: 'w', text: net.mode === 'sea' ? 'anyone can join' : 'invite someone' }))); continue; }
     const p = net.players.get(id), st = voice.st[id], mine = id === ME, lk = lookOk(p.look) || [0, 0, 1];
-    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : st && st.in ? 'block ' + st.h.toLocaleString('en-US') : st && st.h >= 0 ? 'at the cube' : 'walking in…';
+    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : st && st.in ? (st.h === -2 ? 'lobby' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
     const here = !mine && st && st.in && mst && mst.in && st.h === mst.h, go = !mine && st && st.in && !here;
     const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + GLOWS[lk[0]][lk[1]], title: go ? 'go to ' + (p.name || 'them') : '' },
       el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
