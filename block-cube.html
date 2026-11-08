@@ -15,6 +15,7 @@
 <style>
 html,body{margin:0;height:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%;background:#050406;overflow:hidden;color:#f7efe3;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+html,body,body *{touch-action:manipulation;touch-action:pan-x pan-y}
 #c{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 #c:active{cursor:grabbing}
 .m{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
@@ -385,12 +386,21 @@ class Grid {
   }
 }
 const rateKey = t => t.rate >= 0 ? t.rate : -t.idx;   // fee rate, or block order when fees are unknown
-function layoutAll(txs) {
+// big jobs work in short bursts and let the screen draw in between, so the cube never freezes while it loads. A burst is
+// about 6 ms; on devices whose frames are slow it grows to half the last pause (up to 100 ms), so loading stays quick there too
+let burst = 6;
+const yieldNow = () => new Promise(r => { const t = performance.now(), c = new MessageChannel(); c.port1.onmessage = () => { burst = Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); });
+// pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
+async function layoutAll(txs, alive) {
   const g = new Grid();
   for (const t of txs) t.d = dimsOf(t.vsize);
   const big = t => Math.max(t.d[0], t.d[1], t.d[2]) >= 6 ? 1 : 0;
   const order = txs.slice().sort((u, v) => (big(v) - big(u)) || (rateKey(v) - rateKey(u)) || ((u.idx || 0) - (v.idx || 0)));
-  for (const t of order) g.place(t, 0);
+  let t0 = performance.now();
+  for (let i = 0; i < order.length; i++) {
+    g.place(order[i], 0);
+    if ((i & 15) === 15 && performance.now() - t0 > burst) { await yieldNow(); if (!alive()) return null; t0 = performance.now(); }
+  }
   return {g, order};
 }
 const centerOf = t => [((t.x + t.a / 2) / R - .5) * S, (t.y + t.h / 2) / R * S, ((t.z + t.c / 2) / R - .5) * S];
@@ -647,6 +657,9 @@ const up = e => {
   tap = null; ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0;
 };
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+// phones: only the cube zooms (a pinch on it). Taps and pinches never zoom the page itself, which iPhones would otherwise do
+// (they ignore user-scalable=no), leaving it stuck zoomed in because a pinch on the cube no longer reaches the page
+['gesturestart', 'gesturechange'].forEach(n => document.addEventListener(n, e => e.preventDefault(), {passive: false}));
 cv.addEventListener('wheel', e => { e.preventDefault(); cam.uz = clampD(cam.uz * Math.exp(e.deltaY * 0.001)); lastUser = performance.now(); }, {passive: false});
 function clampD(z) { return Math.max(0.35, Math.min(2, z)); }
 
@@ -658,11 +671,11 @@ const lin = c => c.map(x => Math.pow(x, 2.2)), DIM_COL = lin([0.12, 0.16, 0.24])
 // one flag per thing a transaction can be (a transaction can be several at once)
 const TF = {insc: 0, img: 1, txt: 2, html: 3, json: 4, media: 5, model: 6, other: 7, cursed: 8, child: 9, brc20: 10, tap: 11, dmt: 12, bitmap: 13,
   atom: 14, rune: 15, etch: 16, rmint: 17, rmove: 18, alkanes: 19, cp: 20, stamps: 21, msg: 22, taproot: 23, segwit: 24, legacy: 25,
-  consol: 26, batch: 27, msig: 28, cb: 29, crc20: 30};
+  consol: 26, batch: 27, msig: 28, cb: 29, crc20: 30, brc420: 31};
 // ordinal kinds, in priority order for the colour in ORDINALS view (a transaction takes the first kind it has);
 // bit = ordpool.space's tag, sf = what the raw block scan found
 const KINDS = [
-  {name: 'BRC-20', bit: 52n, sf: TF.brc20, col: 0x4aa8ff}, {name: 'TAP', sf: TF.tap, col: 0x36f1ff}, {name: 'CRC-20', sf: TF.crc20, col: 0x7cff6b},
+  {name: 'BRC-20', bit: 52n, sf: TF.brc20, col: 0x4aa8ff}, {name: 'TAP', sf: TF.tap, col: 0x36f1ff}, {name: 'CRC-20', sf: TF.crc20, col: 0x7cff6b}, {name: 'BRC-420', sf: TF.brc420, col: 0xff4ff0},
   {name: 'SRC-20', bit: 53n, col: 0x2fe0c0}, {name: 'Stamps', sf: TF.stamps, col: 0xd9d9d9}, {name: 'Counterparty', sf: TF.cp, col: 0xb08cff},
   {name: 'CAT-21', bit: 49n, col: 0xff6fb1}, {name: 'Atomicals', bit: 48n, sf: TF.atom, col: 0x9be15d}, {name: 'Labitbu', bit: 54n, col: 0xffe066},
   {name: 'Alkanes', sf: TF.alkanes, col: 0xff7a45}, {name: 'bitmaps', sf: TF.bitmap, col: 0xff3b5c},
@@ -678,7 +691,7 @@ function kmask(t) {
     if ((k.bit != null && t.op != null && (t.op >> k.bit) & 1n) || (k.sf != null && t.sc != null && (t.sc >> k.sf) & 1)) m |= 1 << i;
   }
   if (!m && t.insc && t.op == null && t.sc == null) m = 1 << INSC;
-  t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._t = null;
+  t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._t = null; t._tk = undefined;
   return t._k = m;
 }
 const isInsc = t => ((kmask(t) >> INSC) & 1) === 1;
@@ -696,7 +709,7 @@ const TYPES = [
   {g: 0, name: '3D models', css: '#80ffdb', test: tfl(TF.model)}, {g: 0, name: 'other files', css: '#adb5bd', test: tfl(TF.other)}, {g: 0, name: 'delegates', css: '#c9b8ff', test: t => t.dele === true},
   {g: 0, name: 'children', css: '#ffd166', test: tfl(TF.child)}, {g: 0, name: 'cursed', css: '#9d4edd', test: tfl(TF.cursed)},
   {g: 0, name: 'bitmaps', css: kcss('bitmaps'), test: kdi('bitmaps')},
-  {g: 1, name: 'BRC-20', css: kcss('BRC-20'), test: kdi('BRC-20')}, {g: 1, name: 'TAP', css: kcss('TAP'), test: kdi('TAP')},
+  {g: 1, name: 'BRC-20', css: kcss('BRC-20'), test: kdi('BRC-20')}, {g: 1, name: 'BRC-420', css: kcss('BRC-420'), test: kdi('BRC-420')}, {g: 1, name: 'TAP', css: kcss('TAP'), test: kdi('TAP')},
   {g: 1, name: 'DMT mints', css: '#00ffa3', test: tfl(TF.dmt)}, {g: 1, name: 'NAT', css: '#ffd23f', test: t => t.nat === true}, {g: 1, name: 'CRC-20 · LEAF', css: kcss('CRC-20'), test: kdi('CRC-20')}, {g: 1, name: 'runes', css: kcss('runes'), test: kdi('runes')},
   {g: 1, name: 'runes etched', css: '#e0aaff', test: tfl(TF.etch)}, {g: 1, name: 'runes minted', css: '#b56bff', test: tfl(TF.rmint)},
   {g: 1, name: 'runes moved', css: '#8a4fd8', test: tfl(TF.rmove)}, {g: 1, name: 'Alkanes', css: kcss('Alkanes'), test: kdi('Alkanes')},
@@ -712,11 +725,12 @@ const REG = TYPES.length - 1;
 // TOKENS: each transaction belongs to one token chip only (the most specific one it is), so hovering a chip shows that token
 // and nothing else. An Alkanes action that also mints a rune counts as Alkanes (its tile still says '+ rune mint'); NAT is NAT,
 // not TAP; SRC-20 is SRC-20, not Stamps. 'runes' is the rune family: new runes, mints, moves, and runestones that do none of those.
-const TOK_ORDER = ['Alkanes', 'NAT', 'DMT mints', 'TAP', 'BRC-20', 'CRC-20 · LEAF', 'SRC-20', 'Stamps', 'Counterparty', 'CAT-21', 'Labitbu', 'Atomicals', 'runes etched', 'runes minted', 'runes moved', 'runes'];
+const TOK_ORDER = ['Alkanes', 'NAT', 'DMT mints', 'TAP', 'BRC-20', 'BRC-420', 'CRC-20 · LEAF', 'SRC-20', 'Stamps', 'Counterparty', 'CAT-21', 'Labitbu', 'Atomicals', 'runes etched', 'runes minted', 'runes moved', 'runes'];
 const TOK_IDX = TOK_ORDER.map(n => TYPES.findIndex(T => T.name === n)), TOK_RAW = TOK_IDX.map(i => TYPES[i].test);
 const RUNE_FAM = ['runes etched', 'runes minted', 'runes moved', 'runes'].map(n => TYPES.findIndex(T => T.name === n));
 function tokOf(t) { for (let k = 0; k < TOK_IDX.length; k++) if (TOK_RAW[k](t)) return TOK_IDX[k]; return -1; }
-TOK_IDX.forEach(i => { TYPES[i].test = TYPES[i].name === 'runes' ? t => RUNE_FAM.includes(tokOf(t)) : t => tokOf(t) === i; });
+const tokC = t => { kmask(t); return t._tk !== undefined ? t._tk : (t._tk = tokOf(t)); };   // worked out once, again only when its tags change
+TOK_IDX.forEach(i => { TYPES[i].test = TYPES[i].name === 'runes' ? t => RUNE_FAM.includes(tokC(t)) : t => tokC(t) === i; });
 // which chips a transaction lights up, as two 30-bit masks (cached with its kinds)
 function tmask(t) {
   kmask(t);
@@ -917,8 +931,8 @@ async function blockBytes(B) {
   throw new Error('no raw block');
 }
 // walk every transaction once
-function scanBytes(X, h) {
-  let p = 80;
+async function scanBytes(X, h) {
+  let p = 80, t0 = performance.now();
   const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
   const ntx = vi(), out = new Array(ntx); let cb = null, artN = 0, artB = 0;
   for (let t = 0; t < ntx && p < X.length; t++) {
@@ -1013,9 +1027,16 @@ function scanBytes(X, h) {
           if (!enc && bl && bl <= 1000) {
             const txt = U8D.decode(catB(body)).trim();
             if (/^\d{1,7}\.bitmap$/.test(txt)) { set(TF.bitmap); if (r.word) r.word = {k: 'bitmap', a: txt.split('.')[0], b: '.bitmap'}; }
+            // BRC-420: a mint is only a link to the original (/content/ and its id). The block can't show it was paid for or
+            // that a deploy exists, so it is a maybe, and said so
+            else if (/^\/content\/[0-9a-f]{64}i\d+$/i.test(txt)) { set(TF.brc420); r.b4 = 'mint'; r.word = {k: 'b420', a: 'MINT?', b: 'not checked'}; }
             else if (txt[0] === '{') try {
               const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase(), wb = [o.op, o.amt != null ? o.amt : o.max].filter(x => x != null && x !== '').map(String).join(' ').slice(0, 40);
-              if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word) r.word = {k: 'brc20', a: r.tick, b: wb}; }
+              if (pr === 'brc-420') {
+                set(TF.brc420); r.b4 = String(o.op || '').toLowerCase() === 'deploy' ? 'deploy' : 'mint';
+                r.word = r.b4 === 'deploy' ? {k: 'b420', a: String(o.name || 'DEPLOY').slice(0, 24), b: 'deploy' + (o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')} : {k: 'b420', a: 'MINT?', b: 'not checked'};
+              }
+              else if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word) r.word = {k: 'brc20', a: r.tick, b: wb}; }
               else if (pr === 'tap') {
                 set(TF.tap);
                 const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));
@@ -1042,6 +1063,7 @@ function scanBytes(X, h) {
       if (pay - (mso ? mso.length : 0) - ((r.sc >> TF.stamps) & 1 && wsh ? wsh.length : 0) >= 10) set(TF.batch);   // data-only outputs are not payouts
     }
     out[t] = r;
+    if ((t & 31) === 31 && performance.now() - t0 > burst) { await yieldNow(); t0 = performance.now(); }
   }
   return {txs: out, cb};
 }
@@ -1055,13 +1077,13 @@ async function scanBlock(B) {
   if (!B || B.scan) return;
   B.scan = {loading: true}; head();
   try {
-    const X = await blockBytes(B), S = scanBytes(X, B.height);
+    const X = await blockBytes(B), S = await scanBytes(X, B.height);
     if (S.txs.length !== B.txs.length) throw new Error('count');
     // make sure both lists are in the same order before joining them up (checks one transaction's id)
     const k = Math.min(1, S.txs.length - 1);
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
-      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t.dele = r.dele || false; t._k = null;
+      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
       if (r.art) t.art = r.art; else if (r.word) t.word = r.word;
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
     });
@@ -1115,12 +1137,20 @@ async function loadArt(B) {
   });
   const put = (x, cvs) => { gl.bindTexture(gl.TEXTURE_2D, artTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x.x, x.y, gl.RGBA, gl.UNSIGNED_BYTE, cvs); x.t.artR = [x.x / ATLAS, x.y / ATLAS, x.s / ATLAS]; x.t.artG = my; };
   const picItems = items.filter(x => x.pic), wordItems = items.filter(x => !x.pic);
+  let t0 = performance.now(), tr = t0;
+  const breathe = async () => {   // after each short burst: let the screen draw; show what is painted so far a few times a second
+    if (performance.now() - tr > 250) { rebuild(); tr = performance.now(); }
+    if (performance.now() - t0 < burst) return;
+    await yieldNow(); t0 = performance.now();
+  };
   for (let k = 0; k < picItems.length; k += 8) {
     if (!live()) return;
     const part = picItems.slice(k, k + 8), got = await Promise.allSettled(part.map(x => decodeArt(x.t.art)));
     if (!live()) return;
-    got.forEach((g, j) => {
-      if (g.status !== 'fulfilled') return;
+    t0 = performance.now();
+    for (let j = 0; j < got.length; j++) {
+      const g = got[j];
+      if (g.status !== 'fulfilled') continue;
       const x = part[j], img = g.value, n = x.s, [cv, cx] = artCanvas(n);
       const w = img.naturalWidth || img.width || n, h = img.naturalHeight || img.height || n, sc = Math.min(n / w, n / h), dw = w * sc, dh = h * sc;
       cx.fillStyle = '#0b0805'; cx.fillRect(0, 0, n, n);
@@ -1128,8 +1158,8 @@ async function loadArt(B) {
       cx.drawImage(img, (n - dw) / 2, (n - dh) / 2, dw, dh);
       if (img.close) img.close();
       put(x, cv);
-    });
-    rebuild();
+      await breathe(); if (!live()) return;
+    }
   }
   for (let i = 0; i < wordItems.length; i++) {
     if (!live()) return;
@@ -1137,7 +1167,7 @@ async function loadArt(B) {
     paintWord(x.t.word);
     if (x.s === 64) put(x, wCv);
     else { const [cv, cx] = artCanvas(x.s); cx.imageSmoothingEnabled = true; cx.clearRect(0, 0, x.s, x.s); cx.drawImage(wCv, 0, 0, x.s, x.s); put(x, cv); }
-    if (i % 300 === 299) { rebuild(); await new Promise(r => setTimeout(r, 0)); }
+    await breathe();
   }
   rebuild();
 }
@@ -1145,7 +1175,7 @@ async function loadArt(B) {
 const wCv = document.createElement('canvas'); wCv.width = wCv.height = 64;
 const wCx = wCv.getContext('2d');
 const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
-  nat: ['#2a2006', '#ffd23f', 'NAT'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY']};
+  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY']};
 // the drawn logos: ᚱ (the old runic letter R) for runes, a zig-zag carbon chain (how chemists draw an alkane) for Alkanes,
 // a rainbow for Counterparty (coloured coins). Drawn with lines, so they look the same on every device.
 function paintMark(x, k, fg) {
@@ -1255,7 +1285,7 @@ function wsConnect() {
   ws.onopen = () => { if (dropNoted) { dropNoted = false; feedRow('blk', `${chip('#f7931a')}live feed back`); } everLive = true; wsLive = true; feedDown = false;
     if (fellBack) { fellBack = false; if (mode === 'block' && !flipping && cur && cur.height === tipH && !sel) setTimeout(goLive, 0); } $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
   ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch (x) { return; } onFeed(d); };
-  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); setTimeout(wsConnect, 5000); };
+  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; fullJob++; fullQ = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); setTimeout(wsConnect, 5000); };
   ws.onerror = () => {};
 }
 function onFeed(d) {
@@ -1268,14 +1298,19 @@ function onFeed(d) {
   if (p.blockTransactions) { wsSeq = p.sequence; liveFull(p.blockTransactions); }
   else if (p.delta) {
     if (wsSeq >= 0 && p.sequence !== wsSeq + 1) { wsSeq = -1; wsSend({'track-mempool-block': liveIdx}); return; }   // missed an update: ask for the full list again
-    wsSeq = p.sequence; liveDelta(p.delta);
+    wsSeq = p.sequence; if (fullQ) fullQ.push(p.delta); else liveDelta(p.delta);
   }
 }
-function liveFull(arr) {
-  const txs = arr.map(liveTx), {g} = layoutAll(txs);
-  liveG = g; liveMap = new Map(txs.map(t => [t.id, t]));
+let fullJob = 0, fullQ = null;   // a new live list being packed, and the updates that arrive while it is
+async function liveFull(arr) {
+  const my = ++fullJob, txs = arr.map(liveTx); fullQ = [];
+  const r = await layoutAll(txs, () => my === fullJob);
+  if (!r) return;
+  const q = fullQ; fullQ = null;
+  liveG = r.g; liveMap = new Map(txs.map(t => [t.id, t]));
   if (mode === 'live' && !(now() < sealUntil)) { cur = null; showSet(txs); head(); if (pendFind && liveMap.has(pendFind)) { const f = liveMap.get(pendFind); pendFind = null; focusTx(f); } }
   feedStart(txs);
+  for (const d of q) liveDelta(d);
 }
 function liveDelta(dl) {
   if (!liveG) return;
@@ -1289,27 +1324,47 @@ function liveDelta(dl) {
   for (const [t, oy] of liveG.settle([...liveMap.values()])) { const c = centerOf(t); anim(t, 0, tn, [c[0], c[1] + (oy - t.y) / R * S, c[2]]); }
   // new ones go in at a height that keeps the fee order: not below anything that pays less
   for (const t of (dl.added || []).map(liveTx).sort((u, v) => v.rate - u.rate)) {
-    let y0 = Infinity, top = 0;
-    for (const u of liveMap.values()) { if (u.rate < t.rate && u.y < y0) y0 = u.y; if (u.y > top) top = u.y; }
-    liveG.place(t, y0 === Infinity ? top : y0); liveMap.set(t.id, t); anim(t, 1, tn);
+    placeLive(liveG, t, liveMap.values()); liveMap.set(t.id, t); anim(t, 1, tn);
     feedTx(t); if (mode === 'live') tick(t.rate);
   }
   // if the pile has grown out of the top, re-sort the whole block by fee and let every box glide to its new place
   let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h;
-  if (top > R) repack(tn);
+  if (top > R) repack();
   if (mode === 'live' && !(now() < sealUntil)) {
     if (sel && !liveMap.has(sel.id)) select(null);
     leaving.push(...out); shown = [...liveMap.values()]; rebuild(); head();
   }
 }
-function repack(tn) {
-  const list = [...liveMap.values()], old = new Map(list.map(t => [t, centerOf(t)]));
-  liveG = layoutAll(list).g;
-  for (const t of list) {
+function placeLive(g, t, among) {
+  let y0 = Infinity, top = 0;
+  for (const u of among) { if (u.rate < t.rate && u.y < y0) y0 = u.y; if (u.y > top) top = u.y; }
+  g.place(t, y0 === Infinity ? top : y0);
+}
+// the new order is worked out on stand-ins a burst at a time while the old pile stays on screen, then every box glides across
+let packing = false, packAgain = false;
+async function repack() {
+  if (packing) { packAgain = true; return; }
+  packing = true;
+  const G0 = liveG, ps = [...liveMap.values()].map(t => ({vsize: t.vsize, rate: t.rate, idx: t.idx, src: t}));
+  const r = await layoutAll(ps, () => liveG === G0);
+  packing = false;
+  if (!r || liveG !== G0) return;
+  const g = r.g, tn = now(), old = new Map(), placed = [];
+  for (const q of ps) {
+    const t = q.src;
+    if (liveMap.get(t.id) !== t) { g.remove(q); continue; }   // left the block while we worked
+    old.set(t, centerOf(t)); t.x = q.x; t.y = q.y; t.z = q.z; t.a = q.a; t.h = q.h; t.c = q.c; placed.push(t);
+  }
+  const done = new Set(placed);   // arrived while we worked: in at a height that keeps the fee order
+  for (const t of [...liveMap.values()].filter(t => !done.has(t)).sort((u, v) => v.rate - u.rate)) { old.set(t, centerOf(t)); placeLive(g, t, placed); placed.push(t); }
+  liveG = g;
+  for (const [t, o] of old) {
     if (t.m === 1 && tn - t.t0 < 0.9) continue;   // still dropping in: it just lands in its new place
-    const o = old.get(t), c = centerOf(t);
+    const c = centerOf(t);
     if (o[0] !== c[0] || o[1] !== c[1] || o[2] !== c[2]) anim(t, 0, tn, o);
   }
+  if (mode === 'live' && !(now() < sealUntil)) { shown = [...liveMap.values()]; rebuild(); }
+  if (packAgain) { packAgain = false; let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h; if (top > R) repack(); }
 }
 let minedMsg = null, sealUntil = -1;
 // a block is found: the lid drops onto the cube we were watching, it lifts away towards the mined blocks along the top,
@@ -1552,7 +1607,7 @@ addEventListener('resize', () => { if (fwRange !== '1d') drawCandles(); });
 setInterval(strip, 30000);
 function goLiveIdx(k) {
   if (!wsLive) { goLive(); return; }
-  if (k !== liveIdx) { liveIdx = k; liveG = null; liveMap = new Map(); wsSeq = -1; wsSend({'track-mempool-block': k}); }
+  if (k !== liveIdx) { liveIdx = k; liveG = null; liveMap = new Map(); fullJob++; fullQ = null; wsSeq = -1; wsSend({'track-mempool-block': k}); }
   goLive(); strip();
 }
 
@@ -1629,8 +1684,8 @@ async function showBlock(h) {
   try { B = await viaSources((s, b) => s.block(b, h)); }
   catch (e) { if (my === ticket) { loading = false; head('block ' + fmt(h) + ' not reachable'); if (flipping) flipNext(5); } return; }
   if (my !== ticket) return;
+  if (!(await layoutAll(B.txs, () => my === ticket))) return;
   loading = false;
-  layoutAll(B.txs);
   cur = B; showSet(B.txs); head();
   if (flipping) flipNext((Math.min(1.6, 1.2 + B.txs.length * 0.0008) + 3.4) * 2);   // about 10 s a block, so each viewer asks for data half as often
   if (pendFind) { const f = B.txs.find(x => x.id === pendFind); pendFind = null; if (f) focusTx(f); }
@@ -1809,7 +1864,7 @@ function select(t) {
     const ty = [has(TF.taproot) ? 'taproot' : has(TF.segwit) ? 'segwit' : has(TF.legacy) ? 'legacy' : null, has(TF.consol) && 'consolidation', has(TF.batch) && 'batch payout', has(TF.msig) && 'multisig'].filter(Boolean);
     if (ty.length) rows.push(['kind', ty.join(' · ')]);
     if (t.ins && t.ins.length) rows.push(['inscription', [...new Set(t.ins.map(e => e.ct))].join(', ') + (t.ins.length > 1 ? ' × ' + t.ins.length : '') + (has(TF.child) ? ' · child of a parent' : '') + (has(TF.cursed) ? ' · cursed' : '')]);
-    const tok = [has(TF.brc20) && 'BRC-20', has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', has(TF.cp) && 'Counterparty'].filter(Boolean);
+    const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
     if (has(TF.rune)) rows.push(['rune', [has(TF.etch) && 'etched' + (t.rn ? ' ' + t.rn : ''), has(TF.rmint) && 'minted', has(TF.rmove) && 'moved', has(TF.alkanes) && 'Alkanes'].filter(Boolean).join(' · ') || 'runestone']);
     if (t.msg) rows.push(['message', '“' + t.msg + '”']);
@@ -2109,10 +2164,11 @@ function snap() {
   $ts.classList.add('on'); setTimeout(() => $ts.classList.remove('on'), 400);
 }
 
-// grab the code: downloads this whole page as block-cube.html, exactly as it was loaded (the page's own copy if the file can't be re-read)
+// grab the code: downloads this whole page as block-cube.html, the file as it is now (checked with the server, so never an
+// old copy the browser kept); the page's own copy if the file can't be re-read
 $tc.onclick = async () => {
   let txt = null;
-  try { const r = await fetch(location.href.split('#')[0], {cache: 'force-cache'}); if (r.ok) { const t = await r.text(); if (/<canvas/i.test(t) && /Block Cube/.test(t)) txt = t; } } catch (e) {}
+  try { const r = await fetch(location.href.split('#')[0], {cache: 'no-cache'}); if (r.ok) { const t = await r.text(); if (/<canvas/i.test(t) && /Block Cube/.test(t)) txt = t; } } catch (e) {}
   if (!txt) txt = SRC0;
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], {type: 'text/html;charset=utf-8'})); a.download = 'block-cube.html';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
