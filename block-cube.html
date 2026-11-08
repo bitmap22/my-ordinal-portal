@@ -385,12 +385,21 @@ class Grid {
   }
 }
 const rateKey = t => t.rate >= 0 ? t.rate : -t.idx;   // fee rate, or block order when fees are unknown
-function layoutAll(txs) {
+// big jobs work in short bursts and let the screen draw in between, so the cube never freezes while it loads. A burst is
+// about 6 ms; on devices whose frames are slow it grows to half the last pause (up to 100 ms), so loading stays quick there too
+let burst = 6;
+const yieldNow = () => new Promise(r => { const t = performance.now(), c = new MessageChannel(); c.port1.onmessage = () => { burst = Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); });
+// pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
+async function layoutAll(txs, alive) {
   const g = new Grid();
   for (const t of txs) t.d = dimsOf(t.vsize);
   const big = t => Math.max(t.d[0], t.d[1], t.d[2]) >= 6 ? 1 : 0;
   const order = txs.slice().sort((u, v) => (big(v) - big(u)) || (rateKey(v) - rateKey(u)) || ((u.idx || 0) - (v.idx || 0)));
-  for (const t of order) g.place(t, 0);
+  let t0 = performance.now();
+  for (let i = 0; i < order.length; i++) {
+    g.place(order[i], 0);
+    if ((i & 15) === 15 && performance.now() - t0 > burst) { await yieldNow(); if (!alive()) return null; t0 = performance.now(); }
+  }
   return {g, order};
 }
 const centerOf = t => [((t.x + t.a / 2) / R - .5) * S, (t.y + t.h / 2) / R * S, ((t.z + t.c / 2) / R - .5) * S];
@@ -678,7 +687,7 @@ function kmask(t) {
     if ((k.bit != null && t.op != null && (t.op >> k.bit) & 1n) || (k.sf != null && t.sc != null && (t.sc >> k.sf) & 1)) m |= 1 << i;
   }
   if (!m && t.insc && t.op == null && t.sc == null) m = 1 << INSC;
-  t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._t = null;
+  t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._t = null; t._tk = undefined;
   return t._k = m;
 }
 const isInsc = t => ((kmask(t) >> INSC) & 1) === 1;
@@ -716,7 +725,8 @@ const TOK_ORDER = ['Alkanes', 'NAT', 'DMT mints', 'TAP', 'BRC-20', 'CRC-20 · LE
 const TOK_IDX = TOK_ORDER.map(n => TYPES.findIndex(T => T.name === n)), TOK_RAW = TOK_IDX.map(i => TYPES[i].test);
 const RUNE_FAM = ['runes etched', 'runes minted', 'runes moved', 'runes'].map(n => TYPES.findIndex(T => T.name === n));
 function tokOf(t) { for (let k = 0; k < TOK_IDX.length; k++) if (TOK_RAW[k](t)) return TOK_IDX[k]; return -1; }
-TOK_IDX.forEach(i => { TYPES[i].test = TYPES[i].name === 'runes' ? t => RUNE_FAM.includes(tokOf(t)) : t => tokOf(t) === i; });
+const tokC = t => { kmask(t); return t._tk !== undefined ? t._tk : (t._tk = tokOf(t)); };   // worked out once, again only when its tags change
+TOK_IDX.forEach(i => { TYPES[i].test = TYPES[i].name === 'runes' ? t => RUNE_FAM.includes(tokC(t)) : t => tokC(t) === i; });
 // which chips a transaction lights up, as two 30-bit masks (cached with its kinds)
 function tmask(t) {
   kmask(t);
@@ -917,8 +927,8 @@ async function blockBytes(B) {
   throw new Error('no raw block');
 }
 // walk every transaction once
-function scanBytes(X, h) {
-  let p = 80;
+async function scanBytes(X, h) {
+  let p = 80, t0 = performance.now();
   const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
   const ntx = vi(), out = new Array(ntx); let cb = null, artN = 0, artB = 0;
   for (let t = 0; t < ntx && p < X.length; t++) {
@@ -1042,6 +1052,7 @@ function scanBytes(X, h) {
       if (pay - (mso ? mso.length : 0) - ((r.sc >> TF.stamps) & 1 && wsh ? wsh.length : 0) >= 10) set(TF.batch);   // data-only outputs are not payouts
     }
     out[t] = r;
+    if ((t & 31) === 31 && performance.now() - t0 > burst) { await yieldNow(); t0 = performance.now(); }
   }
   return {txs: out, cb};
 }
@@ -1055,7 +1066,7 @@ async function scanBlock(B) {
   if (!B || B.scan) return;
   B.scan = {loading: true}; head();
   try {
-    const X = await blockBytes(B), S = scanBytes(X, B.height);
+    const X = await blockBytes(B), S = await scanBytes(X, B.height);
     if (S.txs.length !== B.txs.length) throw new Error('count');
     // make sure both lists are in the same order before joining them up (checks one transaction's id)
     const k = Math.min(1, S.txs.length - 1);
@@ -1115,12 +1126,20 @@ async function loadArt(B) {
   });
   const put = (x, cvs) => { gl.bindTexture(gl.TEXTURE_2D, artTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x.x, x.y, gl.RGBA, gl.UNSIGNED_BYTE, cvs); x.t.artR = [x.x / ATLAS, x.y / ATLAS, x.s / ATLAS]; x.t.artG = my; };
   const picItems = items.filter(x => x.pic), wordItems = items.filter(x => !x.pic);
+  let t0 = performance.now(), tr = t0;
+  const breathe = async () => {   // after each short burst: let the screen draw; show what is painted so far a few times a second
+    if (performance.now() - tr > 250) { rebuild(); tr = performance.now(); }
+    if (performance.now() - t0 < burst) return;
+    await yieldNow(); t0 = performance.now();
+  };
   for (let k = 0; k < picItems.length; k += 8) {
     if (!live()) return;
     const part = picItems.slice(k, k + 8), got = await Promise.allSettled(part.map(x => decodeArt(x.t.art)));
     if (!live()) return;
-    got.forEach((g, j) => {
-      if (g.status !== 'fulfilled') return;
+    t0 = performance.now();
+    for (let j = 0; j < got.length; j++) {
+      const g = got[j];
+      if (g.status !== 'fulfilled') continue;
       const x = part[j], img = g.value, n = x.s, [cv, cx] = artCanvas(n);
       const w = img.naturalWidth || img.width || n, h = img.naturalHeight || img.height || n, sc = Math.min(n / w, n / h), dw = w * sc, dh = h * sc;
       cx.fillStyle = '#0b0805'; cx.fillRect(0, 0, n, n);
@@ -1128,8 +1147,8 @@ async function loadArt(B) {
       cx.drawImage(img, (n - dw) / 2, (n - dh) / 2, dw, dh);
       if (img.close) img.close();
       put(x, cv);
-    });
-    rebuild();
+      await breathe(); if (!live()) return;
+    }
   }
   for (let i = 0; i < wordItems.length; i++) {
     if (!live()) return;
@@ -1137,7 +1156,7 @@ async function loadArt(B) {
     paintWord(x.t.word);
     if (x.s === 64) put(x, wCv);
     else { const [cv, cx] = artCanvas(x.s); cx.imageSmoothingEnabled = true; cx.clearRect(0, 0, x.s, x.s); cx.drawImage(wCv, 0, 0, x.s, x.s); put(x, cv); }
-    if (i % 300 === 299) { rebuild(); await new Promise(r => setTimeout(r, 0)); }
+    await breathe();
   }
   rebuild();
 }
@@ -1255,7 +1274,7 @@ function wsConnect() {
   ws.onopen = () => { if (dropNoted) { dropNoted = false; feedRow('blk', `${chip('#f7931a')}live feed back`); } everLive = true; wsLive = true; feedDown = false;
     if (fellBack) { fellBack = false; if (mode === 'block' && !flipping && cur && cur.height === tipH && !sel) setTimeout(goLive, 0); } $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
   ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch (x) { return; } onFeed(d); };
-  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); setTimeout(wsConnect, 5000); };
+  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; fullJob++; fullQ = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); setTimeout(wsConnect, 5000); };
   ws.onerror = () => {};
 }
 function onFeed(d) {
@@ -1268,14 +1287,19 @@ function onFeed(d) {
   if (p.blockTransactions) { wsSeq = p.sequence; liveFull(p.blockTransactions); }
   else if (p.delta) {
     if (wsSeq >= 0 && p.sequence !== wsSeq + 1) { wsSeq = -1; wsSend({'track-mempool-block': liveIdx}); return; }   // missed an update: ask for the full list again
-    wsSeq = p.sequence; liveDelta(p.delta);
+    wsSeq = p.sequence; if (fullQ) fullQ.push(p.delta); else liveDelta(p.delta);
   }
 }
-function liveFull(arr) {
-  const txs = arr.map(liveTx), {g} = layoutAll(txs);
-  liveG = g; liveMap = new Map(txs.map(t => [t.id, t]));
+let fullJob = 0, fullQ = null;   // a new live list being packed, and the updates that arrive while it is
+async function liveFull(arr) {
+  const my = ++fullJob, txs = arr.map(liveTx); fullQ = [];
+  const r = await layoutAll(txs, () => my === fullJob);
+  if (!r) return;
+  const q = fullQ; fullQ = null;
+  liveG = r.g; liveMap = new Map(txs.map(t => [t.id, t]));
   if (mode === 'live' && !(now() < sealUntil)) { cur = null; showSet(txs); head(); if (pendFind && liveMap.has(pendFind)) { const f = liveMap.get(pendFind); pendFind = null; focusTx(f); } }
   feedStart(txs);
+  for (const d of q) liveDelta(d);
 }
 function liveDelta(dl) {
   if (!liveG) return;
@@ -1289,27 +1313,47 @@ function liveDelta(dl) {
   for (const [t, oy] of liveG.settle([...liveMap.values()])) { const c = centerOf(t); anim(t, 0, tn, [c[0], c[1] + (oy - t.y) / R * S, c[2]]); }
   // new ones go in at a height that keeps the fee order: not below anything that pays less
   for (const t of (dl.added || []).map(liveTx).sort((u, v) => v.rate - u.rate)) {
-    let y0 = Infinity, top = 0;
-    for (const u of liveMap.values()) { if (u.rate < t.rate && u.y < y0) y0 = u.y; if (u.y > top) top = u.y; }
-    liveG.place(t, y0 === Infinity ? top : y0); liveMap.set(t.id, t); anim(t, 1, tn);
+    placeLive(liveG, t, liveMap.values()); liveMap.set(t.id, t); anim(t, 1, tn);
     feedTx(t); if (mode === 'live') tick(t.rate);
   }
   // if the pile has grown out of the top, re-sort the whole block by fee and let every box glide to its new place
   let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h;
-  if (top > R) repack(tn);
+  if (top > R) repack();
   if (mode === 'live' && !(now() < sealUntil)) {
     if (sel && !liveMap.has(sel.id)) select(null);
     leaving.push(...out); shown = [...liveMap.values()]; rebuild(); head();
   }
 }
-function repack(tn) {
-  const list = [...liveMap.values()], old = new Map(list.map(t => [t, centerOf(t)]));
-  liveG = layoutAll(list).g;
-  for (const t of list) {
+function placeLive(g, t, among) {
+  let y0 = Infinity, top = 0;
+  for (const u of among) { if (u.rate < t.rate && u.y < y0) y0 = u.y; if (u.y > top) top = u.y; }
+  g.place(t, y0 === Infinity ? top : y0);
+}
+// the new order is worked out on stand-ins a burst at a time while the old pile stays on screen, then every box glides across
+let packing = false, packAgain = false;
+async function repack() {
+  if (packing) { packAgain = true; return; }
+  packing = true;
+  const G0 = liveG, ps = [...liveMap.values()].map(t => ({vsize: t.vsize, rate: t.rate, idx: t.idx, src: t}));
+  const r = await layoutAll(ps, () => liveG === G0);
+  packing = false;
+  if (!r || liveG !== G0) return;
+  const g = r.g, tn = now(), old = new Map(), placed = [];
+  for (const q of ps) {
+    const t = q.src;
+    if (liveMap.get(t.id) !== t) { g.remove(q); continue; }   // left the block while we worked
+    old.set(t, centerOf(t)); t.x = q.x; t.y = q.y; t.z = q.z; t.a = q.a; t.h = q.h; t.c = q.c; placed.push(t);
+  }
+  const done = new Set(placed);   // arrived while we worked: in at a height that keeps the fee order
+  for (const t of [...liveMap.values()].filter(t => !done.has(t)).sort((u, v) => v.rate - u.rate)) { old.set(t, centerOf(t)); placeLive(g, t, placed); placed.push(t); }
+  liveG = g;
+  for (const [t, o] of old) {
     if (t.m === 1 && tn - t.t0 < 0.9) continue;   // still dropping in: it just lands in its new place
-    const o = old.get(t), c = centerOf(t);
+    const c = centerOf(t);
     if (o[0] !== c[0] || o[1] !== c[1] || o[2] !== c[2]) anim(t, 0, tn, o);
   }
+  if (mode === 'live' && !(now() < sealUntil)) { shown = [...liveMap.values()]; rebuild(); }
+  if (packAgain) { packAgain = false; let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h; if (top > R) repack(); }
 }
 let minedMsg = null, sealUntil = -1;
 // a block is found: the lid drops onto the cube we were watching, it lifts away towards the mined blocks along the top,
@@ -1552,7 +1596,7 @@ addEventListener('resize', () => { if (fwRange !== '1d') drawCandles(); });
 setInterval(strip, 30000);
 function goLiveIdx(k) {
   if (!wsLive) { goLive(); return; }
-  if (k !== liveIdx) { liveIdx = k; liveG = null; liveMap = new Map(); wsSeq = -1; wsSend({'track-mempool-block': k}); }
+  if (k !== liveIdx) { liveIdx = k; liveG = null; liveMap = new Map(); fullJob++; fullQ = null; wsSeq = -1; wsSend({'track-mempool-block': k}); }
   goLive(); strip();
 }
 
@@ -1629,8 +1673,8 @@ async function showBlock(h) {
   try { B = await viaSources((s, b) => s.block(b, h)); }
   catch (e) { if (my === ticket) { loading = false; head('block ' + fmt(h) + ' not reachable'); if (flipping) flipNext(5); } return; }
   if (my !== ticket) return;
+  if (!(await layoutAll(B.txs, () => my === ticket))) return;
   loading = false;
-  layoutAll(B.txs);
   cur = B; showSet(B.txs); head();
   if (flipping) flipNext((Math.min(1.6, 1.2 + B.txs.length * 0.0008) + 3.4) * 2);   // about 10 s a block, so each viewer asks for data half as often
   if (pendFind) { const f = B.txs.find(x => x.id === pendFind); pendFind = null; if (f) focusTx(f); }
@@ -2109,10 +2153,11 @@ function snap() {
   $ts.classList.add('on'); setTimeout(() => $ts.classList.remove('on'), 400);
 }
 
-// grab the code: downloads this whole page as block-cube.html, exactly as it was loaded (the page's own copy if the file can't be re-read)
+// grab the code: downloads this whole page as block-cube.html, the file as it is now (checked with the server, so never an
+// old copy the browser kept); the page's own copy if the file can't be re-read
 $tc.onclick = async () => {
   let txt = null;
-  try { const r = await fetch(location.href.split('#')[0], {cache: 'force-cache'}); if (r.ok) { const t = await r.text(); if (/<canvas/i.test(t) && /Block Cube/.test(t)) txt = t; } } catch (e) {}
+  try { const r = await fetch(location.href.split('#')[0], {cache: 'no-cache'}); if (r.ok) { const t = await r.text(); if (/<canvas/i.test(t) && /Block Cube/.test(t)) txt = t; } } catch (e) {}
   if (!txt) txt = SRC0;
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], {type: 'text/html;charset=utf-8'})); a.download = 'block-cube.html';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
