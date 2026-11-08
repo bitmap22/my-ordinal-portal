@@ -282,17 +282,50 @@ body.room #card::before{content:'';order:-2;align-self:center;width:38px;height:
 let room = null;   // the walk-in room, when you are in it (see 'walk-in room' below)
 const SRC0 = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;   // the page as it arrived, for the grab-code button
 /* ---------- data sources: set on:false to switch one off ---------- */
-const SOURCES = [
+const SOURCES = [   // (tried in this order: the five mempool.space-style sites give fee rates too; the others list a block from its raw bytes)
   {name:'mempool.space', on:true, kind:'mempool', base:'https://mempool.space'},
+  {name:'ordpool.space', on:true, kind:'mempool', base:'https://ordpool.space'},
+  {name:'mempool.emzy.de', on:true, kind:'mempool', base:'https://mempool.emzy.de'},
+  {name:'mempool.ninja', on:true, kind:'mempool', base:'https://mempool.ninja'},
+  {name:'mempool.space (Frankfurt)', on:true, kind:'mempool', base:'https://mempool.fra.mempool.space'},
   {name:'this ordinal',  on:true, kind:'ord',     base:''},
-  {name:'ordinals.com',  on:true, kind:'ord',     base:'https://ordinals.com'}
+  {name:'ordinals.com',  on:true, kind:'ord',     base:'https://ordinals.com'},
+  {name:'blockstream.info', on:true, kind:'esplora', base:'https://blockstream.info'},
+  {name:'mempool.bitaroo.net', on:true, kind:'esplora', base:'https://mempool.bitaroo.net'},
+  {name:'unisat', on:true, kind:'ord', base:'https://static.unisat.io'},
+  {name:'ordiscan.com', on:true, kind:'ord', base:'https://ordiscan.com'},
+  {name:'ordinalswallet.com', on:true, kind:'ord', base:'https://ordinalswallet.com'}
 ];
 const LIVE_FEED = 'wss://mempool.space/api/v1/ws';   // mempool.space's live feed of the next block
+const LIVE_FEEDS = [LIVE_FEED, 'wss://mempool.emzy.de/api/v1/ws', 'wss://mempool.ninja/api/v1/ws', 'wss://mempool.fra.mempool.space/api/v1/ws'];   // (the same feed from other sites, if one is down)
+// the same API as mempool.space's, from other sites (the first five also have mempool.space's /api/v1 extras)
+const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://mempool.bitaroo.net', 'https://blockstream.info'], MIRROR_V1 = 5;
+// ord's recursive endpoints (/r/...) and inscription content, from other sites
+const ORD_R = ['https://ordinals.com', 'https://static.unisat.io', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
 const ORD_EXPLORERS = ['https://ordinals.com', ''];   // ord explorers that list each block's inscriptions ('' = the site this runs on)
 const BLOCK_VB = 1e6;   // a block holds 1,000,000 vB
 const S = 10;           // cube side in the 3D world
 
 /* ---------- fetching ---------- */
+// a mempool.space call, from the first site that answers it (the one that worked last goes first; mempool.space again after 5 minutes)
+let mpAt = 0, mpAtT = 0;
+async function mpFetch(path, opt, ms, pref) {
+  if (mpAt && performance.now() - mpAtT > 300000) mpAt = 0;
+  const n = path.startsWith('/api/v1/') ? MIRROR_V1 : MIRRORS.length, order = [], add = i => { if (i >= 0 && i < n && !order.includes(i)) order.push(i); };
+  add(MIRRORS.indexOf(pref)); add(mpAt); for (let i = 0; i < n; i++) add(i);
+  let err = null, nf = null;
+  for (const i of order) {
+    try { const r = await fetchT(MIRRORS[i] + path, opt, ms); if (i !== mpAt && !pref) { mpAt = i; mpAtT = performance.now(); } return r; }
+    catch (e) { err = e; if (/http 404/.test(String(e))) nf = e; }
+  }
+  throw nf || err || new Error('no site answered');
+}
+// an ord call (/r/... or a page), from the first site that answers it
+async function ordFetch(path, ms, list) {
+  let err = null;
+  for (const b of list || ORD_R) { try { return await fetchT(b + path, null, ms); } catch (e) { err = e; } }
+  throw err || new Error('no site answered');
+}
 function fetchT(url, opt, ms) {
   const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms || 25000);
   return fetch(url, Object.assign({signal: ac.signal}, opt || {})).then(r => {
@@ -337,9 +370,10 @@ const SRC = {
       if (!(n >= 0)) throw new Error('bad tip'); return n;
     },
     async block(b, h) {
-      const [info, blk] = await Promise.all([
-        fetchT(b + '/r/blockinfo/' + h).then(r => r.json()),
-        fetchT(b + '/block/' + h, {headers: {Accept: 'application/json'}}, 120000).then(r => r.json())]);
+      const info = await (await fetchT(b + '/r/blockinfo/' + h)).json();
+      let blk = null;
+      try { blk = await (await fetchT(b + '/block/' + h, {headers: {Accept: 'application/json'}}, 120000)).json(); } catch (e) {}   // (ordinals.com has switched this off)
+      if (!blk || !blk.transactions || !blk.transactions.length) return rawListed(h, info.hash, b, {time: info.timestamp, diff: info.difficulty, size: info.total_size, weight: info.total_weight, count: info.transaction_count});
       const raw = blk.transactions, n = raw ? raw.length : 0;
       if (!n || (info.transaction_count && info.transaction_count !== n)) throw new Error('bad block');
       // the chain itself does not list each transaction's fee, so fee rates are unknown here
@@ -348,13 +382,60 @@ const SRC = {
     }
   }
 };
-let goodSrc = null;
+// blockstream.info-style sites (no fee rates): the block's details, and its transactions from its raw bytes
+SRC.esplora = {
+  tip: b => SRC.mempool.tip(b),
+  async block(b, h) {
+    const hash = (await (await fetchT(b + '/api/block-height/' + h)).text()).trim();
+    if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error('bad hash');
+    const meta = await (await fetchT(b + '/api/block/' + hash)).json();
+    return rawListed(h, hash, b, {time: meta.timestamp, diff: meta.difficulty, size: meta.size, weight: meta.weight, count: meta.tx_count});
+  }
+};
+// a block listed from its raw bytes: each transaction's ID, size and value (no fees: those need the coins it spends)
+async function rawListed(h, hash, pref, m) {
+  let X = null;
+  if (hash && /^[0-9a-f]{64}$/.test(hash)) try { X = new Uint8Array(await (await mpFetch('/api/block/' + hash + '/raw', null, 90000, /^https:/.test(pref) ? pref : null)).arrayBuffer()); } catch (e) {}
+  if (!X) X = await blockBytes({height: h, hash: null});
+  const txs = await rawList(X);
+  if (!txs.length || (m.count && m.count !== txs.length)) throw new Error('bad block');
+  if (!hash) hash = await rawHash(X.subarray(0, 80));
+  return {height: h, hash, time: m.time, diff: m.diff, size: m.size || X.length, weight: m.weight, count: txs.length, txs, fees: false, bytes: X};
+}
+const HEX2 = Array.from({length: 256}, (_, i) => i.toString(16).padStart(2, '0'));
+async function rawHash(u) { const d = await crypto.subtle.digest('SHA-256', await crypto.subtle.digest('SHA-256', u)); return Array.from(new Uint8Array(d).reverse(), b => HEX2[b]).join(''); }
+async function rawList(X) {
+  let p = 80;
+  const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
+  const n = vi(), txs = [], bodies = [];
+  for (let t = 0; t < n; t++) {
+    const s = p; p += 4; let sw = false;
+    if (X[p] === 0 && X[p + 1] === 1) { sw = true; p += 2; }
+    const a = p, nin = vi();
+    for (let i = 0; i < nin; i++) { p += 36; const l = vi(); p += l + 4; }
+    const nout = vi(); let v = 0;
+    for (let i = 0; i < nout; i++) { let x = 0; for (let k = 0; k < 8; k++) x += X[p + k] * 2 ** (8 * k); v += x; p += 8; const l = vi(); p += l; }
+    const b = p;
+    if (sw) for (let i = 0; i < nin; i++) { const m = vi(); for (let k = 0; k < m; k++) { const l = vi(); p += l; } }
+    p += 4; if (p > X.length) throw new Error('short block');
+    const base = (b - a) + 8, w = base * 3 + (p - s), u = new Uint8Array(base);
+    u.set(X.subarray(s, s + 4), 0); u.set(X.subarray(a, b), 4); u.set(X.subarray(p - 4, p), base - 4);
+    txs.push({id: null, fee: -1, vsize: Math.ceil(w / 4), value: v, rate: -1, idx: t}); bodies.push(u);
+  }
+  if (window.crypto && crypto.subtle) for (let i = 0; i < txs.length; i += 400) {   // (each transaction's ID, 400 at a time)
+    const ids = await Promise.all(bodies.slice(i, i + 400).map(rawHash));
+    ids.forEach((id, k) => { txs[i + k].id = id; });
+  }
+  return txs;
+}
+let goodSrc = null, goodAt = 0;
 async function viaSources(job) {
+  if (goodSrc && goodSrc !== SOURCES[0] && performance.now() - goodAt > 300000) goodSrc = null;   // (after 5 minutes on a backup, the first choice again)
   const list = SOURCES.filter(s => s.on && s !== goodSrc);
   if (goodSrc && goodSrc.on) list.unshift(goodSrc);
   let err = new Error('no data source');
   for (const s of list) {
-    try { const r = await job(SRC[s.kind], s.base); goodSrc = s; return r; } catch (e) { err = e; }
+    try { const r = await job(SRC[s.kind], s.base); if (goodSrc !== s) goodAt = performance.now(); goodSrc = s; return r; } catch (e) { err = e; }
   }
   throw err;
 }
@@ -1068,8 +1149,9 @@ const POOLS = [[/foundry/i, 'Foundry USA'], [/antpool/i, 'AntPool'], [/viabtc/i,
   [/miningsquared|bsquared/i, 'Mining Squared'], [/ckpool|solo\.ck/i, 'solo miner'], [/datum/i, 'DATUM']];
 // the whole block as bytes: mempool.space's raw block, else an ord explorer's /r/block (hex)
 async function blockBytes(B) {
+  if (B.bytes) { const X = B.bytes; B.bytes = null; return X; }   // (fetched already, to list its transactions)
   if (SOURCES[0].on && B.hash) {
-    try { return new Uint8Array(await (await fetchT(MP + '/api/block/' + B.hash + '/raw', null, 60000)).arrayBuffer()); } catch (e) {}
+    try { return new Uint8Array(await (await mpFetch('/api/block/' + B.hash + '/raw', null, 60000)).arrayBuffer()); } catch (e) {}
   }
   for (const base of ORD_EXPLORERS) {
     try {
@@ -1240,6 +1322,7 @@ function loadEtch(B) {
     for (const base of ORD_EXPLORERS) {
       try { const h = await (await fetchT(base + '/block/' + B.height, null, 45000)).text(); if (h.includes('<h1>Block ')) { html = h; break; } } catch (e) {}
     }
+    if (!html) { await new Promise(r => setTimeout(r, 1500)); try { const h = await (await fetchT('https://ordinals.com/block/' + B.height, null, 45000)).text(); if (h.includes('<h1>Block ')) html = h; } catch (e) {} }
     if (!html) { B.etch = {failed: true}; return; }
     const made = new Set([...html.matchAll(/href=\/rune\/([^> ]+)>/g)].map(m => decodeURIComponent(m[1]).replace(/•/g, ''))), first = new Set();
     for (const t of tries) {   // (in block order: a name made twice in one block goes to the first)
@@ -1532,12 +1615,14 @@ function showSet(txs) {
 let ws = null, wsSeq = -1, wsLive = false, feedDown = false, liveG = null, liveMap = new Map(), liveIdx = 0;   // liveIdx: 0 = next block, 1 = the one after, ...
 const liveTx = a => ({id: a[0], fee: a[1], vsize: a[2], value: a[3] || 0, rate: a[4] || (a[2] ? a[1] / a[2] : 0), insc: tagged(a[5]), fl: a[5] || 0, seen: a[6] || 0, live: true});
 function wsSend(o) { try { ws.send(JSON.stringify(o)); } catch (e) {} }
+let wsAt = 0, wsOpened = false;   // which live feed (LIVE_FEEDS), and whether it connected
 function wsConnect() {
-  try { ws = new WebSocket(LIVE_FEED); } catch (e) { return; }
-  ws.onopen = () => { if (dropNoted) { dropNoted = false; feedRow('blk', `${chip('#f7931a')}live feed back`); } everLive = true; wsLive = true; feedDown = false;
+  wsOpened = false;
+  try { ws = new WebSocket(LIVE_FEEDS[wsAt % LIVE_FEEDS.length]); } catch (e) { wsAt++; setTimeout(wsConnect, 1500); return; }
+  ws.onopen = () => { wsOpened = true; if (dropNoted) { dropNoted = false; feedRow('blk', `${chip('#f7931a')}live feed back`); } everLive = true; wsLive = true; feedDown = false;
     if (fellBack) { fellBack = false; if (mode === 'block' && !flipping && cur && cur.height === tipH && !sel) setTimeout(goLive, 0); } $feed.classList.remove('down'); wsSend({action: 'want', data: ['blocks', 'mempool-blocks']}); wsSend({'track-mempool-block': liveIdx}); };
   ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch (x) { return; } onFeed(d); };
-  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; fullJob++; fullQ = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); setTimeout(wsConnect, 5000); };
+  ws.onclose = () => { const was = wsLive; wsLive = false; wsSeq = -1; liveG = null; fullJob++; fullQ = null; if (!feedDown) { feedDown = true; feedOff(); if (mode === 'live' && tipH >= 0) { fellBack = everLive; showBlock(tipH); } } if (was) head(); if (!wsOpened) wsAt++; setTimeout(wsConnect, wsOpened ? 5000 : wsAt % LIVE_FEEDS.length ? 1500 : 8000); };
   ws.onerror = () => {};
 }
 function onFeed(d) {
@@ -1708,7 +1793,7 @@ let pastTop = null; const olderCache = new Map(), olderAsk = new Set();
 const blockAt = h => pastBlocks.find(b => b.height === h) || olderCache.get(h);
 function wantOlder(h) {   // mempool.space hands out 15 mined blocks at a time, from any height down
   if (olderAsk.has(h) || !SOURCES[0].on) return; olderAsk.add(h);
-  fetchT(MP + '/api/v1/blocks/' + h, null, 15000).then(r => r.json()).then(list => { for (const b of list) olderCache.set(b.height, b); strip(); }).catch(() => olderAsk.delete(h));
+  mpFetch('/api/v1/blocks/' + h, null, 15000).then(r => r.json()).then(list => { for (const b of list) olderCache.set(b.height, b); strip(); }).catch(() => olderAsk.delete(h));
 }
 function stripArrow(ch, label, onClick) { const b = document.createElement('button'); b.className = 'sa'; b.innerHTML = ch; b.title = label; b.setAttribute('aria-label', label); b.onclick = onClick; return b; }
 const $fut = document.getElementById('fut'), $past = document.getElementById('past');
@@ -1822,7 +1907,7 @@ async function setFwRange(r) {
   const c = fwCache[r];
   if (!c || Date.now() - c.at > 600000) {
     $fwS.textContent = 'loading the last ' + FW_NAME[r] + '…'; fwC = []; drawCandles();
-    try { fwCache[r] = {at: Date.now(), d: await (await fetchT(MP + '/api/v1/mining/blocks/fee-rates/' + r, null, 20000)).json()}; }
+    try { fwCache[r] = {at: Date.now(), d: await (await mpFetch('/api/v1/mining/blocks/fee-rates/' + r, null, 20000)).json()}; }
     catch (e) { if (fwRange === r) $fwS.textContent = 'fee history not reachable right now'; return; }
   }
   if (fwRange === r) drawCandles();
@@ -1950,7 +2035,7 @@ function lrPump() {
       try {
         const wait = lrAt - performance.now(); lrAt = Math.max(lrAt, performance.now()) + 150;   // a few a second, kind to mempool.space
         if (wait > 0) await new Promise(f => setTimeout(f, wait));
-        const hex = (await (await fetchT(MP + '/api/tx/' + t.id + '/hex', null, 15000)).text()).trim();
+        const hex = (await (await mpFetch('/api/tx/' + t.id + '/hex', null, 15000)).text()).trim();
         if (/^[0-9a-f]+$/i.test(hex) && hex.length % 2 === 0) {
           const n = hex.length >> 1, X = new Uint8Array(81 + LR_CB.length + n); X[80] = 2; X.set(LR_CB, 81);
           for (let i = 0, o = 81 + LR_CB.length; i < n; i++) X[o + i] = parseInt(hex.substr(i * 2, 2), 16);
@@ -2131,8 +2216,8 @@ async function txInfo(t) {
   if (t._x) return t._x;
   if (!t.id || !SOURCES[0].on) return null;
   const [tx, seen] = await Promise.all([
-    fetchT(MP + '/api/tx/' + t.id, null, 15000).then(r => r.json()),
-    fetchT(MP + '/api/v1/transaction-times?txId[]=' + t.id, null, 15000).then(r => r.json()).catch(() => null)]);
+    mpFetch('/api/tx/' + t.id, null, 15000).then(r => r.json()),
+    mpFetch('/api/v1/transaction-times?txId[]=' + t.id, null, 15000).then(r => r.json()).catch(() => null)]);
   return t._x = {tx, seen: seen && seen[0] > 0 ? seen[0] : t.seen || 0};
 }
 let cardTok = 0;
@@ -2434,7 +2519,7 @@ async function findTx(id) {
   if (!SOURCES[0].on) { note('looking up transactions needs mempool.space'); return; }
   note('looking for that transaction…', 20);
   let tx;
-  try { tx = await (await fetchT(MP + '/api/tx/' + id, null, 15000)).json(); }
+  try { tx = await (await mpFetch('/api/tx/' + id, null, 15000)).json(); }
   catch (e) { note(/404/.test(String(e)) ? 'no transaction with that ID was found' : 'mempool.space not reachable right now'); return; }
   if (tx.status && tx.status.confirmed) {
     pendFind = id;
@@ -3404,7 +3489,7 @@ async function tribLoad() {
   if (!SOURCES[0].on || performance.now() - tribAt < 600000 && trib) return trib;
   tribAt = performance.now();
   try {
-    const [a, t] = await Promise.all([fetchT(MP + '/api/address/' + GEN_ADDR, null, 20000).then(r => r.json()), fetchT(MP + '/api/address/' + GEN_ADDR + '/txs', null, 20000).then(r => r.json())]);
+    const [a, t] = await Promise.all([mpFetch('/api/address/' + GEN_ADDR, null, 20000).then(r => r.json()), mpFetch('/api/address/' + GEN_ADDR + '/txs', null, 20000).then(r => r.json())]);
     const cs = a.chain_stats || {}, ms = a.mempool_stats || {};
     trib = {n: (cs.tx_count || 0) + (ms.tx_count || 0), sats: (cs.funded_txo_sum || 0) + (ms.funded_txo_sum || 0), spent: (cs.spent_txo_count || 0) + (ms.spent_txo_count || 0),
       gifts: (Array.isArray(t) ? t : []).slice(0, 24).map(x => ({sats: x.vout.filter(o => o.scriptpubkey_address === GEN_ADDR).reduce((q, o) => q + o.value, 0), time: x.status && x.status.block_time, id: x.txid}))};
@@ -5562,6 +5647,12 @@ cv.addEventListener('pointerdown', () => { if (cm.using) cmUse(false); }, true);
 
 /* ---- the big screen and the music box: what is on, shared with your crew (and set again for whoever joins later) ---- */
 const CM_CONTENT = /(^|\.)ordinals\.com$/.test(location.hostname) ? '/content/' : 'https://ordinals.com/content/';
+async function cmHead(id) {   // where an inscription's content can be had, and what it is
+  for (const b of [CM_CONTENT].concat(ORD_R.map(o => o + '/content/')).filter((u, i, a) => a.indexOf(u) === i)) {
+    try { const r = await fetchT(b + id, {method: 'HEAD'}, 10000); return [b + id, r.headers.get('content-type') || '']; } catch (e) {}
+  }
+  return [CM_CONTENT + id, ''];
+}
 const cmYT = s => { s = (s || '').trim(); const m = s.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/); return m ? m[1] : /^[A-Za-z0-9_-]{11}$/.test(s) ? s : null; };
 const cmIns = s => { s = (s || '').trim().toLowerCase(); const m = s.match(/([0-9a-f]{64}i\d+)/); return m ? m[1] : null; };
 function cmShare(ev) { if (crew.on) toPage({type: 'event', ev: Object.assign({list: 'cm'}, ev)}); }
@@ -5579,8 +5670,7 @@ function cmScreen() {
   const f = cm.sc = document.createElement('iframe'); f.className = 'cmov'; f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); f.style.width = '1280px'; f.style.height = '720px'; f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture'); f.title = 'The big screen';
   document.body.appendChild(f);
   if (m.k === 'yt') { const off = Math.max(0, Math.floor((Date.now() - m.t0) / 1000)); f.src = 'https://www.youtube-nocookie.com/embed/' + m.v + '?autoplay=1&playsinline=1&rel=0&modestbranding=1&start=' + off; return; }
-  const u = CM_CONTENT + m.v;
-  fetch(u, {method: 'HEAD'}).then(r => r.headers.get('content-type') || '').catch(() => '').then(c => {
+  cmHead(m.v).then(([u, c]) => {
     if (cm.sc !== f) return; const vid = /^video\//.test(c);
     if (/^image\/(?!svg)/.test(c) || vid) f.srcdoc = '<body style="margin:0;height:100vh;background:#000;overflow:hidden">' + (vid ? '<video autoplay loop playsinline' : '<img onload="this.naturalWidth<480&&(this.style.imageRendering=\'pixelated\')"') + ' src="' + u + '" style="display:block;width:100%;height:100%;object-fit:contain"></body>';
     else f.src = u;
@@ -5630,8 +5720,8 @@ function cmMusic() {
   }
   if (m.k === 'ins') {
     if (!cmA.el) {
-      const u = CM_CONTENT + m.v; cmA.key = m.v;
-      fetch(u, {method: 'HEAD'}).then(r => r.headers.get('content-type') || '').catch(() => '').then(c => {
+      cmA.key = m.v;
+      cmHead(m.v).then(([u, c]) => {
         if (cm.music.k !== 'ins' || cm.music.v !== m.v) return;
         if (/^audio\//.test(c)) { const el = cmA.el = new Audio(u); el.loop = true; el.crossOrigin = 'anonymous'; el.addEventListener('loadedmetadata', () => { if (el.duration > 0) el.currentTime = ((Date.now() - m.t0) / 1000) % el.duration; }); el.play().catch(() => {}); }
         else { const f = cmA.el = document.createElement('iframe'); f.setAttribute('allow', 'autoplay'); f.style.cssText = 'position:fixed;width:2px;height:2px;left:-9px;top:-9px;opacity:0;pointer-events:none;border:0'; f.src = u; document.body.appendChild(f); }
@@ -5770,7 +5860,7 @@ async function heldInfo(t) {
   const ids = t.ordIds || (t.id && t.ins && t.ins.length ? t.ins.map(e => t.id + 'i' + e.i) : []);
   for (const id of ids.slice(0, 2)) {   // each inscription in it (the first two), from ordinals.com's recursive endpoint
     try {
-      const d = await (await fetchT('https://ordinals.com/r/inscription/' + id, null, 15000)).json();
+      const d = await (await ordFetch('/r/inscription/' + id, 15000)).json();
       const rows = [['inscription', '#' + fmt(d.number) + ' · ' + (d.content_type || 'no content') + (d.content_length ? ' · ' + fmt(d.content_length) + ' bytes' : '')]];
       if (d.sat != null) rows.push(['on sat', fmt(d.sat)]);
       if (d.address) rows.push(['owned by', shortA(d.address)]);
@@ -5782,7 +5872,7 @@ async function heldInfo(t) {
   const has = f => t.sc != null && ((t.sc >> f) & 1) === 1;
   const q = has(TF.etch) && t.rn ? t.rn : t.mint || null;
   if (q) try {   // the rune it makes, or mints: read from the rune's page on ordinals.com
-    const h = await (await fetchT('https://ordinals.com/rune/' + encodeURIComponent(q), null, 15000)).text(), D = {};
+    const h = await (await ordFetch('/rune/' + encodeURIComponent(q), 15000, ['https://ordinals.com', 'https://ordinals.com'])).text(), D = {};   // (only ordinals.com has rune pages: asked twice)
     for (const m of h.matchAll(/<dt>([^<]+)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/g)) D[m[1].trim()] = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
     const name = ((/<h1>([^<]+)<\/h1>/.exec(h) || [])[1] || q).trim(), big = v => v && v.replace(/[^0-9]/g, '').length > 20;
     if (D.id) {
@@ -6372,7 +6462,8 @@ async function cmPaintShow() {
 addEventListener('message', e => {
   const f = cmPaintFrame; if (!f || e.source !== f.contentWindow) return; const m = e.data;
   if (!m || m.app !== 'blockpaint' || m.type !== 'go' || m.to !== 'cube') return;
-  f.style.display = 'none'; cmPaintShown = false; if (paused) { paused = false; lastFT = 0; requestAnimationFrame(frame); }
+  f.style.display = 'none'; cmPaintShown = false; try { f.blur(); window.focus(); } catch (e) {}   // (the keyboard comes back to the cube)
+  if (paused) { paused = false; lastFT = 0; requestAnimationFrame(frame); }
   cmFromPaint();
   if (cmPaintPhone) { f.remove(); cmPaintFrame = null; cmPaintReady = false; }   // (a phone frees its memory)
 });
