@@ -833,6 +833,8 @@ function kindsOf(t) { const m = kmask(t); return KINDS.filter((k, i) => (m >> i)
 // the parcel-type row: three tabs of chips, each chip lights up the parcels that have it
 const tfl = f => t => t.sc != null && ((t.sc >> f) & 1) === 1, kdi = n => { const i = KINDS.findIndex(k => k.name === n); return t => ((kmask(t) >> i) & 1) === 1; };
 const kcss = n => KINDS.find(k => k.name === n).css, REG_CSS = '#7d8cab';
+// a new rune etched together with a picture (shown on its parcel): these have a section of their own in the rooms
+const etchPic = t => t.sc != null && ((t.sc >> TF.etch) & 1) === 1 && !!t.art;
 const TYPES = [
   {g: 0, name: 'inscriptions', css: kcss('inscriptions'), test: kdi('inscriptions')}, {g: 0, name: 'images', css: '#ff9f1c', test: tfl(TF.img)},
   {g: 0, name: 'text', css: '#e9dcc8', test: tfl(TF.txt)}, {g: 0, name: 'HTML', css: '#3a86ff', test: tfl(TF.html)},
@@ -847,6 +849,7 @@ const TYPES = [
   {g: 1, name: 'Atomicals', css: kcss('Atomicals'), test: kdi('Atomicals')}, {g: 1, name: 'SRC-20', css: kcss('SRC-20'), test: kdi('SRC-20')},
   {g: 1, name: 'Stamps', css: kcss('Stamps'), test: kdi('Stamps')}, {g: 1, name: 'Counterparty', css: kcss('Counterparty'), test: kdi('Counterparty')},
   {g: 1, name: 'CAT-21', css: kcss('CAT-21'), test: kdi('CAT-21')}, {g: 1, name: 'Labitbu', css: kcss('Labitbu'), test: kdi('Labitbu')},
+  {g: 3, name: 'with pictures', css: '#e0aaff', test: t => etchPic(t)},
   {g: 2, name: 'taproot', css: '#a78bfa', test: tfl(TF.taproot)}, {g: 2, name: 'segwit', css: '#4cc9f0', test: tfl(TF.segwit)},
   {g: 2, name: 'legacy', css: '#9aa5b1', test: tfl(TF.legacy)}, {g: 2, name: 'consolidations', css: '#ffd166', test: tfl(TF.consol)},
   {g: 2, name: 'batch payouts', css: '#06d6a0', test: tfl(TF.batch)}, {g: 2, name: 'multisig', css: '#ef476f', test: tfl(TF.msig)},
@@ -1098,7 +1101,7 @@ async function scanBytes(X, h) {
         if (X[q + 1] === 0x5d) {
           const {F, moves} = runestone(X.subarray(q, p)); set(TF.rune);
           if (F[2] && F[2][0] & 1n) { set(TF.etch); if (F[4]) r.rn = runeName(F[4][0], F[3] && F[3][0]); }
-          if (F[20]) set(TF.rmint);
+          if (F[20]) { set(TF.rmint); if (F[20].length >= 2) r.mint = F[20][0] + ':' + F[20][1]; }
           if (moves) set(TF.rmove);
           if (F[16383]) set(TF.alkanes);
           if (F[16383]) r.word = {k: 'alk', a: '', b: F[20] && F[20].length >= 2 ? '+ rune mint ' + F[20][0] + ':' + F[20][1] : F[2] && F[2][0] & 1n ? '+ new rune' : moves ? '+ rune move' : ''};
@@ -1187,7 +1190,7 @@ async function scanBytes(X, h) {
                 set(TF.brc420); r.b4 = String(o.op || '').toLowerCase() === 'deploy' ? 'deploy' : 'mint';
                 if (!r.wj) r.word = r.b4 === 'deploy' ? {k: 'b420', a: String(o.name || 'DEPLOY').slice(0, 24), b: 'deploy' + (o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')} : {k: 'b420', a: 'MINT?', b: 'not checked'};
               }
-              else if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word && !r.wj) r.word = {k: 'brc20', a: r.tick, b: wb}; }
+              else if (pr === 'brc-20' && o.p === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word && !r.wj) r.word = {k: 'brc20', a: r.tick, b: wb}; }
               else if (pr === 'tap') {
                 set(TF.tap);
                 const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));
@@ -1226,6 +1229,28 @@ async function rawTxid(X, r) {
   const d = await crypto.subtle.digest('SHA-256', await crypto.subtle.digest('SHA-256', u));
   return Array.from(new Uint8Array(d).reverse(), b => b.toString(16).padStart(2, '0')).join('');
 }
+function loadEtch(B) {
+  if (!B) return Promise.resolve();
+  if (B.etchP) return B.etchP;
+  return B.etchP = (async () => {
+    const tries = B.txs.filter(t => t.sc != null && (t.sc >> TF.etch) & 1 && t.rn);
+    if (!tries.length) { B.etch = {ok: true}; return; }
+    B.etch = {loading: true};
+    let html = null;
+    for (const base of ORD_EXPLORERS) {
+      try { const h = await (await fetchT(base + '/block/' + B.height, null, 45000)).text(); if (h.includes('<h1>Block ')) { html = h; break; } } catch (e) {}
+    }
+    if (!html) { B.etch = {failed: true}; return; }
+    const made = new Set([...html.matchAll(/href=\/rune\/([^> ]+)>/g)].map(m => decodeURIComponent(m[1]).replace(/•/g, ''))), first = new Set();
+    for (const t of tries) {   // (in block order: a name made twice in one block goes to the first)
+      const n = t.rn.replace(/•/g, '');
+      if (made.has(n) && !first.has(n)) { first.add(n); continue; }
+      t.sc &= ~(1 << TF.etch); t.rn = null; t._k = null;
+      if (t.word && t.word.k === 'rune') t.word = (t.sc >> TF.rmint) & 1 && t.mint ? {k: 'rune', s: 3, a: '', b: 'mint ' + t.mint} : {k: 'rune', s: 4, a: '', b: ''};
+    }
+    B.etch = {ok: true};
+  })();
+}
 async function scanBlock(B) {
   if (!B || B.scan) return;
   B.scan = {loading: true}; head();
@@ -1236,14 +1261,15 @@ async function scanBlock(B) {
     const k = Math.min(1, S.txs.length - 1);
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
-      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
-      if (r.art) t.art = r.art; else if (r.word) t.word = r.word;
+      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
+      if (r.art) t.art = r.art; if (r.word) t.word = r.word;
       if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
     });
     const pl = POOLS.find(([re]) => re.test(S.cb || ''));
     B.cb = {words: S.cb || '', pool: B.pool || (pl ? pl[1] : null)};
     B.scan = {ok: true};
+    loadEtch(B).then(() => { if (cur === B && !room) { rebuild(); head(); } });
   } catch (e) { B.scan = {failed: true}; }
   if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
 }
@@ -1276,10 +1302,13 @@ const wRank = w => w.k === 'rune' ? w.s || 4 : w.k === 'alk' || w.k === 'cp' ? 1
 const artWant = (t, pic) => {
   const m = t.d ? Math.max(t.d[0], t.d[1], t.d[2]) : 1, s = m >= 6 ? 128 : m >= 3 ? 64 : 32; return s;   // pictures and word tiles alike
 };
+// a parcel shows its picture, unless it stands on a token's shelf and has that token's own face (a new rune etched with a
+// picture shows its picture: it stands in RUNE ETCHINGS)
+const artPic = t => !!t.art && (etchPic(t) || !(t.word && tokC(t) >= 0));
 async function loadArt(B) {
   const my = ++artGen, live = () => my === artGen && cur === B;
   // pictures first (block order), then words: people's own words and tokens, then Alkanes and Counterparty, new runes, rune mints, rune moves
-  const pics = B.txs.filter(t => t.art), words = B.txs.filter(t => t.word && !t.art).map((t, i) => [t, i]).sort((a, b) => wRank(a[0].word) - wRank(b[0].word) || a[1] - b[1]).map(a => a[0]);
+  const pics = B.txs.filter(t => artPic(t)), words = B.txs.filter(t => t.word && !artPic(t)).map((t, i) => [t, i]).sort((a, b) => wRank(a[0].word) - wRank(b[0].word) || a[1] - b[1]).map(a => a[0]);
   const items = pics.map(t => ({t, pic: true, s: artWant(t, true)})).concat(words.map(t => ({t, pic: false, s: artWant(t, false)})));
   // if the sheet can't hold them all, make the last ones smaller (down to 16 px) before leaving any out
   const CS = 128, G = ATLAS / CS, cap = (G * G - 4) * (CS / 16) ** 2, units = n => (n / 16) * (n / 16);
@@ -1352,10 +1381,14 @@ function paintMark(x, k, fg) {
   }
 }
 function fitFont(x, txt, max, min, w, weight) {
-  let f = max; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`;
-  while (f > min && x.measureText(txt).width > w) { f--; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`; }
+  const F = f => `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`;
+  x.font = F(max); const m = x.measureText(txt).width; if (m <= w) return max;
+  let f = Math.max(min, Math.min(max - 1, Math.floor(max * w / m)));
+  x.font = F(f + 1); while (f + 1 < max && x.measureText(txt).width <= w) { f++; x.font = F(f + 1); }   // (the biggest that fits, as before)
+  x.font = F(f); while (f > min && x.measureText(txt).width > w) { f--; x.font = F(f); }
   return f;
 }
+setTimeout(() => { try { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); x.font = '800 20px ui-monospace,Menlo,Consolas,monospace'; x.fillText('\u{1F440}\u{1F4B8}\u25E8\u2726', 2, 20); } catch (e) {} }, 2500);
 function paintWord(w, n) {
   n = n || 64;
   const [cv, x] = artCanvas(n), [bg, fg, label0] = (w.k === 'rune' ? WSTYLE['rune' + (w.s || 4)] : WSTYLE[w.k]) || WSTYLE.text, small = n <= 32;
@@ -1896,7 +1929,7 @@ const LR_CB = new Uint8Array([1, 0, 0, 0, 1].concat(new Array(32).fill(0), [255,
 const lrSeen = new Map();   // what each read found, by transaction id (the last few thousand)
 let lrQ = [], lrOn = 0, lrAt = 0, lrT = 0;
 function lrApply(t, r) {
-  t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
+  t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
   if (r.word) t.word = r.word;
   if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
 }
@@ -2181,7 +2214,7 @@ function select(t) {
     if (has(TF.rune)) rows.push(['rune', [has(TF.etch) && 'etched' + (t.rn ? ' ' + t.rn : ''), has(TF.rmint) && 'minted', has(TF.rmove) && 'moved', has(TF.alkanes) && 'Alkanes'].filter(Boolean).join(' · ') || 'runestone']);
     if (t.msg) rows.push(['message', '“' + t.msg + '”']);
   }
-  $cr.innerHTML = ''; addRows(rows);
+  $cr.innerHTML = ''; addRows(rows); if (t._held && t._held.length && room && room.held && room.held.it.t === t) addRows(t._held);
   $ct.textContent = (t.id || '') + ids;
   if (!t.live && cur && cur.fees && !cur.ord && !t.ordIds && isInsc(t)) loadOrd(cur);   // fetch the block's inscription list for the preview
   preview(t); enrich(t);
@@ -3222,24 +3255,22 @@ function frame() {
 const RW = 7.6, RH = 7, BAY = 1.3, DEEP = .46, DOOR = 2.4, DOORH = 4.2, EYE = 1.62, WT = .3, END = 1.8, CASEH = 2.62;
 const PLANKS = [2.1, 1.7, 1.3, .9, .5, .1];   // shelf tops, top to bottom
 const SECT = ['bitmaps', 'images', 'text', 'HTML', 'JSON', 'audio / video', '3D models', 'other files', 'delegates', 'inscriptions'].map(n => TYPES.findIndex(T => T.name === n));
-const SECT_ALL = SECT.concat(TOK_IDX, TX_IDX, [REG]);
-const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS', '#4cc9f0']];
+const ETCHP = TYPES.findIndex(T => T.name === 'with pictures'), SECT_ALL = SECT.concat([ETCHP], TOK_IDX, TX_IDX, [REG]);
+const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS', '#4cc9f0'], ['RUNE ETCHINGS', '#e0aaff']];
 const LC = h => lin(hexc(parseInt(h.slice(1), 16)));
 const RCG = {wall: LC('#0b0906'), back: LC('#120d06'), wood: LC('#3b2a13'), post: LC('#21170a'), pillar: LC('#100c07'), neon: LC('#ffc94a'), neon2: LC('#e3a72c'), dim: LC('#7a5a14'), trim: LC('#ffd36b'), door: LC('#171007'), sign: LC('#0d0805')};   // block 0: gold
 const RC = {wall: LC('#0a0708'), back: LC('#100a07'), wood: LC('#3b2313'), post: LC('#1e120a'), pillar: LC('#0e0a0b'), neon: LC('#ff8a1e'), neon2: LC('#d9741c'), dim: LC('#6a3612'), trim: LC('#ff9a2e'), door: LC('#140d08'), sign: LC('#0d0805')};
-// where a transaction stands: an inscription on the INSCRIPTIONS shelves, by what kind of file it is (BRC-20s, bitmaps and the
-// picture a new rune is etched with are inscriptions too); a token on the TOKENS shelves (runes, BRC-20, Alkanes, ...); anything
-// else on the TRANSACTIONS shelves. One that is both an inscription and a token stands on both, as the chips count it
-function shelvesOf(t) {
-  const s = [];
-  if (isInsc(t)) { let i = SECT[SECT.length - 1]; for (const j of SECT) if (TYPES[j].test(t)) { i = j; break; } s.push(i); }
-  const k = tokC(t); if (k >= 0) s.push(k);
-  if (!s.length) { if (kmask(t)) s.push(SECT[SECT.length - 1]); else { const x = txC(t); s.push(x >= 0 ? x : REG); } }
-  return s;
+// every transaction gets exactly one shelf: a new rune etched with a picture in RUNE ETCHINGS, else its token, else what kind of
+// inscription it is, else what kind of transaction
+function shelfOf(t) {
+  if (etchPic(t)) return ETCHP;
+  const k = tokC(t); if (k >= 0) return k;
+  if (kmask(t)) { for (const i of SECT) if (TYPES[i].test(t)) return i; return SECT[SECT.length - 1]; }
+  const x = txC(t); return x >= 0 ? x : REG;
 }
 function roomPlan(B) {
   const by = new Map();
-  for (const t of B.txs) for (const k of shelvesOf(t)) { if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
+  for (const t of B.txs) { const k = shelfOf(t); if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
   const items = [], labs = [], cats = [], IW = BAY - .1;
   let bay = 0, row = 0, u = 0, g = -1, any = false;
   const nextRow = () => { u = 0; if (++row >= PLANKS.length) { row = 0; bay++; } };
@@ -3267,11 +3298,23 @@ gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); gl.generateMipmap(gl.TEXTURE_2D);
 const labSt = document.createElement('canvas');   // a part of the sheet is copied here and sent to the graphics card from it (quicker than reading the pixels out)
+// the smaller copies of one part of the label sheet, made again from the sheet itself (quick: a few small pictures)
+const labMipC = [];
+function labMipRect(x, y, w, h) {
+  gl.bindTexture(gl.TEXTURE_2D, labTex); let src = labCv, sx = x, sy = y, sw = w, sh = h, lvl = 0;
+  while (sw >= 2 && sh >= 2) {
+    const nw = sw >> 1, nh = sh >> 1; lvl++;
+    const c = labMipC[lvl] || (labMipC[lvl] = document.createElement('canvas')); if (c.width !== nw || c.height !== nh) { c.width = nw; c.height = nh; }
+    const cx = c.getContext('2d'); cx.imageSmoothingQuality = 'high'; cx.clearRect(0, 0, nw, nh); cx.drawImage(src, sx, sy, sw, sh, 0, 0, nw, nh);
+    gl.texSubImage2D(gl.TEXTURE_2D, lvl, x >> lvl, y >> lvl, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    src = c; sx = 0; sy = 0; sw = nw; sh = nh;
+  }
+}
 function labUp(x, y, w, h, noMip) {
   if (labSt.width !== w || labSt.height !== h) { labSt.width = w; labSt.height = h; }
   const c = labSt.getContext('2d'); c.clearRect(0, 0, w, h); c.drawImage(labCv, x, y, w, h, 0, 0, w, h);
   gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, labSt);
-  if (!noMip) gl.generateMipmap(gl.TEXTURE_2D);
+  if (!noMip) { if (w * h <= 1024 * 256) labMipRect(x, y, w, h); else gl.generateMipmap(gl.TEXTURE_2D); }
 }
 // one label: a dark plate with a glowing edge, the words in their colour (and a count, or a second line)
 function labPaint(x, y, w, h, main, col, right, sub, edge) {
@@ -3390,7 +3433,13 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
   if (rmCache.has(h)) return rmCache.get(h);
   const p = (async () => {
     const B = cur && cur.height === h && cur.txs ? cur : await viaSources((s, b) => s.block(b, h));
-    await Promise.allSettled([loadTags(B), scanBlock(B)]);
+    for (let k = 0; k < 4; k++) {
+      await Promise.allSettled([loadTags(B), scanBlock(B)]);
+      if (B.scan && B.scan.ok) await loadEtch(B);
+      if (B.scan && B.scan.ok && B.etch && B.etch.ok && (!B.fees || !B.hash || (B.tags && B.tags.ok))) break;
+      await new Promise(r => setTimeout(r, 2000 * (k + 1)));
+      if (B.scan && B.scan.failed) B.scan = null; if (B.tags && B.tags.failed) B.tags = null; if (B.etch && B.etch.failed) { B.etch = null; B.etchP = null; }
+    }
     const ht = B.fees ? heatOf(medianRate(B.txs)) : null; if (ht != null) { blockHeat.set(h, ht); if (room) rmSigns(); }   // (door signs show how warm the block behind them is)
     return B;
   })();
@@ -3421,7 +3470,7 @@ function rmMake(h, of, side) {
     });
     if (h === 0) tribLoad().then(() => { if (!R.gen || !room || !room.rooms.includes(R)) return; tribPaint(R); labUp(R.gen.trib.x, R.gen.trib.y, 1024, 128); rmFix(R); room.fixDirty = room.dirty = true; });
     await yieldNow(); if (gone()) return;
-    rmLabels(R); await yieldNow(); if (gone()) return;
+    for (const _ of rmLabelsG(R)) { await yieldNow(); if (gone()) return; }
     rmFix(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
     for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); if (gone()) return; }   // (a strip at a time: measured, the whole sheet at once took up to 37 ms)
     gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D);
@@ -3560,20 +3609,12 @@ function rmFix(R) {
 // the block's facts, on boards either side of each door (the counts per tab say which shelves they are on)
 function rmFacts(B) {
   const r = B.txs.filter(t => t.fee > 0).map(t => t.rate), cb = B.cb || {}, d = new Date((B.time || 0) * 1000);
-  const tabs = [0, 0, 0]; let nIns = 0, nEt = 0;
-  for (const t of B.txs) {
-    for (const g of new Set(shelvesOf(t).map(k => TYPES[k].g))) tabs[g]++;
-    if (isInsc(t)) nIns += t.ins && t.ins.length || 1;   // (counted one by one, as ordinals.com does: a transaction can carry several)
-    if (t.sc != null && (t.sc >> TF.etch) & 1) nEt++;   // new runes
-  }
+  const tabs = [0, 0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
   const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS IN ALL'], [(B.height === 0 ? 'SATOSHI NAKAMOTO' : cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
     [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})], [B.size < 1e5 ? fmt(B.size) + ' BYTES' : (B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
   if (r.length) out.push([r1(Math.min(...r)) + '–' + r1(Math.max(...r)), 'SAT/VB PAID']);
-  tabs.forEach((n, g) => {
-    if (!n) return;
-    if (g === 0 && nIns !== n) out.push([fmt(nIns) + ' INSCRIPTIONS', 'IN ' + fmt(n) + (n === 1 ? ' PARCEL' : ' PARCELS') + ' ON THE INSCRIPTIONS SHELVES']);
-    else out.push([fmt(n), 'ON THE ' + CATS[g][0] + ' SHELVES' + (g === 1 && nEt ? ' · ' + fmt(nEt) + (nEt === 1 ? ' NEW RUNE' : ' NEW RUNES') : '')]);
-  });
+  for (const g of [0, 3, 1, 2]) if (tabs[g]) out.push([fmt(tabs[g]), 'ON THE ' + CATS[g][0] + ' SHELVES']);   // (in the order the bookcases stand)
+  if (out.length + (cb.words ? 2 : 0) > 10) { out[1] = [out[1][0], 'MINED IT · ' + out[2][0] + ' ' + out[2][1]]; out.splice(2, 1); }   // (one board too many: when goes with who)
   const f = out.slice(0, cb.words ? 8 : 10).map(([a, b]) => ({a, b}));
   if (cb.words) f.push({a: '“' + cb.words + '”', b: 'THE MINER WROTE', big: 1});   // the miner's whole message, on a board twice as tall
   return f;
@@ -3596,7 +3637,7 @@ function rmCaseSigns(P) {
   return {groups: [...groups.values()], bay};
 }
 // paints every label of a room into its third of the sheet
-function rmLabels(R) {
+function* rmLabelsG(R) {
   const P = R.plan, y0 = R.slot * LSLOT, G0 = R.h === 0, lim = G0 ? LT - 512 : LT; let px = 0, py = y0, rh = 0;   // (block 0 keeps the right-hand 512 for its front page and plaque)
   const place = (w, h) => { if (px + w > lim) { px = 0; py += rh; rh = 0; } const r = [px, py]; px += w; rh = Math.max(rh, h); return r; };
   labCx.clearRect(0, y0, LT, LSLOT);
@@ -3604,9 +3645,11 @@ function rmLabels(R) {
   for (const end of ['back', 'front']) { const [x, y] = place(512, 128); R.signs[end] = {x, y}; }
   { const [x, y] = place(512, 128); R.title = {x, y}; labPaint(x, y, 512, 128, 'BLOCK ' + fmt(R.h), '#ffb04a', null, fmt(R.B.count || R.B.txs.length) + ' transactions', heatCol(R.B.fees ? heatOf(medianRate(R.B.txs)) : null)); }
   for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
+  yield;
   px = LT;
   R.facts = rmFacts(R.B);
   for (const f of R.facts) { const [x, y] = place(384, f.big ? 192 : 96); f.x = x; f.y = y; (f.big ? labWrap : labPaint)(x, y, 384, f.big ? 192 : 96, f.a, '#ffb04a', null, f.b); }
+  yield;
   px = LT;
   const B = R.B, utc = t => new Date(t * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).toUpperCase();
   R.halv = null;
@@ -3628,9 +3671,10 @@ function rmLabels(R) {
   R.cs = rmCaseSigns(P);
   const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (lim / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (lim / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (lim / 320)) * 80 <= left ? 320 : 256;
   R.cs.w = cw;
-  for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaint(x, y, cw, cw / 4, g.main, g.col, null, g.sub); }
+  { let q = 0; for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaint(x, y, cw, cw / 4, g.main, g.col, null, g.sub); if (++q % 6 === 0) yield; } }
+  yield;
   px = LT;
-  for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaint(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); }
+  { let q = 0; for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaint(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); if (++q % 8 === 0) yield; } }
 }
 const rmNear = (R, end) => { const r = room && room.rooms; if (!r) return null; const i = r.indexOf(R); return end === 'front' ? r[i + 1] : r[i - 1]; };
 function rmSignPaint(R, quiet) {
@@ -3757,7 +3801,7 @@ async function nearTick(tn) {
       const sl = near.free.pop(); near.slot.set(t, sl);
       const x = (sl % NCN) * 256, y = Math.floor(sl / NCN) * 256;
       let cvs, sm = true;
-      if (t.art) {
+      if (artPic(t)) {
         let img; try { img = await decodeArt(t.art); } catch (e) { img = null; }
         if (!room || near.slot.get(t) !== sl) { if (img && img.close) img.close(); continue; }
         if (!img) { near.slot.delete(t); near.free.push(sl); continue; }
@@ -3793,11 +3837,13 @@ function rmDoors(dt) {
       if (R.common && end !== R.door) continue;
       const N = rmNear(R, end), zd = end === 'back' ? R.z0 : R.z0 - R.L;
       const want = N && N.ready && N.h === R[end].to && Math.hypot(p.x, p.z - zd) < 3.4 ? 1 : 0;
-      R[end].o += (want - R[end].o) * Math.min(1, dt * 5);
+      R[end].o += (want - R[end].o) * Math.min(1, dt * 5); if (Math.abs(want - R[end].o) < 2e-3) R[end].o = want;
       panel(R, end, R[end].o);
     }
   }
-  gl.bindBuffer(gl.ARRAY_BUFFER, rmDoorBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d.length ? d : [0]), gl.DYNAMIC_DRAW); room.nDoor = d.length / NF;
+  const pd = room.doorD; let same = !!pd && pd.length === d.length; if (same) for (let i = 0; i < d.length; i++) if (pd[i] !== d[i]) { same = false; break; }
+  if (same) return;   // (where they were: nothing to send)
+  room.doorD = d; gl.bindBuffer(gl.ARRAY_BUFFER, rmDoorBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d.length ? d : [0]), gl.DYNAMIC_DRAW); room.nDoor = d.length / NF;
 }
 // moving: keys or the touch pad, easing in and out, with a gentle step bob; walls, bookcases and closed doors stop you
 const rmKeys = {}, rmPad = {x: 0, y: 0};
@@ -5695,6 +5741,61 @@ function rmHover() {
   else if (cmOn(room.at)) { const A = cmAct(room.lock ? null : room.mx, room.lock ? null : room.my); if (A) s = A.label + ' · ' + (coarse ? 'tap' : A.ray || room.lock ? 'click or E' : 'E'); }
   if (s !== room.hov) { room.hov = s; $rl.textContent = s; $rl.classList.toggle('on', !!s); }
 }
+// all of a held parcel: the whole transaction (mempool.space), each inscription and the rune it makes or mints (ordinals.com).
+// Fetched when you pick it up, and kept with it, so the block's other parcels cost nothing
+const shortA = a => a && a.length > 24 ? a.slice(0, 11) + '…' + a.slice(-8) : a || '';
+const ordJson = async p => { for (let k = 0; ; k++) try { return await (await fetchT('https://ordinals.com' + p, {headers: {Accept: 'application/json'}}, 15000)).json(); } catch (e) { if (k) throw e; await new Promise(r => setTimeout(r, 1200)); } };   // (once more if it was busy)
+const runeAmt = (v, d) => { const n = Number(v || 0) / 10 ** (d || 0); return n.toLocaleString('en-US', {maximumFractionDigits: Math.min(8, d || 0)}); };
+async function heldInfo(t) {
+  if (t._held) return;   // (fetched before: the tablet shows it again)
+  t._held = [];
+  const still = () => sel === t && room && room.held && room.held.it.t === t && !room.held.back;
+  const show = rows => { if (!rows.length) return; t._held.push(...rows); if (still()) { addRows(rows); fitCard(); } };   // (kept with the parcel: the tablet keeps it when it is redrawn)
+  try {   // the transaction itself
+    const x = await txInfo(t), tx = x && x.tx;
+    if (tx && tx.vin) {
+      const cb = tx.vin.length && tx.vin[0].is_coinbase, rows = [['— all of it', 'fetched as you picked it up']];
+      if (!cb) rows.push(['paid in', btc(tx.vin.reduce((a, i) => a + (i.prevout ? i.prevout.value : 0), 0))]);
+      rows.push(['weight', fmt(tx.weight) + ' WU · version ' + tx.version + (tx.locktime ? ' · locktime ' + fmt(tx.locktime) : '')]);
+      if (!cb && tx.vin.some(i => i.sequence < 0xfffffffe)) rows.push(['replaceable', 'yes (RBF)']);
+      tx.vin.slice(0, 4).forEach((i, k) => rows.push(['in ' + (k + 1), cb ? 'new coins' : (i.prevout ? btc(i.prevout.value) : '?') + ' · ' + (shortA(i.prevout && i.prevout.scriptpubkey_address) || typeName(i.prevout && i.prevout.scriptpubkey_type))]));
+      if (tx.vin.length > 4) rows.push(['', '+ ' + fmt(tx.vin.length - 4) + ' more in']);
+      tx.vout.slice(0, 4).forEach((o, k) => rows.push(['out ' + (k + 1), btc(o.value) + ' · ' + (o.scriptpubkey_type === 'op_return' ? 'OP_RETURN data' : shortA(o.scriptpubkey_address) || typeName(o.scriptpubkey_type))]));
+      if (tx.vout.length > 4) rows.push(['', '+ ' + fmt(tx.vout.length - 4) + ' more out']);
+      if (tx.status && tx.status.confirmed) rows.push(['confirmed', new Date(tx.status.block_time * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
+      show(rows);
+    }
+  } catch (e) {}
+  const ids = t.ordIds || (t.id && t.ins && t.ins.length ? t.ins.map(e => t.id + 'i' + e.i) : []);
+  for (const id of ids.slice(0, 2)) {   // each inscription in it (the first two), from ordinals.com's recursive endpoint
+    try {
+      const d = await (await fetchT('https://ordinals.com/r/inscription/' + id, null, 15000)).json();
+      const rows = [['inscription', '#' + fmt(d.number) + ' · ' + (d.content_type || 'no content') + (d.content_length ? ' · ' + fmt(d.content_length) + ' bytes' : '')]];
+      if (d.sat != null) rows.push(['on sat', fmt(d.sat)]);
+      if (d.address) rows.push(['owned by', shortA(d.address)]);
+      if (d.delegate) rows.push(['shows', shortA(d.delegate) + ' (a delegate)']);
+      if (d.charms && d.charms.length) rows.push(['charms', d.charms.join(', ')]);
+      show(rows);
+    } catch (e) {}
+  }
+  const has = f => t.sc != null && ((t.sc >> f) & 1) === 1;
+  const q = has(TF.etch) && t.rn ? t.rn : t.mint || null;
+  if (q) try {   // the rune it makes, or mints: read from the rune's page on ordinals.com
+    const h = await (await fetchT('https://ordinals.com/rune/' + encodeURIComponent(q), null, 15000)).text(), D = {};
+    for (const m of h.matchAll(/<dt>([^<]+)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/g)) D[m[1].trim()] = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    const name = ((/<h1>([^<]+)<\/h1>/.exec(h) || [])[1] || q).trim(), big = v => v && v.replace(/[^0-9]/g, '').length > 20;
+    if (D.id) {
+      const rows = [['rune', name + (D.symbol ? ' ' + D.symbol : '') + (D.number ? ' · #' + Number(D.number).toLocaleString('en-US') : '')]];
+      rows.push(['rune id', D.id + (D['etching block'] ? ' · made in block ' + Number(D['etching block']).toLocaleString('en-US') : '')]);
+      if (D.supply) rows.push(['supply', D.supply]);
+      if (D.premine) rows.push(['premine', D.premine + (D['premine percentage'] ? ' (' + D['premine percentage'] + ')' : '')]);
+      if (D.amount) rows.push(['mint terms', D.amount + ' a mint' + (D.cap ? (big(D.cap) ? ' · no limit' : ' · up to ' + Number(D.cap).toLocaleString('en-US') + ' mints') : '')]);
+      rows.push(['minted', (D.mints ? Number(D.mints).toLocaleString('en-US') + ' times' : 'never') + (D.mintable === 'true' ? ' · still open' : D.amount ? ' · closed' : ' · no open mint')]);
+      if (D.burned && parseFloat(D.burned.replace(/[^0-9.]/g, '')) > 0) rows.push(['burned', D.burned]);
+      show(rows);
+    }
+  } catch (e) {}
+}
 // holding a parcel: it flies from its shelf into your hands and becomes a tablet showing what it is
 function rmHold(it) {
   if (room.held) return;
@@ -5702,7 +5803,7 @@ function rmHold(it) {
   it.f = it.w; it.c = hand; it.m = 0; it.t0 = now(); room.dirty = true;
   room.held = {it};
   if (document.pointerLockElement) document.exitPointerLock();
-  setTimeout(() => { if (!room || !room.held || room.held.it !== it || room.held.back) return; it.gone = true; room.dirty = true; select(it.t); document.body.classList.add('holding'); }, 480);
+  setTimeout(() => { if (!room || !room.held || room.held.it !== it || room.held.back) return; it.gone = true; room.dirty = true; select(it.t); document.body.classList.add('holding'); heldInfo(it.t); }, 480);
 }
 function rmPut() {
   const H = room && room.held; if (!H || H.back) return;
