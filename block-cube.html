@@ -1358,10 +1358,14 @@ function paintMark(x, k, fg) {
   }
 }
 function fitFont(x, txt, max, min, w, weight) {
-  let f = max; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`;
-  while (f > min && x.measureText(txt).width > w) { f--; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`; }
+  const F = f => `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`;
+  x.font = F(max); const m = x.measureText(txt).width; if (m <= w) return max;
+  let f = Math.max(min, Math.min(max - 1, Math.floor(max * w / m)));
+  x.font = F(f + 1); while (f + 1 < max && x.measureText(txt).width <= w) { f++; x.font = F(f + 1); }   // (the biggest that fits, as before)
+  x.font = F(f); while (f > min && x.measureText(txt).width > w) { f--; x.font = F(f); }
   return f;
 }
+setTimeout(() => { try { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); x.font = '800 20px ui-monospace,Menlo,Consolas,monospace'; x.fillText('\u{1F440}\u{1F4B8}\u25E8\u2726', 2, 20); } catch (e) {} }, 2500);
 function paintWord(w, n) {
   n = n || 64;
   const [cv, x] = artCanvas(n), [bg, fg, label0] = (w.k === 'rune' ? WSTYLE['rune' + (w.s || 4)] : WSTYLE[w.k]) || WSTYLE.text, small = n <= 32;
@@ -3271,11 +3275,23 @@ gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); gl.generateMipmap(gl.TEXTURE_2D);
 const labSt = document.createElement('canvas');   // a part of the sheet is copied here and sent to the graphics card from it (quicker than reading the pixels out)
+// the smaller copies of one part of the label sheet, made again from the sheet itself (quick: a few small pictures)
+const labMipC = [];
+function labMipRect(x, y, w, h) {
+  gl.bindTexture(gl.TEXTURE_2D, labTex); let src = labCv, sx = x, sy = y, sw = w, sh = h, lvl = 0;
+  while (sw >= 2 && sh >= 2) {
+    const nw = sw >> 1, nh = sh >> 1; lvl++;
+    const c = labMipC[lvl] || (labMipC[lvl] = document.createElement('canvas')); if (c.width !== nw || c.height !== nh) { c.width = nw; c.height = nh; }
+    const cx = c.getContext('2d'); cx.imageSmoothingQuality = 'high'; cx.clearRect(0, 0, nw, nh); cx.drawImage(src, sx, sy, sw, sh, 0, 0, nw, nh);
+    gl.texSubImage2D(gl.TEXTURE_2D, lvl, x >> lvl, y >> lvl, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    src = c; sx = 0; sy = 0; sw = nw; sh = nh;
+  }
+}
 function labUp(x, y, w, h, noMip) {
   if (labSt.width !== w || labSt.height !== h) { labSt.width = w; labSt.height = h; }
   const c = labSt.getContext('2d'); c.clearRect(0, 0, w, h); c.drawImage(labCv, x, y, w, h, 0, 0, w, h);
   gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, labSt);
-  if (!noMip) gl.generateMipmap(gl.TEXTURE_2D);
+  if (!noMip) { if (w * h <= 1024 * 256) labMipRect(x, y, w, h); else gl.generateMipmap(gl.TEXTURE_2D); }
 }
 // one label: a dark plate with a glowing edge, the words in their colour (and a count, or a second line)
 function labPaint(x, y, w, h, main, col, right, sub, edge) {
@@ -3425,7 +3441,7 @@ function rmMake(h, of, side) {
     });
     if (h === 0) tribLoad().then(() => { if (!R.gen || !room || !room.rooms.includes(R)) return; tribPaint(R); labUp(R.gen.trib.x, R.gen.trib.y, 1024, 128); rmFix(R); room.fixDirty = room.dirty = true; });
     await yieldNow(); if (gone()) return;
-    rmLabels(R); await yieldNow(); if (gone()) return;
+    for (const _ of rmLabelsG(R)) { await yieldNow(); if (gone()) return; }
     rmFix(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
     for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); if (gone()) return; }   // (a strip at a time: measured, the whole sheet at once took up to 37 ms)
     gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D);
@@ -3592,7 +3608,7 @@ function rmCaseSigns(P) {
   return {groups: [...groups.values()], bay};
 }
 // paints every label of a room into its third of the sheet
-function rmLabels(R) {
+function* rmLabelsG(R) {
   const P = R.plan, y0 = R.slot * LSLOT, G0 = R.h === 0, lim = G0 ? LT - 512 : LT; let px = 0, py = y0, rh = 0;   // (block 0 keeps the right-hand 512 for its front page and plaque)
   const place = (w, h) => { if (px + w > lim) { px = 0; py += rh; rh = 0; } const r = [px, py]; px += w; rh = Math.max(rh, h); return r; };
   labCx.clearRect(0, y0, LT, LSLOT);
@@ -3600,9 +3616,11 @@ function rmLabels(R) {
   for (const end of ['back', 'front']) { const [x, y] = place(512, 128); R.signs[end] = {x, y}; }
   { const [x, y] = place(512, 128); R.title = {x, y}; labPaint(x, y, 512, 128, 'BLOCK ' + fmt(R.h), '#ffb04a', null, fmt(R.B.count || R.B.txs.length) + ' transactions', heatCol(R.B.fees ? heatOf(medianRate(R.B.txs)) : null)); }
   for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
+  yield;
   px = LT;
   R.facts = rmFacts(R.B);
   for (const f of R.facts) { const [x, y] = place(384, f.big ? 192 : 96); f.x = x; f.y = y; (f.big ? labWrap : labPaint)(x, y, 384, f.big ? 192 : 96, f.a, '#ffb04a', null, f.b); }
+  yield;
   px = LT;
   const B = R.B, utc = t => new Date(t * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).toUpperCase();
   R.halv = null;
@@ -3624,9 +3642,10 @@ function rmLabels(R) {
   R.cs = rmCaseSigns(P);
   const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (lim / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (lim / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (lim / 320)) * 80 <= left ? 320 : 256;
   R.cs.w = cw;
-  for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaint(x, y, cw, cw / 4, g.main, g.col, null, g.sub); }
+  { let q = 0; for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaint(x, y, cw, cw / 4, g.main, g.col, null, g.sub); if (++q % 6 === 0) yield; } }
+  yield;
   px = LT;
-  for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaint(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); }
+  { let q = 0; for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaint(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); if (++q % 8 === 0) yield; } }
 }
 const rmNear = (R, end) => { const r = room && room.rooms; if (!r) return null; const i = r.indexOf(R); return end === 'front' ? r[i + 1] : r[i - 1]; };
 function rmSignPaint(R, quiet) {
@@ -3789,11 +3808,13 @@ function rmDoors(dt) {
       if (R.common && end !== R.door) continue;
       const N = rmNear(R, end), zd = end === 'back' ? R.z0 : R.z0 - R.L;
       const want = N && N.ready && N.h === R[end].to && Math.hypot(p.x, p.z - zd) < 3.4 ? 1 : 0;
-      R[end].o += (want - R[end].o) * Math.min(1, dt * 5);
+      R[end].o += (want - R[end].o) * Math.min(1, dt * 5); if (Math.abs(want - R[end].o) < 2e-3) R[end].o = want;
       panel(R, end, R[end].o);
     }
   }
-  gl.bindBuffer(gl.ARRAY_BUFFER, rmDoorBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d.length ? d : [0]), gl.DYNAMIC_DRAW); room.nDoor = d.length / NF;
+  const pd = room.doorD; let same = !!pd && pd.length === d.length; if (same) for (let i = 0; i < d.length; i++) if (pd[i] !== d[i]) { same = false; break; }
+  if (same) return;   // (where they were: nothing to send)
+  room.doorD = d; gl.bindBuffer(gl.ARRAY_BUFFER, rmDoorBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d.length ? d : [0]), gl.DYNAMIC_DRAW); room.nDoor = d.length / NF;
 }
 // moving: keys or the touch pad, easing in and out, with a gentle step bob; walls, bookcases and closed doors stop you
 const rmKeys = {}, rmPad = {x: 0, y: 0};
