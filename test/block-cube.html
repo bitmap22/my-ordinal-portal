@@ -3849,6 +3849,7 @@ function rmDoors(dt) {
 const rmKeys = {}, rmPad = {x: 0, y: 0};
 function rmStep(dt) {
   const p = room.p, C = room.rooms[1];
+  if (!document.hasFocus() && (rmKeys.w || rmKeys.a || rmKeys.s || rmKeys.d || rmKeys.arrowup || rmKeys.arrowdown || rmKeys.arrowleft || rmKeys.arrowright)) rmLetGo();   // (the keyboard is elsewhere)
   let f = (rmKeys.w || rmKeys.arrowup ? 1 : 0) - (rmKeys.s || rmKeys.arrowdown ? 1 : 0) - rmPad.y, s = (rmKeys.d || rmKeys.arrowright ? 1 : 0) - (rmKeys.a || rmKeys.arrowleft ? 1 : 0) + rmPad.x;
   const m = Math.hypot(f, s); if (m > 1) { f /= m; s /= m; }
   const sp = rmKeys.shift ? 5 : 2.7, sy = Math.sin(p.yaw), cy = Math.cos(p.yaw);
@@ -5876,7 +5877,8 @@ addEventListener('keydown', e => {
   else if (k === 'escape') rmPut();
 });
 addEventListener('keyup', e => { rmKeys[e.key.toLowerCase()] = false; });
-addEventListener('blur', () => { for (const k in rmKeys) rmKeys[k] = false; });
+const rmLetGo = () => { for (const k in rmKeys) rmKeys[k] = false; rmPad.x = rmPad.y = 0; if (room) room.p.vx = room.p.vz = 0; };
+addEventListener('blur', rmLetGo); addEventListener('focus', rmLetGo); document.addEventListener('visibilitychange', rmLetGo);
 document.addEventListener('pointerlockchange', () => { if (room) room.lock = document.pointerLockElement === cv; document.body.classList.toggle('rlock', !!(room && room.lock)); });
 const rmLook = (dx, dy, k) => { const p = room.p; p.yaw -= dx * k; p.pitch = Math.max(-1.35, Math.min(1.35, p.pitch - dy * k)); };
 const rmPtr = new Map();
@@ -6264,7 +6266,7 @@ addEventListener('message', e => {
   if (m.type === 'say') { if (m.id === crew.me) return; const M = crew.mates.get(m.id); if (M) { M.say = cleanS(m.text, 120); M.sayT = performance.now() + 7000; } return; }
   if (m.type === 'talk') { const M = crew.mates.get(m.id); if (M) M.talkT = performance.now() + 450; return; }
   if (m.type === 'arrive') { cmFromPaint(); return; }   // back from Block Paint (the page kept the cube open)
-  if (m.type === 'leave') { rmFade(true); if (au && au.state === 'running') au.suspend(); return; }   // (the page is taking you to Block Paint)
+  if (m.type === 'leave') { rmLetGo(); rmFade(true); if (au && au.state === 'running') au.suspend(); return; }   // (the page is taking you to Block Paint)
   if (m.type === 'go') { const M = crew.mates.get(m.id); if (M && M.s) goToMate(M); return; }
   if (m.type === 'portraits') {   // pictures of every runner in every colourway, for the page's picker
     const list = []; for (let i = 0; i < CH_LOOKS.length; i++) for (let o = 0; o < 3; o++) list.push({i, o, url: chPortrait([i, o, m.skin | 0], 180, 240)});
@@ -6348,7 +6350,7 @@ function cmToPaint() {
   if (performance.now() - cmPaintAt < 4000) return; cmPaintAt = performance.now();
   const p = room.p; p.vx = p.vz = 0; for (const k in rmKeys) rmKeys[k] = false;
   if (document.pointerLockElement) document.exitPointerLock();
-  rmFade(true).then(() => { if (au && au.state === 'running') au.suspend(); if (crew.page) toPage({type: 'go', to: 'paint'}); else cmPaintShow(); });
+  rmFade(true).then(() => { rmLetGo(); if (au && au.state === 'running') au.suspend(); if (crew.page) toPage({type: 'go', to: 'paint'}); else cmPaintShow(); });
 }
 let cmPaintFrame = null, cmPaintReady = false, cmPaintShown = false;
 const cmPaintPhone = matchMedia('(pointer: coarse)').matches;
@@ -6376,7 +6378,7 @@ addEventListener('message', e => {
 });
 // in again from Block Paint: just inside the shutter, facing back along the corridor
 async function cmFromPaint() {
-  cmPaintAt = performance.now(); if (au && au.state === 'suspended') au.resume();
+  cmPaintAt = performance.now(); rmLetGo(); if (au && au.state === 'suspended') au.resume();
   const C = room && room.at;
   if (cmOn(C) && C.ready) {
     const [wx, wz] = cmW(C, 12.8, 8), p = room.p; p.x = wx; p.z = C.z0 + wz; p.lv = 0; p.y = cmH(12.8, 8, 0); p.vx = p.vz = 0; p.sit = false;
