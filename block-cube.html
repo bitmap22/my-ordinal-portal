@@ -437,8 +437,8 @@ class Grid {
 const rateKey = t => t.rate >= 0 ? t.rate : -t.idx;   // fee rate, or block order when fees are unknown
 // big jobs work in short bursts and let the screen draw in between, so the cube never freezes while it loads. A burst is
 // about 6 ms; on devices whose frames are slow it grows to half the last pause (up to 100 ms), so loading stays quick there too
-let burst = 6;
-const yieldNow = () => new Promise(r => { const t = performance.now(), c = new MessageChannel(); c.port1.onmessage = () => { burst = Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); });
+let burst = 6;   // (in a walk-in room bursts stay at 4 ms, so walking never jolts)
+const yieldNow = () => new Promise(r => { const t = performance.now(), c = new MessageChannel(); c.port1.onmessage = () => { burst = room ? 4 : Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); });
 // pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
 // If a block has many very big transactions, near-cube boxes can't stack inside (e.g. nine 59,000 vB boxes, 24 units a
 // side: only four fit across, so a third layer pokes out of the top). Then it is packed again with those big boxes
@@ -1229,9 +1229,9 @@ async function loadArt(B) {
   let t0 = performance.now(), tr = t0, tm = t0;
   const mips = () => { gl.bindTexture(gl.TEXTURE_2D, artTex); gl.generateMipmap(gl.TEXTURE_2D); tm = performance.now(); };
   const breathe = async () => {   // after each short burst: let the screen draw; show what is painted so far a few times a second
-    if (performance.now() - tr > 250) { rebuild(); tr = performance.now(); }
-    if (performance.now() - tm > 800) mips();
-    if (performance.now() - t0 < burst) return;
+    if (performance.now() - tr > (room ? 1500 : 250)) { rebuild(); tr = performance.now(); }   // (walking in a room: less often, and in shorter bursts, so walking never jolts)
+    if (performance.now() - tm > (room ? 3000 : 800)) mips();
+    if (performance.now() - t0 < (room ? Math.min(burst, 4) : burst)) return;
     await yieldNow(); t0 = performance.now();
   };
   for (let k = 0; k < picItems.length; k += 8) {
@@ -3322,21 +3322,26 @@ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, NEAR, NEAR, 0, gl.RGBA, gl.UNSIGNED_BYT
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); gl.generateMipmap(gl.TEXTURE_2D);
 gl.activeTexture(gl.TEXTURE0); gl.useProgram(parP.p); gl.uniform1i(parP.u.uArt2, 3);
-const near = {slot: new Map(), free: Array.from({length: NCN * NCN}, (_, i) => i), busy: false, at: 0};
-function nearClear() { for (const t of near.slot.keys()) t.nearR = null; near.slot.clear(); near.free = Array.from({length: NCN * NCN}, (_, i) => i); }
+const near = {slot: new Map(), free: Array.from({length: NCN * NCN}, (_, i) => i), busy: false, at: 0, want: [], keep: new Set(), wx: 1e9, wz: 1e9, wt: 0, rk: '', mip: 0, dirty: false, pend: []};
+function nearClear() { for (const t of near.slot.keys()) t.nearR = null; near.slot.clear(); near.free = Array.from({length: NCN * NCN}, (_, i) => i); near.want = []; near.keep = new Set(); near.wx = 1e9; near.rk = ''; near.pend = []; }
 async function nearTick(tn) {
-  if (near.busy || tn - near.at < .25) return;
+  if (near.busy || tn - near.at < .2) return;
   near.at = tn; near.busy = true;
   try {
-    const p = room.p, want = [];
-    for (const R of room.rooms) if (R && R.ready) for (const it of R.plan.items) { const t = it.t; if ((t.art || t.word) && !it.gone) { const d = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (d < 12) want.push([d, t]); } }
-    want.sort((a, b) => a[0] - b[0]);
-    const keep = new Set(want.slice(0, NCN * NCN).map(x => x[1]));
-    for (const [t, sl] of near.slot) if (!keep.has(t)) { near.slot.delete(t); near.free.push(sl); t.nearR = null; }
+    const p = room.p, rk = room.rooms.map(R => R && R.ready ? R.h : '').join();
+    // which parcels are nearest: worked out again only after a few steps, or when a room comes or goes
+    if (Math.hypot(p.x - near.wx, p.z - near.wz) > .7 || rk !== near.rk || tn - near.wt > 2) {
+      near.wx = p.x; near.wz = p.z; near.wt = tn; near.rk = rk;
+      const want = [];
+      for (const R of room.rooms) if (R && R.ready) for (const it of R.plan.items) { const t = it.t; if ((t.art || t.word) && !it.gone) { const dz = it.w[2] - p.z; if (dz > -12 && dz < 12) { const d = Math.hypot(it.w[0] - p.x, dz); if (d < 12) want.push([d, t]); } } }
+      want.sort((a, b) => a[0] - b[0]); if (want.length > NCN * NCN) want.length = NCN * NCN;
+      near.want = want; near.keep = new Set(want.map(x => x[1]));
+      for (const [t, sl] of near.slot) if (!near.keep.has(t)) { near.slot.delete(t); near.free.push(sl); t.nearR = null; }
+    }
     let n = 0; const t0 = performance.now();
-    for (const [, t] of want) {
-      if (!keep.has(t) || near.slot.has(t)) continue;
-      if (!near.free.length || performance.now() - t0 > 14) break;   // a few each moment, so walking stays smooth
+    for (const [, t] of near.want) {
+      if (!near.keep.has(t) || near.slot.has(t)) continue;
+      if (!near.free.length || performance.now() - t0 > 5) break;   // a few each moment, so walking stays smooth
       const sl = near.free.pop(); near.slot.set(t, sl);
       const x = (sl % NCN) * 256, y = Math.floor(sl / NCN) * 256;
       let cvs, sm = true;
@@ -3350,9 +3355,13 @@ async function nearTick(tn) {
         cvs = c2; sm = Math.min(w, h) > 96;
       } else cvs = paintWord(t.word, 256);
       gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, nearTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, cvs); gl.activeTexture(gl.TEXTURE0);
-      t.nearR = [x / NEAR, y / NEAR, 256 / NEAR, sm ? 4 : 3]; n++;
+      near.pend.push([t, sl, [x / NEAR, y / NEAR, 256 / NEAR, sm ? 4 : 3]]); n++;   // (shown once the smaller copies are made too)
     }
-    if (n && room) { gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, nearTex); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); room.dirty = true; }
+    if (n) near.dirty = true;
+    // the sheet's smaller copies (for parcels further off) are remade at most a couple of times a second
+    if (near.dirty && room && tn - near.mip > .5) { near.mip = tn; near.dirty = false; gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, nearTex); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0);
+      for (const [t, sl, r] of near.pend.splice(0)) if (near.slot.get(t) === sl) t.nearR = r;
+      room.dirty = true; }
   } finally { near.busy = false; }
 }
 // the sliding doors: two panels per doorway that part when you come near (once the room behind is ready)
@@ -3387,7 +3396,7 @@ function rmStep(dt) {
   const tx = (-sy * f + cy * s) * sp, tz = (-cy * f - sy * s) * sp, k = Math.min(1, dt * 9);
   p.vx += (tx - p.vx) * k; p.vz += (tz - p.vz) * k;
   let nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
-  const v = Math.hypot(p.vx, p.vz); p.ph += v * dt * 2.3; p.bob = Math.sin(p.ph * 2) * .022 * Math.min(1, v / 2.7);
+  const v = Math.hypot(p.vx, p.vz); p.ph += v * dt * 2.3; p.bob = Math.sin(p.ph * 2) * .007 * Math.min(1, v / 2.7);   // (a gentle bob: the view stays steady as you walk)
   if (C && C.ready) {
     const xi = RW / 2 - DEEP - .3, xd = DOOR / 2 - .3, zb = C.z0, zf = C.z0 - C.L;
     const openB = C.back.o > .85 && rmNear(C, 'back'), openF = C.front.o > .85 && rmNear(C, 'front');
