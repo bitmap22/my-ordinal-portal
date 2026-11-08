@@ -538,14 +538,14 @@ if(uGold>.01){   // over block 0: the first star, bright, with long glints
  c+=vec3(1.,.88,.62)*uGold*tw*(exp(-sr*sr*12000.)*3.+exp(-sr*sr*700.)*.4+exp(-sr*14.)*.07+(exp(-abs(sp.x)*900.)*exp(-abs(sp.y)*22.)+exp(-abs(sp.y)*900.)*exp(-abs(sp.x)*22.))*.55);}
 c+=(h(gl_FragCoord.xy+uNow)-.5)/255.;o=vec4(c,0.);}`);
 // transactions. iF.w = how this box is moving: 0 settling/staying, 1 just joined (lights up as it lands), 2 leaving, 3 filling in, 4 sealed block lifting away
-const CML = `uniform highp vec4 uCmT;uniform highp sampler2D uCL;uniform highp sampler2D uCC;uniform vec4 uZR[8];uniform vec3 uZA[8];uniform float uCmN;
+const CML = `uniform highp vec4 uCmT;uniform highp sampler2D uCL;uniform highp sampler2D uCC;uniform vec4 uZR[8];uniform vec3 uZA[8];uniform float uCmN,uCmM;
 vec2 cmQ(vec3 w){return vec2(uCmT.x*w.x,uCmT.x>0.?uCmT.y-w.z:w.z-uCmT.y+uCmT.z);}
 int cmZ(vec2 q){for(int i=0;i<8;i++){vec4 r=uZR[i];if(q.x>=r.x&&q.x<=r.y&&q.y>=r.z&&q.y<=r.w)return i;}return -1;}
 vec3 cmLit(vec3 K,vec3 n,vec3 w,vec3 vd,int z,vec2 q,float sp){
 vec3 c=K*uZA[z]*(.62+.38*n.y);
 int ci=int(clamp(floor(q.y*.5),0.,23.))*42+int(clamp(floor((q.x+42.)*.5),0.,41.));
 for(int k=0;k<3;k++){vec4 ix=texelFetch(uCC,ivec2(ci,k),0);
-for(int j=0;j<4;j++){float f=j==0?ix.x:j==1?ix.y:j==2?ix.z:ix.w;if(f<.5)return c;int li=int(f+.5)-1;
+for(int j=0;j<4;j++){float f=j==0?ix.x:j==1?ix.y:j==2?ix.z:ix.w;if(f<.5||float(k*4+j)>=uCmM)return c;int li=int(f+.5)-1;
 vec4 A=texelFetch(uCL,ivec2(li,2),0);float zw=floor(A.w+.5),fl=floor(zw/16.);if(int(zw-fl*16.)!=z)continue;
 vec4 P=texelFetch(uCL,ivec2(li,0),0);vec3 l=P.xyz-w;float d=length(l);if(d>=P.w)continue;l/=max(d,1e-4);
 vec4 L=texelFetch(uCL,ivec2(li,1),0);float at=1.-d/P.w;at*=at;
@@ -3731,7 +3731,7 @@ function rmStep(dt) {
   p.vx += (tx - p.vx) * k; p.vz += (tz - p.vz) * k;
   let nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
   const v = Math.hypot(p.vx, p.vz); p.ph += v * dt * 2.3; p.bob = Math.sin(p.ph * 2) * .007 * Math.min(1, v / 2.7);   // (a gentle bob: the view stays steady as you walk)
-  if (cmOn(C) && C.ready) { if (p.sit && (f || s)) p.sit = false; if (p.sit) { p.vx = p.vz = 0; return; } cmMove(C, p, nx, nz, dt); return; }
+  if (cmOn(C)) { if (!C.ready) { p.vx = p.vz = 0; return; } if (p.sit && (f || s)) p.sit = false; if (p.sit) { p.vx = p.vz = 0; return; } cmMove(C, p, nx, nz, dt); return; }
   p.lv = 0; p.y = 0; p.sit = false;
   if (lifeWeights(heatS)[0] > .5) for (const [hx, hz, r] of LIFE.XMAS) {
     const z = hz + Math.round((nz - hz) / 32) * 32, rad = r * .5 + .22, dx = nx - hx, dz = nz - z, d = Math.hypot(dx, dz);
@@ -3922,6 +3922,8 @@ for (const s of [-1, 1]) CM_BLOCK.push([s * 3 - .4, s * 3 + .4, 15.15, 15.95], [
 CM_BLOCK.push([-9.0, -8.2, 10.0, 12.0], [-5.75, -4.85, 2.35, 3.25], [-15.6, -15.0, 8.3, 8.9], [-33.1, -29.9, 30.1, 31.9], [25.35, 25.85, 34.15, 34.65], [25.35, 25.85, 38.35, 38.85],
   [29.4, 36.6, 42.2, 45.8], [24.3, 25.1, 28.1, 28.9], [24.3, 25.1, 42.6, 43.4], [4.5, 6.2, 5.2, 6.5], [13.1, 14.5, 5.3, 6.7], [7.3, 7.7, 6.0, 6.4], [11.8, 12.2, 5.6, 6.0], [5.7, 6.3, 10.6, 10.9]);
 for (const [x, d] of [[-35, 39.5], [-28.5, 41.5], [-27, 30]]) CM_BLOCK.push([x - .45, x + .45, d - .45, d + .45]);
+CM_BLOCK.push([3.6, 4.4, 17.05, 17.75]);   // the map of the rooms, on its stand
+for (const x of [-9, 9]) CM_UPB.push([x - 1.15, x + 1.15, 18.55, 19.25]);   // benches on the balcony
 // places to sit: [x, depth, floor, facing x, facing depth, how much higher the seat is, where you stand up to (x, depth), how near you must be]
 const CM_SEATS = [];
 for (const d of [6.3, 8, 9.7]) CM_SEATS.push([-10.95, d, -.45, -1, 0, 0, -11.8, d === 8 ? 6.45 : d, 1.7]);
@@ -3930,7 +3932,8 @@ for (let d = 27; d <= 43; d += 2) CM_SEATS.push([-38.35, d, 1.8, -1, 0, .6, -37.
 for (const x of [-36, -31, -26.5]) for (const o of [-.7, .7]) CM_SEATS.push([x + o, 47.15, 1.8, 0, -1, 0, x + o, 45.2, 2.4]);
 for (const x of [29, 37]) for (const o of [-.65, .65]) CM_SEATS.push([x + o, 25.55, -.9, 0, 1, 0], [x + o, 40.45, -.9, 0, -1, 0]);
 for (const s of [-1, 1]) for (const d of [26.2, 27.8]) CM_SEATS.push([s * 10.7, d, .9, -s, 0, 0]);
-CM_SEATS.push([-8.6, 10.3, -.45, 0, 1, 0, -8.6, 9.55], [-8.6, 11.7, -.45, 0, -1, 0, -8.6, 12.45]);   // (the chess table's chairs)
+CM_SEATS.push([-8.6, 10.3, -.45, 0, 1, 0, -8.6, 9.55], [-8.6, 11.7, -.45, 0, -1, 0, -8.6, 12.45]);
+for (const x of [-9, 9]) for (const o of [-.6, .6]) CM_SEATS.push([x + o, 18.9, CM.BY, 0, 1, 0, x + o, 18.1]);   // (on the balcony, looking over the hall)   // (the chess table's chairs)
 
 // the small copies of just the rooms' part of the label sheet (rather than all of it again)
 function labMipSlot(y0, h) {
@@ -4266,6 +4269,7 @@ function* cmFixG(R) {   // (built a part at a time, the rooms' build letting fra
   for (let x = 24; x < 42; x += 3) for (let dd = 22; dd < 47.9; dd += 2.6) if ((Math.round((x - 24) / 3) + Math.round((dd - 22) / 2.6)) % 2 === 0) { B(x + .1, x + 2.9, 8.95, 9.0, dd + .1, dd + 2.5, K.solar); B(x + 1.48, x + 1.52, 8.94, 8.96, dd + .1, dd + 2.5, K.frame); }
   // living walls of green all round (with a trellis of wood), the stone below
   for (const [x0, x1, d0, d1] of [[41.72, 41.85, 22.25, 47.75], [24.2, 41.8, 22.15, 22.28], [24.2, 41.8, 47.72, 47.85]]) TB(x0, x1, -.3, 6.7, d0, d1, R.tLeaf, 1.6);
+  TB(24.15, 24.28, -.3, 6.7, 22.2, 33.5, R.tLeaf, 1.6); TB(24.15, 24.28, -.3, 6.7, 39.5, 47.8, R.tLeaf, 1.6); TB(24.15, 24.28, 4.75, 6.7, 33.5, 39.5, R.tLeaf, 1.6);
   for (let x = 25; x < 42; x += 2.2) B(x - .05, x + .05, -.9, 6.6, 22.3, 22.4, K.wood);
   // the tank: on a dark wood plinth, a bed of sand inside, a hood with a light over it (its glass, water, rocks, koi and waterfall are props)
   { const [x, dd, lx, ld, h] = CM.TANK; B(x - lx / 2 - .2, x + lx / 2 + .2, -.9, -.35, dd - ld / 2 - .2, dd + ld / 2 + .2, K.dwalnut, 0, null, 1);
@@ -4280,6 +4284,7 @@ function* cmFixG(R) {   // (built a part at a time, the rooms' build letting fra
   for (let k = 0; k < 9; k++) { const t = k / 8, x = 25.2 + t * 2.6, dd = 36.5 + Math.sin(t * 3) * .8; B(x - .3, x + .3, -.9, -.84, dd - .26, dd + .26, K.stone); }
   light(33, 8.2, 26, 0xeef6ff, 1.2, 13); light(33, 8.2, 41, 0xeef6ff, 1.2, 13);
   for (const dd of [28, 41]) light(37.5, 6.8, dd, 0xe6ffe0, 1.4, 9, [1, -.45, 0], .3);   // washing the living wall
+  for (const dd of [28, 43]) light(28.5, 6.8, dd, 0xe6ffe0, 1.3, 8, [-1, -.45, 0], .3);
   tiles(41.7, 4.2, 35, -1, 0, .5, R.pl.koi.x, R.pl.koi.y, 128, 4);
 
   yield;
@@ -4417,7 +4422,7 @@ function cmLU(P, tn, on) {
   gl.uniform4f(P.u.uCmT, R ? (R.door === 'back' ? 1 : -1) : 0, R ? R.z0 : 0, R ? R.L : 0, R ? 1 : 0);
   if (!R) return;
   gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, cmLT); gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, cmCT); gl.activeTexture(gl.TEXTURE0);
-  gl.uniform1i(P.u.uCL, 6); gl.uniform1i(P.u.uCC, 7); gl.uniform4fv(P.u['uZR[0]'], CM_ZR); gl.uniform3fv(P.u['uZA[0]'], CM_ZA); gl.uniform1f(P.u.uCmN, tn);
+  gl.uniform1i(P.u.uCL, 6); gl.uniform1i(P.u.uCC, 7); gl.uniform4fv(P.u['uZR[0]'], CM_ZR); gl.uniform3fv(P.u['uZA[0]'], CM_ZA); gl.uniform1f(P.u.uCmN, tn); gl.uniform1f(P.u.uCmM, coarse ? 6 : CM_ML);   // (phones: the six strongest lights on each spot)
 }
 
 /* ---- more shapes for the rooms: the arcades' gilded vaults, the fire, the koi tank and its waterfall, vases, bamboo, pampas, paper lanterns ---- */
@@ -4677,6 +4682,13 @@ function cmFixMore(R, H) {
   for (const s of [-1, 1]) { const x = s * 12; B(x - .45, x + .45, .9, 1.9, 31.15, 32.05, K.dmarble); B(x - .47, x + .47, 1.88, 1.92, 31.13, 32.07, K.brass);
     const p = s < 0 ? R.pl.pizza : R.pl.coin; tiles(x - s * .46, 1.42, 31.6, -s, 0, .21, p.x, p.y, 128, 4); light(x, 3.7, 31.6, 0xfff4e0, 1.3, 3.5, [0, -1, 0], .6); }
   for (const s of [-1, 1]) B(s * 15.7 - .04, s * 15.7 + .04, 11.95, 12.05, 35.6, 37.4, K.brass);
+  // brass handrails beside the steps: into the lounge, up to the bar, down to the garden (a post at every step, the rail stepping with them)
+  const rail = (pts, dd) => { for (let i = 0; i < pts.length; i++) { const [x, y] = pts[i]; B(x - .025, x + .025, y, y + .92, dd - .025, dd + .025, K.brass); if (i + 1 < pts.length) { const [x2, y2] = pts[i + 1]; B(Math.min(x, x2), Math.max(x, x2), Math.max(y, y2) + .9, Math.max(y, y2) + .95, dd - .03, dd + .03, K.brass); } } };
+  for (const dd of [5.25, 10.75]) rail([[-3.95, 0], [-4.3, -.15], [-4.6, -.3], [-4.9, -.45]], dd);
+  for (const dd of [33.8, 39.2]) { rail([[-19.3, .9], [-19.55, 1.2], [-19.85, 1.5], [-20.15, 1.8], [-20.6, 1.8]], dd); rail([[18.1, .9], [18.35, .6], [18.65, .3], [18.95, 0], [19.25, -.3], [19.55, -.6], [19.85, -.9], [20.3, -.9]], dd); }
+  // the map of the rooms on a brass stand, where you come into the hall; benches up on the balcony
+  B(3.82, 4.18, 0, .06, 17.22, 17.58, K.brass); B(3.97, 4.03, 0, 1.0, 17.37, 17.43, K.brass); B(3.25, 4.75, .98, 2.17, 17.43, 17.5, LC('#14100c'));
+  for (const s of [-1, 1]) { const x = s * 9; B(x - 1.1, x + 1.1, CM.BY + .4, CM.BY + .48, 18.6, 19.2, K.walnut, 0, null, 1); for (const e of [-.9, .9]) B(x + e - .06, x + e + .06, CM.BY, CM.BY + .4, 18.65, 19.15, K.brass); }
   // the bar: a pool table under its lamps
   { const cx = -31.5, cd = 31, y = 1.8; for (const e of [-1.2, 1.2]) for (const f of [-.6, .6]) B(cx + e - .09, cx + e + .09, y, y + .62, cd + f - .09, cd + f + .09, LC('#2a1408'));
     B(cx - 1.4, cx + 1.4, y + .62, y + .8, cd - .8, cd + .8, LC('#3a1a0a')); B(cx - 1.4, cx + 1.4, y + .8, y + .9, cd - .8, cd - .66, LC('#4a2410'), 0, null, 1); B(cx - 1.4, cx + 1.4, y + .8, y + .9, cd + .66, cd + .8, LC('#4a2410'), 0, null, 1);
@@ -4782,6 +4794,43 @@ function cmQuadsMore(R, Q, q, TX) {
   q.push(Q([-15.8, 8.1, 35.8], [0, 0, 1.4], [0, 3.8, 0], 5, .95, TX(() => cmBanner('THE MEMPOOL', '#ff4fd8', 'bar'))));
   q.push(Q([15.8, 8.1, 37.2], [0, 0, -1.4], [0, 3.8, 0], 5, .95, TX(() => cmBanner('KOI GARDEN', '#7dff4a', 'koi'))));
   R.tick = Q([-24.5, 6.95, 22.17], [-17, 0, 0], [0, .45, 0], 6, 1, TX(() => cmTicker())); q.push(R.tick);
+  q.push(Q([3.3, 1.02, 17.42], [1.4, 0, 0], [0, 1.12, 0], 3, .95, TX(() => cmMap(4, 17.4))));
+}
+
+/* ---- the rooms' own sounds (with the cube's sound on): the fire crackling in the lounge, the waterfall in the tank; louder as you come near ---- */
+const cmS = {on: false, fire: null, water: null, t: 0};
+function cmSounds() {
+  const C = room && room.at, here = sndOn && cmOn(C) && C.ready, a = here ? audio() : null;
+  if (!a) { cmSoundsOff(); return; }
+  if (!cmS.fire) {
+    const n = a.sampleRate * 3, loop = f => { const b = a.createBuffer(1, n, a.sampleRate), q = b.getChannelData(0); f(q); const s = a.createBufferSource(); s.buffer = b; s.loop = true; const g = a.createGain(); g.gain.value = 0; return {s, g}; };
+    // the fire: a soft low roar, crackles and pops scattered through it
+    const F = loop(q => { let l = 0; for (let i = 0; i < n; i++) { l = l * .985 + (Math.random() * 2 - 1) * .015; q[i] = l * 2.2; }
+      for (let k = 0; k < 110; k++) { const p = Math.floor(Math.random() * (n - 900)), A = (.25 + Math.random() * .75) * (Math.random() < .5 ? 1 : -1), L = 20 + Math.random() * 90; for (let j = 0; j < 900; j++) q[p + j] += A * Math.exp(-j / L) * (Math.random() * 2 - 1); } });
+    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600; F.s.connect(lp); lp.connect(F.g); F.g.connect(a.destination); F.s.start();
+    // the water: falling water, a band of noise that swells a little
+    const W = loop(q => { for (let i = 0; i < n; i++) q[i] = (Math.random() * 2 - 1) * (.8 + .2 * Math.sin(i / n * 6.2832 * 3)); });
+    const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1150; bp.Q.value = .55; W.s.connect(bp); bp.connect(W.g); W.g.connect(a.destination); W.s.start();
+    cmS.fire = F; cmS.water = W;
+  }
+  const [x, d] = cmL(C, room.p.x, room.p.z), near = (px, pd, r) => { const k = Math.max(0, 1 - Math.hypot(x - px, d - pd) / r); return k * k; };
+  cmS.fire.g.gain.setTargetAtTime(.2 * near(-17.4, 8, 10), a.currentTime, .25); cmS.water.g.gain.setTargetAtTime(.09 * near(35.5, 32.9, 11), a.currentTime, .25); cmS.on = true;
+}
+function cmSoundsOff() { if (!cmS.on || !au) return; for (const k of ['fire', 'water']) if (cmS[k]) cmS[k].g.gain.setTargetAtTime(0, au.currentTime, .3); cmS.on = false; }
+
+// the map of the rooms: their plan, their names, where you are
+function cmMap(hx, hd) {
+  const [cv, c] = cmCv(560, 448), W = 560, H = 448, sx = x => 30 + (x + 42) / 84 * (W - 60), sy = d => H - 30 - d / 48 * (H - 110);
+  c.fillStyle = '#0b0d14'; c.fillRect(0, 0, W, H); c.strokeStyle = '#c9952e'; c.lineWidth = 4; c.strokeRect(6, 6, W - 12, H - 12);
+  c.fillStyle = '#ffd36b'; c.font = '800 26px ui-monospace,Menlo,Consolas,monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('THE COMMON ROOMS', W / 2, 34);
+  const Z = [['ENTRANCE', '#d8b878'], ['LOUNGE', '#ffb04a'], ['WAREHOUSE', '#27e1ff'], ['GRAND HALL', '#ffd36b'], ['', '#7a6a50'], ['THE MEMPOOL', '#ff4fd8'], ['', '#7a6a50'], ['KOI GARDEN', '#7dff4a']];
+  CM_ZONES.forEach(([x0, x1, d0, d1], i) => { const [nm, col] = Z[i]; c.fillStyle = col + '33'; c.strokeStyle = col; c.lineWidth = 2; c.fillRect(sx(x0), sy(d1), sx(x1) - sx(x0), sy(d0) - sy(d1)); c.strokeRect(sx(x0), sy(d1), sx(x1) - sx(x0), sy(d0) - sy(d1));
+    if (!nm) return; c.fillStyle = col; c.font = `700 ${i === 2 ? 11 : nm.length > 9 ? 13 : 15}px ui-monospace,Menlo,Consolas,monospace`; const cx = (sx(x0) + sx(x1)) / 2, cy = i === 3 ? sy(44.5) : (sy(d0) + sy(d1)) / 2;
+    if (i === 0) { c.save(); c.translate(cx, cy); c.rotate(-1.5708); c.fillText(nm, 0, 0); c.restore(); } else c.fillText(nm, cx, cy); });
+  c.strokeStyle = '#ffd36b'; c.lineWidth = 2; c.beginPath(); c.arc(sx(0), sy(CM.PD), (sx(7.2) - sx(0)), 0, 6.29); c.stroke();
+  c.fillStyle = '#f7efe3'; c.font = '600 13px ui-monospace,Menlo,Consolas,monospace'; c.fillText('the Forum', sx(0), sy(CM.PD)); c.fillText('screen', sx(0), sy(47.2) + 2); c.fillText('▼ the way out ▼', sx(0), H - 16);
+  c.fillStyle = '#ff3a3a'; c.beginPath(); c.arc(sx(hx), sy(hd), 7, 0, 6.29); c.fill(); c.fillStyle = '#ffffff'; c.font = '800 13px ui-monospace,Menlo,Consolas,monospace'; c.textAlign = 'left'; c.fillText('YOU ARE HERE', sx(hx) + 10, sy(hd));
+  return cv;
 }
 
 // the pints and their glasses, the pour: worked out each moment (yours, your crew's, the empties put down)
@@ -4962,9 +5011,11 @@ function cmGraffiti(w, h) {
 // the shutter, stencilled: what is behind it
 function cmShutter(w, h) {
   const [cv, c] = cmCv(w, h); for (let y = 0; y < h; y += 18) { c.fillStyle = y % 36 ? '#6d727b' : '#7a7f88'; c.fillRect(0, y, w, 16); c.fillStyle = '#4a4e55'; c.fillRect(0, y + 16, w, 2); }
-  c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#ffd23f'; c.font = `900 ${h * .17}px Impact,"Arial Black",sans-serif`; c.fillText('BLOCK PAINT', w / 2, h * .32);
-  c.fillStyle = '#ffffff'; c.font = `800 ${h * .085}px ui-monospace,Menlo,Consolas,monospace`; c.fillText('OPENING SOON', w / 2, h * .55);
-  c.fillStyle = '#27e1ff'; c.font = `700 ${h * .06}px ui-monospace,Menlo,Consolas,monospace`; c.fillText('the off-chain version, on the portal', w / 2, h * .72);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  const fit = (t, wt, z, fam, y, col) => { c.font = `${wt} ${z}px ${fam}`; while (c.measureText(t).width > w * .9 && z > 8) { z -= 1; c.font = `${wt} ${z}px ${fam}`; } c.fillStyle = col; c.fillText(t, w / 2, y); };
+  fit('BLOCK PAINT', 900, h * .17, 'Impact,"Arial Black",sans-serif', h * .32, '#ffd23f');
+  fit('OPENING SOON', 800, h * .085, 'ui-monospace,Menlo,Consolas,monospace', h * .55, '#ffffff');
+  fit('the off-chain version, on the portal', 700, h * .06, 'ui-monospace,Menlo,Consolas,monospace', h * .72, '#27e1ff');
   return cv;
 }
 // the rooms' flat pictures, in the world: from a corner (layout x, height, depth) along two edges
@@ -5004,7 +5055,7 @@ function cmQuads(R) {
   }
 }
 function cmQDraw(VP, eye, tn) {
-  cmJobRun();
+  cmJobRun(); if (tn - cmS.t > .25) { cmS.t = tn; cmSounds(); }
   const R = room.rooms.find(q => q && q.ready && q.common); if (!R || !R.q) return;
   gl.useProgram(cmQP.p); gl.uniformMatrix4fv(cmQP.u.uVP, false, VP); gl.uniform3fv(cmQP.u.uE, eye); gl.uniform1f(cmQP.u.uNow, tn); gl.uniform1i(cmQP.u.uTx, 5);
   gl.bindVertexArray(cmQV); gl.activeTexture(gl.TEXTURE5);
@@ -5121,7 +5172,7 @@ function cmDo(A) {
   if (A.a === 'sit') { p.sit = true; p.vx = p.vz = 0; const H = cmHere(); if (H) { const a = Math.atan2(-H.x, -(H.d - CM.PD)); p.yaw = -a + cmYaw(H.C); } return; }   // (sitting down you face the middle of the Forum)
   if (A.a === 'seat') {   // on a sofa, a stool, a bench, in a booth: you sit facing the way it faces
     const H = cmHere(); if (!H) return; const s = A.s, [wx, wz] = cmW(H.C, s[0], s[1]), f = H.C.door === 'back' ? [s[3], -s[4]] : [-s[3], s[4]];
-    p.x = wx; p.z = H.C.z0 + wz; p.y = s[2] + s[5]; p.lv = 0; p.sit = true; p.vx = p.vz = 0; p.yaw = Math.atan2(-f[0], -f[1]); p.pitch = Math.min(p.pitch, .1);
+    p.x = wx; p.z = H.C.z0 + wz; p.y = s[2] + s[5]; p.lv = s[2] > 5 ? 1 : 0; p.sit = true; p.vx = p.vz = 0; p.yaw = Math.atan2(-f[0], -f[1]); p.pitch = Math.min(p.pitch, .1);
     p.seatOut = s.length > 6 ? [s[6], s[7]] : [s[0] + s[3] * .8, s[1] + s[4] * .8]; return;
   }
   if (A.a === 'sip') { cmSip(); return; }
@@ -5315,7 +5366,7 @@ function cmTick() {
 }
 
 // leaving the rooms: the pages over the room go, the music stops
-function cmLeave() { cmJobs.length = 0; if (cm.sc) { cm.sc.remove(); cm.sc = null; cm.scKey = ''; } if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } cmShut(); $cmd.classList.remove('on'); if (cmA.el) { cmA.el.remove(); cmA.el = null; cmA.key = ''; } if (cmA.gain && au) cmA.gain.gain.setTargetAtTime(0, au.currentTime, .2); cm.pour = null; }
+function cmLeave() { cmJobs.length = 0; cmSoundsOff(); if (cm.sc) { cm.sc.remove(); cm.sc = null; cm.scKey = ''; } if (cm.pv) { cm.pv.remove(); cm.pv = null; cm.pvUrl = ''; } cmShut(); $cmd.classList.remove('on'); if (cmA.el) { cmA.el.remove(); cmA.el = null; cmA.key = ''; } if (cmA.gain && au) cmA.gain.gain.setTargetAtTime(0, au.currentTime, .2); cm.pour = null; }
 
 /* looking and picking: a ray from the eye (through the crosshair, or where you tapped) */
 function rmRay(sx, sy) {
