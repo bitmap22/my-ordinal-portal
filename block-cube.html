@@ -501,7 +501,7 @@ vN=nn;vQ=aP*s;vS=s;vK=iK.rgb;vA=iA;vG=iG;vW=w;gl_Position=uVP*vec4(w,1.);}`,
 void main(){vec3 K=vK;vec3 an0=abs(normalize(vN));vec3 sn=sign(vN);vec2 fu=an0.x>.5?vec2(-sn.x*vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,-sn.y*vQ.z/vS.z):vec2(sn.z*vQ.x/vS.x,vQ.y/vS.y);
 vec2 ts=vec2(textureSize(uArt,0)),p=(vA.xy+vec2(fu.x+.5,.5-fu.y)*vA.z)*ts,dd=fwidth(p);
 if(vA.w>.5){float lod=clamp(log2(max(sqrt(dd.x*dd.y),1e-6))-.6,0.,max(log2(vA.z*ts.x)-1.,0.));if(lod<.01){vec2 sm=floor(p+.5);p=sm+clamp((p-sm)/max(dd,vec2(1e-5)),-.5,.5);}
-float h=.5*exp2(lod);p=clamp(p,vA.xy*ts+h,(vA.xy+vA.z)*ts-h);K=pow(textureLod(uArt,p/ts,lod).rgb,vec3(2.2))*1.15+.01;}float gA=vA.w>.5?.4:1.;vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
+float h=.5*exp2(lod);p=clamp(p,vA.xy*ts+h,(vA.xy+vA.z)*ts-h);K=pow(textureLod(uArt,p/ts,lod).rgb,vec3(2.2))*1.15+.01;}float gA=vA.w>.5?.4:1.;if(vA.w<.5&&vA.z>.5){float gr=.5+.5*sin((vW.z+vW.x)*48.+sin(vW.y*11.+vW.z*2.3)*2.6);K*=.72+.4*gr;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
 float m=an.x>.5?min(d.y,d.z):an.y>.5?min(d.x,d.z):min(d.x,d.y);
 float fw=fwidth(m),es=.25+.75*smoothstep(.3,1.4,min(vS.x,min(vS.y,vS.z))),edge=(1.-smoothstep(0.,fw*1.3,m))*es;
 vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
@@ -512,11 +512,12 @@ c+=vec3(1.,.8,.55)*pow(max(dot(reflect(-L,n),vd),0.),28.)*.22;
 float sd=1.-an.y;c*=mix(1.,vAo*(vA.w>.5?1.:.88+.12*smoothstep(-.5,.5,vQ.y/vS.y)),sd);
 c=mix(c,c*1.6+.05,edge*.5);
 c+=(K*.7+.06)*vFl;c=mix(c,K*1.3,vG*.3*gA);
-float g=edge*.08+vFl*.35+vG*.28*gA;
+float g=edge*.08+vFl*.35+vG*.28*gA;if(vG>1.5){c=K*(1.7+edge*.6);g=.95;}
 if(vSl>.5){c=c*1.3+K*.35+edge*.6;g+=.85;}else if(vSl<-.5){c=mix(vec3(dot(c,vec3(.3,.5,.2))),c,.35)*.3;g*=.15;}
 if(uXr>.5){float rim=pow(1.-abs(dot(n,vd)),2.);vec3 gc=K*(.3+.7*dif)*.6+K*edge*1.6+K*rim*.35+vec3(1.,.6,.25)*edge*.15;
 float ga=(.06+edge*.62+rim*.08)*uGa;if(vSl>.5){gc=K*1.6+.25;ga=.95;}gc=gc*(1.+gc/6.)/(1.+gc);o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),ga);return;}
 float al=clamp(g,0.,1.);if(uMir>.5){float f=clamp(1.+vW.y/${(S * 0.45).toFixed(2)},0.,1.);c*=.75;al=min(.32*f*f*uRf,.8);}
+if(uAmb>0.){float fd=length(vW-uE);c=mix(c,vec3(.022,.013,.01),1.-exp(-fd*.034));}
 c*=1.35;c=c*(1.+c/6.)/(1.+c);
 o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),al);}`);
 const lnP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;uniform float uY;void main(){vec3 p=aP;p.y*=uY;gl_Position=uVP*vec4(p,1.);}`,
@@ -537,7 +538,7 @@ o=vec4(col*(1.-shd*.5),ln*fade*.75+foot*.12+ring*.9);}`);
 // floor seasons: the ground under the cube follows the fee heat of the block on screen
 // (uHeat 0..6 = ice, water, grass, desert, fire, lava storm, plasma; between two whole numbers it blends)
 const mtP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;uniform float uFS;uniform vec2 uFO;out vec2 vU;void main(){vec3 q=vec3(aP.x*max(uFS,1.)+uFO.x,0.,aP.z*max(uFS,1.)+uFO.y);vU=q.xz;gl_Position=uVP*vec4(q,1.);}`,
-  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm;out vec4 o;float G;
+  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm;uniform vec2 uFO;out vec4 o;float G;
 float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h1(i),h1(i+vec2(1.,0.)),f.x),mix(h1(i+vec2(0.,1.)),h1(i+1.),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*ns(p);p=p*2.03+vec2(3.1,1.7);a*=.5;}return v;}
@@ -565,6 +566,7 @@ vec4 mat(int k,vec2 p,float t){if(k<=0)return ice(p,t);if(k==1)return water(p,t)
 void main(){vec2 p=vU/${SF}*4.*(uRm>.5?2.5:1.);float t=uNow,r=length(vU)/${SF},fade=uRm>.5?1.:exp(-r*r*.75)*(1.-smoothstep(1.15,1.85,r));
 float hh=clamp(uHeat,0.,6.);int k=int(floor(hh));float b=k<6?smoothstep(.3,.7,fract(hh)):0.;
 G=0.;vec4 a=mat(k,p,t);float ga=G;if(b>.001){G=0.;vec4 d=mat(k+1,p,t);a=mix(a,d,b);ga=mix(ga,G,b);}
+if(uRm>.5){float fd=length(vU-uFO);a.rgb=mix(a.rgb,vec3(.022,.013,.01),1.-exp(-fd*.034));ga*=exp(-fd*.03);}
 if(uPass<.5)o=vec4(a.rgb,a.a*fade);else o=vec4(0.,0.,0.,clamp(ga*fade,0.,1.)*.55);}`);
 // glow (bloom) passes
 const dnP = prog(FS_VS, V + `in vec2 vU;uniform sampler2D T;uniform vec2 uPx;uniform int uPre;out vec4 o;
@@ -2880,13 +2882,13 @@ function frame() {
 // (ahead); the number over a door can be changed before walking through. The rooms behind the doors are built while you
 // are still in this one, so going from block to block is one continuous walk. The floor is the block's heat floor and the
 // room is open to the sky.
-const RW = 7.6, RH = 4.6, BAY = 1.3, DEEP = .46, DOOR = 1.8, DOORH = 2.8, EYE = 1.62, WT = .3, END = 1.8, CASEH = 2.62;
+const RW = 7.6, RH = 7, BAY = 1.3, DEEP = .46, DOOR = 1.8, DOORH = 2.8, EYE = 1.62, WT = .3, END = 1.8, CASEH = 2.62;
 const PLANKS = [2.1, 1.7, 1.3, .9, .5, .1];   // shelf tops, top to bottom
 const SECT = ['bitmaps', 'images', 'text', 'HTML', 'JSON', 'audio / video', '3D models', 'other files', 'delegates', 'inscriptions'].map(n => TYPES.findIndex(T => T.name === n));
 const SECT_ALL = SECT.concat(TOK_IDX, TX_IDX, [REG]);
 const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS', '#4cc9f0']];
 const LC = h => lin(hexc(parseInt(h.slice(1), 16)));
-const RC = {wall: LC('#140e0a'), back: LC('#1d130b'), wood: LC('#4a2e18'), post: LC('#2c1b0e'), trim: LC('#ff9a2e'), cool: LC('#ffb347'), door: LC('#22160c'), sign: LC('#100a06')};
+const RC = {wall: LC('#0a0708'), back: LC('#100a07'), wood: LC('#3b2313'), post: LC('#1e120a'), pillar: LC('#0e0a0b'), neon: LC('#ff8a1e'), neon2: LC('#d9741c'), dim: LC('#6a3612'), trim: LC('#ff9a2e'), door: LC('#140d08'), sign: LC('#0d0805')};
 // every transaction gets exactly one shelf: its token, else what kind of inscription it is, else what kind of transaction
 function shelfOf(t) {
   const k = tokC(t); if (k >= 0) return k;
@@ -2975,7 +2977,8 @@ function rmMake(h, of, side) {
       it.w = [p.s * (RW / 2 - DEEP + it.e / 2 + .05), PLANKS[it.row] + it.e / 2, R.z0 + p.zs + p.dz * (.05 + it.u)];
       it.t0 = t0 + (n > 1 ? i / (n - 1) : 0) * Math.min(2.2, .6 + n * .0006); it.m = 1;
     });
-    rmFix(R); R.ready = true; room.dirty = room.fixDirty = true;
+    rmLabels(R); rmFix(R); rmSignPaint(R, true); labUp(0, R.slot * LSLOT, LT, LSLOT);
+    R.ready = true; room.dirty = room.fixDirty = true;
     if (R === room.rooms[1]) rmCurrent(R);
     rmSigns();
   }, () => { R.failed = true; rmSigns(); });
@@ -2992,62 +2995,101 @@ function rmCurrent(R) {
 }
 // fixtures: walls with doorways, bookcases with glowing shelf edges, signs and labels (as boxes, like the parcels)
 function rmFix(R) {
-  const d = [], P = R.plan, z0 = R.z0, L = R.L;
-  const box = (x, y, z, sx, sy, sz, k, g, a) => d.push(x, y, z0 + z, sx, sy, sz, k[0], k[1], k[2], 0, x, y, z0 + z, 0, g || 0, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : 0, a ? 1 : 0);
+  const d = [], P = R.plan, z0 = R.z0, L = R.L, B = R.B;
+  // box: centre, size, colour; g = glow (2 = a light: drawn bright and unlit); m = 'wood' for a grain; a = a label tile
+  const box = (x, y, z, sx, sy, sz, k, g, a, m) => d.push(x, y, z0 + z, sx, sy, sz, k[0], k[1], k[2], 0, x, y, z0 + z, 0, g || 0, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : m ? 1 : 0, a ? 1 : 0);
   // a label made of square tiles side by side, facing along the normal nx (±1 on x) or nz (±1 on z)
   const tiles = (cx, cy, cz, nx, nz, s, px, py, ts, n) => {
     const rx = nx ? 0 : (nz > 0 ? 1 : -1), rz = nx ? (nx > 0 ? -1 : 1) : 0;
     for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2) * s; box(cx + rx * o, cy, cz + rz * o, nx ? .012 : s, s, nz ? .012 : s, RC.sign, 0, [(px + k * ts) / LT, py / LT, ts / LT]); }
   };
-  // walls: the two sides, and each end in its own half thickness with a doorway in the middle
+  const tabOf = b => { let g = -1; for (const c of P.cats) if (c.bay <= b) g = c.g; return g; };
+  // the hall: tall dark walls, a light running along the top and another lower down, ribs across the open top
   for (const s of [-1, 1]) {
     box(s * (RW / 2 + WT / 2), RH / 2, -L / 2, WT, RH, L + WT, RC.wall);
-    box(s * (RW / 2 + .02), RH + .02, -L / 2, .06, .04, L + WT, RC.trim, 1);   // glowing cornice along the top of the walls
+    box(s * (RW / 2 - .015), RH - .06, -L / 2, .03, .05, L + WT, RC.neon, 2);
+    box(s * (RW / 2 - .015), RH - 1.15, -L / 2, .03, .025, L + WT, RC.neon2, 2);
   }
+  for (let j = 0; j <= P.side; j += 2) {   // ribs over the hall, every second bookcase
+    const z = -END - j * BAY;
+    box(0, RH - .15, z, RW, .3, .26, RC.pillar);
+    box(0, RH - .315, z, RW - .3, .025, .06, RC.neon, 2);
+  }
+  // each end: a wall in its own half thickness, a doorway with a glowing frame, the block's name above the door
   for (const [zc, zs] of [[WT / 4, 1], [-L - WT / 4, -1]]) {
-    const pw = RW / 2 + WT - DOOR / 2;
+    const pw = RW / 2 + WT - DOOR / 2, zi = zc - zs * (WT / 4 + .02);
     for (const s of [-1, 1]) box(s * (DOOR / 2 + pw / 2), RH / 2, zc, pw, RH, WT / 2, RC.wall);
     box(0, (DOORH + RH) / 2, zc, DOOR, RH - DOORH, WT / 2, RC.wall);
-    const zi = zc - zs * (WT / 4 + .015);   // the doorway's glowing frame, on the inside face
-    for (const s of [-1, 1]) box(s * (DOOR / 2 + .05), DOORH / 2, zi, .08, DOORH, .03, RC.trim, 1);
-    box(0, DOORH + .05, zi, DOOR + .18, .08, .03, RC.trim, 1);
-  }
-  // bookcases all along both walls
-  for (let b = 0; b < 2 * P.side; b++) {
-    const p = bayAt(P, b), zc = p.zs + p.dz * BAY / 2, xw = p.s * (RW / 2), xs = p.s * (RW / 2 - DEEP / 2);
-    box(p.s * (RW / 2 - .02), CASEH / 2, zc, .04, CASEH, BAY, RC.back);
-    box(xs, CASEH / 2, p.zs, DEEP, CASEH, .05, RC.post);
-    box(xs, CASEH + .03, zc, DEEP + .04, .06, BAY + .05, RC.post);
-    box(p.s * (RW / 2 - DEEP + .03), CASEH + .075, zc, .03, .03, BAY - .02, RC.cool, 1);   // light along the top of the case
-    for (const y of PLANKS) {
-      box(xs, y - .015, zc, DEEP, .03, BAY, RC.wood);
-      box(xw - p.s * (DEEP - .004), y - .034, zc, .008, .008, BAY - .08, RC.cool, .7);   // a thin light under each shelf's edge
+    for (const s of [-1, 1]) {
+      box(s * (DOOR / 2 + .07), DOORH / 2, zi, .1, DOORH + .02, .04, RC.neon, 2);
+      box(s * (DOOR / 2 - .012), DOORH / 2, zc, .024, DOORH, WT / 2 - .02, RC.neon2, 2);   // the light inside the doorway
+      box(s * (RW / 2 - .015), RH / 2, zi, .03, RH, .03, RC.neon2, 2);   // corners of the hall
     }
-    if (b === 2 * P.side - 1 || b === P.side - 1) box(xs, CASEH / 2, p.zs + p.dz * BAY, DEEP, CASEH, .05, RC.post);
+    box(0, DOORH + .07, zi, DOOR + .24, .1, .04, RC.neon, 2);
+    box(0, RH - .06, zi, RW, .05, .03, RC.neon, 2);
+  }
+  // bookcases all along both walls, a tall pillar between each, a banner above each
+  const bn = R.ban;
+  for (let b = 0; b < 2 * P.side; b++) {
+    const p = bayAt(P, b), zc = p.zs + p.dz * BAY / 2, xw = p.s * (RW / 2), xs = p.s * (RW / 2 - DEEP / 2), g = tabOf(b);
+    const glowK = g >= 0 && b < P.nb ? LC(CATS[g][1]) : RC.dim;
+    box(p.s * (RW / 2 - .02), CASEH / 2, zc, .04, CASEH, BAY, RC.back);
+    box(xs, CASEH + .03, zc, DEEP + .04, .06, BAY + .05, RC.post, 0, null, 1);
+    box(xs, .04, zc, DEEP + .02, .08, BAY, RC.post);
+    box(p.s * (RW / 2 - DEEP - .006), .045, zc, .012, .02, BAY - .1, glowK, 2);   // a light along the foot of the case
+    for (const y of PLANKS) {
+      box(xs, y - .015, zc, DEEP, .03, BAY, RC.wood, 0, null, 1);
+      box(xw - p.s * (DEEP - .004), y - .034, zc, .008, .008, BAY - .08, glowK, 2);   // a thin light under each shelf's edge
+    }
+    for (const ze of b === P.side - 1 || b === 2 * P.side - 1 ? [p.zs, p.zs + p.dz * BAY] : [p.zs]) {
+      box(xs, CASEH / 2, ze, DEEP, CASEH, .05, RC.post, 0, null, 1);
+      box(p.s * (RW / 2 - .16), RH / 2, ze, .32, RH, .2, RC.pillar);   // the pillar, floor to sky
+      box(p.s * (RW / 2 - .325), (RH + CASEH) / 2 + .1, ze, .012, RH - CASEH - .5, .045, RC.neon, 2);
+    }
+    const t = bn[b % bn.length];
+    tiles(p.s * (RW / 2 - .05), CASEH + 1.05, zc, -p.s, 0, .27, t.x, t.y, 96, 4);
   }
   // labels: tab signs on top of the first bookcase of each tab, a plate on the edge of each chip's first shelf
-  const y0 = R.slot * LSLOT; let px = 0, py = y0, rh = 0;
+  for (const c of P.cats) {
+    const p = bayAt(P, c.bay);
+    tiles(p.s * (RW / 2 - DEEP / 2 - .05), CASEH + .3, p.zs + p.dz * BAY / 2, -p.s, 0, .27, c.lx, c.ly, 128, 4);
+  }
+  for (const l of P.labs) {
+    const p = bayAt(P, l.bay);
+    tiles(p.s * (RW / 2 - DEEP - .008), PLANKS[l.row] - .062, p.zs + p.dz * (.06 + .17), -p.s, 0, .085, l.lx, l.ly, 48, 4);
+  }
+  for (const end of ['back', 'front']) {   // over each door: the block this room is, and the sign for where the door goes
+    const zs = end === 'back' ? 1 : -1, z = end === 'back' ? -.035 : -L + .035, T = R.title, s = R.signs[end];
+    tiles(0, DOORH + .42, z, 0, -zs, .42, s.x, s.y, 128, 4);
+    tiles(0, DOORH + 1.55, z, 0, -zs, .62, T.x, T.y, 128, 4);
+  }
+  R.fix = new Float32Array(d);
+}
+// the words on the banners: what this block is
+function rmBanners(B) {
+  const r = B.txs.filter(t => t.fee > 0).map(t => t.rate), cb = B.cb || {}, d = new Date((B.time || 0) * 1000);
+  const tabs = [0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
+  const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS'], [(B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL'],
+    [(cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'], [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})]];
+  if (r.length) out.push([r1(Math.min(...r)) + '–' + r1(Math.max(...r)), 'SAT/VB PAID']);
+  tabs.forEach((n, g) => { if (n) out.push([fmt(n), CATS[g][0]]); });
+  if (cb.words) out.push(['“' + cb.words.slice(0, 26) + '”', 'THE MINER WROTE']);
+  return out.map(([a, b]) => ({a, b}));
+}
+// paints every label of a room into its third of the sheet
+function rmLabels(R) {
+  const P = R.plan, y0 = R.slot * LSLOT; let px = 0, py = y0, rh = 0;
   const place = (w, h) => { if (px + w > LT) { px = 0; py += rh; rh = 0; } const r = [px, py]; px += w; rh = Math.max(rh, h); return r; };
   labCx.clearRect(0, y0, LT, LSLOT);
   R.signs = {};
   for (const end of ['back', 'front']) { const [x, y] = place(512, 128); R.signs[end] = {x, y}; }
-  for (const c of P.cats) {
-    const [x, y] = place(512, 128), p = bayAt(P, c.bay);
-    labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]);
-    tiles(p.s * (RW / 2 - DEEP / 2 - .05), CASEH + .32, p.zs + p.dz * BAY / 2, -p.s, 0, .29, x, y, 128, 4);
-  }
-  for (const l of P.labs) {
-    const [x, y] = place(256, 64), p = bayAt(P, l.bay), T = TYPES[l.k];
-    labPaint(x, y, 256, 64, T.name.toUpperCase(), T.css, fmt(l.n));
-    tiles(p.s * (RW / 2 - DEEP - .008), PLANKS[l.row] - .062, p.zs + p.dz * (.06 + .17), -p.s, 0, .085, x, y, 64, 4);
-  }
-  for (const end of ['back', 'front']) {   // the signs over the doors (painted by rmSigns)
-    const s = R.signs[end], zs = end === 'back' ? 1 : -1, z = end === 'back' ? -.03 : -L + .03;
-    tiles(0, DOORH + .42, z, 0, -zs, .42, s.x, s.y, 128, 4);
-  }
-  R.fix = new Float32Array(d);
-  rmSignPaint(R, true);
-  labUp(0, y0, LT, LSLOT);
+  { const [x, y] = place(512, 128); R.title = {x, y}; labPaint(x, y, 512, 128, 'BLOCK ' + fmt(R.h), '#ffb04a', null, fmt(R.B.count || R.B.txs.length) + ' transactions'); }
+  for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
+  px = LT;
+  R.ban = rmBanners(R.B);
+  for (const b of R.ban) { const [x, y] = place(384, 96); b.x = x; b.y = y; labPaint(x, y, 384, 96, b.a, '#ffb04a', null, b.b); }
+  px = LT;
+  for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaint(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); }
 }
 const rmNear = (R, end) => { const r = room && room.rooms; if (!r) return null; const i = r.indexOf(R); return end === 'front' ? r[i + 1] : r[i - 1]; };
 function rmSignPaint(R, quiet) {
@@ -3107,6 +3149,7 @@ function rmFill(tn) {
     d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = d[o + 4] = d[o + 5] = it.e * .96;
     d[o + 6] = k[0]; d[o + 7] = k[1]; d[o + 8] = k[2]; d[o + 9] = it.t0;
     d[o + 10] = f[0]; d[o + 11] = f[1]; d[o + 12] = f[2]; d[o + 13] = it.m;
+    d[o + 14] = .3;
     if (R.B === cur && t.artR && t.artG === artGen) { d[o + 15] = t.artR[0]; d[o + 16] = t.artR[1]; d[o + 17] = t.artR[2]; d[o + 18] = 1; }
   });
   gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferData(gl.ARRAY_BUFFER, d, gl.DYNAMIC_DRAW); room.nPar = its.length;
@@ -3125,7 +3168,7 @@ function rmDoors(dt) {
     for (const s of [-1, 1]) {
       const x = s * (DOOR / 4 + o * DOOR / 2 * .98);
       d.push(x, DOORH / 2, z, DOOR / 2 - .01, DOORH - .01, .07, RC.door[0], RC.door[1], RC.door[2], 0, x, DOORH / 2, z, 0, .12, 0, 0, 0, 0);
-      d.push(x, DOORH / 2, z + (end === 'back' ? -.04 : .04), .02, DOORH * .9, .01, RC.trim[0], RC.trim[1], RC.trim[2], 0, x, DOORH / 2, z, 0, 1 - o, 0, 0, 0, 0);
+      d.push(x - s * (DOOR / 4 - .03), DOORH / 2, z + (end === 'back' ? -.04 : .04), .02, DOORH * .92, .01, RC.neon[0], RC.neon[1], RC.neon[2], 0, x, DOORH / 2, z, 0, 2, 0, 0, 0, 0);
     }
   };
   for (let i = 0; i < 3; i++) {
@@ -3175,13 +3218,30 @@ function roomFrame(W, H, tn, dpr) {
   if (room.dirty && tn - (room.filled || 0) > .2) rmFill(tn);
   if (room.held && room.held.back && tn > room.held.back) { room.held.it.c = room.held.it.f = null; room.held.it.m = 1; room.held.it.t0 = -9; room.held = null; room.dirty = true; }
   rmHover();
+  const fdt = Math.min(0.1, Math.max(0, tn - (lastFT || tn))); lastFT = tn;
+  heatS += (heatT - heatS) * Math.min(1, fdt * 0.6);
+  const LW = lifeWeights(heatS), rf = [2.1, 2.3, 0.6, 0.7, 1, 1.1, 1.5].reduce((a, r, k) => a + r * LW[k], 0);
+  // walls, bookcases, doors and parcels (mir: drawn upside down, as the reflection in the floor)
+  const all = mir => {
+    gl.useProgram(parP.p); gl.uniformMatrix4fv(parP.u.uVP, false, VP); gl.uniform3fv(parP.u.uE, eye);
+    gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, 0); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uRf, rf); gl.uniform1f(parP.u.uXr, 0);
+    gl.uniform1f(parP.u.uGa, 1); gl.uniform1i(parP.u.uSel, -1); gl.uniform1f(parP.u.uAmb, .3);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, labTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
+    if (room.nFix) { gl.bindVertexArray(rmFixVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nFix); }
+    if (room.nDoor) { gl.bindVertexArray(rmDoorVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nDoor); }
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.activeTexture(gl.TEXTURE0);
+    if (room.nPar) { gl.bindVertexArray(rmParVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nPar); }
+    gl.uniform1f(parP.u.uAmb, 0); gl.uniform1f(parP.u.uMir, 0);
+  };
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
   gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr);
   gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3);
-  // the heat floor, under every room
-  const fdt = Math.min(0.1, Math.max(0, tn - (lastFT || tn))); lastFT = tn;
-  heatS += (heatT - heatS) * Math.min(1, fdt * 0.6);
+  // the reflection, then the heat floor over it (as shiny as its season makes it)
+  gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
+  gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.frontFace(gl.CW);
+  all(1);
+  gl.frontFace(gl.CCW); gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
   gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0);
   gl.uniform1f(mtP.u.uFS, 7); gl.uniform2f(mtP.u.uFO, p.x, p.z); gl.uniform1f(mtP.u.uRm, 1);
@@ -3191,17 +3251,8 @@ function roomFrame(W, H, tn, dpr) {
   gl.colorMask(true, true, true, true);
   gl.uniform1f(mtP.u.uFS, 1); gl.uniform2f(mtP.u.uFO, 0, 0); gl.uniform1f(mtP.u.uRm, 0);
   gl.disable(gl.BLEND);
-  // walls, bookcases, doors and parcels
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
-  gl.useProgram(parP.p); gl.uniformMatrix4fv(parP.u.uVP, false, VP); gl.uniform3fv(parP.u.uE, eye);
-  gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, 0); gl.uniform1f(parP.u.uMir, 0); gl.uniform1f(parP.u.uRf, 0); gl.uniform1f(parP.u.uXr, 0);
-  gl.uniform1f(parP.u.uGa, 1); gl.uniform1i(parP.u.uSel, -1); gl.uniform1f(parP.u.uAmb, .42);
-  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, labTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
-  if (room.nFix) { gl.bindVertexArray(rmFixVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nFix); }
-  if (room.nDoor) { gl.bindVertexArray(rmDoorVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nDoor); }
-  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.activeTexture(gl.TEXTURE0);
-  if (room.nPar) { gl.bindVertexArray(rmParVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nPar); }
-  gl.uniform1f(parP.u.uAmb, 0);
+  all(0);
   gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
 }
 
