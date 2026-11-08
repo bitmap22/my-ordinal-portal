@@ -2963,8 +2963,11 @@ const labCx = labCv.getContext('2d'), labTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, LT, LT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); gl.generateMipmap(gl.TEXTURE_2D);
+const labSt = document.createElement('canvas');   // a part of the sheet is copied here and sent to the graphics card from it (quicker than reading the pixels out)
 function labUp(x, y, w, h) {
-  gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, labCx.getImageData(x, y, w, h));
+  if (labSt.width !== w || labSt.height !== h) { labSt.width = w; labSt.height = h; }
+  const c = labSt.getContext('2d'); c.clearRect(0, 0, w, h); c.drawImage(labCv, x, y, w, h, 0, 0, w, h);
+  gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, labSt);
   gl.generateMipmap(gl.TEXTURE_2D);
 }
 // one label: a dark plate with a glowing edge, the words in their colour (and a count, or a second line)
@@ -3005,7 +3008,8 @@ function rmMake(h, of, side) {
   const R = {h, of, side, ready: false, back: {to: h - 1, o: 0}, front: {to: h + 1, o: 0}};
   if (side === 'front') R.back.to = of.h; else if (side === 'back') R.front.to = of.h;
   R.slot = rmSlots.indexOf(null); if (R.slot < 0) R.slot = 0; rmSlots[R.slot] = R;
-  rmLoad(h).then(B => {
+  rmLoad(h).then(async B => {   // built a step at a time, so walking never stutters while the next room goes up
+    const gone = () => !room || !room.rooms.includes(R);
     if (!room || !room.rooms.includes(R)) return;
     R.B = B; R.plan = roomPlan(B);
     R.z0 = !of ? 0 : side === 'front' ? of.z0 - of.L - WT : of.z0 + WT + R.plan.L;
@@ -3016,7 +3020,10 @@ function rmMake(h, of, side) {
       it.w = [p.s * (RW / 2 - DEEP + it.e / 2 + .05), PLANKS[it.row] + it.e / 2, R.z0 + p.zs + p.dz * (.05 + it.u)];
       it.t0 = t0 + (n > 1 ? i / (n - 1) : 0) * Math.min(2.2, .6 + n * .0006); it.m = 1;
     });
-    rmLabels(R); rmFix(R); rmSignPaint(R, true); labUp(0, R.slot * LSLOT, LT, LSLOT);
+    await yieldNow(); if (gone()) return;
+    rmLabels(R); await yieldNow(); if (gone()) return;
+    rmFix(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
+    labUp(0, R.slot * LSLOT, LT, LSLOT);
     R.ready = true; room.dirty = room.fixDirty = true;
     if (R === room.rooms[1]) rmCurrent(R);
     rmSigns();
