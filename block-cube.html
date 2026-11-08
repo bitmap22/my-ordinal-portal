@@ -224,7 +224,7 @@ body.room.holding #rh{bottom:auto;top:14px}
 body.room.coarse #rj{display:block;position:fixed;left:22px;bottom:30px;width:124px;height:124px;border-radius:50%;border:2px solid rgba(247,147,26,.45);background:radial-gradient(circle,rgba(247,147,26,.14),rgba(14,9,5,.5) 70%);touch-action:none;z-index:6}
 body.room.coarse.holding #rj{display:none}
 #rk{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:rgba(255,176,74,.85);box-shadow:0 0 16px rgba(247,147,26,.7);pointer-events:none}
-body.room.coarse #rh{bottom:auto;top:auto;bottom:168px}
+body.room.coarse #rh{bottom:auto;top:calc(8px + env(safe-area-inset-top))}
 #rs.on{display:block;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;padding:16px 18px;border-radius:16px;background:rgba(14,9,5,.94);border:1px solid rgba(247,147,26,.45);box-shadow:0 0 40px rgba(247,147,26,.25);font:600 12px ui-monospace,Menlo,Consolas,monospace;color:#ffb04a;letter-spacing:.12em;text-align:center}
 #rs .r{display:flex;gap:8px;justify-content:center;margin-top:12px}
 #rs input{width:150px;font:700 24px ui-monospace,Menlo,Consolas,monospace;text-align:center;color:#f7efe3;background:#0b0705;border:1px solid rgba(247,147,26,.4);border-radius:10px;padding:6px}
@@ -233,7 +233,9 @@ body.room.coarse #rh{bottom:auto;top:auto;bottom:168px}
 /* in the room the card becomes the tablet in your hands */
 body.room #card{left:50%;right:auto;bottom:14px;width:min(640px,94vw);max-height:82vh;padding:16px 18px 14px;border:10px solid #0c0805;border-radius:28px;background:rgba(10,7,4,.94);box-shadow:0 0 0 1px rgba(247,147,26,.6),0 0 50px rgba(247,147,26,.3),0 30px 90px rgba(0,0,0,.8);transform:translate(-50%,70px)}
 body.room #card.on{transform:translate(-50%,0)}
-body.room #cp iframe{height:min(46vh,440px)}
+body.room #cp iframe{height:min(46vh,440px);margin-top:0}
+body.room #card.on{display:flex;flex-direction:column}body.room #cp{order:-1;margin-bottom:12px}
+body.room #card::before{content:'';order:-2;align-self:center;width:38px;height:4px;border-radius:2px;background:rgba(247,147,26,.35);margin:-6px 0 10px}
 </style>
 </head>
 <body>
@@ -3123,7 +3125,7 @@ function rmCross(dir) {
   const r = room.rooms;
   if (dir > 0) { rmFree(r[0]); room.rooms = [r[1], r[2], null]; }
   else { rmFree(r[2]); room.rooms = [null, r[0], r[1]]; }
-  rmCurrent(room.rooms[1]); rmNeighbours();
+  rmCurrent(room.rooms[1]); rmNeighbours(); room.fixDirty = room.dirty = true;
 }
 
 /* drawing */
@@ -3142,8 +3144,8 @@ const rmParBuf = gl.createBuffer(), rmFixBuf = gl.createBuffer(), rmDoorBuf = gl
 const rmParVAO = rmVAO(rmParBuf), rmFixVAO = rmVAO(rmFixBuf), rmDoorVAO = rmVAO(rmDoorBuf);
 function rmFill(tn) {
   room.dirty = false; room.filled = tn;
-  const its = [];
-  for (const R of room.rooms) if (R && R.ready) for (const it of R.plan.items) if (!it.gone) its.push([R, it]);
+  const its = [], order = [room.rooms[1], room.rooms[0], room.rooms[2]];   // the room you are in first: only its reflection is drawn
+  for (const R of order) { if (R && R.ready) for (const it of R.plan.items) if (!it.gone) its.push([R, it]); if (R === room.rooms[1]) room.nParCur = its.length; }
   const d = new Float32Array(Math.max(1, its.length) * NF);
   its.forEach(([R, it], i) => {
     const o = i * NF, t = it.t, k = TYPES[it.k].lin, c = it.c || it.w, f = it.f || it.w;
@@ -3156,7 +3158,8 @@ function rmFill(tn) {
   gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferData(gl.ARRAY_BUFFER, d, gl.DYNAMIC_DRAW); room.nPar = its.length;
   if (room.fixDirty) {
     room.fixDirty = false;
-    const fs = room.rooms.filter(R => R && R.ready).map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
+    const C = room.rooms[1], fs = [C, room.rooms[0], room.rooms[2]].filter(R => R && R.ready).map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
+    room.nFixCur = C && C.ready ? C.fix.length / NF : 0;
     let o = 0; for (const f of fs) { all.set(f, o); o += f.length; }
     gl.bindBuffer(gl.ARRAY_BUFFER, rmFixBuf); gl.bufferData(gl.ARRAY_BUFFER, all, gl.STATIC_DRAW); room.nFix = n / NF;
   }
@@ -3228,10 +3231,11 @@ function roomFrame(W, H, tn, dpr) {
     gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, 0); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uRf, rf); gl.uniform1f(parP.u.uXr, 0);
     gl.uniform1f(parP.u.uGa, 1); gl.uniform1i(parP.u.uSel, -1); gl.uniform1f(parP.u.uAmb, .3);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, labTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
-    if (room.nFix) { gl.bindVertexArray(rmFixVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nFix); }
+    const nf = mir ? room.nFixCur || 0 : room.nFix, np = mir ? room.nParCur || 0 : room.nPar;
+    if (nf) { gl.bindVertexArray(rmFixVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, nf); }
     if (room.nDoor) { gl.bindVertexArray(rmDoorVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nDoor); }
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.activeTexture(gl.TEXTURE0);
-    if (room.nPar) { gl.bindVertexArray(rmParVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nPar); }
+    if (np) { gl.bindVertexArray(rmParVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, np); }
     gl.uniform1f(parP.u.uAmb, 0); gl.uniform1f(parP.u.uMir, 0);
   };
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
