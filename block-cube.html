@@ -445,7 +445,7 @@ vec3 s=iS*sc;vFl=fl;vSl=uSel<0?0.:gl_InstanceID==uSel?1.:-1.;
 vec3 w=pos+aP*s,nn=aN;if(uMir>.5){w.y=-w.y;nn.y=-nn.y;}
 vN=nn;vQ=aP*s;vS=s;vK=iK.rgb;vA=iA;vG=iG;vW=w;gl_Position=uVP*vec4(w,1.);}`,
   V + `in vec3 vN;in vec3 vQ;in vec3 vS;in vec3 vK;in vec3 vW;in float vFl;in float vSl;in float vG;in vec4 vA;in float vAo;uniform sampler2D uArt;uniform vec3 uE;uniform float uMir,uXr,uGa,uRf;out vec4 o;
-void main(){vec3 K=vK;if(vA.w>.5){vec3 an0=abs(normalize(vN));vec3 sn=sign(vN);vec2 fu=an0.x>.5?vec2(-sn.x*vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,-sn.y*vQ.z/vS.z):vec2(sn.z*vQ.x/vS.x,vQ.y/vS.y);fu=clamp(fu+.5,.002,.998);K=pow(texture(uArt,vA.xy+vec2(fu.x,1.-fu.y)*vA.z).rgb,vec3(2.2))*1.15+.01;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
+void main(){vec3 K=vK;if(vA.w>.5){vec3 an0=abs(normalize(vN));vec3 sn=sign(vN);vec2 fu=an0.x>.5?vec2(-sn.x*vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,-sn.y*vQ.z/vS.z):vec2(sn.z*vQ.x/vS.x,vQ.y/vS.y);float hp=.5/max(1.,vA.z*float(textureSize(uArt,0).x));fu=clamp(fu+.5,hp,1.-hp);K=pow(texture(uArt,vA.xy+vec2(fu.x,1.-fu.y)*vA.z).rgb,vec3(2.2))*1.15+.01;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
 float m=an.x>.5?min(d.y,d.z):an.y>.5?min(d.x,d.z):min(d.x,d.y);
 float fw=fwidth(m),es=.25+.75*smoothstep(.3,1.4,min(vS.x,min(vS.y,vS.z))),edge=(1.-smoothstep(0.,fw*1.3,m))*es;
 vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
@@ -692,7 +692,7 @@ const TYPES = [
   {g: 0, name: 'inscriptions', css: kcss('inscriptions'), test: kdi('inscriptions')}, {g: 0, name: 'images', css: '#ff9f1c', test: tfl(TF.img)},
   {g: 0, name: 'text', css: '#e9dcc8', test: tfl(TF.txt)}, {g: 0, name: 'HTML', css: '#3a86ff', test: tfl(TF.html)},
   {g: 0, name: 'JSON', css: '#8ecae6', test: tfl(TF.json)}, {g: 0, name: 'audio / video', css: '#ff4d9d', test: tfl(TF.media)},
-  {g: 0, name: '3D models', css: '#80ffdb', test: tfl(TF.model)}, {g: 0, name: 'other files', css: '#adb5bd', test: tfl(TF.other)},
+  {g: 0, name: '3D models', css: '#80ffdb', test: tfl(TF.model)}, {g: 0, name: 'other files', css: '#adb5bd', test: tfl(TF.other)}, {g: 0, name: 'delegates', css: '#c9b8ff', test: t => t.dele === true},
   {g: 0, name: 'children', css: '#ffd166', test: tfl(TF.child)}, {g: 0, name: 'cursed', css: '#9d4edd', test: tfl(TF.cursed)},
   {g: 0, name: 'bitmaps', css: kcss('bitmaps'), test: kdi('bitmaps')},
   {g: 1, name: 'BRC-20', css: kcss('BRC-20'), test: kdi('BRC-20')}, {g: 1, name: 'TAP', css: kcss('TAP'), test: kdi('TAP')},
@@ -872,11 +872,13 @@ function atomArt(buf) {
   return null;
 }
 // readable words: mostly printable characters
+const U8F = new TextDecoder('utf-8', {fatal: true});
 function words(u) {
   if (u.length < 3) return null;
-  let ok = 0; for (const c of u) if ((c >= 32 && c < 127) || c >= 128 || c === 10) ok++;
-  if (ok / u.length < 0.92) return null;
-  const t = U8D.decode(u).replace(/[\u0000-\u001f\u007f\ufffd]+/g, ' ').trim();
+  let raw; try { raw = U8F.decode(u); } catch (e) { return null; }   // not valid text at all
+  const cs = [...raw]; let ok = 0; for (const ch of cs) { const c = ch.codePointAt(0); if ((c >= 32 && c !== 127 && !(c >= 0x80 && c < 0xa0)) || c === 10 || c === 9) ok++; }
+  if (ok / cs.length < 0.95) return null;
+  const t = raw.replace(/[\u0000-\u001f\u007f\ufffd]+/g, ' ').trim();
   return /[a-z]{2}/i.test(t) ? (t.length > 1000 ? t.slice(0, 1000) + '…' : t) : null;
 }
 // the miner's words in the coinbase: the readable stretches of its input script
@@ -909,7 +911,7 @@ async function blockBytes(B) {
 function scanBytes(X, h) {
   let p = 80;
   const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
-  const ntx = vi(), out = new Array(ntx); let cb = null, artN = 0;
+  const ntx = vi(), out = new Array(ntx); let cb = null, artN = 0, artB = 0;
   for (let t = 0; t < ntx && p < X.length; t++) {
     const r = {sc: 0, msg: null, ins: [], rn: null, tick: null, op: null, art: null, word: null, a: p}, set = f => { r.sc |= 1 << f; };
     p += 4; let sw = 0; if (X[p] === 0 && X[p + 1] === 1) { sw = 1; p += 2; }
@@ -950,7 +952,7 @@ function scanBytes(X, h) {
     }
     if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
     if ((r.sc >> TF.cp) & 1 && !((r.sc >> TF.stamps) & 1) && !r.word) r.word = {k: 'cp', a: '', b: ''};
-    if ((r.sc >> TF.stamps) & 1 && artN < 256) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; } }
+    if ((r.sc >> TF.stamps) & 1 && artN < 2048 && artB < 64e6) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; artB += a.bytes.length; } }
     r.e = p;
     let tap = false, ei = 0;
     for (let i = 0; i < nin; i++) {
@@ -974,7 +976,7 @@ function scanBytes(X, h) {
           const tag = L1D.decode(P[k + 2][1]);
           if (tag === 'atom') {
             set(TF.atom);
-            if (!r.art && artN < 256) { const parts = []; for (let j = k + 4; j < P.length && P[j][0] !== 0x68; j++) if (P[j][1]) parts.push(P[j][1]); const a = atomArt(catB(parts)); if (a) { r.art = a; artN++; } }
+            if (!r.art && artN < 2048 && artB < 64e6) { const parts = []; for (let j = k + 4; j < P.length && P[j][0] !== 0x68; j++) if (P[j][1]) parts.push(P[j][1]); const a = atomArt(catB(parts)); if (a) { r.art = a; artN++; artB += a.bytes.length; } }
             continue;
           }
           if (tag !== 'ord') continue;
@@ -990,8 +992,9 @@ function scanBytes(X, h) {
           set(TF.insc); if (par) set(TF.child);
           if (h < 824544 && (i > 0 || ei > 0 || pn)) set(TF.cursed);
           const ty = (ct.split(';')[0] || '').trim().toLowerCase();
-          set(/^image\//.test(ty) ? TF.img : /html/.test(ty) ? TF.html : /json/.test(ty) ? TF.json : /^text\//.test(ty) ? TF.txt : /^(audio|video)\//.test(ty) ? TF.media : /^model\//.test(ty) ? TF.model : TF.other);
-          r.ins.push({i: ei++, ct: ty || 'unknown', par, del});
+          if (!(del && !ty)) set(/^image\//.test(ty) ? TF.img : /html/.test(ty) ? TF.html : /json/.test(ty) ? TF.json : /^text\//.test(ty) ? TF.txt : /^(audio|video)\//.test(ty) ? TF.media : /^model\//.test(ty) ? TF.model : TF.other);
+          if (del) r.dele = true;
+          r.ins.push({i: ei++, ct: ty || (del ? 'delegate (shows another inscription)' : 'unknown'), par, del});
           const bl = body.reduce((n, x) => n + x.length, 0);
           // the words, for painting: the first text-like inscription in the transaction
           if (!enc && !del && bl && !r.word && !/^image\//.test(ty) && (/^text\/(plain|markdown)/.test(ty) || /json/.test(ty))) {
@@ -1016,7 +1019,7 @@ function scanBytes(X, h) {
               else if (pr && r.word) r.word = {k: 'json', a: String(o.tick || o.name || o.p).slice(0, 24), b: (pr !== String(o.tick || o.name || o.p).toLowerCase() ? pr + ' ' : '') + wb};
             } catch (e) {}
           }
-          if (/^image\//.test(ty) && !enc && !del && bl > 0 && bl <= 400000 && !r.art && artN < 256) { r.art = {ct, bytes: catB(body)}; artN++; }
+          if (/^image\//.test(ty) && !enc && !del && bl > 0 && bl <= 400000 && !r.art && artN < 2048 && artB < 64e6) { r.art = {ct, bytes: catB(body)}; artN++; artB += bl; }
         }
         continue;
       }
@@ -1027,7 +1030,7 @@ function scanBytes(X, h) {
     else {
       set(tap ? TF.taproot : sw ? TF.segwit : TF.legacy);
       if (nin >= 3 && nout === 1) set(TF.consol);
-      if (pay >= 10) set(TF.batch);
+      if (pay - (mso ? mso.length : 0) - ((r.sc >> TF.stamps) & 1 && wsh ? wsh.length : 0) >= 10) set(TF.batch);   // data-only outputs are not payouts
     }
     out[t] = r;
   }
@@ -1049,7 +1052,7 @@ async function scanBlock(B) {
     const k = Math.min(1, S.txs.length - 1);
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
-      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t._k = null;
+      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t.dele = r.dele || false; t._k = null;
       if (r.art) t.art = r.art; else if (r.word) t.word = r.word;
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
     });
@@ -1060,11 +1063,13 @@ async function scanBlock(B) {
   if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
 }
 /* ---------- art: image inscriptions decoded straight from the block's bytes, painted onto their parcels ---------- */
-// a 2048 x 2048 atlas of 256 pictures (128 px each), one per image inscription in the block on screen
+// the sticker sheet: every picture and word tile in the block on screen, each in a square sized to its parcel
+// (128 px for big parcels down to 16 px for the smallest). 4096 x 4096 where the device allows, 2048 on small phones.
 let artGen = 0;
+const ATLAS = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048, matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700 ? 2048 : 4096);
 const artTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, artTex);
-gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2048, 2048, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ATLAS, ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 const artCv = document.createElement('canvas'); artCv.width = artCv.height = 128;
@@ -1076,36 +1081,54 @@ async function decodeArt(a) {
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
 }
+const artCvs = {};
+const artCanvas = n => { if (!artCvs[n]) { const c = document.createElement('canvas'); c.width = c.height = n; artCvs[n] = [c, c.getContext('2d')]; } return artCvs[n]; };
+const wRank = w => w.k === 'rune' ? w.s || 4 : w.k === 'alk' || w.k === 'cp' ? 1 : 0;
+// how big a square a parcel gets, from its size in the cube (1 unit is about 1/64 of the cube)
+const artWant = (t, pic) => { const m = t.d ? Math.max(t.d[0], t.d[1], t.d[2]) : 1, s = m >= 6 ? 128 : m >= 3 ? 64 : m >= 2 ? 32 : 32; return pic ? s : Math.min(64, s); };
 async function loadArt(B) {
-  const my = ++artGen, list = B.txs.filter(t => t.art).slice(0, 256);
-  for (let k = 0; k < list.length; k += 8) {
-    if (my !== artGen || cur !== B) return;
-    const got = await Promise.allSettled(list.slice(k, k + 8).map(t => decodeArt(t.art)));
-    if (my !== artGen || cur !== B) return;
+  const my = ++artGen, live = () => my === artGen && cur === B;
+  // pictures first (block order), then words: people's own words and tokens, then Alkanes and Counterparty, new runes, rune mints, rune moves
+  const pics = B.txs.filter(t => t.art), words = B.txs.filter(t => t.word && !t.art).map((t, i) => [t, i]).sort((a, b) => wRank(a[0].word) - wRank(b[0].word) || a[1] - b[1]).map(a => a[0]);
+  const items = pics.map(t => ({t, pic: true, s: artWant(t, true)})).concat(words.map(t => ({t, pic: false, s: artWant(t, false)})));
+  // if the sheet can't hold them all, make the last ones smaller (down to 16 px) before leaving any out
+  const G = ATLAS / 128, cap = (G * G - 4) * 64, units = n => (n / 16) * (n / 16);
+  let total = items.reduce((a, x) => a + units(x.s), 0);
+  for (let size = 128; total > cap && size > 16; size /= 2) for (let i = items.length - 1; i >= 0 && total > cap; i--) if (items[i].s === size) { total -= units(size) - units(size / 2); items[i].s = size / 2; }
+  while (total > cap && items.length) total -= units(items.pop().s);
+  // places: big squares first, each size filling whole 128 px cells, so nothing overlaps
+  const bySize = [128, 64, 32, 16].map(n => items.filter(x => x.s === n));
+  let cell = 0;
+  bySize.forEach((list, si) => {
+    const n = [128, 64, 32, 16][si], per = 128 / n, inCell = per * per;
+    list.forEach((x, j) => { const c = cell + Math.floor(j / inCell), k = j % inCell; x.x = (c % G) * 128 + (k % per) * n; x.y = Math.floor(c / G) * 128 + Math.floor(k / per) * n; });
+    cell += Math.ceil(list.length / inCell);
+  });
+  const put = (x, cvs) => { gl.bindTexture(gl.TEXTURE_2D, artTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x.x, x.y, gl.RGBA, gl.UNSIGNED_BYTE, cvs); x.t.artR = [x.x / ATLAS, x.y / ATLAS, x.s / ATLAS]; x.t.artG = my; };
+  const picItems = items.filter(x => x.pic), wordItems = items.filter(x => !x.pic);
+  for (let k = 0; k < picItems.length; k += 8) {
+    if (!live()) return;
+    const part = picItems.slice(k, k + 8), got = await Promise.allSettled(part.map(x => decodeArt(x.t.art)));
+    if (!live()) return;
     got.forEach((g, j) => {
       if (g.status !== 'fulfilled') return;
-      const img = g.value, slot = k + j, t = list[slot];
-      const w = img.naturalWidth || img.width || 128, h = img.naturalHeight || img.height || 128, sc = Math.min(128 / w, 128 / h), dw = w * sc, dh = h * sc;
-      artCx.fillStyle = '#0b0805'; artCx.fillRect(0, 0, 128, 128);
-      artCx.imageSmoothingEnabled = sc < 1;   // tiny pixel art stays crisp when it is made bigger
-      artCx.drawImage(img, (128 - dw) / 2, (128 - dh) / 2, dw, dh);
+      const x = part[j], img = g.value, n = x.s, [cv, cx] = artCanvas(n);
+      const w = img.naturalWidth || img.width || n, h = img.naturalHeight || img.height || n, sc = Math.min(n / w, n / h), dw = w * sc, dh = h * sc;
+      cx.fillStyle = '#0b0805'; cx.fillRect(0, 0, n, n);
+      cx.imageSmoothingEnabled = sc < 1;   // tiny pixel art stays crisp when it is made bigger
+      cx.drawImage(img, (n - dw) / 2, (n - dh) / 2, dw, dh);
       if (img.close) img.close();
-      gl.bindTexture(gl.TEXTURE_2D, artTex);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, (slot % 16) * 128, (slot >> 4) * 128, gl.RGBA, gl.UNSIGNED_BYTE, artCv);
-      t.artR = [(slot % 16) / 16, (slot >> 4) / 16, 1 / 16]; t.artG = my;
+      put(x, cv);
     });
     rebuild();
   }
-  if (my !== artGen || cur !== B) return;
-  // then the words, four to a square, in the squares the pictures left free
-  const wRank = w => w.k === 'rune' ? w.s || 4 : w.k === 'alk' || w.k === 'cp' ? 1 : 0;
-  const words = B.txs.filter(t => t.word && !t.art).map((t, i) => [t, i]).sort((a, b) => wRank(a[0].word) - wRank(b[0].word) || a[1] - b[1]).map(a => a[0]), free = 256 - list.length;
-  for (let i = 0; i < words.length && i < free * 4; i++) {
-    const t = words[i], sq = list.length + (i >> 2), q = i & 3, px = (sq % 16) * 128 + (q & 1) * 64, py = (sq >> 4) * 128 + (q >> 1) * 64;
-    paintWord(t.word);
-    gl.bindTexture(gl.TEXTURE_2D, artTex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, px, py, gl.RGBA, gl.UNSIGNED_BYTE, wCv);
-    t.artR = [px / 2048, py / 2048, 1 / 32]; t.artG = my;
+  for (let i = 0; i < wordItems.length; i++) {
+    if (!live()) return;
+    const x = wordItems[i];
+    paintWord(x.t.word);
+    if (x.s === 64) put(x, wCv);
+    else { const [cv, cx] = artCanvas(x.s); cx.imageSmoothingEnabled = true; cx.clearRect(0, 0, x.s, x.s); cx.drawImage(wCv, 0, 0, x.s, x.s); put(x, cv); }
+    if (i % 300 === 299) { rebuild(); await new Promise(r => setTimeout(r, 0)); }
   }
   rebuild();
 }
