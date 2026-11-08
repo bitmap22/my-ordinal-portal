@@ -9,6 +9,9 @@
 html,body{margin:0;height:100%;overflow:hidden;background:#050406;font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
 [hidden]{display:none!important}
 #game{position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#050406}
+#paint{position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#0f1115}#game[hidden],#paint[hidden]{display:none}
+#gfade{position:fixed;inset:0;z-index:4;background:#000;opacity:0;pointer-events:none;transition:opacity .32s}#gfade.on{opacity:1;pointer-events:auto}
+#gfade span{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);font:700 12px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.16em;color:#b8a593;opacity:0;transition:opacity .4s .7s}#gfade.on.wait span{opacity:1}
 /* everything in the lobby, the panels and the notes: dark, like the 2009 menus */
 button{font:600 16px/1 var(--cond);letter-spacing:.07em;text-transform:uppercase;border:1px solid rgba(255,255,255,.16);border-radius:2px;padding:10px 14px;cursor:pointer;background:rgba(255,255,255,.07);color:#fff;transition:background .12s,color .12s,border-color .12s}
 button:hover{background:rgba(255,255,255,.15)}
@@ -196,6 +199,8 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
 </style></head>
 <body>
 <iframe id="game" title="Block Cube" allow="autoplay"></iframe>
+<iframe id="paint" title="Block Paint City" allow="autoplay; microphone" hidden></iframe>
+<div id="gfade"><span>OPENING THE DOOR…</span></div>
 
 <div id="lobby"><div class="mw">
   <header class="brand"><h1>Block Cube</h1><p>Walk the Bitcoin blocks together.</p></header>
@@ -300,7 +305,27 @@ const icon = (name, cls) => { const t = document.createElement('template'); t.in
 // ---------------- the game, in its frame ----------------
 const frame = $('game'); let gameReady = false, gameQueue = [];
 frame.src = GAME;
-const toGame = m => { const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, '*'); else gameQueue.push(msg); };
+const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, '*'); else gameQueue.push(msg); };
+// ---------------- Block Paint City, through the cube's warehouse shutter ----------------
+// The shutter (and Block Paint's Block Cube door) swap the game here, so the crew stays together. The game you are not in
+// waits hidden and quiet (on a phone it is closed, to save memory). Each crewmate shows in whichever game they are in.
+const pframe = $('paint'), PAINT = 'block-paint.html', PHONE = matchMedia('(pointer: coarse)').matches;
+let paintReady = false, paintQueue = [], inPaint = false, swapping = false;
+const mateG = new Map();   // the game each crewmate was last seen in
+const toPaint = m => { if (!pframe.getAttribute('src')) return; const msg = Object.assign({ app: 'blockpaint-host' }, m); if (paintReady) pframe.contentWindow.postMessage(msg, '*'); else paintQueue.push(msg); };
+const inPaintSt = s => !!(s && s.g === 'paint');
+// what the crew does goes to the game each crewmate is in; who left and who is talking go to both
+const toGame = m => {
+  if (m.type === 'state') {
+    const g = inPaintSt(m.s) ? 'paint' : 'cube', was = mateG.get(m.id); mateG.set(m.id, g);
+    if (was && was !== g) (was === 'paint' ? toPaint : toCube)({ type: 'left', id: m.id });   // (they went through the door)
+    (g === 'paint' ? toPaint : toCube)(m); return;
+  }
+  if (m.type === 'go') { if (inPaintSt(voice.st[m.id])) swapTo('paint'); else if (inPaint) swapTo('cube').then(() => toCube(m)); else toCube(m); return; }
+  if (m.type === 'left' || m.type === 'off' || m.type === 'say' || m.type === 'talk') { toCube(m); toPaint(m); if (m.type === 'left') mateG.delete(m.id); return; }
+  if (m.type === 'ready') { toCube(m); if (paintReady) toPaint(m); return; }
+  toCube(m);
+};
 addEventListener('message', e => {
   if (e.source !== frame.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockcube') return;
   if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
@@ -308,8 +333,58 @@ addEventListener('message', e => {
   if (m.type === 'portraits') { gotPortraits(m); return; }
   if (m.type === 'hear') { voice.hear(m.d); return; }   // how far away each crewmate is in the rooms (for their voices)
   if (m.type === 'chat-open') { openSay(); return; }
+  if (m.type === 'go' && m.to === 'paint') { swapTo('paint'); return; }   // walked into the warehouse shutter
+  if (inPaint) return;   // (the cube, waiting hidden)
+  if (m.type === 'state' && m.s && m.s.in && m.s.h === -2) paintSoon();   // in the common room: Block Paint gets ready behind the shutter
   if (net.on) net.fromGame(m);
 });
+addEventListener('message', e => {
+  if (!pframe.contentWindow || e.source !== pframe.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockpaint') return;
+  if (m.type === 'page?') { pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
+  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, '*'); if (net.on && net.sail) paintStart(); return; }
+  if (m.type === 'go' && m.to === 'cube') { swapTo('cube'); return; }   // walked into Block Paint's Block Cube door
+  if (m.type === 'chat-open') { openSay(); return; }
+  if (!inPaint || !net.on) return;   // (Block Paint, waiting hidden: nothing of it goes to the crew)
+  if (m.type === 'state' && m.s && typeof m.s === 'object' && !Array.isArray(m.s)) net.fromGame({ type: 'state', s: Object.assign({}, m.s, { g: 'paint' }) });
+  else if (m.type === 'event' && m.ev && typeof m.ev === 'object') { const c = check({ t: 'pev', ev: m.ev }); if (c) share(c); }
+});
+// Block Paint opened behind the shutter ahead of time (not on a phone), so walking through is quick
+function paintSoon() { if (PHONE || pframe.getAttribute('src')) return; paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; }
+// in Block Paint with the crew: who you are, and where each crewmate already in it is
+function paintStart() {
+  toPaint({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode });
+  for (const [id, st] of Object.entries(voice.st)) if (id !== ME && inPaintSt(st) && net.players.has(id)) toPaint({ type: 'state', id, name: net.players.get(id).name, s: st });
+}
+const later = ms => new Promise(r => setTimeout(r, ms));
+let swapNext = null;
+async function swapTo(g) {
+  if (swapping) { swapNext = g; return; }   // (asked again mid-swap: done right after)
+  if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive' }); return; }   // (already there: never left dark)
+  swapping = true;
+  const fade = $('gfade'); fade.classList.add('on');
+  (g === 'paint' ? toCube : toPaint)({ type: 'leave' });   // (the game you are leaving: dark and quiet)
+  await later(340);
+  if (g === 'paint') {
+    if (!pframe.getAttribute('src')) { paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; fade.classList.add('wait'); }
+    else toPaint({ type: 'arrive' });
+    for (let i = 0; i < 300 && !paintReady; i++) await later(100);
+    inPaint = true; pframe.hidden = false; frame.hidden = true;
+    if (net.on && net.sail && paintReady) paintStart();
+    if (PHONE) { frame.dataset.closed = 1; gameReady = false; gameQueue = []; frame.src = 'about:blank'; }
+  } else {
+    if (frame.dataset.closed) { delete frame.dataset.closed; gameReady = false; gameQueue = []; frame.src = GAME + '#from-paint'; fade.classList.add('wait'); }
+    else toCube({ type: 'arrive' });
+    for (let i = 0; i < 300 && !gameReady; i++) await later(100);
+    inPaint = false; frame.hidden = false; pframe.hidden = true;
+    if (PHONE) { pframe.removeAttribute('src'); paintReady = false; paintQueue = []; try { pframe.contentWindow.location.replace('about:blank'); } catch (e) {} }
+  }
+  fade.classList.remove('on', 'wait'); swapping = false;
+  if (swapNext) { const n = swapNext; swapNext = null; setTimeout(() => swapTo(n), 0); }
+  try { const f = inPaint ? pframe : frame; f.focus(); f.contentWindow.focus(); } catch (e) {}
+  whereAt = 0; crewWhere();
+}
+// voices in Block Paint: crewmates in it are heard, those in the cube not (in the cube, the cube says how far each one is)
+setInterval(() => { if (!inPaint || !net.on) return; const d = {}; for (const id of net.players.keys()) if (id !== ME) d[id] = inPaintSt(voice.st[id]) ? 3 : 999; voice.hear(d); }, 500);
 
 // ---------------- characters: Node Runners ----------------
 // four runners, three colourways each, five skin tones: [runner, colourway, skin]. The cube draws their pictures.
@@ -402,7 +477,7 @@ function wire(pc, ch, onMsg, onOpen, onClose, onLost) {
 // rid: the crew's own name on the relays, the same whoever hosts it. gen: how many times the host has changed.
 const net = { on: false, host: false, mode: '', code: '', rid: '', gen: 0, open: false, sail: false, back: false, peers: new Map(), pending: new Map(), hostLink: null, hostId: '', history: [], players: new Map(), unsub: [], line: [], pks: {}, chat: [], regroup: null, leaving: false, started: 0, fast: 0, nextBeat: 0, prev: '' };
 // the host's checks on what a guest sends: the right shape and size, and not too often (KENOBI: 30 a second for where you are, 10 for events, 5 for chat)
-const LIM = { state: 30, event: 10, chat: 5, sdp: 4, hello: 2, me: 2, bye: 1, look: 2 };
+const LIM = { state: 30, event: 10, pev: 60, chat: 5, sdp: 4, hello: 2, me: 2, bye: 1, look: 2 };
 function allow(peer, t) { const r = LIM[t] || 2, s = performance.now() / 1000, b = peer.bk || (peer.bk = {}), q = b[t] || (b[t] = { v: r, at: s }); q.v = Math.min(r, q.v + (s - q.at) * r); q.at = s; if (q.v < 1) return false; q.v--; return true; }
 // (numbers up to a time in milliseconds: a lantern says when it was let go, and the other games work out from that how high it has risen)
 const small = (v, d) => v === null || typeof v === 'boolean' || (typeof v === 'number' && isFinite(v) && Math.abs(v) < 1e13) || (typeof v === 'string' && v.length <= 80) ||
@@ -410,9 +485,12 @@ const small = (v, d) => v === null || typeof v === 'boolean' || (typeof v === 'n
 // where someone is in the cube: which block's room (h), where in it (x, z, in metres), which way they face (y) and look (p), what they hold (hk: its kind)
 const num = (v, a) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= a;
 const place = s => Number.isInteger(s.h) && s.h >= -2 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
+// someone in Block Paint: where they stand and how they look, small
+const paintOk = s => { try { return JSON.stringify(s).length <= 3000 && Array.isArray(s.q) && s.q.length === 3 && s.q.every(Number.isFinite); } catch (e) { return false; } };
 function check(m) {
   if (!m || typeof m !== 'object') return null;
-  if (m.t === 'state') return m.s && typeof m.s === 'object' && !Array.isArray(m.s) && place(m.s) && small(m.s, 0) ? { t: 'state', s: m.s } : null;
+  if (m.t === 'state') return m.s && typeof m.s === 'object' && !Array.isArray(m.s) && (m.s.g === 'paint' ? paintOk(m.s) : place(m.s) && small(m.s, 0)) ? { t: 'state', s: m.s } : null;
+  if (m.t === 'pev') return m.ev && typeof m.ev === 'object' && !Array.isArray(m.ev) && typeof m.ev.t === 'string' && JSON.stringify(m.ev).length <= 60000 ? { t: 'pev', ev: m.ev } : null;
   if (m.t === 'event') return m.ev && typeof m.ev === 'object' && typeof m.ev.list === 'string' && m.ev.list.length <= 24 && small(m.ev, 0) ? { t: 'event', ev: m.ev } : null;
   if (m.t === 'chat') return typeof m.text === 'string' && m.text.trim() ? { t: 'chat', text: m.text.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200) } : null;
   if (m.t === 'sdp') return m.d && (m.d.type === 'offer' || m.d.type === 'answer') && typeof m.d.sdp === 'string' && m.d.sdp.length < 20000 ? { t: 'sdp', d: { type: m.d.type, sdp: m.d.sdp } } : null;
@@ -437,6 +515,7 @@ function handle(from, m) {
   const p = net.players.get(from) || {}; const meta = { id: from, name: p.name, look: p.look };
   if (m.t === 'state') { const out = { t: 'state', ...meta, s: m.s }; toAll(out, from); if (from !== ME) gameState(out); }
   else if (m.t === 'event') { const out = { t: 'event', ...meta, ev: m.ev }; keepEvent(out); toAll(out, from); if (from !== ME) toGame({ type: 'event', id: from, ev: m.ev }); }
+  else if (m.t === 'pev') { const out = { t: 'pev', id: from, ev: m.ev }; toAll(out, from); if (from !== ME) toPaint({ type: 'event', id: from, ev: m.ev }); }
   else if (m.t === 'chat') { const out = { t: 'chat', ...meta, text: String(m.text || '').slice(0, 200) }; toAll(out, from); if (from !== ME) chatIn(out); }
   else if (m.t === 'me') { const q = net.players.get(from); if (q) q.sail = m.sail ? 1 : 0; toAll({ t: 'me', id: from, sail: m.sail ? 1 : 0 }, from); drawCrew(); }
   else if (m.t === 'look') { const q = net.players.get(from); if (q) { q.look = m.look; toAll({ t: 'joined', ...pub(from, q), back: 1 }, from); if (from !== ME) toGame({ type: 'look', id: from, look: m.look }); } }
@@ -487,6 +566,7 @@ function guestIn(m) {
   }
   else if (m.t === 'state') gameState(m);
   else if (m.t === 'event') { keepEvent(m); toGame({ type: 'event', id: m.id, ev: m.ev }); }
+  else if (m.t === 'pev') { if (typeof m.id === 'string') toPaint({ type: 'event', id: m.id, ev: m.ev }); }
   else if (m.t === 'chat') chatIn(m);
   else if (m.t === 'sdp') voice.sdp(L, m.d);
   else if (m.t === 'vmap') voice.map(m.sid, m.id);
@@ -801,7 +881,7 @@ function startGame() {
   updateHud(); drawCrew();
 }
 net.fromGame = m => {
-  if (m.type === 'state') { const c = check({ t: 'state', s: m.s }); if (!c) return; const was = voice.st[ME]; voice.st[ME] = c.s; share(c); if (!was || was.h !== c.s.h || was.in !== c.s.in) { whereAt = 0; crewWhere(); } }
+  if (m.type === 'state') { const c = check({ t: 'state', s: m.s }); if (!c) return; const was = voice.st[ME]; voice.st[ME] = c.s; share(c); if (!was || was.h !== c.s.h || was.in !== c.s.in || was.g !== c.s.g) { whereAt = 0; crewWhere(); } }
   else if (m.type === 'event') share({ t: 'event', ev: m.ev });
 };
 function updateHud() {
@@ -1033,9 +1113,9 @@ function playerRows(ul) {
     const p = net.players.get(id), mine = id === ME, host = id === net.hostId, mu = isMuted(id), nm = p.name || 'Runner', st = voice.st[id];
     const li = el('li', { class: [mine && 'me', host && 'host', p.sail && 'on', mu && 'muted'].filter(Boolean).join(' ') || null, data: { id } });
     li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), host ? el('span', { class: 'tag', text: 'Host' }) : null),
-      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : st && st.in ? (st.h === -2 ? 'Lobby' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
+      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
     // (a crewmate in another block's room: go to them)
-    const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && st.in && !(mst && mst.in && mst.h === st.h)) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
+    const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && (inPaintSt(st) ? !inPaintSt(mst) : st.in && !(mst && mst.in && !inPaintSt(mst) && mst.h === st.h))) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
     if (!mine && p.fpk && p.fpk !== fpk) li.append(isFriend(p.fpk) ? el('span', { class: 'st frt', text: 'Friend' }) : el('button', { class: 'fr', text: 'Add friend', onclick: () => { addFriend({ pk: p.fpk, name: p.name }, true); toast('Added ' + nm + ' as a friend.', [], 4000); } }));
     if (mine) li.append(el('span', { class: 'mic' }, icon('mic')));
     else li.append(el('button', { class: 'mic', 'aria-label': (mu ? 'Unmute ' : 'Mute ') + nm, 'aria-pressed': String(mu), onclick: () => setMute(id, !isMuted(id)) }, icon('mic')));
@@ -1057,8 +1137,8 @@ function drawTop() {
     const id = ids[k];
     if (!id) { box.append(el('div', { class: 'pl empty' }, el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), 'open'), el('span', { class: 'w', text: net.mode === 'sea' ? 'anyone can join' : 'invite someone' }))); continue; }
     const p = net.players.get(id), st = voice.st[id], mine = id === ME, lk = lookOk(p.look) || [0, 0, 1];
-    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : st && st.in ? (st.h === -2 ? 'lobby' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
-    const here = !mine && st && st.in && mst && mst.in && st.h === mst.h, go = !mine && st && st.in && !here;
+    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
+    const here = !mine && st && mst && (inPaintSt(st) ? inPaintSt(mst) : st.in && mst.in && !inPaintSt(mst) && st.h === mst.h), go = !mine && st && (st.in || inPaintSt(st)) && !here;
     const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + GLOWS[lk[0]][lk[1]], title: go ? 'go to ' + (p.name || 'them') : '' },
       el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
     if (go) b.onclick = () => toGame({ type: 'go', id });

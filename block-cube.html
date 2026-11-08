@@ -5425,6 +5425,7 @@ function cmMove(C, p, nx, nz, dt) {
   const [wx, wz] = cmW(C, x, d); p.x = wx; p.z = C.z0 + wz;
   const ty = cmH(x, d, lv); p.y = (p.y || 0) + (ty - (p.y || 0)) * Math.min(1, dt * 12);
   if (d < -WT / 2 && open) { p.lv = 0; p.y = 0; rmCross(C.door === 'back' ? -1 : 1); }
+  else if (!lv && x > 13.95 && d > 6.35 && d < 9.65) cmToPaint();   // walked into the warehouse shutter
 }
 // where you stand in the rooms' own layout, and on which step of the Forum
 const cmHere = () => { const C = room && room.at; if (!cmOn(C) || !C.ready || !C.scr) return null; const [x, d] = cmL(C, room.p.x, room.p.z); return {C, x, d, lv: room.p.lv ? 1 : 0, step: room.p.lv ? 0 : cmLevel(x, d)}; };
@@ -6262,6 +6263,8 @@ addEventListener('message', e => {
   if (m.type === 'off') { crew.on = false; for (const id of [...crew.mates.keys()]) mateGone(id); return; }
   if (m.type === 'say') { if (m.id === crew.me) return; const M = crew.mates.get(m.id); if (M) { M.say = cleanS(m.text, 120); M.sayT = performance.now() + 7000; } return; }
   if (m.type === 'talk') { const M = crew.mates.get(m.id); if (M) M.talkT = performance.now() + 450; return; }
+  if (m.type === 'arrive') { cmFromPaint(); return; }   // back from Block Paint (the page kept the cube open)
+  if (m.type === 'leave') { rmFade(true); if (au && au.state === 'running') au.suspend(); return; }   // (the page is taking you to Block Paint)
   if (m.type === 'go') { const M = crew.mates.get(m.id); if (M && M.s) goToMate(M); return; }
   if (m.type === 'portraits') {   // pictures of every runner in every colourway, for the page's picker
     const list = []; for (let i = 0; i < CH_LOOKS.length; i++) for (let o = 0; o < 3; o++) list.push({i, o, url: chPortrait([i, o, m.skin | 0], 180, 240)});
@@ -6271,6 +6274,7 @@ addEventListener('message', e => {
 if (parent !== window) toPage({type: 'page?'});
 // joining a crew: straight into the room where a crewmate is (or this block's room, if nobody is in one yet)
 function crewIn() {
+  if (cmPaintBoot) return;   // (just in from Block Paint: you stay at the warehouse shutter)
   const M = [...crew.mates.values()].find(q => q.s && q.s.in);
   if (M) goToMate(M); else if (!room) roomEnter(undefined, {x: (Math.random() - .5) * 2.6, z: -1.1 - Math.random() * 2});   // (a spot of your own: crewmates walking in together don't stand inside each other)
 }
@@ -6336,6 +6340,30 @@ addEventListener('keydown', e => { if ((e.key === 'e' || e.key === 'E') && room 
 addEventListener('keydown', e => { if (crew.on && e.key === 'Enter' && e.target.tagName !== 'INPUT') { e.preventDefault(); if (document.pointerLockElement) document.exitPointerLock(); toPage({type: 'chat-open'}); } });
 // on its own (not inside the together page), the people button in the room goes to it
 $pt.onclick = () => { location.href = /github\.io$/.test(location.hostname) ? 'block-cube-together.html' : 'https://bitmap22.github.io/my-ordinal-portal/block-cube-together.html'; };   // (from an inscription too: the page is on the portal)
+/* the warehouse shutter: Block Paint City is behind it. Inside the together page the page swaps the game and the crew stays
+   together; on its own the cube opens Block Paint's portal copy, whose Block Cube door brings you back here, facing the corridor */
+const CM_PAINT = /github\.io$|githack\.com$|^localhost$|^127\./.test(location.hostname) ? 'block-paint.html' : CM_PORTAL + 'block-paint.html';
+let cmPaintAt = 0;
+function cmToPaint() {
+  if (performance.now() - cmPaintAt < 4000) return; cmPaintAt = performance.now();
+  const p = room.p; p.vx = p.vz = 0; for (const k in rmKeys) rmKeys[k] = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+  rmFade(true).then(() => { if (crew.page) { if (au && au.state === 'running') au.suspend(); toPage({type: 'go', to: 'paint'}); } else location.href = CM_PAINT + '#from-cube'; });
+}
+// in again from Block Paint: just inside the shutter, facing back along the corridor
+async function cmFromPaint() {
+  cmPaintAt = performance.now(); if (au && au.state === 'suspended') au.resume();
+  const C = room && room.at;
+  if (cmOn(C) && C.ready) {
+    const [wx, wz] = cmW(C, 12.8, 8), p = room.p; p.x = wx; p.z = C.z0 + wz; p.lv = 0; p.y = cmH(12.8, 8, 0); p.vx = p.vz = 0; p.sit = false;
+    p.yaw = cmYaw(C) + Math.PI / 2; p.pitch = -.04; room.dirty = true; rmFade(false); return;
+  }
+  for (let i = 0; i < 300 && !(tipH >= 0); i++) await new Promise(r => setTimeout(r, 100));   // (the newest block first: the common room stands past it)
+  await roomEnter(COMMON, {cm: [12.8, 8, 0]});
+  if (room && cmOn(room.at)) { room.p.yaw = cmYaw(room.at) + Math.PI / 2; room.p.pitch = -.04; cmPaintAt = performance.now(); }
+}
+const cmPaintBoot = /from-paint/.test(location.hash);
+if (cmPaintBoot) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setTimeout(cmFromPaint, 0); }
 
 /* ---------- start ---------- */
 placeTools(); head(); nav();
