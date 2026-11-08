@@ -3410,7 +3410,12 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
   if (rmCache.has(h)) return rmCache.get(h);
   const p = (async () => {
     const B = cur && cur.height === h && cur.txs ? cur : await viaSources((s, b) => s.block(b, h));
-    await Promise.allSettled([loadTags(B), scanBlock(B)]);
+    for (let k = 0; k < 4; k++) {
+      await Promise.allSettled([loadTags(B), scanBlock(B)]);
+      if (B.scan && B.scan.ok && (!B.fees || !B.hash || (B.tags && B.tags.ok))) break;
+      await new Promise(r => setTimeout(r, 2000 * (k + 1)));
+      if (B.scan && B.scan.failed) B.scan = null; if (B.tags && B.tags.failed) B.tags = null;
+    }
     const ht = B.fees ? heatOf(medianRate(B.txs)) : null; if (ht != null) { blockHeat.set(h, ht); if (room) rmSigns(); }   // (door signs show how warm the block behind them is)
     return B;
   })();
