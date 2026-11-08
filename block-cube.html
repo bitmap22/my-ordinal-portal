@@ -3932,6 +3932,16 @@ for (const x of [29, 37]) for (const o of [-.65, .65]) CM_SEATS.push([x + o, 25.
 for (const s of [-1, 1]) for (const d of [26.2, 27.8]) CM_SEATS.push([s * 10.7, d, .9, -s, 0, 0]);
 CM_SEATS.push([-8.6, 10.3, -.45, 0, 1, 0, -8.6, 9.55], [-8.6, 11.7, -.45, 0, -1, 0, -8.6, 12.45]);   // (the chess table's chairs)
 
+// the small copies of just the rooms' part of the label sheet (rather than all of it again)
+function labMipSlot(y0, h) {
+  gl.bindTexture(gl.TEXTURE_2D, labTex); let src = labCv, sy = y0, sw = LT, sh = h, lvl = 0;
+  while (sh >= 2 && sw >= 2) {
+    const w = sw >> 1, hh = sh >> 1, c = document.createElement('canvas'); c.width = w; c.height = hh; lvl++;
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, sy, sw, sh, 0, 0, w, hh);
+    gl.texSubImage2D(gl.TEXTURE_2D, lvl, 0, y0 >> lvl, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    src = c; sy = 0; sw = w; sh = hh;
+  }
+}
 // work for the graphics card, done one piece a frame while the rooms are built (so no frame has to wait for several)
 const cmJobs = [], cmJob = f => new Promise(r => cmJobs.push(() => { f(); r(); }));
 function cmJobRun() { if (cmJobs.length && ++cmJobRun.k % 4 === 0) cmJobs.shift()(); }
@@ -3949,10 +3959,11 @@ function cmMake(of, side) {
   (async () => {
     const gone = () => !room || !room.rooms.includes(R);
     await yieldNow(); if (gone()) return;
-    cmLabels(R); await yieldNow(); if (gone()) return;
-    cmFix(R); cmLightsUp(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
+    for (const _ of cmLabelsG(R)) { await yieldNow(); if (gone()) return; }
+    for (const _ of cmFixG(R)) { await yieldNow(); if (gone()) return; }
+    cmLightsUp(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
     for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); if (gone()) return; }
-    await cmJob(() => { gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D); }); if (gone()) return;
+    await cmJob(() => labMipSlot(R.slot * LSLOT, LSLOT)); if (gone()) return;
     cmProps(R); await yieldNow(); if (gone()) return;
     cmQuads(R); await yieldNow(); if (gone()) return;
     for (const q of R.q) if (q.mk) { if (cmTexC[q.key]) { q.tex = cmTexC[q.key]; q.mk = null; continue; } await cmJob(() => { q.tex = cmTexC[q.key] || (cmTexC[q.key] = cmTex(q.mk())); q.mk = null; }); if (gone()) return; }
@@ -3964,7 +3975,8 @@ function cmMake(of, side) {
 }
 
 /* ---- the labels and the floor coverings (painted into the rooms' part of the label sheet) ---- */
-function cmLabels(R) {
+function cmLabels(R) { for (const _ of cmLabelsG(R)); }
+function* cmLabelsG(R) {
   const y0 = R.slot * LSLOT, c = labCx, rnd = (() => { let q = 5; return () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296; })();
   c.clearRect(0, y0, LT, LSLOT);
   R.signs = {}; R.signs[R.door] = {x: 0, y: y0};
@@ -3979,6 +3991,7 @@ function cmLabels(R) {
     for (let k = 0; k < 9; k++) flower(x + rnd() * n, y + rnd() * n, 12 + rnd() * 6, rnd() < .5 ? '#c43a3a' : '#d9566a', '#f2c46a');
     for (let k = 0; k < 22; k++) flower(x + rnd() * n, y + rnd() * n, 4 + rnd() * 3, rnd() < .5 ? '#f0b8b0' : '#f7e6c8', '#c43a3a');
   });
+  yield;
   // the Grand Hall's carpet: plum, a gold border, blocks and chains woven in
   R.tPlum = sheet(768, y0, 256, (x, y, n) => {
     c.fillStyle = '#2a0f2c'; c.fillRect(x, y, n, n);
@@ -3987,6 +4000,7 @@ function cmLabels(R) {
     c.fillStyle = '#5a2350'; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2 === 0) c.fillRect(x + 40 + i * 46, y + 40 + j * 46, 38, 38);
     c.strokeStyle = '#e0a83a'; c.lineWidth = 3; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2 === 0) c.strokeRect(x + 46 + i * 46, y + 46 + j * 46, 26, 26);
   });
+  yield;
   // the lounge's rug: Art Deco, a gold sunburst on deep teal
   R.tDeco = sheet(1024, y0, 256, (x, y, n) => {
     c.fillStyle = '#0f3a3e'; c.fillRect(x, y, n, n); c.strokeStyle = '#d4a849'; c.lineWidth = 3;
@@ -4000,19 +4014,23 @@ function cmLabels(R) {
   R.tStone = sheet(1408, y0, 128, (x, y, n) => { c.fillStyle = '#4a6a3a'; c.fillRect(x, y, n, n); for (const [a, b, w, h] of [[3, 3, 60, 58], [66, 3, 59, 40], [66, 46, 59, 79], [3, 64, 60, 61]]) { c.fillStyle = `rgb(${190 + (rnd() * 20 | 0)},${184 + (rnd() * 20 | 0)},${168 + (rnd() * 20 | 0)})`; c.fillRect(x + a, y + b, w, h); } });
   // the way to the warehouse: concrete, old paint
   R.tConc = sheet(1536, y0, 128, (x, y, n) => { c.fillStyle = '#5a5856'; c.fillRect(x, y, n, n); for (let i = 0; i < 500; i++) { c.fillStyle = `rgba(${rnd() < .5 ? 30 : 120},${rnd() < .5 ? 30 : 110},${rnd() < .5 ? 30 : 100},.15)`; c.fillRect(x + rnd() * n, y + rnd() * n, 3, 3); } c.fillStyle = 'rgba(255,79,216,.25)'; c.beginPath(); c.arc(x + 90, y + 40, 14, 0, 6.29); c.fill(); });
+  yield;
   // stone laid in courses (travertine, pitted along its grain): the Grand Hall's walls and walk, the chimney breast
   R.tAsh = sheet(1664, y0, 256, (x, y, n) => { c.fillStyle = '#9a8c72'; c.fillRect(x, y, n, n);
     for (let r = 0; r < 4; r++) for (let k = -1; k < 2; k++) { const bx = x + k * 128 + (r % 2 ? 64 : 0), by = y + r * 64, t = rnd();
       c.fillStyle = `rgb(${(204 + t * 20) | 0},${(190 + t * 18) | 0},${(162 + t * 16) | 0})`; c.fillRect(bx + 2, by + 2, 124, 60);
       for (let v = 0; v < 7; v++) { c.fillStyle = `rgba(140,120,90,${.12 + rnd() * .22})`; c.fillRect(bx + 4 + rnd() * 96, by + 5 + rnd() * 52, 6 + rnd() * 34, 1 + rnd() * 2); } } });
+  yield;
   // leaves, thick, a few flowers: the garden's living walls (drawn wrapped, so the squares meet without a seam)
   R.tLeaf = sheet(0, y0 + 832, 192, (x, y, n) => { c.fillStyle = '#123214'; c.fillRect(x, y, n, n);
     const leaf = (lx, ly, s, a, col) => { for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { c.fillStyle = col; c.beginPath(); c.ellipse(lx + ox, ly + oy, s, s * .45, a, 0, 6.29); c.fill(); } };
     for (let i = 0; i < 520; i++) { const g = rnd(); leaf(x + rnd() * n, y + rnd() * n, 5 + rnd() * 9, rnd() * 6.28, `rgb(${(28 + g * 52) | 0},${(84 + g * 96) | 0},${(32 + g * 42) | 0})`); }
     for (let i = 0; i < 12; i++) leaf(x + rnd() * n, y + rnd() * n, 2.6, 0, ['#ff8ab0', '#ffe07a', '#f4f0ff'][i % 3]); });
+  yield;
   // raked gravel, the lines curving round
   R.tRake = sheet(192, y0 + 832, 128, (x, y, n) => { c.fillStyle = '#cfc8b8'; c.fillRect(x, y, n, n); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${rnd() < .5 ? 90 : 255},${rnd() < .5 ? 85 : 250},80,.18)`; c.fillRect(x + rnd() * n, y + rnd() * n, 1.5, 1.5); }
     c.strokeStyle = 'rgba(120,110,95,.55)'; c.lineWidth = 2; for (let k = 0; k < 16; k++) { c.beginPath(); for (let i = 0; i <= 32; i++) { const px = x + i * n / 32, py = y + k * 8 + 4 + Math.sin(i / 32 * 6.2832) * 2; i ? c.lineTo(px, py) : c.moveTo(px, py); } c.stroke(); } });
+  yield;
   const plate = (x, y, w, h, a, col, b) => labPaint(x, y, w, h, a, col, null, b, col);
   R.pl = {};
   [['hall', 'THE GRAND HALL', '#ffd36b', 'the Forum · the big screen · the balcony'], ['bar', 'THE MEMPOOL', '#ff4fd8', 'the bar · pour your own pint'], ['koi', 'KOI GARDEN', '#7dff4a', 'the glasshouse · the koi tank'],
@@ -4030,7 +4048,8 @@ const CMK = {wall: LC('#0c090a'), stone: LC('#cdbfa4'), stone2: LC('#b9aa8e'), t
   gold: LC('#ffc94a'), brass: LC('#c9952e'), amber: LC('#ff8a1e'), pink: LC('#ff4fd8'), cyan: LC('#27e1ff'), green: LC('#7dff4a'), walnut: LC('#4a2a16'), dwalnut: LC('#2a170c'),
   steel: LC('#3a3d44'), dark: LC('#0a0a0d'), velvet: LC('#1f4a3a'), mustard: LC('#c9952e'), leaf: [LC('#1f5a2a'), LC('#2c7a35'), LC('#3f9440'), LC('#245f2c'), LC('#4fae4a')],
   solar: LC('#0d1b3d'), frame: LC('#9aa3b2'), brick: LC('#5a2a20'), cream: LC('#e8dcc0'), deco: LC('#101418'), leather: LC('#5a1a3a'), wood: LC('#7a5230')};
-function cmFix(R) {
+function cmFix(R) { for (const _ of cmFixG(R)); }
+function* cmFixG(R) {   // (built a part at a time, the rooms' build letting frames through between)
   const d = [], z0 = R.z0, K = CMK, LIT = [];
   const box = (x, y, dd, sx, sy, sz, k, g, a, m) => { const [wx, wz] = cmW(R, x, dd); d.push(wx, y, z0 + wz, sx, sy, sz, k[0], k[1], k[2], 0, wx, y, z0 + wz, 0, g || 0, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : m ? 1 : 0, a ? 2 : 0); };
   const B0 = (x0, x1, y0, y1, d0, d1, k, g, a, m) => box((x0 + x1) / 2, (y0 + y1) / 2, (d0 + d1) / 2, x1 - x0, y1 - y0, d1 - d0, k, g, a, m);
@@ -4078,6 +4097,7 @@ function cmFix(R) {
   for (const dd of [2, 6, 10, 14]) for (const s of [-1, 1]) light(s * 3.3, 4.3, dd, 0xffd29a, 1.3, 5.5, [0, 1, 0], .2);   // cove light thrown up into the vaults
   tiles(0, 3.4, 15.9, 0, -1, .42, R.pl.arc.x, R.pl.arc.y, 128, 4);
 
+  yield;
   /* the FIRESIDE LOUNGE (three steps down) */
   B(-18, -4, -1, -.45, 2, 14, K.dwalnut, 0, null, 1);
   for (let k = 1; k <= 2; k++) B(-4 - .3 * k, -4 - .3 * (k - 1), -1, -.15 * k, 5, 11, K.walnut, 0, null, 1);
@@ -4112,6 +4132,7 @@ function cmFix(R) {
     tiles(x, 2.55, dd - .62, 0, -1, .42, R.pl.jb.x, R.pl.jb.y, 128, 4); light(x, 1.4, dd - 1.2, 0xff4fd8, 1.0, 4); }
   tiles(-11, 4.3, 2.18, 0, 1, .4, R.pl.lounge.x, R.pl.lounge.y, 128, 4);
 
+  yield;
   /* the way to THE WAREHOUSE */
   floorT(4, 15, 5, 11, .02, R.tConc, 1.5);
   wallD(5, 4, 15, 0, 5, null, K.brick); wallD(11, 4, 15, 0, 5, null, K.brick); B(4, 15, 4.95, 5.1, 5, 11, LC('#1a1716'));
@@ -4126,6 +4147,7 @@ function cmFix(R) {
   tiles(14.55, 4.75, 8, -1, 0, .38, R.pl.ware.x, R.pl.ware.y, 128, 4);
   for (const x of [6.5, 11.5]) { B(x - .02, x + .02, 4.2, 4.95, 7.98, 8.02, K.steel); B(x - .18, x + .18, 3.9, 4.2, 7.82, 8.18, LC('#fff4dd'), 2); light(x, 3.8, 8, 0xe8f0ff, 1.4, 6.5); }
 
+  yield;
   /* the GRAND HALL */
   const inForum = (x, dd) => Math.hypot(Math.max(Math.abs(x) - 1, 0), Math.max(Math.abs(dd - CM.PD) - 1, 0)) < 8.4;
   floorT(-16, 16, 16, 21.6, .02, R.tPlum); floorT(-8, 8, 21.6, 41.6, .02, R.tPlum, 2, inForum);
@@ -4143,6 +4165,7 @@ function cmFix(R) {
     const x0 = i * c, x1 = e * c, dd = CM.PD + (j + .5) * c, t = top(l); box((x0 + x1) / 2, (t - 1.7) / 2, dd, x1 - x0, t + 1.7, c, l === 0 ? K.dmarble : l === 4 ? K.marble2 : (l % 2 ? K.marble : LC('#c7bda9'))); i = e; } }
   for (let j = -N; j < N; j++) for (let i = -N; i < N; i++) { const l = lv(i, j); if (l < 0) continue; const x = (i + .5) * c, dd = CM.PD + (j + .5) * c, G = l < 2 ? K.gold : K.amber;
     for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = lv(i + di, j + dj); if (n > l && n >= 0) { if (di) box(di > 0 ? (i + 1) * c - .01 : i * c + .01, top(l) - .02, dd, .03, .025, c, G, 2); else box(x, top(l) - .02, dj > 0 ? CM.PD + (j + 1) * c - .01 : CM.PD + j * c + .01, c, .025, .03, G, 2); } } }
+  yield;
   // the Forum's eight pillars: famous blocks, stacked; each lit from its foot (grazing light up the stone)
   for (let i = 0; i < 8; i++) {
     const a = (i + .5) / 8 * 6.2832, x = Math.cos(a) * 8.1, dd = CM.PD + Math.sin(a) * 8.1;
@@ -4159,6 +4182,7 @@ function cmFix(R) {
   B(-16, 16, CM.HG - .52, CM.HG - .48, 47.8, 47.84, K.gold, 2);
   for (const s of [-1, 1]) { B(s * 3.1 - .12, s * 3.1 + .12, 0, 4.6, 15.8, 16.25, K.brass); } B(-3.2, 3.2, 4.6, 4.85, 15.8, 16.25, K.brass);
   for (const s of [-1, 1]) { B(s * 16 - .15, s * 16 + .15, .9, 7.8, 33.3, 33.6, K.brass); B(s * 16 - .15, s * 16 + .15, .9, 7.8, 39.4, 39.7, K.brass); B(s * 16 - .15, s * 16 + .15, 7.6, 7.85, 33.3, 39.7, K.brass); }
+  yield;
   // the coffered ceiling, open to the sky in a ring over the Forum (the oculus), a gold ring of light round its edge
   for (let x = -16; x < 16; x += 2) for (let dd = 16; dd < 48; dd += 2) { if (Math.hypot(x + 1, dd + 1 - CM.PD) < 7.6) continue; B(x, x + 2, CM.HG + .05, CM.HG + .15, dd, dd + 2, LC('#2a1c14')); B(x + .9, x + 1.1, CM.HG - .02, CM.HG + .05, dd + .9, dd + 1.1, K.gold, 1); }
   for (let x = -16; x <= 16; x += 2) for (let dd = 16; dd < 48; dd += .5) if (Math.hypot(x, dd + .25 - CM.PD) >= 7.6) B(x - .14, x + .14, CM.HG - .25, CM.HG + .05, dd, dd + .5, K.cream);
@@ -4174,6 +4198,7 @@ function cmFix(R) {
   B(-16, 16, CM.BY - .78, CM.BY - .3, CM.BD1 - .12, CM.BD1, K.stone); B(-16, 16, CM.BY - .8, CM.BY - .78, CM.BD1 - .12, CM.BD1 + .01, K.gold, 2);
   for (const x of [-12, -6, 0, 6, 12]) { B(x - .25, x + .25, CM.BY - .33, CM.BY - .31, 18.25, 18.75, LC('#fff1cf'), 2); light(x, CM.BY - .6, 18.5, 0xffd8a8, 1.2, 5.5, [0, -1, 0], .5); }
   for (const x of [-12, -6, 6, 12]) { B(x - 1.3, x + 1.3, CM.BY, CM.BY + .6, 16.15, 16.85, K.walnut, 0, null, 1); B(x - 1.25, x + 1.25, CM.BY + .6, CM.BY + .62, 16.2, 16.8, LC('#1c3a12')); }
+  yield;
   // the grand stairs either side, up to the balcony: solid stone, gold on every nose, a brass rail stepping up beside them
   for (const s of [-1, 1]) for (let k = 1; k <= CM.NST; k++) { const d1 = CM.SD0 - (k - 1) * CM.RUN, d0 = CM.SD0 - k * CM.RUN, y = .9 + k * CM.RISE;
     B(s > 0 ? CM.SX0 : -16, s > 0 ? 16 : -CM.SX0, .9, y, d0, d1, k % 2 ? K.trav : K.stone2); B(s > 0 ? CM.SX0 : -16, s > 0 ? 16 : -CM.SX0, y - .015, y + .005, d1 - .03, d1, K.gold, 2);
@@ -4193,6 +4218,7 @@ function cmFix(R) {
   for (const s of [-1, 1]) { B(s > 0 ? 10.3 : -11.1, s > 0 ? 11.1 : -10.3, 1.24, 1.36, 25.4, 28.6, K.marble); for (const dd of [25.85, 28.15]) B(s > 0 ? 10.45 : -10.95, s > 0 ? 10.95 : -10.45, .9, 1.24, dd - .25, dd + .25, K.marble2); }
   tiles(0, CM.BY - .54, CM.BD1 + .02, 0, 1, .4, R.pl.hall.x, R.pl.hall.y, 128, 4);
 
+  yield;
   /* the arcades to the wings (barrel vaults like the entrance's), steps up to the bar, down to the garden */
   for (const s of [-1, 1]) { wallD(33.5, s > 0 ? 16 : -24, s > 0 ? 24 : -16, -1.7, 5.6, null, K.dwalnut); wallD(39.5, s > 0 ? 16 : -24, s > 0 ? 24 : -16, -1.7, 5.6, null, K.dwalnut); }
   B(-24, -16, 0, .9, 33.5, 39.5, K.stone2);
@@ -4205,6 +4231,7 @@ function cmFix(R) {
   floorT(-24, -20.3, 33.5, 39.5, 1.82, R.tGreen, 1.5); floorT(-19.4, -16, 33.5, 39.5, .92, R.tGreen, 1.7); floorT(20, 24, 33.5, 39.5, -.88, R.tGreen, 1.5);
   for (const s of [-1, 1]) for (const dd of [34, 39]) for (const x of [s * 17, s * 23]) light(x, (s < 0 ? 1.8 : 0) + 3.6, dd, 0xffd29a, .9, 4.5, [0, 1, 0], .25);
 
+  yield;
   /* THE MEMPOOL (the bar, up to the west): black glass and neon */
   B(-42, -24, 0, 1.8, 22, 48, K.dark); floorT(-42, -24, 22, 48, 1.82, R.tGrid, 2);
   wallX(-42, 22, 48, 1.8, 8.3, null, LC('#0a0710')); wallD(22, -42, -24, 1.8, 8.3, null, LC('#0a0710')); wallD(48, -42, -24, 1.8, 8.3, null, LC('#0a0710'));
@@ -4228,6 +4255,7 @@ function cmFix(R) {
   for (const x of [-27.5, -26.0]) { B(x - .65, x + .65, 1.8, 4.0, 22.2, 23.0, K.dark); }
   tiles(-41.2, 6.95, 35, 1, 0, .5, R.pl.bar.x, R.pl.bar.y, 128, 4);
 
+  yield;
   /* the KOI GARDEN (the glasshouse, down to the east) */
   B(24, 42, -1.7, -.9, 22, 48, K.dark); floorT(24, 42, 22, 48, -.88, R.tStone, 2);
   wallX(42, 22, 48, -1.7, 9, null, LC('#2a3a24')); wallD(22, 24, 42, -1.7, 9, null, LC('#2a3a24')); wallD(48, 24, 42, -1.7, 9, null, LC('#2a3a24'));
@@ -4251,8 +4279,10 @@ function cmFix(R) {
   for (const [x, dd] of [[28.0, 30.4], [38.0, 30.4], [28.0, 35.7], [38.0, 35.7]]) { B(x - .25, x + .25, -.9, -.2, dd - .25, dd + .25, K.stone2); B(x - .32, x + .32, -.2, -.1, dd - .32, dd + .32, K.stone); B(x - .18, x + .18, -.1, .25, dd - .18, dd + .18, LC('#ffd29a'), 2); B(x - .34, x + .34, .25, .37, dd - .34, dd + .34, K.stone2); light(x, .1, dd, 0xffb870, 1, 3.2); }
   for (let k = 0; k < 9; k++) { const t = k / 8, x = 25.2 + t * 2.6, dd = 36.5 + Math.sin(t * 3) * .8; B(x - .3, x + .3, -.9, -.84, dd - .26, dd + .26, K.stone); }
   light(33, 8.2, 26, 0xeef6ff, 1.2, 13); light(33, 8.2, 41, 0xeef6ff, 1.2, 13);
+  for (const dd of [28, 41]) light(37.5, 6.8, dd, 0xe6ffe0, 1.4, 9, [1, -.45, 0], .3);   // washing the living wall
   tiles(41.7, 4.2, 35, -1, 0, .5, R.pl.koi.x, R.pl.koi.y, 128, 4);
 
+  yield;
   /* the arcade cabinets and the frames for inscriptions, wherever they stand */
   for (const [name, url, x, dd, fx, fd, y0] of CM_GAMES) {
     const wx = fx ? .8 : 1.0, col = [K.cyan, K.pink, K.gold, K.green][CM_GAMES.findIndex(g => g[0] === name) % 4], rt = [-fd, fx];
@@ -4265,6 +4295,7 @@ function cmFix(R) {
   for (const [name, url, x, dd, y, sz, fx, fd] of CM_INSART) { box(x - fx * .06, y, dd - fd * .06, fx ? .06 : sz + .24, sz + .24, fx ? sz + .24 : .06, LC('#3a2a12')); box(x + fx * .1, y + sz / 2 + .22, dd + fd * .1, fx ? .2 : .45, .05, fx ? .45 : .2, K.gold, 2); light(x + fx * .45, y + sz / 2 + .2, dd + fd * .45, 0xfff0d8, 1.2, 2.6, [-fx * .5, -1, -fd * .5], .55); }
   // the door's own sign (over the door, on the inside)
   const sg = R.signs[R.door]; tiles(0, DOORH + .42, .05, 0, 1, .42, sg.x, sg.y, 128, 4);
+  yield;
   cmFixMore(R, {B, TB, tiles, light, K});
   R.fix = new Float32Array(d);
   // the lights, in the world
