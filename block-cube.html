@@ -696,7 +696,7 @@ const TYPES = [
   {g: 0, name: 'children', css: '#ffd166', test: tfl(TF.child)}, {g: 0, name: 'cursed', css: '#9d4edd', test: tfl(TF.cursed)},
   {g: 0, name: 'bitmaps', css: kcss('bitmaps'), test: kdi('bitmaps')},
   {g: 1, name: 'BRC-20', css: kcss('BRC-20'), test: kdi('BRC-20')}, {g: 1, name: 'TAP', css: kcss('TAP'), test: kdi('TAP')},
-  {g: 1, name: 'DMT mints', css: '#00ffa3', test: tfl(TF.dmt)}, {g: 1, name: 'CRC-20', css: kcss('CRC-20'), test: kdi('CRC-20')}, {g: 1, name: 'runes', css: kcss('runes'), test: kdi('runes')},
+  {g: 1, name: 'DMT mints', css: '#00ffa3', test: tfl(TF.dmt)}, {g: 1, name: 'NAT', css: '#ffd23f', test: t => t.nat === true}, {g: 1, name: 'CRC-20', css: kcss('CRC-20'), test: kdi('CRC-20')}, {g: 1, name: 'runes', css: kcss('runes'), test: kdi('runes')},
   {g: 1, name: 'runes etched', css: '#e0aaff', test: tfl(TF.etch)}, {g: 1, name: 'runes minted', css: '#b56bff', test: tfl(TF.rmint)},
   {g: 1, name: 'runes moved', css: '#8a4fd8', test: tfl(TF.rmove)}, {g: 1, name: 'Alkanes', css: kcss('Alkanes'), test: kdi('Alkanes')},
   {g: 1, name: 'Atomicals', css: kcss('Atomicals'), test: kdi('Atomicals')}, {g: 1, name: 'SRC-20', css: kcss('SRC-20'), test: kdi('SRC-20')},
@@ -824,10 +824,52 @@ function stampArt(key, mso, wsh) {
   }
   if (!b && wsh && wsh.length) { const W = catB(wsh), L = W[0] << 8 | W[1]; if (L > 8 && L <= W.length - 2) b = W.subarray(2, 2 + L); }
   if (!b || b.length < 8 || b.length > 400000) return null;
-  const top = L1D.decode(b.subarray(0, 300));
-  const ct = b[0] === 0x89 && b[1] === 0x50 ? 'image/png' : b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 ? 'image/gif' : b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg'
-    : top.slice(0, 4) === 'RIFF' && top.slice(8, 12) === 'WEBP' ? 'image/webp' : b[0] === 0x42 && b[1] === 0x4d ? 'image/bmp' : /<svg[\s>]/i.test(top) && !/<html/i.test(top) ? 'image/svg+xml' : null;
+  const ct = sniffImg(b);
   return ct ? {ct, bytes: b.slice()} : null;
+}
+// what kind of picture some bytes are, from their first bytes (null if not a picture)
+function sniffImg(b) {
+  if (!b || b.length < 8) return null;
+  const top = L1D.decode(b.subarray(0, 300));
+  return b[0] === 0x89 && b[1] === 0x50 ? 'image/png' : b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 ? 'image/gif' : b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg'
+    : top.slice(0, 4) === 'RIFF' && top.slice(8, 12) === 'WEBP' ? 'image/webp' : b[0] === 0x42 && b[1] === 0x4d ? 'image/bmp' : /<svg[\s>]/i.test(top) && !/<html/i.test(top) ? 'image/svg+xml' : null;
+}
+// a small CBOR reader (Atomicals keep their files in CBOR)
+function cbor(b) {
+  let p = 0, depth = 0;
+  const num = ai => { if (ai < 24) return ai; let n = ai === 24 ? 1 : ai === 25 ? 2 : ai === 26 ? 4 : ai === 27 ? 8 : 0, v = 0; if (!n) throw 0; for (let i = 0; i < n; i++) v = v * 256 + b[p++]; return v; };
+  const it = () => {
+    if (p >= b.length || ++depth > 40) throw 0;
+    const ib = b[p++], mt = ib >> 5, ai = ib & 31; let out;
+    if (mt === 7) out = ai === 20 ? false : ai === 21 ? true : ai === 22 ? null : (p += ai === 25 ? 2 : ai === 26 ? 4 : ai === 27 ? 8 : 0, undefined);
+    else if (ai === 31) {
+      const list = []; while (p < b.length && b[p] !== 0xff) list.push(it()); p++;
+      if (mt === 4) out = list; else if (mt === 5) { out = {}; for (let i = 0; i + 1 < list.length; i += 2) out[list[i]] = list[i + 1]; }
+      else if (mt === 2) out = catB(list); else if (mt === 3) out = list.join(''); else throw 0;
+    } else {
+      const n = num(ai);
+      if (mt === 0) out = n; else if (mt === 1) out = -1 - n;
+      else if (mt === 2 || mt === 3) { if (p + n > b.length) throw 0; const v = b.subarray(p, p + n); p += n; out = mt === 2 ? v : U8D.decode(v); }
+      else if (mt === 4) { out = []; for (let i = 0; i < n; i++) out.push(it()); }
+      else if (mt === 5) { out = {}; for (let i = 0; i < n; i++) { const k = it(); out[k] = it(); } }
+      else out = it();
+    }
+    depth--; return out;
+  };
+  return it();
+}
+// an Atomicals NFT's picture: the file named in args.main, else the first file that is a picture
+function atomArt(buf) {
+  try {
+    const c = cbor(buf); if (!c || typeof c !== 'object' || c instanceof Uint8Array) return null;
+    const keys = Object.keys(c).filter(k => k !== 'args'), main = c.args && c.args.main;
+    if (main && keys.includes(main)) keys.unshift(main);
+    for (const k of keys) {
+      const v = c[k], b = v instanceof Uint8Array ? v : v && typeof v === 'object' ? [v.d, v.$d, v.$b].find(x => x instanceof Uint8Array) : null;
+      if (b && b.length <= 400000) { const ct = sniffImg(b); if (ct) return {ct, bytes: b.slice()}; }
+    }
+  } catch (e) {}
+  return null;
 }
 // readable words: mostly printable characters
 function words(u) {
@@ -885,12 +927,16 @@ function scanBytes(X, h) {
           if (F[20]) set(TF.rmint);
           if (moves) set(TF.rmove);
           if (F[16383]) set(TF.alkanes);
+          if (F[16383]) r.word = {k: 'alk', a: '', b: ''};
+          else if (F[2] && F[2][0] & 1n) { const c = F[5] && F[5][0] <= 0x10ffffn ? Number(F[5][0]) : -1, sym = c >= 32 && (c < 0xd800 || c > 0xdfff) ? String.fromCodePoint(c) : '¤'; r.word = {k: 'rune', s: 2, a: '', b: sym + ' ' + (r.rn || 'new rune')}; }
+          else if (F[20] && F[20].length >= 2) r.word = {k: 'rune', s: 3, a: '', b: 'mint ' + F[20][0] + ':' + F[20][1]};
+          else r.word = {k: 'rune', s: 4, a: '', b: ''};
         } else if (l > 1) {
           const d = catB(pushes(X, q + 1, p).filter(x => x[1]).map(x => x[1])), k = d.length > 8 ? cpKind(key, [d]) : -1;
           if (k >= 0) set(k);
           else {
             const w = words(d); let pr = null;
-            if (w && w[0] === '{') try { const o = JSON.parse(U8D.decode(d)); pr = String(o.p || '').toLowerCase(); if (pr === 'crc-20') { set(TF.crc20); r.tick = String(o.tick || o.exe || '').slice(0, 20); r.op = String(o.op || '').slice(0, 12); } else pr = null; } catch (e) {}
+            if (w && w[0] === '{') try { const o = JSON.parse(U8D.decode(d)); pr = String(o.p || '').toLowerCase(); if (pr === 'crc-20') { set(TF.crc20); r.tick = String(o.tick || o.exe || '').slice(0, 20); r.op = String(o.op || '').slice(0, 12); r.word = {k: 'crc20', a: r.tick.toUpperCase().replace(',', '→'), b: [r.op, o.amt != null ? String(o.amt) : ''].filter(Boolean).join(' ').slice(0, 30)}; } else pr = null; } catch (e) {}
             if (w && !pr) { set(TF.msg); r.msg = w; }
           }
         }
@@ -903,6 +949,7 @@ function scanBytes(X, h) {
       }
     }
     if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
+    if ((r.sc >> TF.cp) & 1 && !((r.sc >> TF.stamps) & 1) && !r.word) r.word = {k: 'cp', a: '', b: ''};
     if ((r.sc >> TF.stamps) & 1 && artN < 256) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; } }
     r.e = p;
     let tap = false, ei = 0;
@@ -925,7 +972,11 @@ function scanBytes(X, h) {
         for (let k = 0; k + 2 < P.length; k++) {
           if (P[k][0] !== 0 || P[k + 1][0] !== 0x63 || !P[k + 2][1]) continue;
           const tag = L1D.decode(P[k + 2][1]);
-          if (tag === 'atom') { set(TF.atom); continue; }
+          if (tag === 'atom') {
+            set(TF.atom);
+            if (!r.art && artN < 256) { const parts = []; for (let j = k + 4; j < P.length && P[j][0] !== 0x68; j++) if (P[j][1]) parts.push(P[j][1]); const a = atomArt(catB(parts)); if (a) { r.art = a; artN++; } }
+            continue;
+          }
           if (tag !== 'ord') continue;
           let j = k + 3, ct = '', enc = false, par = false, del = false, pn = false; const body = [];
           while (j < P.length && P[j][0] !== 0x68) {
@@ -953,7 +1004,15 @@ function scanBytes(X, h) {
             else if (txt[0] === '{') try {
               const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase(), wb = [o.op, o.amt != null ? o.amt : o.max].filter(x => x != null && x !== '').map(String).join(' ').slice(0, 40);
               if (pr === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word) r.word = {k: 'brc20', a: r.tick, b: wb}; }
-              else if (pr === 'tap') { set(TF.tap); r.tick = String(o.tick || '').slice(0, 16); if (/^dmt-/i.test(String(o.op || ''))) set(TF.dmt); if (r.word) r.word = {k: 'tap', a: r.tick, b: wb}; }
+              else if (pr === 'tap') {
+                set(TF.tap);
+                const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));
+                r.tick = String(o.tick || (items[0] && items[0].tick) || '').slice(0, 16);
+                if (/^dmt-/i.test(String(o.op || ''))) set(TF.dmt);
+                if (isNat(r.tick) || items.some(x => x && isNat(x.tick))) r.nat = true;
+                const b2 = items.length ? (String(o.op || '') + (items.length > 1 ? ' ×' + items.length : ' ' + (items[0].amt != null ? items[0].amt : ''))).trim().slice(0, 40) : wb;
+                if (r.word) r.word = r.nat ? {k: 'nat', a: 'NAT', b: b2} : {k: 'tap', a: r.tick, b: b2};
+              }
               else if (pr && r.word) r.word = {k: 'json', a: String(o.tick || o.name || o.p).slice(0, 24), b: (pr !== String(o.tick || o.name || o.p).toLowerCase() ? pr + ' ' : '') + wb};
             } catch (e) {}
           }
@@ -990,7 +1049,7 @@ async function scanBlock(B) {
     const k = Math.min(1, S.txs.length - 1);
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
-      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t._k = null;
+      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.nat = r.nat || false; t._k = null;
       if (r.art) t.art = r.art; else if (r.word) t.word = r.word;
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
     });
@@ -1039,7 +1098,8 @@ async function loadArt(B) {
   }
   if (my !== artGen || cur !== B) return;
   // then the words, four to a square, in the squares the pictures left free
-  const words = B.txs.filter(t => t.word && !t.art), free = 256 - list.length;
+  const wRank = w => w.k === 'rune' ? w.s || 4 : w.k === 'alk' || w.k === 'cp' ? 1 : 0;
+  const words = B.txs.filter(t => t.word && !t.art).map((t, i) => [t, i]).sort((a, b) => wRank(a[0].word) - wRank(b[0].word) || a[1] - b[1]).map(a => a[0]), free = 256 - list.length;
   for (let i = 0; i < words.length && i < free * 4; i++) {
     const t = words[i], sq = list.length + (i >> 2), q = i & 3, px = (sq % 16) * 128 + (q & 1) * 64, py = (sq >> 4) * 128 + (q >> 1) * 64;
     paintWord(t.word);
@@ -1052,14 +1112,32 @@ async function loadArt(B) {
 // one word tile: what the inscription says, in the colour of its kind
 const wCv = document.createElement('canvas'); wCv.width = wCv.height = 64;
 const wCx = wCv.getContext('2d');
-const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', '']};
+const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
+  nat: ['#2a2006', '#ffd23f', 'NAT'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY']};
+// the drawn logos: ᚱ (the old runic letter R) for runes, a zig-zag carbon chain (how chemists draw an alkane) for Alkanes,
+// a rainbow for Counterparty (coloured coins). Drawn with lines, so they look the same on every device.
+function paintMark(x, k, fg) {
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  if (k === 'rune') {
+    x.strokeStyle = '#ffffff'; x.lineWidth = 3.4; x.beginPath();
+    x.moveTo(26, 46); x.lineTo(26, 17); x.lineTo(38, 24.5); x.lineTo(26, 32); x.lineTo(39, 46); x.stroke();
+  } else if (k === 'alk') {
+    const pts = [[11, 37], [21.5, 27], [32, 37], [42.5, 27], [53, 37]];
+    x.strokeStyle = '#ffffff'; x.lineWidth = 3; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke();
+    x.fillStyle = fg; for (const [a, b] of pts) { x.beginPath(); x.arc(a, b, 2.6, 0, 7); x.fill(); }
+  } else if (k === 'cp') {
+    const bands = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc6a', '#3a86ff', '#9d4edd'];
+    x.lineWidth = 3.4; x.lineCap = 'butt';
+    bands.forEach((c, i) => { x.strokeStyle = c; x.beginPath(); x.arc(32, 50, 23 - i * 3.4, Math.PI, 2 * Math.PI); x.stroke(); });
+  }
+}
 function fitFont(x, txt, max, min, w, weight) {
   let f = max; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`;
   while (f > min && x.measureText(txt).width > w) { f--; x.font = `${weight} ${f}px ui-monospace,Menlo,Consolas,monospace`; }
   return f;
 }
 function paintWord(w) {
-  const x = wCx, [bg, fg, label] = WSTYLE[w.k] || WSTYLE.text;
+  const x = wCx, [bg, fg, label] = (w.k === 'rune' ? WSTYLE['rune' + (w.s || 4)] : WSTYLE[w.k]) || WSTYLE.text;
   x.fillStyle = bg; x.fillRect(0, 0, 64, 64); x.textAlign = 'center'; x.textBaseline = 'middle';
   if (w.k === 'text') {   // a little page of text
     x.fillStyle = fg; x.textAlign = 'left'; x.textBaseline = 'top'; x.font = '600 9px ui-monospace,Menlo,Consolas,monospace';
@@ -1070,7 +1148,12 @@ function paintWord(w) {
     return;
   }
   x.strokeStyle = fg; x.lineWidth = 2; x.strokeRect(2, 2, 60, 60);
-  if (label) { x.fillStyle = fg; x.font = '700 8px ui-monospace,Menlo,Consolas,monospace'; x.fillText(label, 32, 11); }
+  if (label) { x.fillStyle = fg; fitFont(x, label, 8, 5, 56, 700); x.fillText(label, 32, 11); }
+  if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') {
+    paintMark(x, w.k, fg);
+    if (w.b) { x.fillStyle = fg; fitFont(x, w.b, 9, 6, 56, 600); x.fillText(w.b, 32, 55, 58); }
+    return;
+  }
   x.fillStyle = '#ffffff'; fitFont(x, w.a, 22, 8, 54, 800); x.fillText(w.a, 32, label ? 31 : 27, 56);
   if (w.b) { x.fillStyle = fg; fitFont(x, w.b, 10, 6, 56, 600); x.fillText(w.b, 32, 50, 58); }
 }
