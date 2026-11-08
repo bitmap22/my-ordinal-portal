@@ -1229,6 +1229,28 @@ async function rawTxid(X, r) {
   const d = await crypto.subtle.digest('SHA-256', await crypto.subtle.digest('SHA-256', u));
   return Array.from(new Uint8Array(d).reverse(), b => b.toString(16).padStart(2, '0')).join('');
 }
+function loadEtch(B) {
+  if (!B) return Promise.resolve();
+  if (B.etchP) return B.etchP;
+  return B.etchP = (async () => {
+    const tries = B.txs.filter(t => t.sc != null && (t.sc >> TF.etch) & 1 && t.rn);
+    if (!tries.length) { B.etch = {ok: true}; return; }
+    B.etch = {loading: true};
+    let html = null;
+    for (const base of ORD_EXPLORERS) {
+      try { const h = await (await fetchT(base + '/block/' + B.height, null, 45000)).text(); if (h.includes('<h1>Block ')) { html = h; break; } } catch (e) {}
+    }
+    if (!html) { B.etch = {failed: true}; return; }
+    const made = new Set([...html.matchAll(/href=\/rune\/([^> ]+)>/g)].map(m => decodeURIComponent(m[1]).replace(/•/g, ''))), first = new Set();
+    for (const t of tries) {   // (in block order: a name made twice in one block goes to the first)
+      const n = t.rn.replace(/•/g, '');
+      if (made.has(n) && !first.has(n)) { first.add(n); continue; }
+      t.sc &= ~(1 << TF.etch); t.rn = null; t._k = null;
+      if (t.word && t.word.k === 'rune') t.word = (t.sc >> TF.rmint) & 1 && t.mint ? {k: 'rune', s: 3, a: '', b: 'mint ' + t.mint} : {k: 'rune', s: 4, a: '', b: ''};
+    }
+    B.etch = {ok: true};
+  })();
+}
 async function scanBlock(B) {
   if (!B || B.scan) return;
   B.scan = {loading: true}; head();
@@ -1247,6 +1269,7 @@ async function scanBlock(B) {
     const pl = POOLS.find(([re]) => re.test(S.cb || ''));
     B.cb = {words: S.cb || '', pool: B.pool || (pl ? pl[1] : null)};
     B.scan = {ok: true};
+    loadEtch(B).then(() => { if (cur === B && !room) { rebuild(); head(); } });
   } catch (e) { B.scan = {failed: true}; }
   if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
 }
@@ -3412,9 +3435,10 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
     const B = cur && cur.height === h && cur.txs ? cur : await viaSources((s, b) => s.block(b, h));
     for (let k = 0; k < 4; k++) {
       await Promise.allSettled([loadTags(B), scanBlock(B)]);
-      if (B.scan && B.scan.ok && (!B.fees || !B.hash || (B.tags && B.tags.ok))) break;
+      if (B.scan && B.scan.ok) await loadEtch(B);
+      if (B.scan && B.scan.ok && B.etch && B.etch.ok && (!B.fees || !B.hash || (B.tags && B.tags.ok))) break;
       await new Promise(r => setTimeout(r, 2000 * (k + 1)));
-      if (B.scan && B.scan.failed) B.scan = null; if (B.tags && B.tags.failed) B.tags = null;
+      if (B.scan && B.scan.failed) B.scan = null; if (B.tags && B.tags.failed) B.tags = null; if (B.etch && B.etch.failed) { B.etch = null; B.etchP = null; }
     }
     const ht = B.fees ? heatOf(medianRate(B.txs)) : null; if (ht != null) { blockHeat.set(h, ht); if (room) rmSigns(); }   // (door signs show how warm the block behind them is)
     return B;
