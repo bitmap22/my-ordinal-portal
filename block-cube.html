@@ -317,7 +317,7 @@ const SRC = {
       if (!sum.length) throw new Error('empty');
       const txs = sum.map((t, i) => ({id: t.txid, fee: t.fee, vsize: t.vsize, value: t.value || 0, rate: t.rate || (t.vsize ? t.fee / t.vsize : 0), idx: i, insc: tagged(t.flags)}));
       const pn = v1 && v1.extras && v1.extras.pool && v1.extras.pool.name;
-      return {height: h, hash, time: meta.timestamp, size: meta.size, weight: meta.weight, count: meta.tx_count || txs.length, txs, fees: true, pool: pn && !/^unknown$/i.test(pn) ? pn : null};
+      return {height: h, hash, time: meta.timestamp, diff: meta.difficulty, size: meta.size, weight: meta.weight, count: meta.tx_count || txs.length, txs, fees: true, pool: pn && !/^unknown$/i.test(pn) ? pn : null};
     }
   },
   ord: {
@@ -333,7 +333,7 @@ const SRC = {
       if (!n || (info.transaction_count && info.transaction_count !== n)) throw new Error('bad block');
       // the chain itself does not list each transaction's fee, so fee rates are unknown here
       const txs = raw.map((tx, i) => { let v = 0; for (const o of tx.output) v += o.value; return {id: null, fee: -1, vsize: txWeight(tx) / 4, value: v, rate: -1, idx: i, raw: tx}; });
-      return {height: h, hash: info.hash || blk.hash, time: info.timestamp, size: info.total_size, weight: info.total_weight, count: n, txs, fees: false};
+      return {height: h, hash: info.hash || blk.hash, time: info.timestamp, diff: info.difficulty, size: info.total_size, weight: info.total_weight, count: n, txs, fees: false};
     }
   }
 };
@@ -485,14 +485,31 @@ const V = '#version 300 es\nprecision highp float;\n';
 const SF = S.toFixed(1), LAYER = (S / 8).toFixed(3), LIFT = (S * 0.07).toFixed(3);
 const FS_VS = V + `out vec2 vU;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);vU=p;gl_Position=vec4(p*2.-1.,0.,1.);}`;
 // background: near-black with a slow drifting orange glow, warm light behind the cube, a few stars (decoration only)
-const bgP = prog(FS_VS, V + `in vec2 vU;uniform vec2 uR;uniform float uNow,uD,uSky;uniform vec3 uF,uX,uY;out vec4 o;
+// and northern lights: curtains of light that ripple slowly overhead, their colours set by how hot the block is (icy green to plasma pink)
+const bgP = prog(FS_VS, V + `in vec2 vU;uniform vec2 uR;uniform float uNow,uD,uSky,uHt,uGold;uniform vec3 uF,uX,uY;out vec4 o;
 float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+float n1(float x){float i=floor(x),f=fract(x);return mix(fract(sin(i*127.1)*43758.5453),fract(sin(i*127.1+127.1)*43758.5453),f*f*(3.-2.*f));}
+const vec3 AL[7]=vec3[7](vec3(.12,1.,.45),vec3(.1,.8,1.),vec3(.45,1.,.2),vec3(1.,.7,.2),vec3(1.,.4,.1),vec3(1.,.2,.1),vec3(1.,.3,.9));
+const vec3 AH[7]=vec3[7](vec3(.5,.2,1.),vec3(.3,.25,1.),vec3(.1,.7,.8),vec3(1.,.3,.45),vec3(.9,.1,.25),vec3(.8,.08,.5),vec3(.2,.8,1.));
+vec3 aur(vec3 d,float t){
+ if(d.y<.02)return vec3(0.);
+ float k=clamp(uHt,0.,6.),fk=fract(k);int i0=int(k),i1=min(i0+1,6);
+ vec3 lo=mix(mix(AL[i0],AL[i1],fk),vec3(1.,.78,.25),uGold),hi=mix(mix(AH[i0],AH[i1],fk),vec3(1.,.42,.06),uGold),a=vec3(0.);   // (over block 0: Bitcoin gold)
+ for(int i=0;i<8;i++){
+  float fi=float(i)/7.;vec2 P=d.xz/d.y*(1.+fi*1.2);float s=P.y;
+  float cx=.3+.3*sin(s*.45+t*.11)+.15*sin(s*1.17-t*.08+1.3)+.05*sin(s*3.3+t*.37),e1=P.x-cx,e2=e1+1.05+.2*sin(s*.6-t*.07);
+  float ry=.3+.7*n1(s*7.+t*.5)*n1(s*19.-t*.35+4.);
+  a+=mix(lo,hi,fi*fi)*(exp(-e1*e1*60.)+.5*exp(-e2*e2*45.))*ry*(1.-fi*.8);
+ }
+ return a*smoothstep(.02,.3,d.y)*(.8+.2*sin(t*.23))*(.24+.2*uGold);
+}
 float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+1.),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<4;i++){v+=a*ns(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
 void main(){vec2 q=(vU-vec2(.5,.45))*vec2(uR.x/uR.y,1.);float r=length(q),t=uNow*.025;vec2 gs=gl_FragCoord.xy/(18.*uD);
+vec3 ad=normalize(vec3(.2,q.y*1.25+.32,q.x*1.6));   // (outside, the lights hang across the top of the view)
 if(uSky>.5){   // in the rooms: the sky stays where it is in the world as you look about (a dome over the open roof)
  vec2 s=vU*2.-1.;vec3 d=normalize(uF+s.x*uX+s.y*uY);float el=max(d.y,0.);
- q=d.xz/(el+.22)*.42;r=length(q)*.75;gs=d.xz/(el+.22)*34.;}
+ q=d.xz/(el+.22)*.42;r=length(q)*.75;gs=d.xz/(el+.22)*34.;ad=d;}
 vec3 c=vec3(.016,.012,.016);
 float f=fbm(q*1.5+vec2(t,-t*.6)),g=fbm(q*3.+vec2(-t*1.3,t*.5)+f*1.5);
 c+=vec3(.6,.22,.03)*pow(f*g,2.2)*1.6;
@@ -502,6 +519,12 @@ c*=1.-.5*smoothstep(.45,1.35,r);
 vec2 id=floor(gs);float k=h(id);
 if(k>.978){vec2 fc=fract(gs)-.5+(vec2(h(id+3.),h(id+7.))-.5)*.6;float tw=.5+.5*sin(uNow*(1.+k*2.)+k*80.);
 c+=vec3(1.,.9,.75)*smoothstep(.08,0.,length(fc))*tw*.7;}
+c+=aur(ad,uNow);
+if(uGold>.01){   // over block 0: the first star, bright, with long glints
+ vec2 sp=q-vec2(0.,.4);
+ if(uSky>.5){vec3 S=normalize(vec3(.12,1.,.22)),X=normalize(cross(S,vec3(0.,0.,1.))),Y=cross(X,S);sp=dot(ad,S)>0.?vec2(dot(ad,X),dot(ad,Y)):vec2(9.);}
+ float sr=length(sp),tw=.9+.1*sin(uNow*1.7);
+ c+=vec3(1.,.88,.62)*uGold*tw*(exp(-sr*sr*12000.)*3.+exp(-sr*sr*700.)*.4+exp(-sr*14.)*.07+(exp(-abs(sp.x)*900.)*exp(-abs(sp.y)*22.)+exp(-abs(sp.y)*900.)*exp(-abs(sp.x)*22.))*.55);}
 c+=(h(gl_FragCoord.xy+uNow)-.5)/255.;o=vec4(c,0.);}`);
 // transactions. iF.w = how this box is moving: 0 settling/staying, 1 just joined (lights up as it lands), 2 leaving, 3 filling in, 4 sealed block lifting away
 const parP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;
@@ -986,7 +1009,15 @@ function words(u) {
 }
 // the miner's words in the coinbase: the readable stretches of its input script
 function coinbaseWords(u) {
-  const runs = L1D.decode(u).match(/[\x20-\x7e]{4,}/g) || [];
+  const parts = []; let i = 0;   // (block 0's message is one push of 69 bytes, and 69 is the letter 'E')
+  while (i < u.length) {
+    const op = u[i]; let n = -1, h = 1;
+    if (op >= 1 && op <= 75) n = op; else if (op === 76) { n = u[i + 1]; h = 2; } else if (op === 77) { n = u[i + 1] | u[i + 2] << 8; h = 3; }
+    else if (op === 0 || op === 79 || (op >= 81 && op <= 96)) { i++; continue; } else break;
+    if (!(n >= 0) || i + h + n > u.length) break;
+    parts.push(u.subarray(i + h, i + h + n)); i += h + n;
+  }
+  const runs = (i === u.length ? parts : [u]).flatMap(b => L1D.decode(b).match(/[\x20-\x7e]{4,}/g) || []);
   return runs.map(r => r.trim().replace(/^\S{1,3}\s+(?=\S{3})/, m => /^[a-z0-9]+\s/i.test(m) ? m : '').replace(/^[^\s\/]{1,5}(?=\/[^\/]{2,}\/)/, '').replace(/(\/[^\/]*[a-z][^\/]*\/)[^\s\/]{1,3}$/i, '$1')).filter(r => /[a-z]{2}/i.test(r)).join(' · ');
 }
 const POOLS = [[/foundry/i, 'Foundry USA'], [/antpool/i, 'AntPool'], [/viabtc/i, 'ViaBTC'], [/f2pool/i, 'F2Pool'], [/\bmara\b/i, 'MARA Pool'],
@@ -1406,7 +1437,7 @@ function fill(list) {
   return d;
 }
 function rebuild() {
-  if (room) { room.dirty = true; return; }   // in the room, the shelves are redrawn instead
+  if (room) { room.artDirty = true; return; }   // in the room: only the parcels' pictures are updated
   const tn = now();
   leaving = leaving.filter(t => t.seal || tn - t.t0 < 0.6);
   const all = shown.concat(leaving), solid = [], gh = [];
@@ -1864,6 +1895,7 @@ async function showBlock(h) {
 function setTip(h) {
   if (!(h > tipH)) return;
   tipH = h;
+  if (room && room.rooms[1] && room.rooms[1].ready) rmNeighbours();   // in the rooms: a door that said 'not mined yet' opens onto the new block
   if (mode === 'live' && feedDown) showBlock(tipH);   // no live feed here: follow the newest mined block instead
   nav(); head();
 }
@@ -2172,7 +2204,7 @@ function medianRate(list) {
   for (const t of a) { c += t.vsize; if (c >= tot / 2) return t.rate; }
   return a[a.length - 1].rate;
 }
-let shA = 0, heatT = 1, heatS = 1, lastFT = 0, flashS = -10, flashNext = 0, themeT = 0, themeS = 0;
+let heatHold = false, goldS = 0, shA = 0, heatT = 1, heatS = 1, lastFT = 0, flashS = -10, flashNext = 0, themeT = 0, themeS = 0;
 function setHeat() {
   const list = mode === 'live' ? (liveG ? liveMap.values() : null) : cur && cur.fees && !loading ? cur.txs : null;
   if (!list) return;
@@ -2554,6 +2586,58 @@ const LIFE = (() => {
       }
     });
   });
+  { const keep = seed;
+  // a little Christmas tree in a red tub: four neat tiers, a string of fairy lights round it, a star on top
+  // (weights: 0.5 to 0.85 = a bulb, which of the 8 in the chase; 1 = the star)
+  make('xmastree', v => {
+    const RED = C(0xb3122b), GOLD = C(0xffc23a), GR = [C(0x1d5a2c), C(0x247036), C(0x174a25)];
+    lathe(v, [[0.24, 0], [0.29, 0.26], [0.3, 0.29], [0, 0.29]], 12, (i, a, y, j) => j === 1 ? GOLD : i % 2 ? RED : mixc(RED, C(0x7a0c1d), 0.4), 0);
+    lathe(v, [[0.08, 0.25], [0.07, 0.45]], 6, () => BARK, 0);
+    const T = [[0.82, 0.4, 0.62], [0.66, 0.78, 0.56], [0.5, 1.12, 0.5], [0.33, 1.44, 0.48]];
+    T.forEach(([r, y, h], k) => lathe(v, [[r * 0.35, y + 0.1], [r, y], [r * 0.62, y + h * 0.42], [0, y + h]], 14, (i, a, yy, j) => j === 0 ? C(0x0e2f18) : GR[(i + k + j) % 3], 0, TR([1, 1, 1], [0, k * 0.4, 0], [0, 0, 0])));
+    const env = y => T.reduce((m, [r, y0, h]) => y >= y0 && y <= y0 + h ? Math.max(m, r * (1 - (y - y0) / h)) : m, 0.05);
+    const BULB = [0xff2a2a, 0xffc21a, 0x2a7bff, 0x29e05c, 0xff4fd8, 0xfff2d0].map(C), N = 30;
+    for (let i = 0; i < N; i++) {
+      const u = (i + 0.5) / N, y = 0.5 + u * 1.3, a = u * 3.1 * 6.2832, r = env(y) + 0.03;
+      blob(v, 0, 0, () => BULB[i % 6], 0.5 + (i % 8) * 0.05, TR([0.04, 0.047, 0.04], [0, 0, 0], [Math.cos(a) * r, y - 0.02, Math.sin(a) * r]));
+    }
+    const SY = 1.99, sp = [];   // the star: five points, raised in the middle on both sides
+    for (let i = 0; i < 10; i++) { const a = 1.5708 + i / 10 * 6.2832, r = i % 2 ? 0.075 : 0.17; sp.push([Math.cos(a) * r, SY + Math.sin(a) * r]); }
+    for (let i = 0; i < 10; i++) {
+      const [x0, y0] = sp[i], [x1, y1] = sp[(i + 1) % 10];
+      tri(v, [0, SY, 0.04], [x0, y0, 0], [x1, y1, 0], GOLD, 1, [0, SY, -1]);
+      tri(v, [0, SY, -0.04], [x1, y1, 0], [x0, y0, 0], GOLD, 1, [0, SY, 1]);
+    }
+  });
+  // a snowman: three snowballs, coal eyes, smile and buttons, a carrot nose, twig arms, a red scarf (its end lifts in the wind) and a top hat
+  make('snowman', v => {
+    const SN = (i, a, b, c) => (a[1] + b[1] + c[1]) / 3 < -0.35 ? C(0xc9d8ec) : i % 3 ? C(0xf5f9ff) : C(0xe7eef9), COAL = C(0x15151a), RED = C(0xd01c2e), STICK = C(0x5a3b25), HAT = C(0x17171f);
+    blob(v, 2, 0.05, SN, 0, TR([0.38, 0.34, 0.38], [0, 0, 0], [0, 0.33, 0]));
+    blob(v, 2, 0.05, SN, 0, TR([0.28, 0.27, 0.28], [0, 0, 0], [0, 0.84, 0]));
+    blob(v, 2, 0.04, SN, 0, TR([0.2, 0.2, 0.2], [0, 0, 0], [0, 1.24, 0]));
+    const dot = (x, y, z, s) => blob(v, 0, 0, () => COAL, 0, TR([s, s, s * 0.7], [0, 0, 0], [x, y, z]));
+    for (const sx of [-1, 1]) dot(sx * 0.068, 1.29, 0.178, 0.028);   // eyes
+    for (let k = 0; k < 5; k++) { const x = (k - 2) * 0.042, y = 1.165 + 0.009 * (k - 2) * (k - 2); dot(x, y, Math.sqrt(Math.max(0, 0.04 - x * x - (y - 1.24) ** 2)) + 0.004, 0.015); }   // the smile
+    for (const y of [0.74, 0.86, 0.98]) dot(0, y, Math.sqrt(0.0784 - (y - 0.84) ** 2) + 0.004, 0.03);   // buttons
+    lathe(v, [[0.035, 0], [0.026, 0.08], [0, 0.21]], 8, (i) => i % 2 ? C(0xff7a12) : C(0xe85d0c), 0, TR([1, 1, 1], [1.5708, 0, 0], [0, 1.235, 0.17]));   // the carrot nose
+    for (const sx of [-1, 1]) {   // twig arms, each with two little twig fingers
+      lathe(v, [[0.018, 0], [0.011, 0.44]], 5, () => STICK, 0, TR([1, 1, 1], [0, 0, -sx * 1.0], [sx * 0.22, 0.9, 0]));
+      const ex = sx * (0.22 + 0.37), ey = 0.9 + 0.24;
+      lathe(v, [[0.009, 0], [0.004, 0.12]], 4, () => STICK, 0, TR([1, 1, 1], [0, 0, -sx * 0.35], [ex, ey, 0]));
+      lathe(v, [[0.009, 0], [0.004, 0.1]], 4, () => STICK, 0, TR([1, 1, 1], [0, 0, -sx * 1.7], [ex - sx * 0.05, ey - 0.03, 0]));
+    }
+    lathe(v, [[0.19, 1.0], [0.222, 1.035], [0.218, 1.085], [0.175, 1.115]], 14, (i) => i % 2 ? RED : mixc(RED, C(0xffffff), 0.25), 0);   // the scarf
+    const tw = p => Math.min(1, Math.max(0, (1.05 - p[1]) / 0.3));
+    for (let k = 0; k < 3; k++) {   // its loose end
+      const y0 = 1.05 - k * 0.1, y1 = y0 - 0.1, P = (y, s) => [0.11 + (1.05 - y) * 0.12 + s * 0.04, y, 0.17 + (1.05 - y) * 0.1];
+      tri(v, P(y0, -1), P(y0, 1), P(y1, -1), k % 2 ? RED : mixc(RED, C(0xffffff), 0.25), tw);
+      tri(v, P(y1, -1), P(y0, 1), P(y1, 1), k % 2 ? RED : mixc(RED, C(0xffffff), 0.25), tw);
+    }
+    const hat = TR([1, 1, 1], [0.12, 0, -0.1], [0.01, 1.4, 0]);
+    lathe(v, [[0.21, 0], [0.21, 0.022], [0.13, 0.028], [0.124, 0.24], [0, 0.245]], 14, () => HAT, 0, hat);
+    lathe(v, [[0.134, 0.035], [0.13, 0.08]], 14, () => RED, 0, hat);
+  });
+  seed = keep; }
   make('snowrock', v => blob(v, 1, 0.5, (i, a, b, c) => (a[1] + b[1] + c[1]) / 3 > 0.25 ? (i % 2 ? C(0xf2f7ff) : C(0xdde9f5)) : (i % 3 ? C(0x55667a) : C(0x6b7c90)), 0, TR([0.8, 0.5, 0.65], [0, 0, 0], [0, 0.2, 0])));
   make('penguin', v => {
     const BK = C(0x15171f), WH = C(0xf3f1ea), OR = C(0xff9a1f);
@@ -2673,15 +2757,31 @@ const LIFE = (() => {
       ['magma', many(12, () => { const [x, z] = spot(7, 14); return I(x, rr(1.5, 5.5), z, rnd() * 6, rr(0.7, 1.4), rnd() * 9, 1, 0, C(0xff4d0d)); }), 0]],
     // 6 plasma: floating crystals spinning slowly
     [['shard', many(14, () => { const [x, z] = spot(7, 14.5); return I(x, rr(1.2, 5), z, rnd() * 6, rr(0.8, 1.6), rnd() * 9, 0, 0, rnd() < 0.5 ? C(0xff4fd8) : C(0x4fe3ff)); }), 0]]];
+  // the Christmas things: few, kept apart, on the line down the middle of a hall (well clear of the bookcases);
+  // XMAS = where each stands in the hall (across, along, how wide it is), so you walk round them, not through
+  const XMAS = [];
+  { const keep = seed; seed = 1225;
+    const put = (n, s0, s1, rad, face) => many(n, () => {
+      for (let k = 0; ; k++) {
+        const ax = rnd() < 0.5, a = (rnd() < 0.5 ? -1 : 1) * rr(6.8, 12.8), c = (rnd() < 0.5 ? -1 : 1) * rr(0.95, 1.75);
+        const hx = c, hz = ((ax ? 16 - a : a) % 32 + 32) % 32;
+        if (k < 80 && XMAS.some(([x, z]) => Math.hypot(x - hx, ((z - hz) % 32 + 48) % 32 - 16) < 2.6)) continue;
+        const s = rr(s0, s1), yh = face ? Math.atan2(-Math.sign(c) * 0.6, rnd() < 0.5 ? 0.8 : -0.8) : rnd() * 6.28;
+        XMAS.push([hx, hz, rad * s]);
+        return I(ax ? a : c, 0, ax ? c : a, ax ? yh - 1.5708 : yh, s, rnd() * 9, 0, 0, [1, 1, 1]);
+      }
+    });
+    SEASONS[0].push(['xmastree', put(3, 0.92, 1.1, 0.55, 0), 0.85], ['snowman', put(5, 0.85, 1.08, 0.4, 1), 0.5]);
+    seed = keep; }
   // particles per season: [count, style]
   const DUST = [900, 220, 160, 340, 760, 700, 650];
-  return {MESH, SEASONS, DUST, rnd};
+  return {MESH, SEASONS, DUST, rnd, XMAS};
 })();
 // the moving parts live in the shader: each kind of thing (uT) has its own little motion
-const LTYPE = {magma: 12, snowrock: 10, tuft: 0, flower: 1, tree: 2, pine: 3, penguin: 4, icecrystal: 5, fish: 6, lilypad: 7, lily: 8, butterfly: 9, cactus: 10, tumbleweed: 11, rock: 12, burnt: 13, bubble: 14, shard: 15};
+const LTYPE = {xmastree: 16, snowman: 17, magma: 12, snowrock: 10, tuft: 0, flower: 1, tree: 2, pine: 3, penguin: 4, icecrystal: 5, fish: 6, lilypad: 7, lily: 8, butterfly: 9, cactus: 10, tumbleweed: 11, rock: 12, burnt: 13, bubble: 14, shard: 15};
 const lifeP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec3 aC;layout(location=3) in float aW;
 layout(location=4) in vec4 iP;layout(location=5) in vec4 iS;layout(location=6) in vec3 iC;
-uniform mat4 uVP;uniform float uNow,uW,uSR;uniform int uT,uST;uniform vec4 uRm;
+uniform mat4 uVP;uniform float uNow,uW,uSR;uniform int uT,uST;uniform vec4 uRm,uWl;
 out vec3 vN;out vec3 vC;out vec3 vP;out float vE;out float vA;out float vF;
 mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0.,-s,0.,1.,0.,s,0.,c);}
 mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1.,0.,0.,0.,c,s,0.,-s,c);}
@@ -2744,13 +2844,18 @@ if(T==4){
  b.y+=.4*sin(t*.5+ph);R=RY(iP.w+t*.5)*RZ(.25*sin(t*.7+ph));
 }else if(T==7||T==8){
  b.y+=.015*sin(t*1.1+ph);R=RY(iP.w+.12*sin(t*.2+ph));
+}else if(T==16&&w>.97){
+ float a=t*.7+ph,ca=cos(a),sa=sin(a);p.xz=vec2(ca*p.x-sa*p.z,sa*p.x+ca*p.z);n.xz=vec2(ca*n.x-sa*n.z,sa*n.x+ca*n.z);   // the star turns slowly
+}else if(T==17&&w>.01){
+ p.x+=w*.045*sin(t*2.9+ph*2.+p.y*7.);p.z+=w*.03*sin(t*2.2+ph);   // the scarf's end in the wind
 }
 float fd=smoothstep(15.2,12.8,length(b.xz));vF=exp(-pow(length(b.xz)/10.,2.)*.5);
 if(uRm.x>.5){   // in the walk-in rooms: the ring laid along the hall (twice: turned a quarter and moved on half a stretch, so there is no gap), the stretch nearest you
  if(uRm.y>.5){b=vec3(b.z,b.y,-b.x);R=RY(1.5708)*R;}
  b.z+=uRm.z;b.z+=floor((uRm.w-b.z)/32.+.5)*32.;
  fd=(T==6?1.:smoothstep(3.55,2.95,abs(b.x)))*smoothstep(16.,12.5,abs(b.z-uRm.w));vF=1.;
- if(T==4||T==5||T==6||T==9||T==11||T==12||T==14||T==15)sc*=.25;}   // (indoors the creatures and crystals are a quarter the size)
+ if(T==4||T==5||T==6||T==9||T==11||T==12||T==14||T==15)sc*=.25;
+ if(T==16||T==17){sc*=.5;fd*=smoothstep(.95,1.45,min(min(abs(b.z-uWl.x),abs(b.z-uWl.y)),min(abs(b.z-uWl.z),abs(b.z-uWl.w))));}}   // (little ones indoors, and never in a wall or a doorway)   // (indoors the creatures and crystals are a quarter the size)
 sc*=fd;
 vec3 wp;
 if(uT==99){wp=vec3(b.x,0.,b.z)+vec3(p.x,.012,p.z)*uSR*sc;vA=w*g*fd;vF=1.;vN=vec3(0.,1.,0.);vC=vec3(0.);vE=0.;vP=wp;gl_Position=uVP*vec4(wp,1.);return;}
@@ -2763,6 +2868,7 @@ else if(T==13&&tn>.5)em=.65+.35*sin(t*2.6+ph+aP.y*5.);
 else if(T==14){float hy=aP.y/.41;em=.35+.75*hy*hy;c=mix(iC*vec3(.6,.25,.12),iC*1.25,hy);}
 if(T==6){float dp=clamp(-b.y*.4+.1,0.,.45);c=mix(c*1.25,vec3(.03,.16,.3),dp);}
 else if(T==15){em=(.18+.42*w)*(.8+.2*sin(t*2.+ph));c=iC*(.55+.6*w);}
+else if(T==16){if(w>.97){em=1.3+.25*sin(t*2.3+ph);c=vec3(1.,.74,.26);}else if(w>.45){float k=floor((w-.5)*20.+.5);em=.12+1.15*smoothstep(.15,.95,sin(t*1.9-k*.785+ph));}}
 vN=wn;vC=c;vE=em;vA=1.;vP=wp;gl_Position=uVP*vec4(wp,1.);}`,
   V + `in vec3 vN;in vec3 vC;in vec3 vP;in float vE;in float vA;in float vF;uniform vec3 uE;uniform highp int uT;uniform vec4 uRm;out vec4 o;
 void main(){
@@ -2792,7 +2898,7 @@ if(uT==1){vec2 a=abs(q);f=exp(-d*16.)+max(0.,1.-a.x*9.)*max(0.,1.-a.y)+max(0.,1.
 f*=vA;o=vec4(vC*f,f*uG);}`);
 
 // GPU buffers: one shape buffer per kind, one buffer of instances per season group, one VAO each (plus one for its shadow)
-const SHADOWR = {snowrock: 0.8, pine: 1.35, tree: 1.6, penguin: 0.42, icecrystal: 0.5, cactus: 0.75, tumbleweed: 0.5, rock: 0.8, burnt: 0.7, butterfly: 0.18, flower: 0.12};
+const SHADOWR = {xmastree: 0.85, snowman: 0.5, snowrock: 0.8, pine: 1.35, tree: 1.6, penguin: 0.42, icecrystal: 0.5, cactus: 0.75, tumbleweed: 0.5, rock: 0.8, burnt: 0.7, butterfly: 0.18, flower: 0.12};
 const lifeGeo = {};
 for (const [k, v] of Object.entries(LIFE.MESH)) { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW); lifeGeo[k] = {b, n: v.length / 10}; }
 function lifeVAO(geo, ib) {
@@ -2826,10 +2932,10 @@ function lifeWeights(h) {
   const W = [0, 0, 0, 0, 0, 0, 0], hh = Math.max(0, Math.min(6, h)), k = Math.floor(hh), f = hh - k, b = k < 6 ? (f <= 0.3 ? 0 : f >= 0.7 ? 1 : (x => x * x * (3 - 2 * x))((f - 0.3) / 0.4)) : 0;
   W[k] = 1 - b; if (k < 6) W[k + 1] = b; return W;
 }
-let LROOM = [0, 0, 0, 0];   // in the rooms: [on, turned a quarter, moved on, where you are along the hall]
+let LROOM = [0, 0, 0, 0], LWALL = [1e5, 1e5, -1e5, -1e5];   // in the rooms: [on, turned a quarter, moved on, where you are along the hall]
 const LTALL = new Set(['pine', 'tree', 'cactus', 'rock', 'snowrock', 'burnt']);   // (trees and rocks stay outside: the rooms get what lives on and under the floor)
 function lifeUniforms(VP, eye, tn) {
-  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM);
+  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform4fv(lifeP.u.uWl, LWALL);
 }
 // solid things: under = true draws only what lives below the water (drawn before the water surface)
 function lifeDraw(VP, eye, tn, LW, under) {
@@ -2891,7 +2997,7 @@ function frame() {
   const si = sel ? inst.indexOf(sel) : -1;
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
-  gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr);
+  gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
   gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3);
   if (sprites.length) {
     const f = nrm(sub([0, ty, 0], eye)), rt3 = nrm(crs(f, [0, 1, 0])), up3 = crs(rt3, f), sd = spriteData(tn, VP, rt3, up3, uiRects().concat([cubeR]));
@@ -2995,6 +3101,7 @@ const SECT = ['bitmaps', 'images', 'text', 'HTML', 'JSON', 'audio / video', '3D 
 const SECT_ALL = SECT.concat(TOK_IDX, TX_IDX, [REG]);
 const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS', '#4cc9f0']];
 const LC = h => lin(hexc(parseInt(h.slice(1), 16)));
+const RCG = {wall: LC('#0b0906'), back: LC('#120d06'), wood: LC('#3b2a13'), post: LC('#21170a'), pillar: LC('#100c07'), neon: LC('#ffc94a'), neon2: LC('#e3a72c'), dim: LC('#7a5a14'), trim: LC('#ffd36b'), door: LC('#171007'), sign: LC('#0d0805')};   // block 0: gold
 const RC = {wall: LC('#0a0708'), back: LC('#100a07'), wood: LC('#3b2313'), post: LC('#1e120a'), pillar: LC('#0e0a0b'), neon: LC('#ff8a1e'), neon2: LC('#d9741c'), dim: LC('#6a3612'), trim: LC('#ff9a2e'), door: LC('#140d08'), sign: LC('#0d0805')};
 // every transaction gets exactly one shelf: its token, else what kind of inscription it is, else what kind of transaction
 function shelfOf(t) {
@@ -3032,11 +3139,11 @@ gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); gl.generateMipmap(gl.TEXTURE_2D);
 const labSt = document.createElement('canvas');   // a part of the sheet is copied here and sent to the graphics card from it (quicker than reading the pixels out)
-function labUp(x, y, w, h) {
+function labUp(x, y, w, h, noMip) {
   if (labSt.width !== w || labSt.height !== h) { labSt.width = w; labSt.height = h; }
   const c = labSt.getContext('2d'); c.clearRect(0, 0, w, h); c.drawImage(labCv, x, y, w, h, 0, 0, w, h);
   gl.bindTexture(gl.TEXTURE_2D, labTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, labSt);
-  gl.generateMipmap(gl.TEXTURE_2D);
+  if (!noMip) gl.generateMipmap(gl.TEXTURE_2D);
 }
 // one label: a dark plate with a glowing edge, the words in their colour (and a count, or a second line)
 function labPaint(x, y, w, h, main, col, right, sub, edge) {
@@ -3057,6 +3164,87 @@ function labPaint(x, y, w, h, main, col, right, sub, edge) {
     if (sub) { fit(sub, h * .2, w - m * 3, 600); c.fillStyle = '#cdbca3'; c.fillText(sub, x + w / 2, y + h * .76); }
   }
   c.restore();
+}
+
+// a tall label whose main text wraps over as many lines as it needs, as big as it can be while all of it fits
+function labWrap(x, y, w, h, main, col, right, sub) {
+  const c = labCx, m = h * .07, F = s => `700 ${s}px ui-monospace,Menlo,Consolas,monospace`;
+  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#0d0805'; c.fillRect(x, y, w, h);
+  c.strokeStyle = col; c.lineWidth = Math.max(2, h * .03); c.strokeRect(x + c.lineWidth / 2, y + c.lineWidth / 2, w - c.lineWidth, h - c.lineWidth);
+  const sh = h * .1, mw = w - m * 3, mh = h - m * 2.4 - sh * 1.3;
+  const wrap = sz => {
+    c.font = F(sz); const out = []; let line = '';
+    for (let word of main.split(/\s+/)) {
+      while (c.measureText(word).width > mw) { let k = word.length - 1; while (k > 1 && c.measureText(word.slice(0, k)).width > mw) k--; if (line) { out.push(line); line = ''; } out.push(word.slice(0, k)); word = word.slice(k); }
+      const t = line ? line + ' ' + word : word;
+      if (c.measureText(t).width > mw && line) { out.push(line); line = word; } else line = t;
+    }
+    if (line) out.push(line); return out;
+  };
+  let sz = Math.round(h * .26), lines = wrap(sz);
+  while (sz > 7 && lines.length * sz * 1.18 > mh) lines = wrap(--sz);
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = col; c.font = F(sz);
+  const y0 = y + m * 1.2 + (mh - lines.length * sz * 1.18) / 2 + sz * .59;
+  lines.forEach((l, i) => c.fillText(l, x + w / 2, y0 + i * sz * 1.18));
+  if (sub) { c.font = `600 ${Math.round(sh)}px ui-monospace,Menlo,Consolas,monospace`; c.fillStyle = '#cdbca3'; c.fillText(sub, x + w / 2, y + h - m - sh * .55); }
+  c.restore();
+}
+
+// block 0's front page: the headline Satoshi wrote into the block, as the block holds it, set like a newspaper's front page
+function labPaper(x, y, w, h, words, when) {
+  const c = labCx, S = (wt, z) => `${wt} ${z}px Georgia,'Times New Roman',serif`;
+  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#efe6cf'; c.fillRect(x, y, w, h);
+  for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(110,85,45,${(Math.random() * .07).toFixed(3)})`; c.fillRect(x + Math.random() * w, y + Math.random() * h, 1.6, 1.6); }
+  c.strokeStyle = '#2a2018'; c.lineWidth = 4; c.strokeRect(x + 12, y + 12, w - 24, h - 24); c.lineWidth = 1.5; c.strokeRect(x + 20, y + 20, w - 40, h - 40);
+  c.fillStyle = '#1b140e'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.font = S(700, 30); c.fillText('WRITTEN INTO BLOCK 0', x + w / 2, y + 64);
+  c.font = S(400, 17); c.fillText(when + ' · BY SATOSHI NAKAMOTO', x + w / 2, y + 90);
+  c.fillRect(x + 36, y + 104, w - 72, 3); c.fillRect(x + 36, y + 110, w - 72, 1);
+  const m = words.match(/^(.*?\d{1,2}\/\w{3}\/\d{4})\s+(.+)$/), top = m ? m[1] : '', head = m ? m[2] : words, mw = w - 70;
+  if (top) { c.font = S('italic 600', 26); c.fillText(top, x + w / 2, y + 150); }
+  const wrap = z => { c.font = S(800, z); const out = []; let line = ''; for (const wd of head.split(/\s+/)) { const t = line ? line + ' ' + wd : wd; if (c.measureText(t).width > mw && line) { out.push(line); line = wd; } else line = t; } if (line) out.push(line); return out; };
+  let z = 74, L = wrap(z); while (z > 18 && (L.length * z * 1.08 > 330 || L.some(l => c.measureText(l).width > mw))) L = wrap(--z);
+  const hy = y + 182 + (330 - L.length * z * 1.08) / 2 + z * .82;
+  L.forEach((l, i) => c.fillText(l, x + w / 2, hy + i * z * 1.08));
+  c.fillRect(x + 36, y + 530, w - 72, 1.5);
+  c.fillStyle = 'rgba(40,30,20,.32)';   // the columns of small print below (just texture: no words)
+  for (let col = 0; col < 3; col++) for (let r = 0; r < 14; r++) { const cx = x + 38 + col * (w - 76) / 3, cw = (w - 76) / 3 - 14; c.fillRect(cx, y + 548 + r * 11, r % 5 === 4 ? cw * .55 : cw, 5); }
+  c.fillStyle = '#1b140e'; c.font = S('italic 400', 16); c.fillText('the first block of Bitcoin', x + w / 2, y + h - 34);
+  c.restore();
+}
+// block 0's id in neon: the zeros at the front lit gold
+function labHash(x, y, w, h, hash, diff) {
+  const c = labCx, z0 = (hash.match(/^0*/) || [''])[0].length, F = z => `700 ${z}px ui-monospace,Menlo,Consolas,monospace`;
+  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#0a0705'; c.fillRect(x, y, w, h);
+  c.strokeStyle = '#ffc94a'; c.lineWidth = 3; c.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+  let z = 60; c.font = F(z); while (z > 10 && c.measureText(hash).width > w - 60) c.font = F(--z);
+  const tw = c.measureText(hash).width, x0 = x + (w - tw) / 2, a = hash.slice(0, z0), b = hash.slice(z0), wa = c.measureText(a).width;
+  c.textBaseline = 'middle'; c.textAlign = 'left';
+  c.shadowColor = '#ffb02e'; c.shadowBlur = 16; c.fillStyle = '#ffe08a'; c.fillText(a, x0, y + h * .4); c.fillText(a, x0, y + h * .4);
+  c.shadowColor = '#ff8a1e'; c.shadowBlur = 6; c.fillStyle = '#d98a3a'; c.fillText(b, x0 + wa, y + h * .4);
+  c.shadowBlur = 0; c.textAlign = 'center'; c.fillStyle = '#cdbca3'; c.font = `600 ${Math.round(h * .15)}px ui-monospace,Menlo,Consolas,monospace`;
+  c.fillText("BLOCK 0'S ID · " + z0 + ' ZEROS AT THE FRONT' + (diff ? ' · DIFFICULTY ' + fmt(diff) + ', THE LOWEST THERE IS' : ''), x + w / 2, y + h * .8);
+  c.restore();
+}
+// gifts people still send to the genesis address (counted live from mempool.space)
+const GEN_ADDR = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+let trib = null, tribAt = 0;
+async function tribLoad() {
+  if (!SOURCES[0].on || performance.now() - tribAt < 600000 && trib) return trib;
+  tribAt = performance.now();
+  try {
+    const [a, t] = await Promise.all([fetchT(MP + '/api/address/' + GEN_ADDR, null, 20000).then(r => r.json()), fetchT(MP + '/api/address/' + GEN_ADDR + '/txs', null, 20000).then(r => r.json())]);
+    const cs = a.chain_stats || {}, ms = a.mempool_stats || {};
+    trib = {n: (cs.tx_count || 0) + (ms.tx_count || 0), sats: (cs.funded_txo_sum || 0) + (ms.funded_txo_sum || 0), spent: (cs.spent_txo_count || 0) + (ms.spent_txo_count || 0),
+      gifts: (Array.isArray(t) ? t : []).slice(0, 24).map(x => ({sats: x.vout.filter(o => o.scriptpubkey_address === GEN_ADDR).reduce((q, o) => q + o.value, 0), time: x.status && x.status.block_time, id: x.txid}))};
+  } catch (e) { trib = trib || {fail: 1}; }
+  return trib;
+}
+function tribPaint(R) {
+  const g = R.gen; if (!g || !g.trib) return;
+  const T = trib, sub = !T ? 'counting the gifts sent since 2009…' : T.fail || !(T.n >= 0) ? 'the live count needs mempool.space' :
+    (T.sats / 1e8).toFixed(2) + ' BTC sent to the genesis address' + (T.spent === 0 ? ', none of it ever moved' : '') + (T.gifts && T.gifts.length ? ' · a candle for each of the last ' + T.gifts.length : '');
+  labPaint(g.trib.x, g.trib.y, 1024, 128, T && T.n >= 0 && !T.fail ? fmt(T.n) + ' GIFTS TO SATOSHI' : 'GIFTS TO SATOSHI', '#ffd36b', null, sub, '#ffd36b');
 }
 
 /* how warm a block is (its median fee, the same scale as the floor): a colour for its signs */
@@ -3099,11 +3287,14 @@ function rmMake(h, of, side) {
       const p = bayAt(R.plan, it.bay);
       it.w = [p.s * (RW / 2 - DEEP + it.e / 2 + .05), PLANKS[it.row] + it.e / 2, R.z0 + p.zs + p.dz * (.05 + it.u)];
       it.t0 = t0 + (n > 1 ? i / (n - 1) : 0) * Math.min(2.2, .6 + n * .0006); it.m = 1;
+      if (h === 0 && i === 0) { it.e = .26; it.w = [0, 1.44, R.z0 - R.L / 2]; }
     });
+    if (h === 0) tribLoad().then(() => { if (!R.gen || !room || !room.rooms.includes(R)) return; tribPaint(R); labUp(R.gen.trib.x, R.gen.trib.y, 1024, 128); rmFix(R); room.fixDirty = room.dirty = true; });
     await yieldNow(); if (gone()) return;
     rmLabels(R); await yieldNow(); if (gone()) return;
     rmFix(R); rmSignPaint(R, true); await yieldNow(); if (gone()) return;
-    labUp(0, R.slot * LSLOT, LT, LSLOT);
+    for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); if (gone()) return; }   // (a strip at a time: measured, the whole sheet at once took up to 37 ms)
+    gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D);
     R.ready = true; room.dirty = room.fixDirty = true;
     if (R === room.rooms[1]) rmCurrent(R);
     rmSigns();
@@ -3116,60 +3307,60 @@ function rmCurrent(R) {
   room.at = R;
   if (!R.B) return;
   cur = R.B; want = R.h; mode = 'block'; nav(); head();
-  if (R.B.scan && R.B.scan.ok) loadArt(R.B);
+  if (R.B.scan && R.B.scan.ok) setTimeout(() => { if (room && room.at === R && cur === R.B) loadArt(R.B); }, 90);   // (measured: head and the pictures' set-up together took 17 ms in one go)
   room.dirty = true;
 }
 // fixtures: walls with doorways, bookcases with glowing shelf edges, signs and labels (as boxes, like the parcels)
 function rmFix(R) {
-  const d = [], P = R.plan, z0 = R.z0, L = R.L, B = R.B;
+  const d = [], P = R.plan, z0 = R.z0, L = R.L, B = R.B, K = R.h === 0 ? RCG : RC;
   // box: centre, size, colour; g = glow (2 = a light: drawn bright and unlit); m = 'wood' for a grain; a = a label tile
   const box = (x, y, z, sx, sy, sz, k, g, a, m) => d.push(x, y, z0 + z, sx, sy, sz, k[0], k[1], k[2], 0, x, y, z0 + z, 0, g || 0, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : m ? 1 : 0, a ? 2 : 0);   // (labels are drawn smooth, not as pixels)
   // a label made of square tiles side by side, facing along the normal nx (±1 on x) or nz (±1 on z)
   const tiles = (cx, cy, cz, nx, nz, s, px, py, ts, n) => {
     const rx = nx ? 0 : (nz > 0 ? 1 : -1), rz = nx ? (nx > 0 ? -1 : 1) : 0;
-    for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2) * s; box(cx + rx * o, cy, cz + rz * o, nx ? .012 : s, s, nz ? .012 : s, RC.sign, 0, [(px + k * ts) / LT, py / LH, ts / LT]); }
+    for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2) * s; box(cx + rx * o, cy, cz + rz * o, nx ? .012 : s, s, nz ? .012 : s, K.sign, 0, [(px + k * ts) / LT, py / LH, ts / LT]); }
   };
   const tabOf = b => { let g = -1; for (const c of P.cats) if (c.bay <= b) g = c.g; return g; };
   // the hall: tall dark walls, a light running along the top and another lower down, ribs across the open top
   for (const s of [-1, 1]) {
-    box(s * (RW / 2 + WT / 2), RH / 2, -L / 2, WT, RH, L + WT, RC.wall);
-    box(s * (RW / 2 - .015), RH - .06, -L / 2, .03, .05, L + WT, RC.neon, 2);
-    box(s * (RW / 2 - .015), RH - 1.15, -L / 2, .03, .025, L + WT, RC.neon2, 2);
+    box(s * (RW / 2 + WT / 2), RH / 2, -L / 2, WT, RH, L + WT, K.wall);
+    box(s * (RW / 2 - .015), RH - .06, -L / 2, .03, .05, L + WT, K.neon, 2);
+    box(s * (RW / 2 - .015), RH - 1.15, -L / 2, .03, .025, L + WT, K.neon2, 2);
   }
   for (let j = 0; j <= P.side; j += 2) {   // ribs over the hall, every second bookcase
     const z = -END - j * BAY;
-    box(0, RH - .15, z, RW, .3, .26, RC.pillar);
-    box(0, RH - .315, z, RW - .3, .025, .06, RC.neon, 2);
+    box(0, RH - .15, z, RW, .3, .26, K.pillar);
+    box(0, RH - .315, z, RW - .3, .025, .06, K.neon, 2);
   }
   // each end: a wall in its own half thickness, a doorway with a glowing frame, the block's name above the door
   for (const [zc, zs] of [[WT / 4, 1], [-L - WT / 4, -1]]) {
     const pw = RW / 2 + WT - DOOR / 2, zi = zc - zs * (WT / 4 + .02);
-    for (const s of [-1, 1]) box(s * (DOOR / 2 + pw / 2), RH / 2, zc, pw, RH, WT / 2, RC.wall);
-    box(0, (DOORH + RH) / 2, zc, DOOR, RH - DOORH, WT / 2, RC.wall);
+    for (const s of [-1, 1]) box(s * (DOOR / 2 + pw / 2), RH / 2, zc, pw, RH, WT / 2, K.wall);
+    box(0, (DOORH + RH) / 2, zc, DOOR, RH - DOORH, WT / 2, K.wall);
     for (const s of [-1, 1]) {
-      box(s * (DOOR / 2 + .07), DOORH / 2, zi, .1, DOORH + .02, .04, RC.neon, 2);
-      box(s * (DOOR / 2 - .012), DOORH / 2, zc, .024, DOORH, WT / 2 - .02, RC.neon2, 2);   // the light inside the doorway
-      box(s * (RW / 2 - .015), RH / 2, zi, .03, RH, .03, RC.neon2, 2);   // corners of the hall
+      box(s * (DOOR / 2 + .07), DOORH / 2, zi, .1, DOORH + .02, .04, K.neon, 2);
+      box(s * (DOOR / 2 - .012), DOORH / 2, zc, .024, DOORH, WT / 2 - .02, K.neon2, 2);   // the light inside the doorway
+      box(s * (RW / 2 - .015), RH / 2, zi, .03, RH, .03, K.neon2, 2);   // corners of the hall
     }
-    box(0, DOORH + .07, zi, DOOR + .24, .1, .04, RC.neon, 2);
-    box(0, RH - .06, zi, RW, .05, .03, RC.neon, 2);
+    box(0, DOORH + .07, zi, DOOR + .24, .1, .04, K.neon, 2);
+    box(0, RH - .06, zi, RW, .05, .03, K.neon, 2);
   }
   // bookcases all along both walls, a tall pillar between each, a sign above each saying what is on its shelves
   for (let b = 0; b < 2 * P.side; b++) {
     const p = bayAt(P, b), zc = p.zs + p.dz * BAY / 2, xw = p.s * (RW / 2), xs = p.s * (RW / 2 - DEEP / 2), g = tabOf(b);
-    const glowK = g >= 0 && b < P.nb ? LC(CATS[g][1]) : RC.dim;
-    box(p.s * (RW / 2 - .02), CASEH / 2, zc, .04, CASEH, BAY, RC.back);
-    box(xs, CASEH + .03, zc, DEEP + .04, .06, BAY + .05, RC.post, 0, null, 1);
-    box(xs, .04, zc, DEEP + .02, .08, BAY, RC.post);
+    const glowK = g >= 0 && b < P.nb ? LC(CATS[g][1]) : K.dim;
+    box(p.s * (RW / 2 - .02), CASEH / 2, zc, .04, CASEH, BAY, K.back);
+    box(xs, CASEH + .03, zc, DEEP + .04, .06, BAY + .05, K.post, 0, null, 1);
+    box(xs, .04, zc, DEEP + .02, .08, BAY, K.post);
     box(p.s * (RW / 2 - DEEP - .006), .045, zc, .012, .02, BAY - .1, glowK, 2);   // a light along the foot of the case
     for (const y of PLANKS) {
-      box(xs, y - .015, zc, DEEP, .03, BAY, RC.wood, 0, null, 1);
+      box(xs, y - .015, zc, DEEP, .03, BAY, K.wood, 0, null, 1);
       box(xw - p.s * (DEEP - .004), y - .034, zc, .008, .008, BAY - .08, glowK, 2);   // a thin light under each shelf's edge
     }
     for (const ze of b === P.side - 1 || b === 2 * P.side - 1 ? [p.zs, p.zs + p.dz * BAY] : [p.zs]) {
-      box(xs, CASEH / 2, ze, DEEP, CASEH, .05, RC.post, 0, null, 1);
-      box(p.s * (RW / 2 - .16), RH / 2, ze, .32, RH, .2, RC.pillar);   // the pillar, floor to sky
-      box(p.s * (RW / 2 - .325), (RH + CASEH) / 2 + .1, ze, .012, RH - CASEH - .5, .045, RC.neon, 2);
+      box(xs, CASEH / 2, ze, DEEP, CASEH, .05, K.post, 0, null, 1);
+      box(p.s * (RW / 2 - .16), RH / 2, ze, .32, RH, .2, K.pillar);   // the pillar, floor to sky
+      box(p.s * (RW / 2 - .325), (RH + CASEH) / 2 + .1, ze, .012, RH - CASEH - .5, .045, K.neon, 2);
     }
     const t = R.cs.bay[b];
     if (t) tiles(p.s * (RW / 2 - .05), CASEH + 1.05, zc, -p.s, 0, .29, t.x, t.y, R.cs.w / 4, 4);
@@ -3188,7 +3379,50 @@ function rmFix(R) {
     tiles(0, DOORH + .42, z, 0, -zs, .42, s.x, s.y, 128, 4);
     tiles(0, DOORH + 1.55, z, 0, -zs, .62, T.x, T.y, 128, 4);
     // the block's facts on boards either side of the door (left first, as you face the door)
-    R.facts.forEach((f, i) => { const side = i < 5 ? -1 : 1, row = i % 5; tiles(side * zs * -2.55, 3.05 - row * .45, z, 0, -zs, .3, f.x, f.y, 96, 4); });
+    let j = 0;
+    for (const f of R.facts) {
+      if (f.big && j % 5 === 4) j++;   // (the tall board needs two places in one column)
+      const side = j < 5 ? -1 : 1, y = 3.05 - (j % 5) * .45;
+      tiles(side * zs * -2.55, y, z, 0, -zs, .3, f.x, f.y, 96, 4);
+      if (f.big) { tiles(side * zs * -2.55, y - .3, z, 0, -zs, .3, f.x, f.y + 96, 96, 4); j++; }
+      j++;
+    }
+    if (R.halv) {   // a halving: a gold plaque high over the door, framed in light
+      const GD = LC('#ffc94a'), zf = z - zs * .012;
+      tiles(0, 6.5, z, 0, -zs, .6, R.halv.x, R.halv.y, 128, 4);
+      for (const sx of [-1, 1]) box(sx * 1.24, 6.5, zf, .04, .66, .03, GD, 2);
+      for (const yy of [6.15, 6.85]) box(0, yy, zf, 2.52, .035, .03, GD, 2);
+    }
+  }
+  const G = R.gen;
+  if (G) {
+    const GD = LC('#ffc94a'), GB = LC('#9a6f12'), ST = LC('#15110c'), zc = -L / 2;
+    // the front page, standing in the doorway that leads nowhere (there is no block before this one)
+    if (G.paper && !rmOk(R.back.to)) for (let r = 0; r < 6; r++) tiles(0, 3.85 - .275 - r * .55, -.05, 0, -1, .55, G.paper.x, G.paper.y + r * 128, 128, 4);
+    // the 50 BTC: alone on a pedestal in the middle of the hall, in a case edged with light, a lamp over it, a glowing square round it on the floor
+    box(0, .04, zc, .86, .08, .86, GB);
+    box(0, .58, zc, .6, 1.0, .6, ST);
+    for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      box(ax * .3, .58, zc + az * .3, .022, 1.0, .022, GD, 2);
+      box(ax * .3, 1.44, zc + az * .3, .018, .6, .018, GD, 2);
+    }
+    box(0, 1.11, zc, .7, .06, .7, GB);
+    for (const yy of [1.15, 1.74]) for (const sd of [-1, 1]) { box(0, yy, zc + sd * .3, .62, .018, .018, GD, 2); box(sd * .3, yy, zc, .018, .018, .62, GD, 2); }
+    for (const sd of [-1, 1]) { tiles(0, .72, zc + sd * .305, 0, sd, .14, G.plq.x, G.plq.y, 128, 4); box(0, .006, zc + sd * .62, 1.26, .008, .03, GD, 2); box(sd * .62, .006, zc, .03, .008, 1.26, GD, 2); }
+    box(0, (RH - .3 + 3.56) / 2, zc, .015, RH - .3 - 3.56, .015, ST);
+    box(0, 3.5, zc, .34, .13, .34, GB); box(0, 3.428, zc, .26, .012, .26, LC('#fff1cf'), 2);
+    // a candle for each of the latest gifts, in a ring round the case (taller for bigger gifts)
+    const gifts = trib && trib.gifts || [];
+    gifts.forEach((q, i) => {
+      const a = i / gifts.length * 6.2832 + .26, rr = i % 2 ? 1.22 : .98, x = Math.cos(a) * rr, zz = zc + Math.sin(a) * rr;
+      const h = .07 + .045 * Math.max(0, Math.min(5, Math.log10(Math.max(1, q.sats)) - 2));
+      box(x, h / 2, zz, .045, h, .045, LC('#efe3c4'));
+      box(x, h + .028, zz, .02, .04, .02, LC('#ffb347'), 2);
+      q.at = [x, h, z0 + zz];
+    });
+    // the hash wall (left, high up) and the gifts board (right, high up)
+    if (G.hash) { tiles(-(RW / 2 - .345), 4.85, zc, 1, 0, .5, G.hash.x, G.hash.y, 128, 12); box(-(RW / 2 - .35), 4.55, zc, .02, .02, 6.1, GD, 2); }
+    tiles(RW / 2 - .345, 4.85, zc, -1, 0, .5, G.trib.x, G.trib.y, 128, 8); box(RW / 2 - .35, 4.55, zc, .02, .02, 4.1, GD, 2);
   }
   R.fix = new Float32Array(d);
 }
@@ -3196,12 +3430,13 @@ function rmFix(R) {
 function rmFacts(B) {
   const r = B.txs.filter(t => t.fee > 0).map(t => t.rate), cb = B.cb || {}, d = new Date((B.time || 0) * 1000);
   const tabs = [0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
-  const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS IN ALL'], [(cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
-    [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})], [(B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
+  const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS IN ALL'], [(B.height === 0 ? 'SATOSHI NAKAMOTO' : cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
+    [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})], [B.size < 1e5 ? fmt(B.size) + ' BYTES' : (B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
   if (r.length) out.push([r1(Math.min(...r)) + '–' + r1(Math.max(...r)), 'SAT/VB PAID']);
   tabs.forEach((n, g) => { if (n) out.push([fmt(n), 'ON THE ' + CATS[g][0] + ' SHELVES']); });
-  if (cb.words) out.push(['“' + cb.words.slice(0, 26) + '”', 'THE MINER WROTE']);
-  return out.slice(0, 10).map(([a, b]) => ({a, b}));
+  const f = out.slice(0, cb.words ? 8 : 10).map(([a, b]) => ({a, b}));
+  if (cb.words) f.push({a: '“' + cb.words + '”', b: 'THE MINER WROTE', big: 1});   // the miner's whole message, on a board twice as tall
+  return f;
 }
 // the sign over each bookcase: the chips (kinds) on its shelves, like a library's section sign. Every case of the same
 // kind shares one sign: its name, its tab, how many parcels of it there are and over how many cases.
@@ -3222,8 +3457,8 @@ function rmCaseSigns(P) {
 }
 // paints every label of a room into its third of the sheet
 function rmLabels(R) {
-  const P = R.plan, y0 = R.slot * LSLOT; let px = 0, py = y0, rh = 0;
-  const place = (w, h) => { if (px + w > LT) { px = 0; py += rh; rh = 0; } const r = [px, py]; px += w; rh = Math.max(rh, h); return r; };
+  const P = R.plan, y0 = R.slot * LSLOT, G0 = R.h === 0, lim = G0 ? LT - 512 : LT; let px = 0, py = y0, rh = 0;   // (block 0 keeps the right-hand 512 for its front page and plaque)
+  const place = (w, h) => { if (px + w > lim) { px = 0; py += rh; rh = 0; } const r = [px, py]; px += w; rh = Math.max(rh, h); return r; };
   labCx.clearRect(0, y0, LT, LSLOT);
   R.signs = {};
   for (const end of ['back', 'front']) { const [x, y] = place(512, 128); R.signs[end] = {x, y}; }
@@ -3231,10 +3466,27 @@ function rmLabels(R) {
   for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
   px = LT;
   R.facts = rmFacts(R.B);
-  for (const f of R.facts) { const [x, y] = place(384, 96); f.x = x; f.y = y; labPaint(x, y, 384, 96, f.a, '#ffb04a', null, f.b); }
+  for (const f of R.facts) { const [x, y] = place(384, f.big ? 192 : 96); f.x = x; f.y = y; (f.big ? labWrap : labPaint)(x, y, 384, f.big ? 192 : 96, f.a, '#ffb04a', null, f.b); }
+  px = LT;
+  const B = R.B, utc = t => new Date(t * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).toUpperCase();
+  R.halv = null;
+  if (R.h > 0 && R.h % 210000 === 0) {   // a halving: the first block paying half the reward before it
+    const n = R.h / 210000, th = n % 10 === 1 && n !== 11 ? 'ST' : n % 10 === 2 && n !== 12 ? 'ND' : n % 10 === 3 && n !== 13 ? 'RD' : 'TH';
+    const [x, y] = place(512, 128); R.halv = {x, y};
+    labPaint(x, y, 512, 128, n + th + ' HALVING', '#ffd36b', null, 'REWARD ' + 50 / 2 ** (n - 1) + ' → ' + 50 / 2 ** n + ' BTC · ' + utc(B.time), '#ffd36b');
+  }
+  R.gen = null;
+  if (G0) {
+    const g = R.gen = {};
+    if (B.hash) { px = lim; const [x, y] = place(1536, 128); g.hash = {x, y}; labHash(x, y, 1536, 128, B.hash, B.diff); }
+    { const [x, y] = place(1024, 128); g.trib = {x, y}; }
+    if (B.cb && B.cb.words) { g.paper = {x: LT - 512, y: y0}; labPaper(LT - 512, y0, 512, 768, B.cb.words, utc(B.time)); }
+    g.plq = {x: LT - 512, y: y0 + 768}; labPaint(LT - 512, y0 + 768, 512, 128, '50 BTC · THE FIRST REWARD', '#ffd36b', null, 'can never be spent: it was never added to the coins that can be', '#ffd36b');
+    tribPaint(R);
+  }
   px = LT;
   R.cs = rmCaseSigns(P);
-  const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (LT / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (LT / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (LT / 320)) * 80 <= left ? 320 : 256;
+  const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (lim / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (lim / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (lim / 320)) * 80 <= left ? 320 : 256;
   R.cs.w = cw;
   for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaint(x, y, cw, cw / 4, g.main, g.col, null, g.sub); }
   px = LT;
@@ -3245,9 +3497,13 @@ function rmSignPaint(R, quiet) {
   if (!R.signs) return;
   for (const end of ['back', 'front']) {
     const s = R.signs[end], D = R[end], N = rmNear(R, end), nx = end === 'front' ? R.h + 1 : R.h - 1;
-    const sub = !rmOk(D.to) ? (D.to > tipH ? 'not mined yet' : 'no block') : N && N.h === D.to && N.ready ? (D.to === nx ? (end === 'front' ? 'next block' : 'previous block') : 'jump') + ' · tap to change'
+    let sub = !rmOk(D.to) ? (D.to > tipH ? 'not mined yet' : 'no block') : N && N.h === D.to && N.ready ? (D.to === nx ? (end === 'front' ? 'next block' : 'previous block') : 'jump') + ' · tap to change'
       : N && N.failed ? "can't load · tap to change" : N && N.h === D.to ? 'loading…' : 'tap to change';
-    const txt = (end === 'back' ? '◀ ' : '') + 'BLOCK ' + fmt(D.to) + (end === 'front' ? ' ▶' : '');
+    let txt = (end === 'back' ? '◀ ' : '') + 'BLOCK ' + fmt(D.to) + (end === 'front' ? ' ▶' : '');
+    if (R.h === 0 && end === 'back' && D.to < 0) { txt = 'THE BEGINNING'; sub = 'there is no block before this one'; }
+    if (R.h === 0 && end === 'front' && D.to === 1 && N && N.h === 1 && N.ready && N.B.time > R.B.time) {
+      const g = N.B.time - R.B.time; sub = 'came ' + Math.floor(g / 86400) + ' days ' + Math.floor(g % 86400 / 3600) + ' hrs ' + Math.floor(g % 3600 / 60) + ' min later';
+    }
     const edge = rmOk(D.to) ? heatCol(blockHeat.get(D.to)) : null;
     if (s.txt === txt + sub + edge) continue;
     s.txt = txt + sub + edge; labPaint(s.x, s.y, 512, 128, txt, rmOk(D.to) ? '#ffb04a' : '#7a6853', null, sub, edge);
@@ -3290,8 +3546,20 @@ const rmVAO = (buf) => {
 };
 const rmParBuf = gl.createBuffer(), rmFixBuf = gl.createBuffer(), rmDoorBuf = gl.createBuffer();
 const rmParVAO = rmVAO(rmParBuf), rmFixVAO = rmVAO(rmFixBuf), rmDoorVAO = rmVAO(rmDoorBuf);
+// only the pictures changed: each parcel's picture corner is rewritten where it is (measured: remaking the whole list took up to 42 ms)
+function rmArt(tn) {
+  room.artDirty = false; room.filled = tn;
+  const L = room.fl, d = room.fa; if (!L || !d) return;
+  let lo = -1, hi = -1;
+  for (let i = 0; i < L.length; i++) {
+    const R = L[i][0], t = L[i][1].t, o = i * NF + 15, a = t.nearR || (R.B === cur && t.artR && t.artG === artGen ? t.artR : null);
+    const v0 = a ? a[0] : 0, v1 = a ? a[1] : 0, v2 = a ? a[2] : 0, v3 = a ? (t.nearR ? a[3] : t.artS || 1) : 0;
+    if (d[o] !== v0 || d[o + 1] !== v1 || d[o + 2] !== v2 || d[o + 3] !== v3) { d[o] = v0; d[o + 1] = v1; d[o + 2] = v2; d[o + 3] = v3; if (lo < 0) lo = i; hi = i; }
+  }
+  if (lo >= 0) { gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * NF * 4, d, lo * NF, (hi - lo + 1) * NF); }
+}
 function rmFill(tn) {
-  room.dirty = false; room.filled = tn;
+  room.dirty = room.artDirty = false; room.filled = tn;
   const its = [], order = [room.rooms[1], room.rooms[0], room.rooms[2]];   // the room you are in first: only its reflection is drawn
   for (const R of order) { if (R && R.ready) for (const it of R.plan.items) if (!it.gone) its.push([R, it]); if (R === room.rooms[1]) room.nParCur = its.length; }
   const d = new Float32Array(Math.max(1, its.length) * NF);
@@ -3304,7 +3572,7 @@ function rmFill(tn) {
     if (t.nearR) { d[o + 15] = t.nearR[0]; d[o + 16] = t.nearR[1]; d[o + 17] = t.nearR[2]; d[o + 18] = t.nearR[3]; }   // a sharp tile from the near sheet
     else if (R.B === cur && t.artR && t.artG === artGen) { d[o + 15] = t.artR[0]; d[o + 16] = t.artR[1]; d[o + 17] = t.artR[2]; d[o + 18] = t.artS || 1; }
   });
-  gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferData(gl.ARRAY_BUFFER, d, gl.DYNAMIC_DRAW); room.nPar = its.length;
+  gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferData(gl.ARRAY_BUFFER, d, gl.DYNAMIC_DRAW); room.nPar = its.length; room.fl = its; room.fa = d;
   if (room.fixDirty) {
     room.fixDirty = false;
     const C = room.rooms[1], fs = [C, room.rooms[0], room.rooms[2]].filter(R => R && R.ready).map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
@@ -3330,18 +3598,19 @@ async function nearTick(tn) {
   try {
     const p = room.p, rk = room.rooms.map(R => R && R.ready ? R.h : '').join();
     // which parcels are nearest: worked out again only after a few steps, or when a room comes or goes
-    if (Math.hypot(p.x - near.wx, p.z - near.wz) > .7 || rk !== near.rk || tn - near.wt > 2) {
+    const t0 = performance.now();
+    if (Math.hypot(p.x - near.wx, p.z - near.wz) > 1.2 || rk !== near.rk || tn - near.wt > 2) {
       near.wx = p.x; near.wz = p.z; near.wt = tn; near.rk = rk;
       const want = [];
-      for (const R of room.rooms) if (R && R.ready) for (const it of R.plan.items) { const t = it.t; if ((t.art || t.word) && !it.gone) { const dz = it.w[2] - p.z; if (dz > -12 && dz < 12) { const d = Math.hypot(it.w[0] - p.x, dz); if (d < 12) want.push([d, t]); } } }
+      for (const R of room.rooms) if (R && R.ready && p.z - 12 < R.z0 && p.z + 12 > R.z0 - R.L) for (const it of R.nl || (R.nl = R.plan.items.filter(i => i.t.art || i.t.word))) { const t = it.t; if ((t.art || t.word) && !it.gone) { const dz = it.w[2] - p.z; if (dz > -12 && dz < 12) { const d = Math.hypot(it.w[0] - p.x, dz); if (d < 12) want.push([d, t]); } } }
       want.sort((a, b) => a[0] - b[0]); if (want.length > NCN * NCN) want.length = NCN * NCN;
       near.want = want; near.keep = new Set(want.map(x => x[1]));
       for (const [t, sl] of near.slot) if (!near.keep.has(t)) { near.slot.delete(t); near.free.push(sl); t.nearR = null; }
     }
-    let n = 0; const t0 = performance.now();
+    let n = 0;
     for (const [, t] of near.want) {
       if (!near.keep.has(t) || near.slot.has(t)) continue;
-      if (!near.free.length || performance.now() - t0 > 5) break;   // a few each moment, so walking stays smooth
+      if (!near.free.length || performance.now() - t0 > 4) break;   // a few each moment, so walking stays smooth
       const sl = near.free.pop(); near.slot.set(t, sl);
       const x = (sl % NCN) * 256, y = Math.floor(sl / NCN) * 256;
       let cvs, sm = true;
@@ -3361,18 +3630,18 @@ async function nearTick(tn) {
     // the sheet's smaller copies (for parcels further off) are remade at most a couple of times a second
     if (near.dirty && room && tn - near.mip > .5) { near.mip = tn; near.dirty = false; gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, nearTex); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0);
       for (const [t, sl, r] of near.pend.splice(0)) if (near.slot.get(t) === sl) t.nearR = r;
-      room.dirty = true; }
+      room.artDirty = true; }
   } finally { near.busy = false; }
 }
 // the sliding doors: two panels per doorway that part when you come near (once the room behind is ready)
 function rmDoors(dt) {
   const r = room.rooms, p = room.p, d = [];
   const panel = (R, end, o) => {
-    const z = end === 'back' ? R.z0 + WT / 4 : R.z0 - R.L - WT / 4;
+    const z = end === 'back' ? R.z0 + WT / 4 : R.z0 - R.L - WT / 4, RC_ = R.h === 0 ? RCG : RC;
     for (const s of [-1, 1]) {
       const x = s * (DOOR / 4 + o * DOOR / 2 * .98);
-      d.push(x, DOORH / 2, z, DOOR / 2 - .01, DOORH - .01, .07, RC.door[0], RC.door[1], RC.door[2], 0, x, DOORH / 2, z, 0, .12, 0, 0, 0, 0);
-      d.push(x - s * (DOOR / 4 - .03), DOORH / 2, z + (end === 'back' ? -.04 : .04), .02, DOORH * .92, .01, RC.neon[0], RC.neon[1], RC.neon[2], 0, x, DOORH / 2, z, 0, 2, 0, 0, 0, 0);
+      d.push(x, DOORH / 2, z, DOOR / 2 - .01, DOORH - .01, .07, RC_.door[0], RC_.door[1], RC_.door[2], 0, x, DOORH / 2, z, 0, .12, 0, 0, 0, 0);
+      d.push(x - s * (DOOR / 4 - .03), DOORH / 2, z + (end === 'back' ? -.04 : .04), .02, DOORH * .92, .01, RC_.neon[0], RC_.neon[1], RC_.neon[2], 0, x, DOORH / 2, z, 0, 2, 0, 0, 0, 0);
     }
   };
   for (let i = 0; i < 3; i++) {
@@ -3397,6 +3666,14 @@ function rmStep(dt) {
   p.vx += (tx - p.vx) * k; p.vz += (tz - p.vz) * k;
   let nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
   const v = Math.hypot(p.vx, p.vz); p.ph += v * dt * 2.3; p.bob = Math.sin(p.ph * 2) * .007 * Math.min(1, v / 2.7);   // (a gentle bob: the view stays steady as you walk)
+  if (lifeWeights(heatS)[0] > .5) for (const [hx, hz, r] of LIFE.XMAS) {
+    const z = hz + Math.round((nz - hz) / 32) * 32, rad = r * .5 + .22, dx = nx - hx, dz = nz - z, d = Math.hypot(dx, dz);
+    if (d < rad && Math.min(...room.rooms.flatMap(R => R && R.z0 != null ? [Math.abs(z - R.z0), Math.abs(z - R.z0 + R.L)] : [9])) > 1.2) { const k = d > 1e-4 ? rad / d : 0; nx = hx + (k ? dx * k : rad); nz = z + dz * k; }
+  }
+  if (C && C.ready && C.h === 0) {
+    const zc = C.z0 - C.L / 2, rad = trib && trib.gifts && trib.gifts.length ? 1.48 : .78, dx = nx, dz = nz - zc, dd = Math.hypot(dx, dz);
+    if (dd < rad) { const k = dd > 1e-4 ? rad / dd : 0; nx = k ? dx * k : 0; nz = zc + (k ? dz * k : rad); }
+  }
   if (C && C.ready) {
     const xi = RW / 2 - DEEP - .3, xd = DOOR / 2 - .3, zb = C.z0, zf = C.z0 - C.L;
     const openB = C.back.o > .85 && rmNear(C, 'back'), openF = C.front.o > .85 && rmNear(C, 'front');
@@ -3419,13 +3696,23 @@ function roomFrame(W, H, tn, dpr) {
   const VP = mul(persp(fov, asp, .05, 400), look(eye, [eye[0] + dir[0], eye[1] + dir[1], eye[2] + dir[2]]));
   room.view = {eye, dir, fov, asp};
   rmDoors(dt);
-  if (room.dirty && tn - (room.filled || 0) > .2) rmFill(tn);
+  if (room.dirty && tn - (room.filled || 0) > .2) rmFill(tn); else if (room.artDirty && tn - (room.filled || 0) > .2) rmArt(tn);
   nearTick(tn);
   if (room.held && room.held.back && tn > room.held.back) { room.held.it.c = room.held.it.f = null; room.held.it.m = 1; room.held.it.t0 = -9; room.held = null; room.dirty = true; }
   rmHover();
   const crewList = crew.on && crew.mates.size ? crewPose(tn, dt, VP, W, H) : []; crewSend(tn);
   const fdt = Math.min(0.1, Math.max(0, tn - (lastFT || tn))); lastFT = tn;
-  heatS += (heatT - heatS) * Math.min(1, fdt * 0.6);
+  {   // the floor's season: as you walk up to a door it is already turning into the next room's, half way at the doorway, so stepping through never jumps
+    const C = room.rooms[1], hC = C && blockHeat.get(C.h);
+    if (hC != null && !heatHold) {
+      let tg = hC;
+      for (const [i, end] of [[0, 'back'], [2, 'front']]) {
+        const N = room.rooms[i], hN = N && blockHeat.get(N.h); if (hN == null || !C.ready) continue;
+        const k = Math.max(0, 1 - Math.abs(p.z - (end === 'back' ? C.z0 : C.z0 - C.L)) / 4.5); tg += (hN - hC) * .5 * k * k * (3 - 2 * k);
+      }
+      heatT = tg; heatS += (heatT - heatS) * Math.min(1, fdt * 3);
+    } else heatS += (heatT - heatS) * Math.min(1, fdt * 0.6);
+  }
   const LW = lifeWeights(heatS), rf = [2.1, 2.3, 0.6, 0.7, 1, 1.1, 1.5].reduce((a, r, k) => a + r * LW[k], 0);
   // walls, bookcases, doors and parcels (mir: drawn upside down, as the reflection in the floor)
   const all = mir => {
@@ -3443,7 +3730,7 @@ function roomFrame(W, H, tn, dpr) {
   };
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
-  gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr);
+  gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
   { const ty = Math.tan(fov / 2), rx = [Math.cos(p.yaw), 0, -Math.sin(p.yaw)], up = crs(rx, dir);   // the sky: which way each pixel looks
     gl.uniform1f(bgP.u.uSky, 1); gl.uniform3fv(bgP.u.uF, dir); gl.uniform3fv(bgP.u.uX, rx.map(v => v * ty * asp)); gl.uniform3fv(bgP.u.uY, up.map(v => v * ty)); }
   gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.uniform1f(bgP.u.uSky, 0);
@@ -3453,7 +3740,8 @@ function roomFrame(W, H, tn, dpr) {
   all(1);
   gl.frontFace(gl.CCW); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
   // the floor's life: both copies of the ring, laid along the hall (fish first: they swim under the water)
-  const rings = f => { for (const [q, z] of [[0, 0], [1, 16]]) { LROOM = [1, q, z, p.z]; f(); } LROOM = [0, 0, 0, 0]; };
+  const [R0, R1, R2] = room.rooms, wz = (R, f, d) => R && R.z0 != null ? R.z0 - (f ? R.L : 0) : d;
+  const rings = f => { LWALL = [wz(R0, 0, 1e5), wz(R1, 0, 1e5), wz(R1, 1, -1e5), wz(R2, 1, -1e5)]; for (const [q, z] of [[0, 0], [1, 16]]) { LROOM = [1, q, z, p.z]; f(); } LROOM = [0, 0, 0, 0]; LWALL = [1e5, 1e5, -1e5, -1e5]; };
   if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, tn, LW, true));
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
@@ -3537,6 +3825,7 @@ function rmSignSet(n) {
   const C = room.rooms[1], end = room.signEnd; n = Math.floor(+String(n).replace(/[^0-9]/g, ''));
   if (!C || !end || !(n >= 0) || n > tipH || n === C.h) return;
   C[end].to = n; rmNeighbours();
+  if (C.h === 0 && C.ready) { rmFix(C); room.fixDirty = true; }   // (block 0's front page only stands in a doorway that leads nowhere)
 }
 document.getElementById('rsg').onclick = () => rmSignSet($rsi.value);
 document.getElementById('rsx').onclick = () => $rs.classList.remove('on');
