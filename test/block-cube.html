@@ -1805,9 +1805,10 @@ let futBlocks = [], pastBlocks = [];
 // paging back through every mined block in the strip: pastTop = null follows the newest, else the height of the first tile shown
 let pastTop = null; const olderCache = new Map(), olderAsk = new Set();
 const blockAt = h => pastBlocks.find(b => b.height === h) || olderCache.get(h);
+let olderGo = Promise.resolve();   // (one after another)
 function wantOlder(h) {   // mempool.space hands out 15 mined blocks at a time, from any height down
   if (olderAsk.has(h) || !SOURCES[0].on) return; olderAsk.add(h);
-  mpFetch('/api/v1/blocks/' + h, null, 15000).then(r => r.json()).then(list => { for (const b of list) olderCache.set(b.height, b); strip(); }).catch(() => olderAsk.delete(h));
+  (olderGo = olderGo.then(() => new Promise(r => setTimeout(r, 150)))).then(() => mpFetch('/api/v1/blocks/' + h, null, 15000)).then(r => r.json()).then(list => { for (const b of list) olderCache.set(b.height, b); strip(); }).catch(() => olderAsk.delete(h));
 }
 function stripArrow(ch, label, onClick) { const b = document.createElement('button'); b.className = 'sa'; b.innerHTML = ch; b.title = label; b.setAttribute('aria-label', label); b.onclick = onClick; return b; }
 const $fut = document.getElementById('fut'), $past = document.getElementById('past');
@@ -1880,7 +1881,7 @@ function drawFW() {
   fwTop = top; const got = [];
   for (let i = 0; i < FW_N; i++) {
     const h = top - FW_N + 1 + i, b = blockAt(h), r = fwRate(b), el = fwBars[i];
-    if (!b) wantOlder(h + Math.min(14, FW_N - 1 - i));   // fetch the missing stretch (15 blocks at a time)
+    if (!b && ![...olderAsk].some(x => x >= h && x - 14 <= h)) wantOlder(h + Math.min(14, FW_N - 1 - i));   // fetch the missing stretch (15 blocks at a time), once
     el.style.height = r == null ? '2px' : Math.round(6 + Math.max(0, Math.min(1, (Math.log10(Math.max(r, 0.1)) + 1) / 2.3)) * 94) + '%';
     el.style.background = r == null ? 'rgba(247,147,26,.15)' : feeCss(Math.max(r, 0.1));
     el.classList.toggle('cur', mode === 'block' && want === h);
@@ -2026,7 +2027,8 @@ const mfl = (t, b) => Math.floor((t.fl || 0) / Math.pow(2, b)) % 2 === 1, tcss =
 // reader as a mined block, so it counts as an inscription only if it holds an 'ord' envelope, and a new rune by its runestone
 const LR_CB = new Uint8Array([1, 0, 0, 0, 1].concat(new Array(32).fill(0), [255, 255, 255, 255, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0]));   // a stand-in first transaction (the reader skips a block's first)
 const lrSeen = new Map();   // what each read found, by transaction id (the last few thousand)
-let lrQ = [], lrOn = 0, lrAt = 0, lrT = 0;
+let lrQ = [], lrOn = 0, lrAt = 0, lrT = 0, lrRR = 0;
+const LR_SITES = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://blockstream.info'];
 function lrApply(t, r) {
   t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
   if (r.word) t.word = r.word;
@@ -2049,7 +2051,7 @@ function lrPump() {
       try {
         const wait = lrAt - performance.now(); lrAt = Math.max(lrAt, performance.now()) + 150;   // a few a second, kind to mempool.space
         if (wait > 0) await new Promise(f => setTimeout(f, wait));
-        const hex = (await (await mpFetch('/api/tx/' + t.id + '/hex', null, 15000)).text()).trim();
+        const hex = (await (await mpFetch('/api/tx/' + t.id + '/hex', null, 15000, LR_SITES[lrRR++ % LR_SITES.length])).text()).trim();   // (taking turns between sites)
         if (/^[0-9a-f]+$/i.test(hex) && hex.length % 2 === 0) {
           const n = hex.length >> 1, X = new Uint8Array(81 + LR_CB.length + n); X[80] = 2; X.set(LR_CB, 81);
           for (let i = 0, o = 81 + LR_CB.length; i < n; i++) X[o + i] = parseInt(hex.substr(i * 2, 2), 16);
