@@ -2641,12 +2641,12 @@ function dlSave(txt, name) {
 // Block Paint carried inside a downloaded file (as plain letters, so nothing in it can break the page)
 const bpEncode = s => { const u = new TextEncoder().encode(s); let b = ''; for (let i = 0; i < u.length; i += 32768) b += String.fromCharCode.apply(null, u.subarray(i, i + 32768)); return btoa(b); };
 const bpDecode = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new TextDecoder().decode(u); };
-const DL_EXTRA = /<script id="bc-extra">[\s\S]*?<\/script>\n?/g;
+const DL_EXTRA = /(<head>)\s*<script id="bc-extra">[^<]*<\/script>\n?/i;   // (only the block a download puts at the top: its letters have no '<')
 // this page's own code, as the file is now (checked with the server, so never an old copy the browser kept), without the extras
 async function dlCube() {
   let txt = null;
   if (location.protocol !== 'file:') try { const r = await fetch(location.href.split('#')[0], {cache: 'no-cache'}); if (r.ok) { const t = await r.text(); if (/<canvas/i.test(t) && /Block Cube/.test(t)) txt = t; } } catch (e) {}
-  return (txt || SRC0).replace(DL_EXTRA, '');
+  return (txt || SRC0).replace(DL_EXTRA, '$1');
 }
 async function dlPaint() {
   if (window.BC_PAINT) return bpDecode(window.BC_PAINT);
