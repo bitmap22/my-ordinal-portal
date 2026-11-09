@@ -1335,7 +1335,7 @@ function loadEtch(B) {
     for (const t of tries) {   // (in block order: a name made twice in one block goes to the first)
       const n = t.rn.replace(/•/g, '');
       if (made.has(n) && !first.has(n)) { first.add(n); continue; }
-      t.sc &= ~(1 << TF.etch); t.rn = null; t._k = null;
+      t.rnLost = t.rn; t.sc &= ~(1 << TF.etch); t.rn = null; t._k = null;
       if (t.word && t.word.k === 'rune') t.word = (t.sc >> TF.rmint) & 1 && t.mint ? {k: 'rune', s: 3, a: '', b: 'mint ' + t.mint} : {k: 'rune', s: 4, a: '', b: ''};
     }
     B.etch = {ok: true};
@@ -2304,6 +2304,7 @@ function select(t) {
     const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
     if (has(TF.rune)) rows.push(['rune', [has(TF.etch) && 'etched' + (t.rn ? ' ' + t.rn : ''), has(TF.rmint) && 'minted', has(TF.rmove) && 'moved', has(TF.alkanes) && 'Alkanes'].filter(Boolean).join(' · ') || 'runestone']);
+    if (t.rnLost) rows.push(['new rune', 'tried for ' + t.rnLost + ' · it never came into being (ordinals.com)']);
     if (t.msg) rows.push(['message', '“' + t.msg + '”']);
   }
   $cr.innerHTML = ''; addRows(rows); if (t._held && t._held.length && room && room.held && room.held.it.t === t) addRows(t._held);
@@ -5890,6 +5891,47 @@ function rmHover() {
 const shortA = a => a && a.length > 24 ? a.slice(0, 11) + '…' + a.slice(-8) : a || '';
 const ordJson = async p => { for (let k = 0; ; k++) try { return await (await fetchT('https://ordinals.com' + p, {headers: {Accept: 'application/json'}}, 15000)).json(); } catch (e) { if (k) throw e; await new Promise(r => setTimeout(r, 1200)); } };   // (once more if it was busy)
 const runeAmt = (v, d) => { const n = Number(v || 0) / 10 ** (d || 0); return n.toLocaleString('en-US', {maximumFractionDigits: Math.min(8, d || 0)}); };
+// a transaction's runestone, read from its OP_RETURN (as mempool.space gives it): its fields and its edicts (which rune, how much, to which output)
+const hexB = h => { const u = new Uint8Array(h.length >> 1); for (let i = 0; i < u.length; i++) u[i] = parseInt(h.substr(i * 2, 2), 16); return u; };
+const lebs = u => { const o = []; for (let i = 0; i < u.length;) { let v = 0n, sh = 0n, c; do { c = u[i++]; v |= BigInt(c & 127) << sh; sh += 7n; } while (c & 128 && i < u.length); o.push(v); } return o; };
+const b15 = vs => { const o = []; for (let v of vs) for (let k = 0; k < 15; k++) { o.push(Number(v & 255n)); v >>= 8n; } return new Uint8Array(o); };   // (Alkanes keeps 15 bytes in each number)
+function stoneOf(tx) {
+  const o = tx && tx.vout && tx.vout.find(v => /^6a5d/.test(v.scriptpubkey || '')); if (!o) return null;
+  const s = hexB(o.scriptpubkey), ints = lebs(catB(pushes(s, 2, s.length).filter(x => x[1]).map(x => x[1])));
+  const F = {}; let body = [];
+  for (let k = 0; k < ints.length; k += 2) { const g = Number(ints[k]); if (g === 0) { body = ints.slice(k + 1); break; } if (k + 1 < ints.length) (F[g] = F[g] || []).push(ints[k + 1]); }
+  const ed = []; let bk = 0n, tx2 = 0n;
+  for (let i = 0; i + 3 < body.length; i += 4) { bk += body[i]; tx2 = body[i] ? body[i + 1] : tx2 + body[i + 1]; ed.push({id: bk + ':' + tx2, amt: body[i + 2], out: Number(body[i + 3])}); }
+  return {F, ed};
+}
+// the Alkanes calls packed into a runestone (protocol 1): which alkane, and the opcode it is asked to run
+function alkCalls(F) {
+  if (!F || !F[16383]) return [];
+  const ints = lebs(b15(F[16383])), out = [];
+  for (let i = 0; i < ints.length && out.length < 4;) {
+    const tag = ints[i++]; if (!tag) break; const n = Number(ints[i++] || 0n), v = ints.slice(i, i + n); i += n; if (v.length < n) break;
+    if (tag !== 1n) { out.push({other: tag}); continue; }
+    const msg = []; for (let k = 0; k + 1 < v.length; k += 2) { if (v[k] === 0n) break; if (v[k] === 81n) msg.push(v[k + 1]); }
+    const c = lebs(b15(msg)); out.push(c.length >= 2 ? {b: c[0], x: c[1], op: c.length > 2 ? c[2] : null} : {bad: true});
+  }
+  return out;
+}
+const ALK_NAMES = {'2:0': 'DIESEL', '32:0': 'frBTC'};
+const alkSay = c => c.other != null ? 'a message for protocol ' + c.other : c.bad ? 'a message it could not read' :
+  c.b === 1n ? 'makes a new alkane' : c.b === 3n ? 'makes a new alkane at 4:' + c.x : c.b === 5n ? 'makes a copy of alkane 2:' + c.x : c.b === 6n ? 'makes a copy of alkane 4:' + c.x :
+  'calls alkane ' + c.b + ':' + c.x + (ALK_NAMES[c.b + ':' + c.x] ? ' (' + ALK_NAMES[c.b + ':' + c.x] + ')' : '') + (c.op != null ? ' · opcode ' + c.op + (c.op === 77n ? ' (mint)' : c.op === 0n ? ' (set up)' : '') : '');
+// a rune's page on ordinals.com, by name or id (kept, so a rune is only asked for once)
+const runePages = new Map();
+function runePage(q) {
+  if (runePages.has(q)) return runePages.get(q);
+  const p = ordFetch('/rune/' + encodeURIComponent(q), 15000, ['https://ordinals.com', 'https://ordinals.com']).then(r => r.text()).then(h => {
+    const D = {}; for (const m of h.matchAll(/<dt>([^<]+)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/g)) D[m[1].trim()] = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    D.name = ((/<h1>([^<]+)<\/h1>/.exec(h) || [])[1] || '').trim(); if (!D.id) throw new Error('no rune'); return D;
+  });
+  runePages.set(q, p); p.catch(() => runePages.delete(q));
+  return p;
+}
+const runeAmount = (v, d) => { d = +d || 0; const s = v.toString().padStart(d + 1, '0'), w = s.slice(0, s.length - d), f = d ? s.slice(-d).replace(/0+$/, '') : ''; return BigInt(w).toLocaleString('en-US') + (f ? '.' + f : ''); };
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
   t._held = [];
@@ -5939,6 +5981,49 @@ async function heldInfo(t) {
       show(rows);
     }
   } catch (e) {}
+  const tx = t._x && t._x.tx, names = kindsOf(t);
+  if (tx && (has(TF.rmove) || has(TF.alkanes))) try {   // runes moved, and Alkanes calls: read from the runestone itself
+    const st = stoneOf(tx);
+    if (st && has(TF.alkanes)) { const A = alkCalls(st.F); if (A.length) show(A.map((c, k) => [k ? '' : 'alkanes', alkSay(c)])); }
+    if (st && st.ed.length) {
+      const rows = [], ids = [...new Set(st.ed.slice(0, 4).map(e => e.id))], P = {};
+      await Promise.all(ids.map(id => (id === '0:0' ? Promise.reject() : runePage(id)).then(D => { P[id] = D; }, () => {})));
+      for (const e of st.ed.slice(0, 4)) {
+        const D = P[e.id], to = e.out === tx.vout.length ? 'shared over every output' : 'to out ' + (e.out + 1);
+        rows.push([rows.length ? '' : 'runes moved', (D ? runeAmount(e.amt, D.divisibility) + ' ' + D.name + (D.symbol ? ' ' + D.symbol : '') : e.amt.toLocaleString('en-US') + ' of rune ' + (e.id === '0:0' ? 'made here' : e.id)) + ' · ' + to]);
+      }
+      if (st.ed.length > 4) rows.push(['', '+ ' + fmt(st.ed.length - 4) + ' more']);
+      show(rows);
+    }
+  } catch (e) {}
+  if (has(TF.cp) && t.id) try {   // Counterparty: what the message does (counterparty.io's API reads it)
+    const j = await (await fetchT('https://api.counterparty.io:4000/v2/transactions/' + t.id + '?verbose=true', null, 15000)).json(), r = j && j.result;
+    if (r) {
+      const ev = (r.events || []).find(e => e.params && e.params.asset) || null, P = ev ? ev.params : (r.unpacked_data && r.unpacked_data.message_data) || {};
+      const rows = [['counterparty', String(r.transaction_type || (r.unpacked_data && r.unpacked_data.message_type) || 'message').replace(/_/g, ' ') + (r.valid === false ? ' · not valid' : '')]];
+      if (P.asset) rows.push(['asset', String(P.asset_longname || P.asset) + (P.quantity_normalized != null ? ' · ' + P.quantity_normalized : '')]);
+      if (P.destination) rows.push(['sent to', shortA(String(P.destination))]);
+      const ab = P.asset_info && P.asset_info.description; if (ab) rows.push(['about', String(ab).slice(0, 90)]);
+      if (P.text) rows.push(['says', String(P.text).slice(0, 90)]);
+      show(rows);
+    }
+  } catch (e) {}
+  if ((has(TF.stamps) || names.includes('Stamps') || names.includes('SRC-20')) && t.id) try {   // a Stamp, and its SRC-20 token (stampchain.io)
+    const j = await (await fetchT('https://stampchain.io/api/v2/stamps/' + t.id, null, 15000)).json(), S = j && j.data && j.data.stamp;
+    if (S) show([['stamp', (S.stamp != null ? '#' + fmt(S.stamp) : 'unnumbered') + (S.stamp_mimetype ? ' · ' + S.stamp_mimetype : '') + (S.file_size_bytes ? ' · ' + fmt(S.file_size_bytes) + ' bytes' : '')],
+      ['asset', String(S.cpid || '') + (S.supply != null ? ' · supply ' + fmt(S.supply) : '') + (S.locked ? ' · locked' : '')], ['made by', shortA(String(S.creator || ''))]]);
+  } catch (e) {}
+  if (names.includes('SRC-20') && t.id) try {
+    const j = await (await fetchT('https://stampchain.io/api/v2/src20/tx/' + t.id, null, 15000)).json(), S = j && j.data;
+    if (S && S.tick) show([['SRC-20', String(S.op || '').toLowerCase() + ' ' + (S.amt != null ? String(parseFloat(S.amt)) + ' ' : '') + String(S.tick).toUpperCase()],
+      ...(S.holders != null ? [['token', fmt(S.holders) + ' holders' + (S.progress != null ? ' · ' + S.progress + '% minted' : '')]] : [])]);
+  } catch (e) {}
+  if (has(TF.brc20)) {   // BRC-20: what the inscription asks for
+    let o = null; try { o = JSON.parse(t.txt || ''); } catch (e) {}
+    const op = o ? String(o.op || '') : '', tk = (o ? String(o.tick || '') : t.tick || '').toUpperCase();
+    if (o && op) show([['BRC-20', op + ' ' + (op === 'deploy' ? tk + (o.max ? ' · max ' + o.max : '') + (o.lim ? ' · ' + o.lim + ' a mint' : '') : (o.amt != null ? o.amt + ' ' : '') + tk)]]);
+  }
+  if (names.includes('CAT-21')) show([['CAT-21', 'a cat is born here (its locktime is 21)']]);
 }
 // holding a parcel: it flies from its shelf into your hands and becomes a tablet showing what it is
 function rmHold(it) {
