@@ -6134,7 +6134,7 @@ function srShow(rows) {
     else {
       el.className = 'it'; el.innerHTML = '<div><b></b><span></span></div><button>GO</button>';
       el.querySelector('b').textContent = r.t; const sp = el.querySelector('span'); sp.textContent = r.s || '';
-      const bt = el.querySelector('button');
+      const bt = el.querySelector('button'); if (r.btn) bt.textContent = r.btn;
       if (!r.go) bt.style.display = 'none';
       else bt.onclick = async () => {
         if (typeof r.go !== 'function') return srGo(r.go);
@@ -6157,10 +6157,7 @@ async function srFind(q) {
     const i = +m[1], h = +m[2];
     return srShow([{t: L, s: 'parcel ' + srNum(i) + ' of block ' + srNum(h) + mined(h), go: h <= tip ? {h, idx: i, label: L} : null}]);
   }
-  if ((m = L.match(/^(\d+)\.bitmap$/))) {
-    const h = +m[1];
-    return srShow([{t: L, s: 'the whole of block ' + srNum(h) + mined(h), go: h <= tip ? {h, label: L} : null}]);
-  }
+  if ((m = L.match(/^(\d+)\.bitmap$/))) return srBitmap(+m[1], live);
   if ((m = L.match(/^(?:#|no\.?|inscription#?|insc#?|i#)(-?\d+)$/))) return srShow([srInsRow(+m[1])]);
   if ((m = L.match(/^\d+$/))) {
     const n = +m[0], rows = [];
@@ -6402,6 +6399,215 @@ async function srName(nm, live) {
   const own = d.owner ? 'held by ' + srShort(d.owner) : 'held by an unknown address';
   srShow([{t: nm, s: own + ' · where it was inscribed: press GO', go: async () => { const r = await srInsId(d.inscription_id); return {h: r.h, id: d.inscription_id.slice(0, 64), label: nm}; }},
           {m: 'found by BNRP (api.bnrp.name), a free name lookup'}]);
+}
+
+/* ---- which inscription claimed N.bitmap: the first valid "N.bitmap" inscribed in block N or later (bop's LiveOCI rules: the
+   body exactly "N.bitmap", no compression, no delegate). Below 942,000: bop's on-chain index (OCI), read the same way the
+   Minitors read it. From 942,000 up (and every new bitmap as it arrives): the blocks themselves, from block N onward. */
+const BM = (() => {
+  const getJSON = u => ordFetch(u, 60000).then(r => r.json()), getText = u => ordFetch(u, 30000).then(r => r.text());
+var OCI_LIMIT = 942000, WALK_MAX = 6, CHECK_MS = 30000;
+var OCI_PAGES = ['01bba6c58af39d7f199aa2bceeaaba1ba91b23d2663bc4ef079a4b5e442dbf74i0',
+  'bb01dfa977a5cd0ee6e900f1d1f896b5ec4b1e3c7b18f09c952f25af6591809fi0', 'bb02e94f3062facf6aa2e47eeed348d017fd31c97614170dddb58fc59da304efi0',
+  'bb037ec98e6700e8415f95d1f5ca1fe1ba23a3f0c5cb7284d877e9ac418d0d32i0', 'bb9438f4345f223c6f4f92adf6db12a82c45d1724019ecd7b6af4fcc3f5786cei0',
+  'bb0542d4606a9e7eb4f31051e91f7696040db06ca1383dff98505618c34d7df7i0', 'bb06a4dffba42b6b513ddee452b40a67688562be4a1345127e4d57269e6b2ab6i0',
+  'bb076934c1c22007b315dd1dc0f8c4a2f9d52f348320cfbadc7c0bd99eaa5e18i0', 'bb986a1208380ec7db8df55a01c88c73a581069a51b5a2eb2734b41ba10b65c2i0',
+  'b907b51a239e3a37f29f8222fb274f828c6ebf7b93ce501a55b7171daaa75758i0', 'b942b6477c7da9090edb9751429ba9c3ba01b39ab972fc888d481f528e3e03c3i0'];
+// Bitmaps below 840,000 that are not the first inscription on their sat (from the OCI module, credited there to @_lefrog).
+var OCI_SATIDX = { 92871: 1, 92970: 1, 123132: 1, 365518: 1, 700181: 1, 826151: 1, 827151: 1, 828151: 1, 828239: 1, 828661: 1,
+  829151: 1, 830151: 1, 832104: 2, 832249: 2, 832252: 2, 832385: 4, 833067: 1, 833101: 3, 833105: 4, 833109: 4, 833121: 8,
+  834030: 2, 834036: 2, 834051: 17, 834073: 4, 836151: 1, 837115: 2, 837120: 2, 837151: 1, 837183: 3, 837188: 2, 838058: 5,
+  838068: 2, 838076: 2, 838096: 1, 838151: 1, 838821: 1, 839151: 1, 839377: 1, 839378: 2, 839382: 2, 839397: 1 };
+function ociPageNo(n) { return n >= 907000 ? 10 : n >= 840000 ? 9 : Math.floor(n / 100000); }
+function ociPos(n) { return n >= 907000 ? n - 907000 : n >= 840000 ? n - 840000 : n % 100000; }
+// Read one OCI page the way the OCI module itself does, quirks included.
+function ociDecode(p, text) {
+  var d, full = [], sats = [];
+  function pi(v) { return parseInt(String(v)); }
+  function undelta(list, out) { list.forEach(function (s, i) { out.push(i ? pi(out[i - 1]) + pi(s) : pi(s)); }); }
+  if (p >= 9) { d = JSON.parse(text); undelta(d.deltaEncodedSats, sats); return { sats: sats, map: d.satIndexMap || {} }; }
+  if (p === 2 || p === 3) { d = JSON.parse('[' + text + ']'); d = [d.slice(0, 99999), d.slice(100000, 199999)]; }
+  else {
+    d = text;
+    try { d = JSON.parse(d.split('\\n  ').join('')); } catch (e) {}
+    if (typeof d === 'string') try { d = JSON.parse(d.split('  ').join('')); } catch (e) {}
+  }
+  undelta(d[0], full);
+  d[1].forEach(function (pos, i) { sats[pos] = full[i]; });
+  return { sats: sats, map: null };
+}
+var ociPages = {};
+function ociFirst(n) {
+  var p = ociPageNo(n);
+  if (!ociPages[p]) ociPages[p] = getText('/content/' + OCI_PAGES[p]).then(function (t) { return ociDecode(p, t); });
+  return ociPages[p].then(function (pg) {
+    var sat = pg.sats[ociPos(n)], at = n >= 840000 ? (pg.map[String(n)] || 0) : (OCI_SATIDX[n] || 0);
+    if (typeof sat !== 'number' || !(sat > 0) || sat % 1 || sat > 9007199254740991) return null;
+    return getJSON('/r/sat/' + sat + '/at/' + at).then(function (j) { return (j && j.id) || null; });
+  });
+}
+
+// From 942,000 up: Bitcoin's own blocks, read straight from ord, in Bitcoin order (transaction, input, envelope).
+function hexBytes(h) {
+  var n = h.length >> 1, b = new Uint8Array(n), i, a, c;
+  for (i = 0; i < n; i++) { a = h.charCodeAt(2 * i); c = h.charCodeAt(2 * i + 1); b[i] = ((a & 15) + (a > 57 ? 9 : 0)) << 4 | ((c & 15) + (c > 57 ? 9 : 0)); }
+  return b;
+}
+// The script parts of an ord envelope: pushes (OP_1NEGATE and OP_1..OP_16 count as pushes), or a bare opcode. null = broken script.
+function scriptParts(s) {
+  var out = [], i = 0, op, k;
+  while (i < s.length) {
+    op = s[i++]; k = -1;
+    if (op <= 0x4b) k = op;
+    else if (op === 0x4c) { if (i + 1 > s.length) return null; k = s[i]; i += 1; }
+    else if (op === 0x4d) { if (i + 2 > s.length) return null; k = s[i] | s[i + 1] << 8; i += 2; }
+    else if (op === 0x4e) { if (i + 4 > s.length) return null; k = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+    if (k >= 0) { if (i + k > s.length) return null; out.push({ d: s.subarray(i, i + k) }); i += k; }
+    else if (op === 0x4f) out.push({ d: new Uint8Array([0x81]), num: 1 });
+    else if (op >= 0x51 && op <= 0x60) out.push({ d: new Uint8Array([op - 0x50]), num: 1 });
+    else out.push({ op: op });
+  }
+  return out;
+}
+// Each finished envelope (OP_FALSE OP_IF "ord" ... OP_ENDIF) in a script, as its list of pushes.
+function envelopes(s) {
+  var t = scriptParts(s), out = [], i = 0, x, y, pay, end;
+  if (!t) return out;
+  while (i < t.length) {
+    x = t[i++];
+    if (!x.d || x.d.length || x.num) continue;
+    y = t[i];
+    if (!y || y.op !== 0x63) continue;
+    i++; y = t[i];
+    if (!y || !y.d || y.d.length !== 3 || y.d[0] !== 0x6f || y.d[1] !== 0x72 || y.d[2] !== 0x64) continue;
+    i++; pay = []; end = 0;
+    while (i < t.length) { y = t[i++]; if (y.op !== undefined) { end = y.op === 0x68 ? 1 : 2; break; } pay.push(y.d); }
+    if (end === 1) out.push(pay);
+  }
+  return out;
+}
+// LiveOCI's test: the body is exactly "<n>.bitmap", no compression tag, no delegate tag.
+function isClaim(pay, want) {
+  var at = -1, i, j, o = 0, len = 0, enc = null, del = null;
+  for (i = 0; i < pay.length; i += 2) if (!pay[i].length) { at = i; break; }
+  if (at < 0) return false;
+  for (i = 0; i + 1 < at; i += 2) {
+    if (pay[i].length === 1 && pay[i][0] === 9 && enc === null) enc = pay[i + 1];
+    if (pay[i].length === 1 && pay[i][0] === 11 && del === null) del = pay[i + 1];
+  }
+  if ((enc && enc.length) || (del && del.length)) return false;
+  for (i = at + 1; i < pay.length; i++) len += pay[i].length;
+  if (len !== want.length) return false;
+  for (i = at + 1; i < pay.length; i++) for (j = 0; j < pay[i].length; j++) if (pay[i][j] !== want.charCodeAt(o++)) return false;
+  return true;
+}
+// The first claim in one block: which transaction, and its inscription number inside that transaction.
+function blockClaim(b, want) {
+  var p = 80, t, i, j, k, l, nin, nout, items, w, wits, start, mid, seg, idx, s, env, count;
+  function vi() {
+    var x = b[p++];
+    if (x < 253) return x;
+    if (x === 253) { x = b[p] | b[p + 1] << 8; p += 2; return x; }
+    if (x === 254) { x = (b[p] | b[p + 1] << 8 | b[p + 2] << 16 | b[p + 3] << 24) >>> 0; p += 4; return x; }
+    throw new Error('bad block');
+  }
+  count = vi();
+  for (t = 0; t < count; t++) {
+    start = p; seg = b[p + 4] === 0 && b[p + 5] !== 0;
+    p += seg ? 6 : 4; mid = p;
+    nin = vi();
+    for (i = 0; i < nin; i++) { p += 36; l = vi(); p += l + 4; }
+    nout = vi();
+    for (i = 0; i < nout; i++) { p += 8; l = vi(); p += l; }
+    wits = { mid: mid, end: p };
+    w = [];
+    if (seg) for (i = 0; i < nin; i++) { items = vi(); s = []; for (j = 0; j < items; j++) { l = vi(); s.push(b.subarray(p, p + l)); p += l; } w.push(s); }
+    p += 4;
+    if (p > b.length) throw new Error('bad block');
+    idx = 0;
+    for (i = 0; i < w.length; i++) {
+      s = w[i]; l = s.length;
+      s = l >= 2 && s[l - 1].length && s[l - 1][0] === 0x50 ? (l >= 3 ? s[l - 3] : null) : (l >= 2 ? s[l - 2] : null);
+      if (!s || !hasOrd(s)) continue;
+      env = envelopes(s);
+      for (k = 0; k < env.length; k++) {
+        if (isClaim(env[k], want)) return { b: b, start: start, mid: wits.mid, endOut: wits.end, end: p, seg: seg, index: idx };
+        idx++;
+      }
+    }
+  }
+  return null;
+}
+function hasOrd(s) { for (var i = 0; i + 2 < s.length; i++) if (s[i] === 0x6f && s[i + 1] === 0x72 && s[i + 2] === 0x64) return true; return false; }
+// A transaction's id: double SHA-256 of it without its witness data, shown back to front.
+function txidOf(c) {
+  var sub = window.crypto && window.crypto.subtle, b = c.b, raw;
+  if (!sub) return Promise.reject(new Error('no hash'));
+  if (c.seg) {
+    raw = new Uint8Array(8 + c.endOut - c.mid);
+    raw.set(b.subarray(c.start, c.start + 4), 0); raw.set(b.subarray(c.mid, c.endOut), 4); raw.set(b.subarray(c.end - 4, c.end), 4 + c.endOut - c.mid);
+  } else raw = b.slice(c.start, c.end);
+  return sub.digest('SHA-256', raw).then(function (h) { return sub.digest('SHA-256', h); }).then(function (h) {
+    var a = new Uint8Array(h), s = '', i;
+    for (i = 31; i >= 0; i--) s += (a[i] < 16 ? '0' : '') + a[i].toString(16);
+    return s;
+  });
+}
+  // a block's bytes: mempool.space's raw block (smaller), else ord's /r/block
+  async function bytes(h) {
+    try { const hash = (await (await mpFetch('/api/block-height/' + h, null, 15000)).text()).trim(); if (/^[0-9a-f]{64}$/.test(hash)) return new Uint8Array(await (await mpFetch('/api/block/' + hash + '/raw', null, 90000)).arrayBuffer()); } catch (e) {}
+    return hexBytes(await getJSON('/r/block/' + h));
+  }
+  // is this inscription a proper claim of N.bitmap? (ord's own word: the exact text, not a delegate, made in block N or later)
+  async function check(id, n) {
+    const want = n + '.bitmap', [o, t] = await Promise.all([getJSON('/r/inscription/' + id), getText('/content/' + id)]);
+    return {ok: t === want && !o.delegate && (typeof o.content_length !== 'number' || o.content_length === want.length) && o.height >= n, h: o.height, num: o.number};
+  }
+  return {OCI_LIMIT, ociFirst, blockClaim, txidOf, bytes, check};
+})();
+const bmStore = {get(n) { try { return JSON.parse(localStorage.getItem('bc.bm.' + n) || 'null'); } catch (e) { return null; } }, set(n, v) { try { localStorage.setItem('bc.bm.' + n, JSON.stringify(v)); } catch (e) {} }};
+const bmWalked = new Map();   // N -> the last block read so far (this visit), for KEEP LOOKING
+async function srBitmap(n, live) {
+  const L = n + '.bitmap', tip = tipH >= 0 ? tipH : Infinity;
+  if (n > tip) return srMsg('block ' + srNum(n) + ' has not been mined yet, so ' + L + ' cannot be claimed yet');
+  const land = {t: 'block ' + srNum(n), s: 'the land itself: the whole of block ' + srNum(n), go: {h: n, label: L}};
+  const rows = [{t: L, s: 'finding which inscription claimed it…'}, land];
+  const show = () => { if (live()) srShow(rows); };
+  const found = f => { rows[0] = {t: L, s: 'the bitmap: inscription #' + srNum(f.num) + ' · made in block ' + srNum(f.h), go: {h: f.h, id: f.id.slice(0, 64), label: L}}; show(); };
+  show();
+  const kept = bmStore.get(n); if (kept && kept.id) return found(kept);
+  if (n < BM.OCI_LIMIT) {   // bop's on-chain index, then ord checks its answer
+    try {
+      const id = await BM.ociFirst(n);
+      if (!live()) return;
+      if (!id) { rows[0] = {t: L, s: 'the on-chain index has no claim for it'}; return show(); }
+      const c = await BM.check(id, n);
+      if (!c.ok) { rows[0] = {t: L, s: 'the on-chain index points at inscription ' + srShort(id) + ', but it is not a proper ' + L + ' (the index says it can have mistakes)'}; return show(); }
+      const f = {id, h: c.h, num: c.num}; bmStore.set(n, f); return found(f);
+    } catch (e) { rows[0] = {t: L, s: 'the on-chain index could not be read right now: try again in a moment'}; return show(); }
+  }
+  // 942,000 and up: read the blocks from N onward, a few at a time
+  const STEP = 12;
+  const walk = async () => {
+    const from = (bmWalked.get(n) || n - 1) + 1, to = Math.min(tipH >= 0 ? tipH : from + STEP - 1, from + STEP - 1);
+    for (let h = from; h <= to; h++) {
+      rows[0] = {t: L, s: 'reading block ' + srNum(h) + ' for the first claim… (' + (h - from + 1) + ' of ' + (to - from + 1) + ')'}; show();
+      let b; try { b = await BM.bytes(h); } catch (e) { rows[0] = {t: L, s: 'block ' + srNum(h) + ' could not be read right now', btn: 'TRY AGAIN', go: async () => { await walk(); return null; }}; return show(); }
+      if (!live()) return;
+      const c = BM.blockClaim(b, n + '.bitmap');
+      bmWalked.set(n, h);
+      if (c) {
+        const id = (await BM.txidOf(c)) + 'i' + c.index;
+        let num = null; try { num = (await (await ordFetch('/r/inscription/' + id, 15000)).json()).number; } catch (e) {}
+        const f = {id, h, num: num == null ? '?' : num}; if (num != null) bmStore.set(n, f); return found(f);
+      }
+    }
+    const last = bmWalked.get(n);
+    rows[0] = last >= tip ? {t: L, s: 'nobody has claimed it yet (read every block from ' + srNum(n) + ' to the newest)'}
+                          : {t: L, s: 'not claimed in blocks ' + srNum(n) + ' to ' + srNum(last) + ' yet', btn: 'KEEP LOOKING', go: async () => { await walk(); return null; }};
+    show();
+  };
+  await walk();
 }
 
 /* going in and out: the house button (a short fade; from room to room there is no cut at all) */
