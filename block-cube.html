@@ -300,7 +300,7 @@ body.room #card::before{content:'';order:-2;align-self:center;width:38px;height:
 <div id="tools"><button id="tp" class="tl" aria-label="flip back through blocks" title="flip back through blocks"></button><button id="ts" class="tl" aria-label="save a picture" title="save a picture"></button><button id="tu" class="tl" aria-label="sound on or off" title="sound on / off"></button><button id="tc" class="tl" aria-label="download" title="download"></button></div><button id="th" class="tl" aria-label="walk into the block" title="walk into the block"></button>
 <button id="pt" class="tl" aria-label="play together" title="play together"></button><div id="crt"></div><div id="rf"></div><div id="rx"></div><div id="rl"></div><div id="rh"><span class="d">click to look around with the mouse · W A S D to walk (Shift to run) · click a parcel to hold it · T to search · Esc to let go</span><span class="t">pad to walk · drag to look · tap a parcel to hold it</span><span class="hd">click the room or press Esc to put it back</span><span class="hdt">tap the room or close to put it back</span></div>
 <div id="rj"><div id="rk"></div></div>
-<div id="sr"><div class="t">TABLET · FAST TRAVEL · SEARCH</div><div class="r f"><button id="srcm">COMMON ROOM</button><button id="srnw">NEWEST BLOCK</button><button id="srgn">GENESIS BLOCK</button></div><div class="r"><input id="sri" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="300.bitmap · #1000 · an ID · an address"><button id="srg">FIND</button></div><div id="srl"></div><div class="h">a block: 840000 or 840000.bitmap · a parcel: 12.840000.bitmap<br>an inscription: #1000 or its ID · a transaction ID · an address</div><div class="r f"><button id="src">CLEAR ARROW</button><button id="srx">CLOSE</button></div></div><div id="sra"><b></b><svg viewBox="0 0 40 40"><path d="M20 37 4 17h10V3h12v14h10z" fill="#ffb347" stroke="#fff3df" stroke-width="2" stroke-linejoin="round"/></svg></div><div id="rs"><div class="t">THIS DOOR GOES TO BLOCK</div><div class="r"><button id="rsm" aria-label="one block back">&#9664;</button><input id="rsi" inputmode="numeric" autocomplete="off" spellcheck="false"><button id="rsp" aria-label="one block on">&#9654;</button></div><div class="r"><button id="rsg">GO</button><button id="rsx">CLOSE</button></div></div><div id="dl"></div>
+<div id="sr"><div class="t">TABLET · FAST TRAVEL · SEARCH</div><div class="r f"><button id="srcm">COMMON ROOM</button><button id="srnw">NEWEST BLOCK</button><button id="srgn">GENESIS BLOCK</button></div><div class="r"><input id="sri" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="300.bitmap · #1000 · an ID · an address"><button id="srg">FIND</button></div><div id="srl"></div><div class="h">a block: 840000 or 840000.bitmap · a parcel: 12.840000.bitmap<br>an inscription: #1000 or its ID · a transaction ID · an address<br>a name: game.0ns · satoshi.sats</div><div class="r f"><button id="src">CLEAR ARROW</button><button id="srx">CLOSE</button></div></div><div id="sra"><b></b><svg viewBox="0 0 40 40"><path d="M20 37 4 17h10V3h12v14h10z" fill="#ffb347" stroke="#fff3df" stroke-width="2" stroke-linejoin="round"/></svg></div><div id="rs"><div class="t">THIS DOOR GOES TO BLOCK</div><div class="r"><button id="rsm" aria-label="one block back">&#9664;</button><input id="rsi" inputmode="numeric" autocomplete="off" spellcheck="false"><button id="rsp" aria-label="one block on">&#9654;</button></div><div class="r"><button id="rsg">GO</button><button id="rsx">CLOSE</button></div></div><div id="dl"></div>
 <div id="feed" class="m"><div id="fh">LIVE FEED</div><div id="fl"></div><div id="fh2" class="fh">JOINING THE NEXT BLOCK</div><div id="ft"></div></div>
 <script>
 'use strict';
@@ -6134,7 +6134,7 @@ function srShow(rows) {
     else {
       el.className = 'it'; el.innerHTML = '<div><b></b><span></span></div><button>GO</button>';
       el.querySelector('b').textContent = r.t; const sp = el.querySelector('span'); sp.textContent = r.s || '';
-      const bt = el.querySelector('button');
+      const bt = el.querySelector('button'); if (r.btn) bt.textContent = r.btn;
       if (!r.go) bt.style.display = 'none';
       else bt.onclick = async () => {
         if (typeof r.go !== 'function') return srGo(r.go);
@@ -6157,10 +6157,7 @@ async function srFind(q) {
     const i = +m[1], h = +m[2];
     return srShow([{t: L, s: 'parcel ' + srNum(i) + ' of block ' + srNum(h) + mined(h), go: h <= tip ? {h, idx: i, label: L} : null}]);
   }
-  if ((m = L.match(/^(\d+)\.bitmap$/))) {
-    const h = +m[1];
-    return srShow([{t: L, s: 'the whole of block ' + srNum(h) + mined(h), go: h <= tip ? {h, label: L} : null}]);
-  }
+  if ((m = L.match(/^(\d+)\.bitmap$/))) return srBitmap(+m[1], live);
   if ((m = L.match(/^(?:#|no\.?|inscription#?|insc#?|i#)(-?\d+)$/))) return srShow([srInsRow(+m[1])]);
   if ((m = L.match(/^\d+$/))) {
     const n = +m[0], rows = [];
@@ -6183,7 +6180,11 @@ async function srFind(q) {
     return row ? srShow([row]) : srMsg(nf >= 2 ? 'no block or transaction has that ID' : 'mempool.space (and its backups) did not answer: try again in a moment');
   }
   if (srAddrRe.test(q.trim())) return srAddress(q.trim(), live);
-  srMsg('not sure what that is. Try a block (840000), a bitmap (840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID or an address.');
+  if ((m = L.match(/^([a-z0-9-]{1,63})\.0ns$/))) return srOns(m[1], live);
+  if (/\.bitmap$/.test(L)) return srMsg('a bitmap is a block number, like 840000.bitmap (or a parcel: 12.840000.bitmap)');
+  if ((m = q.trim().toLowerCase().match(/^([^\s.\/]{1,64})\.([a-z0-9]{1,12})$/))) return srName(m[0], live);
+  if (/^[a-z0-9-]{1,63}$/.test(L)) return srOnsPart(L, live);
+  srMsg('not sure what that is. Try a block (840000), a bitmap (840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID, an address or a name (game.0ns, satoshi.sats).');
 }
 
 // inscriptions: by number (ord's page for it) or by ID (ord's /r/inscription), to the block and parcel they were made in
@@ -6273,6 +6274,340 @@ function srArrow(VP) {
   const hw = $sra.offsetWidth / 2 + 6, hh = $sra.offsetHeight / 2 + 6;   // (the whole label stays on the screen)
   const sx = Math.max(hw, Math.min(Wd - hw, Wd / 2 + dx * k)), sy = Math.max(hh, Math.min(Ht - hh, Ht / 2 + dy * k));
   $sra.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-50%)`;
+}
+
+/* ---- .0ns names, read straight from Bitcoin ----
+   A name is registered by inscribing it (plain text, e.g. "game") with a delegate: the inscription it points to. The commit
+   transaction pays exactly 1,000 sats to the 0NS index address, and output 0 of that commit is spent by the reveal, whose
+   first inscription is the registration. The first valid confirmed registration of a name wins. The name points to whatever
+   the newest inscription on the registration's sat delegates to (reinscribing that sat re-links it). A name pointing at the
+   0NS app itself is registered but not linked yet. */
+const ONS_IDX = 'bc1p0jhh0smr9u76xkly8ch343yu2fcgrp4xszzz3qte25v7sq0txqzssd32f5', ONS_FEE = 1000, ONS_APP_SAT = 1198483337911643;
+const ONS_RE = /^[a-z0-9-]{1,63}$/, ONS_ID = /^[0-9a-f]{64}i\d+$/;
+const ONS_APPS = new Set(['9f2edca55dcf955b8af5298f14413cc5ae47eab816281c31607bc8e662f77a0ei0', 'fbe3262d8d5c20bfdd994f2a45715610cb1302a459fccfaadca10edba8205c5ai0']);
+const onsStore = {get(k, d) { try { const v = localStorage.getItem('bc.ons.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('bc.ons.' + k, JSON.stringify(v)); } catch (e) {} }};
+let onsReg = null, onsRegAt = 0;
+async function onsPool(list, n, f) { const q = list.slice(); await Promise.all(Array.from({length: n}, async () => { while (q.length) await f(q.shift()); })); }
+// every registration ever made (kept in this browser: each commit is read once), the first per name winning
+function onsRegistry() {
+  if (onsReg && performance.now() - onsRegAt < 120000) return onsReg;
+  onsRegAt = performance.now();
+  onsReg = (async () => {
+    const seen = onsStore.get('commits', {});   // commit txid -> registration {id, name, sat, n, h} or 0 (not one)
+    let fresh = [], last = null;
+    for (let p = 0; p < 200; p++) {   // newest first, 25 a page; stop at the first page we have fully read before
+      const page = await (await mpFetch('/api/address/' + ONS_IDX + '/txs/chain' + (last ? '/' + last : ''), null, 20000)).json();
+      if (!Array.isArray(page) || !page.length) break;
+      const nw = page.filter(t => !(t.txid in seen)); fresh = fresh.concat(nw);
+      if (nw.length < page.length || page.length < 25) break;
+      last = page[page.length - 1].txid;
+    }
+    const beacons = fresh.filter(t => (t.vout || []).some(o => o.scriptpubkey_address === ONS_IDX && o.value === ONS_FEE)).map(t => t.txid);
+    for (const t of fresh) if (!beacons.includes(t.txid)) seen[t.txid] = 0;
+    const todo = [...new Set(beacons.concat(onsStore.get('pending', [])))].filter(x => !seen[x]), pend = [];
+    let bad = 0;
+    await onsPool(todo, 4, async tx => {
+      try {
+        const os = await (await mpFetch('/api/tx/' + tx + '/outspend/0', null, 15000)).json();
+        if (!os || !os.spent || !os.txid || !(os.status && os.status.confirmed)) { pend.push(tx); return; }   // (not revealed or not mined yet: looked at again next time)
+        const id = os.txid + 'i0';
+        const [info, body] = await Promise.all([ordFetch('/r/inscription/' + id, 15000).then(r => r.json()), ordFetch('/r/undelegated-content/' + id, 15000).then(r => r.text())]);
+        const name = String(body || '').trim().toLowerCase();
+        seen[tx] = info && info.height >= 0 && ONS_RE.test(name) && ONS_ID.test(String(info.delegate || '')) && Number.isSafeInteger(+info.sat)
+          ? {id, name, sat: +info.sat, n: info.number, h: info.height, d: info.delegate} : 0;
+      } catch (e) { bad++; pend.push(tx); }   // (a site did not answer: tried again next time)
+    });
+    onsStore.set('pending', pend);
+    onsStore.set('commits', seen);
+    const best = new Map();
+    for (const r of Object.values(seen)) if (r && (!best.has(r.name) || r.n < best.get(r.name).n)) best.set(r.name, r);
+    return {names: best, partial: bad > 0};
+  })();
+  onsReg.catch(() => { onsReg = null; });
+  return onsReg;
+}
+
+// is this inscription the 0NS app (the stand-in for "not linked yet")?
+const onsAppTried = new Map();
+async function onsIsApp(id) {
+  if (ONS_APPS.has(id)) return true;
+  if (onsAppTried.has(id)) return onsAppTried.get(id);
+  const p = (async () => {
+    try { const s = await (await ordFetch('/r/sat/' + ONS_APP_SAT, 12000)).json(); for (const x of s.ids || []) ONS_APPS.add(x); if (ONS_APPS.has(id)) return true; } catch (e) {}
+    try {   // or a copy of it elsewhere: its page says so in its first lines
+      const info = await (await ordFetch('/r/inscription/' + id, 12000)).json();
+      if (!/^text\/html/.test(info.content_type || '')) return false;
+      const r = await ordFetch('/content/' + id, 15000), rd = r.body.getReader(); let txt = '';
+      while (txt.length < 3000) { const {done, value} = await rd.read(); if (done) break; txt += new TextDecoder().decode(value); }
+      try { rd.cancel(); } catch (e) {}
+      return /name="zero-ns-app"\s+content="placeholder-target/.test(txt);
+    } catch (e) { return false; }
+  })();
+  onsAppTried.set(id, p); return p;
+}
+// where a name points now: the newest inscription on its registration's sat, and what that delegates to
+async function onsResolve(reg) {
+  const cur = await (await ordFetch('/r/sat/' + reg.sat + '/at/-1', 12000)).json();
+  const latest = cur && ONS_ID.test(cur.id || '') ? cur.id : reg.id;
+  const info = latest === reg.id ? {delegate: reg.d} : await (await ordFetch('/r/inscription/' + latest, 12000)).json();
+  const target = ONS_ID.test(String(info.delegate || '')) ? info.delegate : latest;
+  if (await onsIsApp(target)) return {linked: false};
+  const t = await srInsId(target);
+  return {linked: true, id: target, h: t.h, n: t.n};
+}
+
+async function srOns(nm, live) {
+  srMsg('reading the 0NS names from Bitcoin…' + (onsStore.get('commits', null) ? '' : ' (the first time takes a few seconds)'));
+  let R; try { R = await onsRegistry(); } catch (e) { if (live()) srMsg('the 0NS names could not be read right now (mempool.space or ordinals.com did not answer): try again in a moment'); return; }
+  if (!live()) return;
+  const reg = R.names.get(nm), full = nm + '.0ns';
+  if (!reg) return srMsg(srEsc(full) + ' is not registered' + (R.partial ? ' (some names could not be read just now: try again in a moment)' : '') + '.');
+  const rows = [{t: full, s: 'looking at what it links to…'}, {t: 'where ' + full + ' was registered', s: 'block ' + srNum(reg.h) + ' · inscription #' + srNum(reg.n), go: {h: reg.h, id: reg.id.slice(0, 64), label: full + ' · registered'}}];
+  srShow(rows);
+  const ON = (true);
+  if (!ON) return;
+  try {
+    const L = await onsResolve(reg); if (!live()) return;
+    rows[0] = L.linked ? {t: full, s: 'links to inscription ' + (L.n != null ? '#' + srNum(L.n) : srShort(L.id)) + ' · made in block ' + srNum(L.h), go: {h: L.h, id: L.id.slice(0, 64), label: full}}
+                       : {t: full, s: 'registered, but not linked to anything yet'};
+  } catch (e) { rows[0] = {t: full, s: 'what it links to could not be read right now'}; }
+  if (live()) srShow(rows);
+}
+
+async function srOnsPart(q, live) {
+  srMsg('reading the 0NS names from Bitcoin…');
+  let R; try { R = await onsRegistry(); } catch (e) { if (live()) srMsg('not sure what that is, and the 0NS names could not be read right now'); return; }
+  if (!live()) return;
+  const all = [...R.names.keys()].filter(n => n.includes(q)).sort((a, b) => (b.startsWith(q) - a.startsWith(q)) || a.length - b.length || (a < b ? -1 : 1));
+  if (!all.length) return srMsg('no .0ns name has "' + srEsc(q) + '" in it. Try a block (840000), a bitmap (840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID, an address or a name (game.0ns).');
+  const rows = [{hd: '.0NS NAMES WITH "' + q.toUpperCase() + '" (' + all.length + ')'}];
+  for (const n of all.slice(0, 20)) rows.push({t: n + '.0ns', s: 'what it links to: press GO', go: async () => { const L = await onsResolve(R.names.get(n)); if (!L.linked) throw new Error('registered, but not linked to anything yet'); return {h: L.h, id: L.id.slice(0, 64), label: n + '.0ns'}; }});
+  if (all.length > 20) rows.push({m: '…and ' + (all.length - 20) + ' more: type more of the name'});
+  srShow(rows);
+}
+
+/* ---- other names (.sats, .btc, .x, .xbt and more): the name is an inscription; BNRP (api.bnrp.name, free) says which one, and who holds it ---- */
+async function srName(nm, live) {
+  srMsg('asking BNRP about ' + srEsc(nm) + '…');
+  let d = null, err = '';
+  try { const r = await fetch('https://api.bnrp.name/v1/resolve/' + encodeURIComponent(nm), {signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined}); d = await r.json().catch(() => null); if (!r.ok) err = (d && d.error) || ('http ' + r.status); }
+  catch (e) { err = 'down'; }
+  if (!live()) return;
+  if (err === 'NAME_NOT_FOUND') return srMsg('nobody has inscribed ' + srEsc(nm) + ' (BNRP found no inscription of it)');
+  if (err === 'INVALID_NAME') return srMsg('names ending .' + srEsc(nm.split('.').pop()) + ' are not covered. The tablet knows .0ns names, and BNRP covers .sats, .btc, .x, .xbt and others.');
+  if (err || !d || !ONS_ID.test(d.inscription_id || '')) return srMsg('BNRP (the free name lookup) did not answer just now: try again in a moment');
+  const own = d.owner ? 'held by ' + srShort(d.owner) : 'held by an unknown address';
+  srShow([{t: nm, s: own + ' · where it was inscribed: press GO', go: async () => { const r = await srInsId(d.inscription_id); return {h: r.h, id: d.inscription_id.slice(0, 64), label: nm}; }},
+          {m: 'found by BNRP (api.bnrp.name), a free name lookup'}]);
+}
+
+/* ---- which inscription claimed N.bitmap: the first valid "N.bitmap" inscribed in block N or later (bop's LiveOCI rules: the
+   body exactly "N.bitmap", no compression, no delegate). Below 942,000: bop's on-chain index (OCI), read the same way the
+   Minitors read it. From 942,000 up (and every new bitmap as it arrives): the blocks themselves, from block N onward. */
+const BM = (() => {
+  const getJSON = u => ordFetch(u, 60000).then(r => r.json()), getText = u => ordFetch(u, 30000).then(r => r.text());
+var OCI_LIMIT = 942000, WALK_MAX = 6, CHECK_MS = 30000;
+var OCI_PAGES = ['01bba6c58af39d7f199aa2bceeaaba1ba91b23d2663bc4ef079a4b5e442dbf74i0',
+  'bb01dfa977a5cd0ee6e900f1d1f896b5ec4b1e3c7b18f09c952f25af6591809fi0', 'bb02e94f3062facf6aa2e47eeed348d017fd31c97614170dddb58fc59da304efi0',
+  'bb037ec98e6700e8415f95d1f5ca1fe1ba23a3f0c5cb7284d877e9ac418d0d32i0', 'bb9438f4345f223c6f4f92adf6db12a82c45d1724019ecd7b6af4fcc3f5786cei0',
+  'bb0542d4606a9e7eb4f31051e91f7696040db06ca1383dff98505618c34d7df7i0', 'bb06a4dffba42b6b513ddee452b40a67688562be4a1345127e4d57269e6b2ab6i0',
+  'bb076934c1c22007b315dd1dc0f8c4a2f9d52f348320cfbadc7c0bd99eaa5e18i0', 'bb986a1208380ec7db8df55a01c88c73a581069a51b5a2eb2734b41ba10b65c2i0',
+  'b907b51a239e3a37f29f8222fb274f828c6ebf7b93ce501a55b7171daaa75758i0', 'b942b6477c7da9090edb9751429ba9c3ba01b39ab972fc888d481f528e3e03c3i0'];
+// Bitmaps below 840,000 that are not the first inscription on their sat (from the OCI module, credited there to @_lefrog).
+var OCI_SATIDX = { 92871: 1, 92970: 1, 123132: 1, 365518: 1, 700181: 1, 826151: 1, 827151: 1, 828151: 1, 828239: 1, 828661: 1,
+  829151: 1, 830151: 1, 832104: 2, 832249: 2, 832252: 2, 832385: 4, 833067: 1, 833101: 3, 833105: 4, 833109: 4, 833121: 8,
+  834030: 2, 834036: 2, 834051: 17, 834073: 4, 836151: 1, 837115: 2, 837120: 2, 837151: 1, 837183: 3, 837188: 2, 838058: 5,
+  838068: 2, 838076: 2, 838096: 1, 838151: 1, 838821: 1, 839151: 1, 839377: 1, 839378: 2, 839382: 2, 839397: 1 };
+function ociPageNo(n) { return n >= 907000 ? 10 : n >= 840000 ? 9 : Math.floor(n / 100000); }
+function ociPos(n) { return n >= 907000 ? n - 907000 : n >= 840000 ? n - 840000 : n % 100000; }
+// Read one OCI page the way the OCI module itself does, quirks included.
+function ociDecode(p, text) {
+  var d, full = [], sats = [];
+  function pi(v) { return parseInt(String(v)); }
+  function undelta(list, out) { list.forEach(function (s, i) { out.push(i ? pi(out[i - 1]) + pi(s) : pi(s)); }); }
+  if (p >= 9) { d = JSON.parse(text); undelta(d.deltaEncodedSats, sats); return { sats: sats, map: d.satIndexMap || {} }; }
+  if (p === 2 || p === 3) { d = JSON.parse('[' + text + ']'); d = [d.slice(0, 99999), d.slice(100000, 199999)]; }
+  else {
+    d = text;
+    try { d = JSON.parse(d.split('\\n  ').join('')); } catch (e) {}
+    if (typeof d === 'string') try { d = JSON.parse(d.split('  ').join('')); } catch (e) {}
+  }
+  undelta(d[0], full);
+  d[1].forEach(function (pos, i) { sats[pos] = full[i]; });
+  return { sats: sats, map: null };
+}
+var ociPages = {};
+function ociFirst(n) {
+  var p = ociPageNo(n);
+  if (!ociPages[p]) ociPages[p] = getText('/content/' + OCI_PAGES[p]).then(function (t) { return ociDecode(p, t); });
+  return ociPages[p].then(function (pg) {
+    var sat = pg.sats[ociPos(n)], at = n >= 840000 ? (pg.map[String(n)] || 0) : (OCI_SATIDX[n] || 0);
+    if (typeof sat !== 'number' || !(sat > 0) || sat % 1 || sat > 9007199254740991) return null;
+    return getJSON('/r/sat/' + sat + '/at/' + at).then(function (j) { return (j && j.id) || null; });
+  });
+}
+
+// From 942,000 up: Bitcoin's own blocks, read straight from ord, in Bitcoin order (transaction, input, envelope).
+function hexBytes(h) {
+  var n = h.length >> 1, b = new Uint8Array(n), i, a, c;
+  for (i = 0; i < n; i++) { a = h.charCodeAt(2 * i); c = h.charCodeAt(2 * i + 1); b[i] = ((a & 15) + (a > 57 ? 9 : 0)) << 4 | ((c & 15) + (c > 57 ? 9 : 0)); }
+  return b;
+}
+// The script parts of an ord envelope: pushes (OP_1NEGATE and OP_1..OP_16 count as pushes), or a bare opcode. null = broken script.
+function scriptParts(s) {
+  var out = [], i = 0, op, k;
+  while (i < s.length) {
+    op = s[i++]; k = -1;
+    if (op <= 0x4b) k = op;
+    else if (op === 0x4c) { if (i + 1 > s.length) return null; k = s[i]; i += 1; }
+    else if (op === 0x4d) { if (i + 2 > s.length) return null; k = s[i] | s[i + 1] << 8; i += 2; }
+    else if (op === 0x4e) { if (i + 4 > s.length) return null; k = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+    if (k >= 0) { if (i + k > s.length) return null; out.push({ d: s.subarray(i, i + k) }); i += k; }
+    else if (op === 0x4f) out.push({ d: new Uint8Array([0x81]), num: 1 });
+    else if (op >= 0x51 && op <= 0x60) out.push({ d: new Uint8Array([op - 0x50]), num: 1 });
+    else out.push({ op: op });
+  }
+  return out;
+}
+// Each finished envelope (OP_FALSE OP_IF "ord" ... OP_ENDIF) in a script, as its list of pushes.
+function envelopes(s) {
+  var t = scriptParts(s), out = [], i = 0, x, y, pay, end;
+  if (!t) return out;
+  while (i < t.length) {
+    x = t[i++];
+    if (!x.d || x.d.length || x.num) continue;
+    y = t[i];
+    if (!y || y.op !== 0x63) continue;
+    i++; y = t[i];
+    if (!y || !y.d || y.d.length !== 3 || y.d[0] !== 0x6f || y.d[1] !== 0x72 || y.d[2] !== 0x64) continue;
+    i++; pay = []; end = 0;
+    while (i < t.length) { y = t[i++]; if (y.op !== undefined) { end = y.op === 0x68 ? 1 : 2; break; } pay.push(y.d); }
+    if (end === 1) out.push(pay);
+  }
+  return out;
+}
+// LiveOCI's test: the body is exactly "<n>.bitmap", no compression tag, no delegate tag.
+function isClaim(pay, want) {
+  var at = -1, i, j, o = 0, len = 0, enc = null, del = null;
+  for (i = 0; i < pay.length; i += 2) if (!pay[i].length) { at = i; break; }
+  if (at < 0) return false;
+  for (i = 0; i + 1 < at; i += 2) {
+    if (pay[i].length === 1 && pay[i][0] === 9 && enc === null) enc = pay[i + 1];
+    if (pay[i].length === 1 && pay[i][0] === 11 && del === null) del = pay[i + 1];
+  }
+  if ((enc && enc.length) || (del && del.length)) return false;
+  for (i = at + 1; i < pay.length; i++) len += pay[i].length;
+  if (len !== want.length) return false;
+  for (i = at + 1; i < pay.length; i++) for (j = 0; j < pay[i].length; j++) if (pay[i][j] !== want.charCodeAt(o++)) return false;
+  return true;
+}
+// The first claim in one block: which transaction, and its inscription number inside that transaction.
+function blockClaim(b, want) {
+  var p = 80, t, i, j, k, l, nin, nout, items, w, wits, start, mid, seg, idx, s, env, count;
+  function vi() {
+    var x = b[p++];
+    if (x < 253) return x;
+    if (x === 253) { x = b[p] | b[p + 1] << 8; p += 2; return x; }
+    if (x === 254) { x = (b[p] | b[p + 1] << 8 | b[p + 2] << 16 | b[p + 3] << 24) >>> 0; p += 4; return x; }
+    throw new Error('bad block');
+  }
+  count = vi();
+  for (t = 0; t < count; t++) {
+    start = p; seg = b[p + 4] === 0 && b[p + 5] !== 0;
+    p += seg ? 6 : 4; mid = p;
+    nin = vi();
+    for (i = 0; i < nin; i++) { p += 36; l = vi(); p += l + 4; }
+    nout = vi();
+    for (i = 0; i < nout; i++) { p += 8; l = vi(); p += l; }
+    wits = { mid: mid, end: p };
+    w = [];
+    if (seg) for (i = 0; i < nin; i++) { items = vi(); s = []; for (j = 0; j < items; j++) { l = vi(); s.push(b.subarray(p, p + l)); p += l; } w.push(s); }
+    p += 4;
+    if (p > b.length) throw new Error('bad block');
+    idx = 0;
+    for (i = 0; i < w.length; i++) {
+      s = w[i]; l = s.length;
+      s = l >= 2 && s[l - 1].length && s[l - 1][0] === 0x50 ? (l >= 3 ? s[l - 3] : null) : (l >= 2 ? s[l - 2] : null);
+      if (!s || !hasOrd(s)) continue;
+      env = envelopes(s);
+      for (k = 0; k < env.length; k++) {
+        if (isClaim(env[k], want)) return { b: b, start: start, mid: wits.mid, endOut: wits.end, end: p, seg: seg, index: idx };
+        idx++;
+      }
+    }
+  }
+  return null;
+}
+function hasOrd(s) { for (var i = 0; i + 2 < s.length; i++) if (s[i] === 0x6f && s[i + 1] === 0x72 && s[i + 2] === 0x64) return true; return false; }
+// A transaction's id: double SHA-256 of it without its witness data, shown back to front.
+function txidOf(c) {
+  var sub = window.crypto && window.crypto.subtle, b = c.b, raw;
+  if (!sub) return Promise.reject(new Error('no hash'));
+  if (c.seg) {
+    raw = new Uint8Array(8 + c.endOut - c.mid);
+    raw.set(b.subarray(c.start, c.start + 4), 0); raw.set(b.subarray(c.mid, c.endOut), 4); raw.set(b.subarray(c.end - 4, c.end), 4 + c.endOut - c.mid);
+  } else raw = b.slice(c.start, c.end);
+  return sub.digest('SHA-256', raw).then(function (h) { return sub.digest('SHA-256', h); }).then(function (h) {
+    var a = new Uint8Array(h), s = '', i;
+    for (i = 31; i >= 0; i--) s += (a[i] < 16 ? '0' : '') + a[i].toString(16);
+    return s;
+  });
+}
+  // a block's bytes: mempool.space's raw block (smaller), else ord's /r/block
+  async function bytes(h) {
+    try { const hash = (await (await mpFetch('/api/block-height/' + h, null, 15000)).text()).trim(); if (/^[0-9a-f]{64}$/.test(hash)) return new Uint8Array(await (await mpFetch('/api/block/' + hash + '/raw', null, 90000)).arrayBuffer()); } catch (e) {}
+    return hexBytes(await getJSON('/r/block/' + h));
+  }
+  // is this inscription a proper claim of N.bitmap? (ord's own word: the exact text, not a delegate, made in block N or later)
+  async function check(id, n) {
+    const want = n + '.bitmap', [o, t] = await Promise.all([getJSON('/r/inscription/' + id), getText('/content/' + id)]);
+    return {ok: t === want && !o.delegate && (typeof o.content_length !== 'number' || o.content_length === want.length) && o.height >= n, h: o.height, num: o.number};
+  }
+  return {OCI_LIMIT, ociFirst, blockClaim, txidOf, bytes, check};
+})();
+const bmStore = {get(n) { try { return JSON.parse(localStorage.getItem('bc.bm.' + n) || 'null'); } catch (e) { return null; } }, set(n, v) { try { localStorage.setItem('bc.bm.' + n, JSON.stringify(v)); } catch (e) {} }};
+const bmWalked = new Map();   // N -> the last block read so far (this visit), for KEEP LOOKING
+async function srBitmap(n, live) {
+  const L = n + '.bitmap', tip = tipH >= 0 ? tipH : Infinity;
+  if (n > tip) return srMsg('block ' + srNum(n) + ' has not been mined yet, so ' + L + ' cannot be claimed yet');
+  const land = {t: 'block ' + srNum(n), s: 'the land itself: the whole of block ' + srNum(n), go: {h: n, label: L}};
+  const rows = [{t: L, s: 'finding which inscription claimed it…'}, land];
+  const show = () => { if (live()) srShow(rows); };
+  const found = f => { rows[0] = {t: L, s: 'the bitmap: inscription #' + srNum(f.num) + ' · made in block ' + srNum(f.h), go: {h: f.h, id: f.id.slice(0, 64), label: L}}; show(); };
+  show();
+  const kept = bmStore.get(n); if (kept && kept.id) return found(kept);
+  if (n < BM.OCI_LIMIT) {   // bop's on-chain index, then ord checks its answer
+    try {
+      const id = await BM.ociFirst(n);
+      if (!live()) return;
+      if (!id) { rows[0] = {t: L, s: 'the on-chain index has no claim for it'}; return show(); }
+      const c = await BM.check(id, n);
+      if (!c.ok) { rows[0] = {t: L, s: 'the on-chain index points at inscription ' + srShort(id) + ', but it is not a proper ' + L + ' (the index says it can have mistakes)'}; return show(); }
+      const f = {id, h: c.h, num: c.num}; bmStore.set(n, f); return found(f);
+    } catch (e) { rows[0] = {t: L, s: 'the on-chain index could not be read right now: try again in a moment'}; return show(); }
+  }
+  // 942,000 and up: read the blocks from N onward, a few at a time
+  const STEP = 12;
+  const walk = async () => {
+    const from = (bmWalked.get(n) || n - 1) + 1, to = Math.min(tipH >= 0 ? tipH : from + STEP - 1, from + STEP - 1);
+    for (let h = from; h <= to; h++) {
+      rows[0] = {t: L, s: 'reading block ' + srNum(h) + ' for the first claim… (' + (h - from + 1) + ' of ' + (to - from + 1) + ')'}; show();
+      let b; try { b = await BM.bytes(h); } catch (e) { rows[0] = {t: L, s: 'block ' + srNum(h) + ' could not be read right now', btn: 'TRY AGAIN', go: async () => { await walk(); return null; }}; return show(); }
+      if (!live()) return;
+      const c = BM.blockClaim(b, n + '.bitmap');
+      bmWalked.set(n, h);
+      if (c) {
+        const id = (await BM.txidOf(c)) + 'i' + c.index;
+        let num = null; try { num = (await (await ordFetch('/r/inscription/' + id, 15000)).json()).number; } catch (e) {}
+        const f = {id, h, num: num == null ? '?' : num}; if (num != null) bmStore.set(n, f); return found(f);
+      }
+    }
+    const last = bmWalked.get(n);
+    rows[0] = last >= tip ? {t: L, s: 'nobody has claimed it yet (read every block from ' + srNum(n) + ' to the newest)'}
+                          : {t: L, s: 'not claimed in blocks ' + srNum(n) + ' to ' + srNum(last) + ' yet', btn: 'KEEP LOOKING', go: async () => { await walk(); return null; }};
+    show();
+  };
+  await walk();
 }
 
 /* going in and out: the house button (a short fade; from room to room there is no cut at all) */
