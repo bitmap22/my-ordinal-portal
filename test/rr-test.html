@@ -21,7 +21,8 @@
     ok(b.count === i.transaction_count, 'transactions: ' + b.count + ' (ord says ' + i.transaction_count + ')');
     ok(b.hash === i.hash, 'block hash matches: ' + b.hash.slice(0, 20));
     ok(b.ok === true, 'every transaction matches the header (merkle)');
-    ok(b.size === i.total_size && b.weight === i.total_weight, 'size ' + b.size + ' / weight ' + b.weight + ' (ord: ' + i.total_size + ' / ' + i.total_weight + ')');
+    var cb = b.txs[0], vl = b.count < 253 ? 1 : b.count <= 65535 ? 3 : 5;   // (ord's totals leave out the header and the coinbase)
+    ok(b.size - 80 - vl - cb.size === i.total_size && b.weight - 4 * (80 + vl) - cb.weight === i.total_weight, 'size ' + b.size + ' / weight ' + b.weight + ' (ord, without header and coinbase: ' + i.total_size + ' / ' + i.total_weight + ')');
     ok(b.coinbaseHeight === 840000 && b.time === i.timestamp, 'height from coinbase ' + b.coinbaseHeight + ', time ' + b.time);
     var x = b.txs[1], t = await R.tx(x.txid);
     ok(t.txid === x.txid && t.size === x.size && t.outs.length === x.outs.length && t.value === x.value, 'one transaction read alone matches: ' + x.txid.slice(0, 16));
@@ -71,6 +72,12 @@
     var b = await R.block(779652), cp = 0, ms = 0;
     b.txs.forEach(function (t) { R.marks(t).forEach(function (m) { if (m.kind === 'counterparty') cp++; if (m.kind === 'multisig') ms++; }); });
     ok(cp > 0, 'block 779,652 (the first stamp): counterparty messages ' + cp + ', multisig data ' + ms);
+  });
+  await T('newest', async function () {
+    var par = '451accbce30177c23a8cd42ab85131312a449359ada3c054aa147b054136fa3bi0', L = await R.lastKids(par), all = await R.kidsInfo(par, L.page);
+    ok(L.ids.length > 0 && L.ids[L.ids.length - 1] === all.children[all.children.length - 1].id && !all.more, 'newest child found on page ' + L.page + ': ' + L.ids[L.ids.length - 1].slice(0, 16));
+    var n = await R.newest(par, 5);
+    ok(n === R, 'no newer script child there: keeps this one');
   });
   await T('gentle', async function () {
     var E = performance.getEntriesByType('resource').filter(function (e) { return /ordinals\.com/.test(e.name); }), gmin = 1e9, i;
