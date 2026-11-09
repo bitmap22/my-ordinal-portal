@@ -895,7 +895,7 @@ const TF = {insc: 0, img: 1, txt: 2, html: 3, json: 4, media: 5, model: 6, other
 // bit = ordpool.space's tag, sf = what the raw block scan found
 const KINDS = [
   {name: 'BRC-20', bit: 52n, sf: TF.brc20, col: 0x4aa8ff}, {name: 'TAP', sf: TF.tap, col: 0x36f1ff}, {name: 'CRC-20', sf: TF.crc20, col: 0x7cff6b}, {name: 'BRC-420', sf: TF.brc420, col: 0xff4ff0},
-  {name: 'SRC-20', bit: 53n, col: 0x2fe0c0}, {name: 'Stamps', sf: TF.stamps, col: 0xd9d9d9}, {name: 'Counterparty', sf: TF.cp, col: 0xb08cff},
+  {name: 'SRC-20', bit: 53n, sx: 'src20', col: 0x2fe0c0}, {name: 'Stamps', sf: TF.stamps, col: 0xd9d9d9}, {name: 'Counterparty', sf: TF.cp, col: 0xb08cff},
   {name: 'CAT-21', bit: 49n, col: 0xff6fb1}, {name: 'Atomicals', bit: 48n, sf: TF.atom, col: 0x9be15d}, {name: 'Labitbu', bit: 54n, col: 0xffe066},
   {name: 'Alkanes', sf: TF.alkanes, col: 0xff7a45}, {name: 'bitmaps', sf: TF.bitmap, col: 0xff3b5c},
   {name: 'runes', bit: 51n, sf: TF.rune, col: 0xc86bff}, {name: 'inscriptions', bit: 50n, sf: TF.insc, col: 0xffa53a}];
@@ -907,7 +907,7 @@ function kmask(t) {
   let m = 0;
   for (let i = 0; i < KINDS.length; i++) {
     const k = KINDS[i];
-    if ((k.bit != null && t.op != null && (t.op >> k.bit) & 1n) || (k.sf != null && t.sc != null && (t.sc >> k.sf) & 1)) m |= 1 << i;
+    if ((k.bit != null && t.op != null && (t.op >> k.bit) & 1n) || (k.sf != null && t.sc != null && (t.sc >> k.sf) & 1) || (k.sx && t[k.sx])) m |= 1 << i;
   }
   if (!m && t.insc && t.op == null && t.sc == null) m = 1 << INSC;
   t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._t = null; t._tk = t._tx = undefined;
@@ -1218,6 +1218,13 @@ async function scanBytes(X, h) {
     if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
     if ((r.sc >> TF.cp) & 1 && !((r.sc >> TF.stamps) & 1) && !r.word) r.word = {k: 'cp', a: '', b: ''};
     if ((r.sc >> TF.stamps) & 1 && artN < 2048 && artB < 64e6) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; artB += a.bytes.length; } }
+    if (wsh) { const W = catB(wsh), L = W[0] << 8 | W[1];   // SRC-20 in P2WSH outputs: a 2-byte length, then "stamp:" and its JSON
+      if (L > 6 && L <= W.length - 2 && /^stamp:/i.test(L1D.decode(W.subarray(2, 8)))) try {
+        const o = JSON.parse(U8D.decode(W.subarray(8, 2 + L)));
+        if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; const tk = String(o.tick || '').toUpperCase().slice(0, 16), op = String(o.op || '').toLowerCase(); r.tick = tk;
+          if (!r.word) r.word = {k: 'src20', a: tk, b: (op + (o.amt != null ? ' ' + String(o.amt).slice(0, 14) : o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')).trim()}; }
+      } catch (e) {}
+    }
     r.e = p;
     let tap = false, ei = 0;
     for (let i = 0; i < nin; i++) {
@@ -1305,7 +1312,7 @@ async function scanBytes(X, h) {
     else {
       set(tap ? TF.taproot : sw ? TF.segwit : TF.legacy);
       if (nin >= 3 && nout === 1) set(TF.consol);
-      if (pay - (mso ? mso.length : 0) - ((r.sc >> TF.stamps) & 1 && wsh ? wsh.length : 0) >= 10) set(TF.batch);   // data-only outputs are not payouts
+      if (pay - (mso ? mso.length : 0) - (((r.sc >> TF.stamps) & 1 || r.src20) && wsh ? wsh.length : 0) >= 10) set(TF.batch);   // data-only outputs are not payouts
     }
     out[t] = r;
     if ((t & 31) === 31 && performance.now() - t0 > burst) { await yieldNow(); t0 = performance.now(); }
@@ -1351,7 +1358,7 @@ async function scanBlock(B) {
     const k = Math.min(1, S.txs.length - 1);
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
-      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
+      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
       if (r.art) t.art = r.art; if (r.word) t.word = r.word;
       if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
@@ -1452,7 +1459,7 @@ async function loadArt(B) {
 // one word tile: what the inscription says, in the colour of its kind, drawn at the size it will be shown (big tiles get the
 // label, the word and the detail line; small ones just the word or logo, as big as it fits)
 const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
-  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY']};
+  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
 // the drawn logos: ᚱ (the old runic letter R) for runes, a zig-zag carbon chain (how chemists draw an alkane) for Alkanes,
 // a rainbow for Counterparty (coloured coins). Drawn with lines, so they look the same on every device.
 function paintMark(x, k, fg) {
@@ -2021,7 +2028,7 @@ const LR_CB = new Uint8Array([1, 0, 0, 0, 1].concat(new Array(32).fill(0), [255,
 const lrSeen = new Map();   // what each read found, by transaction id (the last few thousand)
 let lrQ = [], lrOn = 0, lrAt = 0, lrT = 0;
 function lrApply(t, r) {
-  t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t._k = null;
+  t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
   if (r.word) t.word = r.word;
   if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
 }
@@ -2301,7 +2308,7 @@ function select(t) {
     const ty = [has(TF.taproot) ? 'taproot' : has(TF.segwit) ? 'segwit' : has(TF.legacy) ? 'legacy' : null, has(TF.consol) && 'consolidation', has(TF.batch) && 'batch payout', has(TF.msig) && 'multisig'].filter(Boolean);
     if (ty.length) rows.push(['kind', ty.join(' · ')]);
     if (t.ins && t.ins.length) rows.push(['inscription', [...new Set(t.ins.map(e => e.ct))].join(', ') + (t.ins.length > 1 ? ' × ' + t.ins.length : '') + (has(TF.child) ? ' · child of a parent' : '') + (has(TF.cursed) ? ' · cursed' : '')]);
-    const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', has(TF.cp) && 'Counterparty'].filter(Boolean);
+    const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', t.src20 && 'SRC-20', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
     if (has(TF.rune)) rows.push(['rune', [has(TF.etch) && 'etched' + (t.rn ? ' ' + t.rn : ''), has(TF.rmint) && 'minted', has(TF.rmove) && 'moved', has(TF.alkanes) && 'Alkanes'].filter(Boolean).join(' · ') || 'runestone']);
     if (t.rnLost) rows.push(['new rune', 'tried for ' + t.rnLost + ' · it never came into being (ordinals.com)']);
@@ -5987,10 +5994,10 @@ async function heldInfo(t) {
     if (st && has(TF.alkanes)) { const A = alkCalls(st.F); if (A.length) show(A.map((c, k) => [k ? '' : 'alkanes', alkSay(c)])); }
     if (st && st.ed.length) {
       const rows = [], ids = [...new Set(st.ed.slice(0, 4).map(e => e.id))], P = {};
-      await Promise.all(ids.map(id => (id === '0:0' ? Promise.reject() : runePage(id)).then(D => { P[id] = D; }, () => {})));
+      await Promise.all(ids.map(id => (id === '0:0' ? (t.rn ? runePage(t.rn) : Promise.reject()) : runePage(id)).then(D => { P[id] = D; }, () => {})));   // (0:0 = the rune made by this transaction)
       for (const e of st.ed.slice(0, 4)) {
         const D = P[e.id], to = e.out === tx.vout.length ? 'shared over every output' : 'to out ' + (e.out + 1);
-        rows.push([rows.length ? '' : 'runes moved', (D ? runeAmount(e.amt, D.divisibility) + ' ' + D.name + (D.symbol ? ' ' + D.symbol : '') : e.amt.toLocaleString('en-US') + ' of rune ' + (e.id === '0:0' ? 'made here' : e.id)) + ' · ' + to]);
+        rows.push([rows.length ? '' : 'runes moved', (D ? runeAmount(e.amt, D.divisibility) + ' ' + D.name + (D.symbol ? ' ' + D.symbol : '') + ' · ' + to : e.id === '0:0' && t.rnLost ? 'nothing: the new rune it tried for never came into being' : e.amt.toLocaleString('en-US') + ' of rune ' + (e.id === '0:0' ? 'made here' : e.id) + ' · ' + to)]);
       }
       if (st.ed.length > 4) rows.push(['', '+ ' + fmt(st.ed.length - 4) + ' more']);
       show(rows);
