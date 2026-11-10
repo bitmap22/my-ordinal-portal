@@ -5957,8 +5957,8 @@ function rmRay(sx, sy) {
   const x = sx == null ? 0 : (2 * sx / innerWidth - 1) * th * v.asp, y = sy == null ? 0 : (1 - 2 * sy / innerHeight) * th;
   return {e: v.eye, d: nrm([f[0] + r[0] * x + u[0] * y, f[1] + r[1] * x + u[1] * y, f[2] + r[2] * x + u[2] * y])};
 }
-function rmHit(c, h, ray) {
-  let t0 = 0, t1 = 7;
+function rmHit(c, h, ray, far) {
+  let t0 = 0, t1 = far || 7;
   for (let k = 0; k < 3; k++) {
     const e = ray.e[k], d = ray.d[k];
     if (Math.abs(d) < 1e-9) { if (Math.abs(e - c[k]) > h[k]) return -1; continue; }
@@ -5970,7 +5970,7 @@ function rmHit(c, h, ray) {
 function rmPick(sx, sy) {
   const ray = rmRay(sx, sy), C = room.rooms[1]; if (!ray || !C || !C.ready) return null;
   let best = null, bt = 1e9;
-  for (const it of C.plan.items) { if (it.gone || it.cp || it.t0 > now()) continue; const h = it.e / 2, t = rmHit(it.w, [h, h, h], ray); if (t >= 0 && t < bt) { bt = t; best = {it}; } }
+  for (const it of C.plan.items) { if (it.gone || it.cp || it.t0 > now()) continue; const h = it.e / 2, t = rmHit(it.w, [h, h, h], ray, it.show ? SHOW.REACH : 0); if (t >= 0 && t < bt) { bt = t; best = {it}; } }
   for (const end of ['back', 'front']) {   // the signs over the doors
     if (C.gal) break;
     if (C.common && (end !== C.door || BC_COMMON)) continue;
@@ -7224,7 +7224,7 @@ async function galOffer(rows, getId, live) {
    a time; showing another takes its place. In a crew it is shared like the music, so everyone's Forum shows the same thing,
    and it is kept on this computer for next time. Clicking it puts a hand-sized copy in your hands with the tablet open. */
 const SHOW_ST = 5;
-const SHOW = {E: 1.8, LIFT: 3.2, BOB: .12};
+const SHOW = {E: 2.4, LIFT: 3.6, BOB: .12, REACH: 16};
 const $cshw = document.getElementById('cshw');
 let showSeed = null, showBackTo = null;
 const showB = {fl: null, i: -1, it: null}, showArt = {busy: false};
@@ -7352,7 +7352,7 @@ async function showGo() {
   if (SHOW_ST < 3) { note('on show in the Forum: ' + showName(s), 7); return; }
   rmPut();
   const say = 'FAST TRAVEL · THE COMMON ROOM'; $rfx.dataset.say = say;
-  try { await roomEnter(COMMON, {cm: [0, CM.PD - 8.6, 0], face: true}, {wait: true}); }
+  try { await roomEnter(COMMON, {cm: [0, CM.PD - 8.2, 0], face: true}, {wait: true}); }
   finally { setTimeout(() => { if ($rfx.dataset.say === say && !$rfx.classList.contains('on')) delete $rfx.dataset.say; }, 450); }
   if (!room || !room.at || !room.at.common) return;
   showBackTo = back;
