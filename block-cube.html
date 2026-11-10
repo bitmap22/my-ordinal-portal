@@ -6997,7 +6997,9 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { rmKeys[e.key.toLowerCase()] = false; });
 const rmLetGo = () => { for (const k in rmKeys) rmKeys[k] = false; rmPad.x = rmPad.y = 0; if (room) room.p.vx = room.p.vz = 0; };
 addEventListener('blur', rmLetGo); addEventListener('focus', rmLetGo); document.addEventListener('visibilitychange', rmLetGo);
-document.addEventListener('pointerlockchange', () => { if (room) room.lock = document.pointerLockElement === cv; document.body.classList.toggle('rlock', !!(room && room.lock)); });
+// a box open on the screen (the tablet, a door's sign, the big view, the ask box): the mouse stays free for it
+const rmBoxOpen = () => ['sr', 'rs', 'vw', 'cmd'].some(id => { const b = document.getElementById(id); return !!(b && b.classList.contains('on')); });
+document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement === cv && rmBoxOpen()) { document.exitPointerLock(); return; } if (room) room.lock = document.pointerLockElement === cv; document.body.classList.toggle('rlock', !!(room && room.lock)); });
 const rmLook = (dx, dy, k) => { const p = room.p; p.yaw -= dx * k; p.pitch = Math.max(-1.35, Math.min(1.35, p.pitch - dy * k)); };
 const rmPtr = new Map();
 cv.addEventListener('pointerdown', e => {
@@ -7018,6 +7020,7 @@ const rmUp = e => {
   if (e.type !== 'pointerup') return;
   const tap = room.lock || (q && Math.hypot(e.clientX - q.x0, e.clientY - q.y0) < 8 && performance.now() - q.t < 400);
   if (!tap) return;
+  if (rmBoxOpen()) return;   // (a box is open: the mouse stays free for it)
   if (room.held) { rmPut(); return; }
   const h = rmPick(room.lock ? null : e.clientX, room.lock ? null : e.clientY); let A;
   if (h && h.it) rmHold(h.it);
