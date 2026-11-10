@@ -3176,8 +3176,6 @@ vec2 pw(float u,float ph){float R=1.+.3*sin(1.7*u+ph*2.);vec2 q=R*vec2(cos(u+ph)
 float wr(float a){return mod(a+3.1416,6.2832)-3.1416;}
 vec2 bv(float f,float sd){float R=2.2*(1.+.25*sin(1.9*f+sd));vec2 q=R*vec2(cos(f*.62+sd),.8*sin(f*.62+sd));return fract(sd*.37)>.5?vec2(-q.x,q.y):q;}
 float wind(vec2 q,float t){return (.5+.5*sin(t*.9-q.x*.35+q.y*.08))*(.65+.35*sin(t*.21));}
-mat3 bAx(vec3 d,vec3 f){vec3 y=normalize(d),x=normalize(cross(y,f)),z=cross(x,y);return mat3(x,y,z);}
-vec3 bIK(vec3 a,vec3 e,float l1,float l2,vec3 pl){vec3 d=e-a;float D=max(length(d),.001),L=clamp(D,.02,l1+l2-.002);vec3 dn=d/D;float ca=(l1*l1+L*L-l2*l2)/(2.*l1*L);vec3 pp=normalize(pl-dn*dot(pl,dn)+vec3(1e-5));return a+dn*(ca*l1)+pp*(l1*sqrt(max(0.,1.-ca*ca)));}
 void main(){
 float t=uNow,ph=iS.y,g=smoothstep(0.,1.,uW),sc=iS.x*g,tn=aW>1.5?1.:0.,w=aW-tn*2.,em=0.,lift=0.;
 int T=uT==99?uST:uT;
@@ -3261,21 +3259,6 @@ if(T==4){
  float u=t*.075+ph;vec2 o=vec2(1.9*sin(u),3.*sin(2.3*u+1.)),vv=vec2(1.9*cos(u),6.9*cos(2.3*u+1.))*iC.xz;int k=int(iS.z+.5);
  if(k==1){mat3 Q=RY(t*4.);p=Q*p;n=Q*n;}else if(k>=2){float sg=k==2?1.:-1.;mat3 Q=RY(t*10.*sg);p=Q*p+vec3(sg*.17,0.,.15);n=Q*n;}
  R=RY(atan(vv.x,vv.y));b=iP.xyz+vec3(o.x*iC.x,0.,o.y*iC.z);em=w>.8?.55+.45*sin(t*2.5):0.;
-}else if(T==47){   // the butler: feet planted and tray level, its body shifts, breathes and turns between them; legs and arms are two-bone limbs
- int k=int(iS.z+.5);float sd=iS.w,te=t-uEv,ev=te>0.?smoothstep(0.,.35,te)*(1.-smoothstep(.9,1.9,te)):0.;
- float sx=.034*sin(t*.5)+.016*sin(t*.23+1.3),sz=.012*sin(t*.37+1.),by=-.022-.011*sin(t*1.05)-.06*ev,tw=.11*sin(t*.31)+.05*sin(t*.13+2.);
- vec3 P=vec3(sx,.54+by,sz),el=((uE-b)*R)/max(iS.x,.01);mat3 Qp=RY(tw*.5),Qt=RY(tw)*RZ(sx*1.6)*RX(.03*sin(t*.7)+.1*ev);
- if(k==1||k==2){vec3 A=vec3(sd*.13,.07,0.),H=P+Qp*vec3(sd*.1,0.,0.),K=bIK(H,A,.25,.25,Qp*vec3(sd*.3,0.,1.));
-  mat3 M;vec3 o;if(k==2){M=bAx(K-H,vec3(0.,0.,1.));o=H;}else{M=bAx(A-K,vec3(0.,0.,1.));o=K;}p=o+M*p;n=M*n;}
- else if(k==3){p=P+Qp*p;n=Qp*n;}
- else if(k==4){p=P+Qt*p;n=Qt*n;}
- else if(k==5){mat3 M=Qp*RX(.22+.1*sin(t*1.3+sd)+.3*ev)*RZ(-.11*cos(t*.5)+sd*.05);p=P+Qp*vec3(sd*.07,-.03,-.088)+M*p;n=M*n;}
- else if(k==6){vec3 N=P+Qt*vec3(0.,.42,0.),dl=el-N;float ds=length(dl.xz),nr=smoothstep(16.,9.,ds*iS.x);
-  float yw=clamp(atan(dl.x,dl.z),-1.3,1.3)*nr+(1.-nr)*.4*sin(t*.27),pt=clamp(atan(-dl.y,ds),-.55,.3)*nr;
-  mat3 Hd=Qt*RY(yw-tw)*RX(pt+.4*ev*sin(te*9.))*RZ(.1*sin(t*.41+1.));p=N+Hd*p;n=Hd*n;}
- else if(k==7||k==8){vec3 S=P+Qt*vec3(sd*.21,.36,0.),G=vec3(sd*.22,1.25,.02),E=bIK(S,G,.24,.24,vec3(sd,-.15,-.55));
-  mat3 M;vec3 o;if(k==7){M=bAx(E-S,vec3(0.,0.,1.));o=S;}else{M=bAx(G-E,vec3(0.,0.,1.));o=E;}p=o+M*p;n=M*n;}
- if(w>.8)em=k==6?(fract(t*.19+ph)>.965?.1:1.1+1.5*ev):.7+.3*sin(t*2.2);
 }else if(T==43){   // a door guard: breathing; its head and shoulders follow you; close up it lifts its spear
  vec3 dl=(uE-(iP.xyz+vec3(0.,2.6,0.)))*R;float ds=length(dl.xz),nr=smoothstep(14.,8.,ds),cl=smoothstep(5.5,3.,ds);
  float yw=clamp(atan(dl.x,dl.z),-1.25,1.25)*nr+(1.-nr)*.12*sin(t*.23+ph),br=.012*sin(t*1.1+ph);int k=int(iS.z+.5);
@@ -4922,78 +4905,6 @@ const CMS = (() => {
     make('hvTop', v => { lathe(v, [[0, .125], [.05, .125], [.05, .16], [0, .165]], 10, () => DK, 0); bx(v, 0, .143, .05, .03, .02, .012, RED, .95); bx(v, 0, .143, -.05, .02, .02, .01, GM, 0); });
     make('hvBrush', v => { lathe(v, [[0, .01], [.018, .01], [.018, .03], [0, .03]], 6, () => GM, 0); for (let k = 0; k < 3; k++) { const a = k * 2.094; bx(v, Math.cos(a) * .05, .012, Math.sin(a) * .05, Math.abs(Math.cos(a)) * .09 + .012, .006, Math.abs(Math.sin(a)) * .09 + .012, ORG, 0); } });
   }
-  // the butler (front: +z; about 1.5 tall here, put down at half size): feet, shins, thighs, pelvis, torso, coat tails, head, arms, and the tray with its gloves and display
-  { const BR = C(0xc9952e), GD = C(0xffc94a), DK = C(0x14151b), GM = C(0x3a3d46), CR = C(0xf2ead8), ST = C(0xaab2bf), RD = C(0xb3261e), RD2 = C(0x7d140f), AMB = C(0xffa51e), TEAL = C(0x38e8ff), GL = C(0x0b0e14), WH = C(0xf7f7f2), SV = C(0xcfd6de), CU = C(0xb9673a);
-    const at = (x, y, z) => TR([1, 1, 1], [0, 0, 0], [x, y, z]);
-    const cyl = (v, r0, r1, y0, y1, seg, col, w, x, z) => lathe(v, [[0, y0], [r0, y0], [r1, y1], [0, y1]], seg, () => col, w || 0, at(x || 0, 0, z || 0));
-    const ring = (v, r, y0, y1, seg, col, x, z) => lathe(v, [[r * .82, y0], [r, y0], [r, y1], [r * .82, y1]], seg, () => col, 0, at(x || 0, 0, z || 0));
-    const ball = (v, r, x, y, z, col, w) => lathe(v, [[0, -r], [.5 * r, -.87 * r], [.87 * r, -.5 * r], [r, 0], [.87 * r, .5 * r], [.5 * r, .87 * r], [0, r]], 12, () => col, w || 0, at(x, y, z));
-    const discZ = (v, x, y, z, prof, seg, col, w) => lathe(v, prof, seg, () => col, w || 0, TR([1, 1, 1], [1.5708, 0, 0], [x, y, z]));
-    const discX = (v, x, y, z, r, th, seg, col) => lathe(v, [[0, -th], [r, -th], [r, th], [0, th]], seg, () => col, 0, TR([1, 1, 1], [0, 0, 1.5708], [x, y, z]));
-    make('btFeet', v => { for (const s of [-1, 1]) { const x = s * .13;
-      bx(v, x, .016, .03, .104, .032, .215, DK, 0); bx(v, x, .04, .025, .096, .02, .19, GM, 0);   // the sole, the shoe
-      bx(v, x, .052, .105, .088, .03, .06, DK, 0); bx(v, x, .07, .112, .07, .008, .04, GD, 0); bx(v, x, .045, -.06, .08, .05, .05, DK, 0);   // toe cap with its gold strip, the heel
-      bx(v, x, .066, .012, .1, .034, .12, CR, 0); for (let k = 0; k < 3; k++) bx(v, x + s * .052, .068, -.022 + k * .034, .006, .013, .013, GD, 0);   // a cream spat, three buttons
-      ball(v, .04, x, .07, 0, BR); ring(v, .046, .058, .066, 12, GD, x, 0); discX(v, x - s * .044, .07, 0, .018, .006, 8, ST); discX(v, x + s * .044, .07, 0, .018, .006, 8, ST);   // the ankle joint
-      for (const z of [-.05, .075]) cyl(v, .007, .007, .03, .075, 6, ST, 0, x + s * .03, z); } });
-    make('btShin', v => {   // from the knee (0) down its own length (+y .25) to the ankle
-      ball(v, .037, 0, 0, 0, BR); discX(v, -.04, 0, 0, .02, .006, 8, ST); discX(v, .04, 0, 0, .02, .006, 8, ST);
-      lathe(v, [[.03, .015], [.036, .05], [.033, .12], [.024, .21], [.027, .25]], 12, () => DK, 0); ring(v, .039, .045, .058, 12, GD); ring(v, .031, .2, .21, 12, GD);
-      cyl(v, .0075, .0075, .03, .22, 6, ST, 0, 0, -.038); cyl(v, .011, .011, .03, .1, 6, GM, 0, 0, -.038); cyl(v, .005, .005, .05, .2, 5, CU, 0, .026, -.022);   // its piston, a copper line
-      for (let k = 0; k < 4; k++) bx(v, 0, .09 + k * .03, .034 - k * .0028, .012, .016, .006, GM, 0); });   // shin plates
-    make('btThigh', v => {   // from the hip (0) down its own length (+y .25) to the knee
-      ball(v, .046, 0, 0, 0, BR); ring(v, .05, -.006, .006, 12, GD);
-      lathe(v, [[.036, .02], [.044, .06], [.042, .14], [.035, .25]], 12, () => DK, 0); ring(v, .046, .1, .112, 12, GD);
-      cyl(v, .009, .009, .04, .21, 6, ST, 0, 0, .043); cyl(v, .013, .013, .04, .12, 6, GM, 0, 0, .043); cyl(v, .005, .005, .03, .22, 5, CU, 0, -.03, -.03);
-      bx(v, 0, .17, -.04, .03, .07, .008, GM, 0); });
-    make('btPelvis', v => {   // about the hips' middle
-      lathe(v, [[0, -.075], [.09, -.07], [.125, -.02], [.12, .04], [.085, .07], [0, .075]], 16, () => DK, 0, TR([1.12, 1, .8], [0, 0, 0], [0, 0, 0]));
-      lathe(v, [[.118, .018], [.128, .018], [.128, .046], [.118, .046]], 18, () => BR, 0, TR([1.12, 1, .8], [0, 0, 0], [0, 0, 0])); bx(v, 0, .032, .104, .052, .036, .012, GD, 0); bx(v, 0, .032, .111, .026, .018, .006, DK, 0);   // its belt and buckle
-      for (const s of [-1, 1]) { discX(v, s * .1, 0, 0, .056, .026, 12, GM); discX(v, s * .128, 0, 0, .03, .006, 10, GD); }
-      cyl(v, .02, .02, .07, .12, 8, ST); ball(v, .034, 0, .12, 0, BR); });   // the waist joint
-    make('btTorso', v => {   // from the waist (0) up: a tailcoat over a white shirt front
-      lathe(v, [[.05, .1], [.1, .14], [.15, .25], [.178, .335], [.15, .395], [.07, .42], [0, .425]], 18, () => DK, 0, TR([1.15, 1, .72], [0, 0, 0], [0, 0, 0]));
-      bx(v, 0, .255, .112, .092, .2, .014, WH, 0); for (let k = 0; k < 3; k++) bx(v, 0, .19 + k * .05, .121, .012, .012, .006, GD, 0);   // the shirt front, its studs
-      for (const s of [-1, 1]) { bx(v, s * .062, .27, .118, .014, .2, .01, GD, 0); bx(v, s * .09, .25, .104, .05, .2, .012, DK, 0);   // lapels
-        bx(v, s * .042, .378, .13, .062, .046, .02, RD, 0); bx(v, s * .072, .378, .13, .012, .056, .022, RD2, 0);   // the bow tie's wings
-        ball(v, .062, s * .21, .36, 0, GM); ring(v, .068, .352, .368, 12, GD, s * .21, 0); bx(v, s * .2, .425, 0, .1, .012, .11, GD, 0); for (let k = -1; k <= 1; k++) bx(v, s * .245, .41, k * .034, .012, .03, .012, GD, 0);   // shoulders, epaulettes, fringe
-        cyl(v, .01, .01, .11, .37, 6, ST, 0, s * .045, -.118); cyl(v, .015, .015, .11, .2, 6, GM, 0, s * .045, -.118); }   // spine pistons
-      bx(v, 0, .378, .136, .024, .034, .026, RD2, 0);   // the knot
-      lathe(v, [[.052, .405], [.06, .405], [.064, .45], [.056, .45]], 12, () => WH, 0);   // the collar
-      discZ(v, .095, .3, .1, [[0, 0], [.034, 0], [.034, .014], [0, .014]], 14, BR); discZ(v, .095, .3, .112, [[0, 0], [.026, 0], [.026, .006], [0, .006]], 14, AMB, .95);   // a pocket watch, alight
-      for (let k = 0; k < 6; k++) bx(v, .078 - k * .014, .285 - Math.sin(k / 5 * 3.14) * .03, .121, .009, .006, .005, GD, 0);   // and its chain
-      for (let k = 0; k < 5; k++) bx(v, 0, .17 + k * .036, -.118, .13, .012, .012, GM, 0); bx(v, 0, .25, -.112, .15, .2, .01, DK, 0);   // vents down its back
-      discZ(v, -.09, .21, .1, [[0, 0], [.02, 0], [.02, .008], [0, .008]], 10, WH); });   // a folded pocket square
-    make('btTail', v => {   // a coat tail, hanging from its hinge (0) down
-      bx(v, 0, -.07, 0, .088, .14, .012, DK, 0); bx(v, 0, -.19, 0, .074, .1, .012, DK, 0); bx(v, 0, -.243, 0, .074, .006, .016, GD, 0); bx(v, 0, -.02, .008, .03, .012, .01, GD, 0); bx(v, 0, -.12, .008, .012, .2, .004, GM, 0); });
-    make('btHead', v => {   // about the top of its neck (0)
-      cyl(v, .022, .022, -.02, .05, 8, ST); ring(v, .03, .01, .022, 10, BR); ring(v, .03, .032, .044, 10, BR);
-      lathe(v, [[0, .04], [.066, .044], [.102, .085], [.114, .155], [.102, .225], [.062, .262], [0, .272]], 20, () => CR, 0);
-      lathe(v, [[.11, .145], [.118, .145], [.118, .168], [.11, .168]], 20, () => BR, 0); lathe(v, [[.06, .258], [.066, .258], [.05, .274], [0, .28]], 14, () => BR, 0);   // a brass band, a crown plate
-      discZ(v, 0, .158, .086, [[0, 0], [.064, 0], [.064, .036], [.052, .042], [0, .042]], 20, BR); discZ(v, 0, .158, .122, [[0, 0], [.05, 0], [.05, .008], [0, .008]], 20, GL);   // the eye's housing, its dark glass
-      discZ(v, 0, .158, .131, [[.026, 0], [.04, 0], [.04, .004], [.026, .004]], 20, TEAL, .95); discZ(v, 0, .158, .132, [[0, 0], [.012, 0], [.012, .004], [0, .004]], 10, AMB, .98);   // iris and pupil, alight
-      for (let k = 0; k < 8; k++) { const a = k / 8 * 6.283; bx(v, Math.cos(a) * .058, .158 + Math.sin(a) * .058, .128, .008, .008, .006, GD, 0); }   // rivets round the lens
-      bx(v, 0, .222, .118, .118, .014, .03, GM, 0);   // a brow
-      for (const s of [-1, 1]) { bx(v, s * .034, .082, .1, .05, .012, .014, GD, 0); bx(v, s * .064, .09, .094, .016, .012, .012, GD, 0);   // a brass moustache
-        discX(v, s * .114, .155, 0, .034, .012, 12, BR); discX(v, s * .128, .155, 0, .018, .006, 10, GD); cyl(v, .0045, .0045, .155, .236, 5, ST, 0, s * .128, 0); ball(v, .011, s * .128, .24, 0, AMB, .9); }   // ears with a short aerial each
-      for (let k = -2; k <= 2; k++) bx(v, k * .02, .19, -.108, .008, .06, .008, GM, 0); });   // a grille behind
-    make('btArmU', v => {   // from the shoulder (0) along its own length (+y .24) to the elbow: a black sleeve
-      lathe(v, [[.034, .03], [.042, .07], [.038, .15], [.031, .24]], 12, () => DK, 0); ring(v, .044, .1, .112, 12, GD);
-      cyl(v, .008, .008, .04, .2, 6, ST, 0, 0, -.042); cyl(v, .012, .012, .04, .11, 6, GM, 0, 0, -.042); cyl(v, .0045, .0045, .04, .22, 5, CU, 0, .028, .024); });
-    make('btArmF', v => {   // from the elbow (0) along its own length (+y .24) to the wrist: sleeve, white cuff, cufflink
-      ball(v, .036, 0, 0, 0, BR); discX(v, -.038, 0, 0, .019, .006, 8, ST); discX(v, .038, 0, 0, .019, .006, 8, ST);
-      lathe(v, [[.027, .015], [.031, .05], [.027, .15]], 12, () => DK, 0); lathe(v, [[.03, .148], [.035, .15], [.036, .2], [.03, .202]], 12, () => WH, 0); bx(v, .036, .176, 0, .008, .018, .018, GD, 0);
-      cyl(v, .019, .017, .2, .24, 8, ST); cyl(v, .006, .006, .03, .14, 5, ST, 0, 0, .034); });
-    make('btTray', v => {   // held still over its head: two white gloves, a silver tray, the framed display standing on it
-      for (const s of [-1, 1]) { const x = s * .22; ball(v, .023, x, 1.25, .02, BR); bx(v, x, 1.264, .02, .075, .014, .085, WH, 0);
-        for (let k = 0; k < 4; k++) bx(v, x + (k - 1.5) * .018, 1.264, .09, .014, .012, .062, WH, 0); bx(v, x - s * .046, 1.264, .04, .03, .012, .016, WH, 0); for (let k = 0; k < 3; k++) bx(v, x + (k - 1) * .018, 1.2715, .0, .003, .002, .05, GM, 0); }
-      lathe(v, [[0, 1.272], [.33, 1.272], [.362, 1.284], [.372, 1.302], [.356, 1.302], [.33, 1.288], [0, 1.288]], 36, () => SV, 0); lathe(v, [[.364, 1.3], [.376, 1.3], [.376, 1.308], [.364, 1.308]], 36, () => GD, 0);
-      lathe(v, [[.2, 1.2885], [.21, 1.2885], [.21, 1.2895], [.2, 1.2895]], 28, () => ST, 0); lathe(v, [[.3, 1.2885], [.306, 1.2885], [.306, 1.2895], [.3, 1.2895]], 28, () => ST, 0);   // rings chased in the silver
-      bx(v, 0, 1.302, 0, .58, .026, .05, BR, 0); bx(v, 0, 1.507, 0, .566, .018, .022, BR, 0); bx(v, 0, 1.405, 0, .526, .19, .008, GL, 0);
-      for (const s of [-1, 1]) { bx(v, s * .274, 1.405, 0, .018, .2, .022, BR, 0); ball(v, .014, s * .274, 1.525, 0, GD); bx(v, s * .274, 1.318, 0, .034, .012, .036, GD, 0); ball(v, .012, s * .2, 1.296, .06, GD); }
-      for (let k = -3; k <= 3; k++) bx(v, k * .07, 1.302, .026, .01, .01, .004, GD, 0);
-      cyl(v, .04, .04, 1.288, 1.292, 16, WH, 0, 0, .2); lathe(v, [[.006, 1.292], [.03, 1.296], [.032, 1.318], [.02, 1.336], [.008, 1.342], [0, 1.343]], 14, () => BR, 0, at(0, 0, .2)); ball(v, .007, 0, 1.349, .2, GD); });   // a little service bell on its napkin
-  }
   // a door guard (front: +z): legs, torso with its shield arm, head (about its neck), the spear arm
   { const DK = C(0x1a1a20), GM = C(0x34363e), GOLD = C(0xd9a441), GLD2 = C(0xffc94a), AMB = C(0xffa51e), RED = C(0xc2301c), STL = C(0xaab2bf);
     const discZ = (v, x, y, z, prof, seg, colf, w) => lathe(v, prof, seg, colf, w, TR([1, 1, 1], [1.5708, 0, 0], [x, y, z]));
@@ -5104,10 +5015,10 @@ const CMS = (() => {
   return {bx};
 })();
 // the props' shapes go to the graphics card like the life's do
-for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'cmBonsai', 'cmRipple', 'cmMoss', 'cmRake', 'gbBody', 'gbLegL', 'gbLegR', 'gbNeck', 'gbHead', 'gbFood', 'hvBody', 'hvTop', 'hvBrush', 'btFeet', 'btShin', 'btThigh', 'btPelvis', 'btTorso', 'btTail', 'btHead', 'btArmU', 'btArmF', 'btTray', 'gdLegs', 'gdTorso', 'gdHead', 'gdArm', 'bkBase', 'bkHead', 'bkArmU', 'bkArmL', 'bkArmR', 'bkRail', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
+for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'cmBonsai', 'cmRipple', 'cmMoss', 'cmRake', 'gbBody', 'gbLegL', 'gbLegR', 'gbNeck', 'gbHead', 'gbFood', 'hvBody', 'hvTop', 'hvBrush', 'gdLegs', 'gdTorso', 'gdHead', 'gdArm', 'bkBase', 'bkHead', 'bkArmU', 'bkArmL', 'bkArmR', 'bkRail', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
   const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
 }
-const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, cmBonsai: 26, cmRipple: 20, cmMoss: 20, cmRake: 20, gbBody: 44, gbLegL: 44, gbLegR: 44, gbNeck: 44, gbHead: 44, gbFood: 44, hvBody: 45, hvTop: 45, hvBrush: 45, btFeet: 47, btShin: 47, btThigh: 47, btPelvis: 47, btTorso: 47, btTail: 47, btHead: 47, btArmU: 47, btArmF: 47, btTray: 47, gdLegs: 43, gdTorso: 43, gdHead: 43, gdArm: 43, bkBase: 41, bkHead: 41, bkArmU: 41, bkArmL: 41, bkArmR: 41, bkRail: 20, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
+const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, cmBonsai: 26, cmRipple: 20, cmMoss: 20, cmRake: 20, gbBody: 44, gbLegL: 44, gbLegR: 44, gbNeck: 44, gbHead: 44, gbFood: 44, hvBody: 45, hvTop: 45, hvBrush: 45, gdLegs: 43, gdTorso: 43, gdHead: 43, gdArm: 43, bkBase: 41, bkHead: 41, bkArmU: 41, bkArmL: 41, bkArmR: 41, bkRail: 20, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
 const cmGrp = (mesh, inst) => { const ib = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst.length ? inst.flat() : new Array(11).fill(0)), gl.STATIC_DRAW); return {mesh, t: CMT[mesh], n: inst.length, ib, vao: lifeVAO(lifeGeo[mesh], ib)}; };
 // which way something faces in the world, from which way it faces in the room's layout
 const cmFace = (R, fx, fd) => { const w = R.door === 'back' ? [fx, -fd] : [-fx, fd]; return Math.atan2(w[0], w[1]); };
@@ -5596,8 +5507,6 @@ function cmPropsMore(R, put, rnd, F, H, VC) {
   for (const dd of [7.15, 7.55, 8.45, 8.85]) put('cmCandle', -17.1, 1.72, dd, 0, .9 + rnd() * .5, 0);
   for (const [x, dd] of [[-12.4, 7.2], [-12.55, 7.4], [-13.6, 8.8]]) put('cmCandle', x, -.08, dd, 0, 1 + rnd() * .6, 0);
   put('cmCat', -15.3, -.449, 8.6, F(1, 0), 1.25, 0);
-  { const pt = (m, k, sd) => put(m, -13, -.08, 8, F(1, 0), CM_BUT, 0, k, sd || 0);   // the butler, in the middle of the lounge table
-    pt('btFeet', 0); pt('btPelvis', 3); pt('btTorso', 4); pt('btHead', 6); pt('btTray', 9); for (const sd of [-1, 1]) { pt('btShin', 1, sd); pt('btThigh', 2, sd); pt('btTail', 5, sd); pt('btArmU', 7, sd); pt('btArmF', 8, sd); } }
   put('cmUrn', -5.5, -.45, 3.55, 0, .6, 0, 0, 0, VC.terracotta); put('cmPalm', -5.5, .12, 3.55, rnd() * 6, .72, rnd() * 9);
   // the hall's bronzes, the cases' treasures
   put('cmBull', -12.4, 1.72, 44.1, F(0, -1) + .5, 1.3, 0); put('cmBear', 12.4, 1.72, 44.1, F(0, -1) - .5, 1.3, 0);
@@ -5669,21 +5578,6 @@ let CM_RARE_DAY = '10 Nov 2026', cmRareGot = false; const CM_RAREP = {}, CM_RARE
   ['I', 'PALINDROME', '$0.58', 142044825], ['I', 'ALPHA', '$9.74', h => Math.floor(cmMined(h) / 1e8)], ['I', 'OMEGA', '$11.69', h => Math.floor(cmMined(h) / 1e8)],
   ['H', 'BLOCK 9', '$0.85', 5e9], ['H', 'BLOCK 78', '< $0.01', 5e9], ['H', 'NAKAMOTO', '< $0.01', 95e9], ['H', 'FIRST TX', '$0.85', 1e9], ['H', 'VINTAGE', '< $0.01', 5e12], ['H', 'PIZZA', '< $0.01', 1e12], ['H', 'HITMAN', '$1,948', 167e9]];
 const cmMined = h => { let s = 0, sub = 5e9, a = 0; while (a <= h && sub > 0) { const n = Math.min(210000, h + 1 - a); s += n * sub; a += 210000; sub = Math.floor(sub / 2); } return s; };   // every sat mined up to this height
-// the butler's tray: how long the longest-waiting transaction in line for the next block has waited (the live feed says when each was first seen)
-const CM_BUT = .6; let cmTrayC = null;
-function cmTrayCv() {
-  const W = 512, H = 192, [cv, c] = cmTrayC || (cmTrayC = cmCv(W, H)), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`;
-  let old = null; for (const t of liveMap.values()) if (t.seen > 0 && (!old || t.seen < old.seen)) old = t;
-  c.fillStyle = '#07060a'; c.fillRect(0, 0, W, H); for (let y = 0; y < H; y += 4) { c.fillStyle = 'rgba(255,255,255,.02)'; c.fillRect(0, y, W, 2); }
-  c.strokeStyle = 'rgba(255,176,74,.55)'; c.lineWidth = 3; c.strokeRect(6, 6, W - 12, H - 12);
-  c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = mono(800, 28); c.fillStyle = '#ffd6a0'; c.fillText('LONGEST WAITING TRANSACTION', W / 2, 38);
-  if (!old) { c.font = mono(700, 28); c.fillStyle = 'rgba(255,255,255,.5)'; c.fillText('listening for the queue…', W / 2, 106); return cv; }
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - old.seen)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), p2 = n => String(n).padStart(2, '0');
-  const txt = d ? `${d} d ${p2(h)} h ${p2(m)} m` : h ? `${h} h ${p2(m)} m ${p2(s % 60)} s` : `${m} m ${p2(s % 60)} s`;
-  c.font = mono(800, 62); c.shadowColor = '#ffb04a'; c.shadowBlur = 18; c.fillStyle = '#ffb04a'; c.fillText(txt, W / 2, 104); c.shadowBlur = 0;
-  c.font = mono(700, 21); c.fillStyle = 'rgba(255,255,255,.74)'; c.fillText('in line for the next block · paying ' + (old.rate >= 10 ? old.rate.toFixed(0) : old.rate.toFixed(2)) + ' sat/vB', W / 2, 160);
-  return cv;
-}
 let cmRareCv = null;
 function cmRare(tn) {   // (a tall board: six kinds at a time)
   if (!cmRareGot) { cmRareGot = true;   // today's prices: one small file kept beside the page (refreshed once a day); if it cannot be read, the prices built in stay
@@ -5719,8 +5613,6 @@ function cmQuadsMore(R, Q, q, TX) {
   q.push(Q([15.8, 8.05, 37.2], [0, 0, -1.4], [0, 3.3, 0], 5, .95, TX(() => cmBanner('KOI GARDEN', '#7dff4a', 'koi'))));
   R.tick = Q([-24.5, 6.95, 22.17], [-17, 0, 0], [0, .45, 0], 6, 1, TX(() => cmTicker())); q.push(R.tick);
   R.rare = Q([-24.17, 2.5, 33.2], [0, 0, -2.5], [0, 3.125, 0], 5, .95, TX(() => cmRare(0))); q.push(R.rare);   // the rare sats board: on the entrance wall, between the doorway and GM
-  { const X0 = -13, D0 = 8, s = CM_BUT, y = -.08 + s * 1.314, hw = s * .258, hh = s * .182, mk = k => ({mk: () => cmTrayCv(), key: 'tray' + k});   // the display on the butler's tray: one face each way
-    R.tray = [Q([X0 + s * .012, y, D0 - hw], [0, 0, 2 * hw], [0, hh, 0], 5, 1.05, mk(0)), Q([X0 - s * .012, y, D0 + hw], [0, 0, -2 * hw], [0, hh, 0], 5, 1.05, mk(1))]; q.push(...R.tray); }
   R.map = Q([4.0 - .82 * .03, 1.04, 19.85 - .57 * .03], [.8, 0, -1.15], [0, 1.12, 0], 3, .95, TX(() => cmMap(4.4, 19.3))); q.push(R.map);
 }
 
@@ -6103,7 +5995,6 @@ function cmQDraw(VP, eye, tn) {
     if (pass) { gl.depthMask(true); gl.disable(gl.BLEND); }
   }
   gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(null);
-  if (R === room.at && R.tray && tn - (cm.trayAt || 0) > 1) { cm.trayAt = tn; const cv = cmTrayCv(); gl.activeTexture(gl.TEXTURE5); for (const q of R.tray) if (q.tex) { gl.bindTexture(gl.TEXTURE_2D, q.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv); gl.generateMipmap(gl.TEXTURE_2D); } gl.activeTexture(gl.TEXTURE0); }   // the butler's counter ticks
   if (R === room.at && R.rare && R.rare.tex && tn - (cm.rareAt || 0) > 3.2) { cm.rareAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.rare.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmRare(tn)); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }   // the rare sats board rolls on a row
   if (R === room.at && R.tick && tn - (cm.tickAt || 0) > 20) { cm.tickAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.tick.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmTicker()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
   // the live board, redrawn every couple of seconds while you are in the rooms
