@@ -3242,17 +3242,19 @@ if(T==4){
 }else if(T==46){   // the cat, asleep: its side rises and falls
  p.y*=1.+.045*sin(t*1.35)*smoothstep(.03,.12,p.y)*smoothstep(.2,.05,length(p.xz-vec2(-.1,.12)));
 }else if(T==44){   // the gardener: trims the bonsai, walks to the tank, feeds the fish, walks back (iC: the way from the bonsai to the tank)
- float f=mod(t,44.),s=smoothstep(16.,23.,f)-smoothstep(37.,44.,f),fl=3.1416*(smoothstep(14.,16.,f)-smoothstep(35.,37.,f));
+ float F=mod(t,644.),f=F<14.?F:F<314.?14.:F<335.?F-300.:F<635.?35.:F-600.,rs=smoothstep(14.,17.,F)*(1.-smoothstep(311.,314.,F))+smoothstep(335.,338.,F)*(1.-smoothstep(632.,635.,F));   // (a five minute rest after each job)
+ float tk=smoothstep(21.5,23.,f)*(1.-smoothstep(35.,36.5,f)),s=smoothstep(16.,23.,f)-smoothstep(37.,44.,f),fl=3.1416*(smoothstep(14.,16.,f)-smoothstep(35.,37.,f));
  float wv=(f>16.&&f<23.?sin((f-16.)/7.*3.1416):0.)+(f>37.?sin((f-37.)/7.*3.1416):0.)+.5*(f>14.&&f<16.?sin((f-14.)*1.5708):0.)+.5*(f>35.&&f<37.?sin((f-35.)*1.5708):0.),st=sin(t*8.)*min(wv*2.5,1.);
  float eT=smoothstep(.5,2.,f)*(1.-smoothstep(12.3,13.6,f)),eF=smoothstep(23.3,26.,f)*(1.-smoothstep(32.3,34.8,f)),tip=eF*smoothstep(-.2,.4,sin(t*1.25));
- float ext=.22+.32*eT+2.1*eF+.03*sin(t*2.3)*eT,ln=.2*eT+.3*eF,snip=eT*step(.1,sin(t*.8))*sin(t*12.);
+ float ext=.22+.4*eT+1.55*eF+.03*sin(t*2.3)*eT,ln=.2*eT+.03*eF,snip=eT*step(.1,sin(t*.8))*sin(t*12.);
  int k=int(iS.z+.5);vec3 nk=vec3(0.,.97,.06);mat3 Ln=RX(ln);
  if(k==1||k==2){float sg=k==1?1.:-1.;mat3 Q=RX(.5*st*sg);p.y-=.6;p=Q*p;p.y+=.6;n=Q*n;p.y+=max(0.,st*sg)*.035;}
  else if(k==3){p.y*=ext;p=Ln*p+nk;n=Ln*n;}
- else if(k==4){mat3 H=RX(.3*eT+.5*tip+.08*sin(t*.7))*RY(.25*sin(t*.5)*(1.-eT)*(1.-eF));if(aW>.25&&aW<.45)p.x+=(aW<.35?1.:-1.)*.028*max(snip,0.);p=Ln*(H*p+vec3(0.,ext,0.))+nk;n=Ln*(H*n);}
- else if(k==5){float kk=fract(t*.22+aW*17.);p=p*1.7+vec3(.3*sin(aW*91.)+.04*sin(t*1.7+aW*30.),2.48-kk*1.3,1.02+.12*sin(kk*9.+aW*40.));sc*=step(.6,eF);}   // the food, sinking in the water just behind the glass (the tank has a hood)
+ else if(k==4){mat3 H=RY(1.5*eF+.25*sin(t*.5)*(1.-eT)*(1.-eF)*(1.-rs))*RX(.3*eT+.3*tip+.08*sin(t*.7)*(1.-rs)+.6*rs);if(aW>.25&&aW<.45)p.x+=(aW<.35?1.:-1.)*.028*max(snip,0.);p=Ln*(H*p+vec3(0.,ext,0.))+nk;n=Ln*(H*n);}
+ else if(k==5){float kk=fract(t*.22+aW*17.);p=p*1.7+vec3(.3*sin(aW*91.)+.03*sin(t*1.7+aW*30.),2.48-kk*1.3,1.02+.2*fract(aW*53.));sc*=step(.6,eF);}   // the food, sinking in the water just behind the glass (the tank has a hood)
  else lift=.015*abs(st);
- R=RY(atan(-iC.x,-iC.z)+fl);b=iP.xyz+iC*s;em=w>.8?1.:0.;
+ lift+=(-.14+.008*sin(t*1.1))*rs;
+ R=RY(atan(-iC.x,-iC.z)+fl+iS.w*tk);b=iP.xyz+iC*s;em=w>.8?1.-.8*rs:0.;
 }else if(T==45){   // the hoover: wanders the open floor, brushes and turret spinning (iC: which way x and d run in the world)
  float u=t*.075+ph;vec2 o=vec2(1.9*sin(u),3.*sin(2.3*u+1.)),vv=vec2(1.9*cos(u),6.9*cos(2.3*u+1.))*iC.xz;int k=int(iS.z+.5);
  if(k==1){mat3 Q=RY(t*4.);p=Q*p;n=Q*n;}else if(k>=2){float sg=k==2?1.:-1.;mat3 Q=RY(t*10.*sg);p=Q*p+vec3(sg*.17,0.,.15);n=Q*n;}
@@ -4504,8 +4506,8 @@ function* cmLabelsG(R) {
     for (let i = 0; i < 700; i++) { const g = rnd(); c.fillStyle = `rgba(${(30 + g * 50) | 0},${(70 + g * 70) | 0},${(24 + g * 26) | 0},.55)`; const px = x + rnd() * n, py = y + rnd() * n, r = 1 + rnd() * 4; for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { if (px + ox < x - 6 || px + ox > x + n + 6 || py + oy < y - 6 || py + oy > y + n + 6) continue; c.beginPath(); c.arc(px + ox, py + oy, r, 0, 6.29); c.fill(); } } });
   yield;
   // raked gravel, the lines curving round
-  R.tRake = sheet(192, y0 + 832, 128, (x, y, n) => { c.fillStyle = '#cfc8b8'; c.fillRect(x, y, n, n); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${rnd() < .5 ? 90 : 255},${rnd() < .5 ? 85 : 250},80,.18)`; c.fillRect(x + rnd() * n, y + rnd() * n, 1.5, 1.5); }
-    c.strokeStyle = 'rgba(120,110,95,.55)'; c.lineWidth = 2; for (let k = 0; k < 16; k++) { c.beginPath(); for (let i = 0; i <= 32; i++) { const px = x + i * n / 32, py = y + k * 8 + 4 + Math.sin(i / 32 * 6.2832) * 2; i ? c.lineTo(px, py) : c.moveTo(px, py); } c.stroke(); } });
+  R.tRake = sheet(192, y0 + 832, 128, (x, y, n) => { c.fillStyle = '#d6cfbf'; c.fillRect(x, y, n, n); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${rnd() < .5 ? 90 : 255},${rnd() < .5 ? 85 : 250},80,.18)`; c.fillRect(x + rnd() * n, y + rnd() * n, 1.5, 1.5); }
+    for (const [col, lw, off] of [['rgba(96,88,74,.8)', 2.6, 0], ['rgba(255,252,240,.7)', 1.6, 2.6]]) { c.strokeStyle = col; c.lineWidth = lw; for (let k = 0; k < 16; k++) { c.beginPath(); for (let i = 0; i <= 32; i++) { const px = x + i * n / 32, py = y + k * 8 + 3 + off + Math.sin(i / 32 * 6.2832) * 1.2; i ? c.lineTo(px, py) : c.moveTo(px, py); } c.stroke(); } } });
   yield;
   const plate = (x, y, w, h, a, col, b) => labPaint(x, y, w, h, a, col, null, b, col);
   R.pl = {};
@@ -4849,6 +4851,27 @@ const CMS = (() => {
     bx(v, 0, 0, .405, .3, .3, .01, [0, 0, 0], 2.75); bx(v, 0, 0, -.405, .3, .3, .01, [0, 0, 0], 2.75);
   });
   make('cmLink', v => { const S = C(0x9aa3b2); bx(v, 0, .14, 0, .5, .05, .05, S, 0); bx(v, 0, -.14, 0, .5, .05, .05, S, 0); bx(v, -.25, 0, 0, .05, .33, .05, S, 0); bx(v, .25, 0, 0, .05, .33, .05, S, 0); });
+  // a bonsai in its pot (the pad at +z is the one the gardener trims); ripples raked round a rock; moss; a bamboo rake
+  { const H = (i, j) => { const x = Math.sin(i * 12.9898 + j * 78.233) * 43758.5453; return x - Math.floor(x); };
+    const limb = (v, a, b, ra, rb, col, seg = 7) => { const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(...d), u = d.map(x => x / L), t0 = Math.abs(u[1]) < .9 ? [0, 1, 0] : [1, 0, 0];
+      let e1 = [u[1] * t0[2] - u[2] * t0[1], u[2] * t0[0] - u[0] * t0[2], u[0] * t0[1] - u[1] * t0[0]]; const l1 = Math.hypot(...e1); e1 = e1.map(x => x / l1); const e2 = [u[1] * e1[2] - u[2] * e1[1], u[2] * e1[0] - u[0] * e1[2], u[0] * e1[1] - u[1] * e1[0]];
+      const P = (c, r, k) => { const an = k / seg * 6.2832; return [c[0] + (e1[0] * Math.cos(an) + e2[0] * Math.sin(an)) * r, c[1] + (e1[1] * Math.cos(an) + e2[1] * Math.sin(an)) * r, c[2] + (e1[2] * Math.cos(an) + e2[2] * Math.sin(an)) * r]; }, m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+      for (let k = 0; k < seg; k++) { const c = col(k); tri(v, P(a, ra, k), P(b, rb, k), P(a, ra, k + 1), c, 0, m); tri(v, P(a, ra, k + 1), P(b, rb, k), P(b, rb, k + 1), c, 0, m); } };
+    make('cmBonsai', v => {
+      const POT = C(0x35506a), POT2 = C(0x2a4058), BK = k => k % 3 ? C(0x5a3d26) : C(0x6e4c30), G = [C(0x34782e), C(0x44903a), C(0x58a848), C(0x6cbc54)];
+      const pb = (c, s, col) => { const P = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(p => [c[0] + p[0] * s[0] / 2, c[1] + p[1] * s[1] / 2, c[2] + p[2] * s[2] / 2]); for (const f of [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]) { tri(v, P[f[0]], P[f[1]], P[f[2]], col, 0, c); tri(v, P[f[0]], P[f[2]], P[f[3]], col, 0, c); } };
+      pb([0, .05, 0], [.46, .08, .3], POT); pb([0, .095, 0], [.5, .02, .34], POT2); for (const sx of [-1, 1]) for (const sz of [-1, 1]) pb([sx * .18, .008, sz * .11], [.06, .016, .05], POT2); pb([0, .104, 0], [.44, .012, .28], C(0x3a2a1c));   // a glazed pot on little feet, dark earth
+      lathe(v, [[0, .108], [.13, .108], [.1, .125], [0, .13]], 9, (i) => i % 2 ? C(0x4a7a2a) : C(0x5a8a34), 0, TR([1.3, 1, .85], [0, 0, 0], [-.04, 0, 0]));   // moss over the roots
+      const T = [[0, .11, 0], [.06, .2, .02], [.04, .29, -.03], [-.06, .37, -.01], [-.05, .46, .03], [.02, .54, .01]], RR = [.05, .04, .032, .026, .02, .012];
+      for (let i = 0; i + 1 < T.length; i++) limb(v, T[i], T[i + 1], RR[i], RR[i + 1], BK);   // the trunk, bent this way and that
+      for (const [x, z] of [[.11, .04], [-.1, .05], [.04, -.09], [-.07, -.07], [.0, .1]]) limb(v, [x * .25, .15, z * .25], [x, .105, z], .022, .008, BK, 5);   // roots gripping the earth
+      const PADS = [[[0, .33, .2], [.14, .045, .11], T[2]], [[.22, .3, -.02], [.15, .05, .12], T[2]], [[-.22, .38, -.05], [.15, .05, .12], T[3]], [[.1, .46, -.12], [.13, .045, .11], T[4]], [[-.03, .57, .03], [.15, .055, .13], T[5]], [[-.12, .26, .12], [.1, .04, .09], T[1]]];
+      PADS.forEach(([c, r, from], k) => { limb(v, from, [c[0], c[1] - r[1] * .5, c[2]], .014, .007, BK, 5); blob(v, 2, .06, (i) => G[Math.floor(H(i, k) * 4)], .3, TR(r, [0, k * 1.3, 0], c)); blob(v, 1, .1, (i) => G[2 + Math.floor(H(i, k + 9) * 2)], .4, TR([r[0] * .55, r[1] * .8, r[2] * .55], [0, k, 0], [c[0] + r[0] * .3, c[1] + r[1] * .6, c[2] - r[2] * .2])); });   // pads of leaves, in layers
+    });
+    make('cmRipple', v => { for (let k = 0; k < 4; k++) { const r = .55 + k * .15; lathe(v, [[r - .04, 0], [r - .012, .014], [r + .012, .014], [r + .04, 0]], 40, (i, a, y, j) => j === 1 ? C(0xe6e0d0) : j === 0 ? C(0xd4cdbd) : C(0xa39b8a), 0); } });
+    make('cmMoss', v => { lathe(v, [[0, .05], [.3, .045], [.5, .02], [.56, 0]], 16, (i, a, y, j) => H(i, j) < .3 ? C(0x3d6b22) : H(i, j) < .7 ? C(0x4a7a2a) : C(0x5c8f36), 0, p => { const a = Math.atan2(p[2], p[0]), k = 1 + .14 * Math.sin(a * 3 + 1) + .08 * Math.sin(a * 7); return [p[0] * k, p[1], p[2] * k]; }); });
+    make('cmRake', v => { const BM = k => k % 2 ? C(0xc9a86a) : C(0xb8934f); limb(v, [0, 0, 0], [0, 1.7, 0], .016, .014, BM, 6); for (const y of [.4, .85, 1.3]) lathe(v, [[.018, y - .008], [.02, y], [.018, y + .008]], 6, () => C(0x8a6a34), 0); limb(v, [-.22, .02, 0], [.22, .02, 0], .016, .016, BM, 6); for (let i = -4; i <= 4; i++) limb(v, [i * .05, .02, 0], [i * .05, -.09, .02], .007, .005, BM, 4); });
+  }
   // the gardener (front: +z): body, a leg (left, right), its neck (one unit tall: it slides out), its head, the fish food
   { const CRM = C(0xe9e2cf), GRN = C(0x6fae46), DGR = C(0x2f6b2a), COP = C(0xb5683a), CHR = C(0xc9ced6), DCH = C(0x7c828c), TEAL = C(0x4fe0d0), STRAW = C(0xd9b86a), DK = C(0x22252b);
     const ball = (v, x, y, z, r, col, w) => lathe(v, [[0, -r], [r * .7, -r * .7], [r, 0], [r * .7, r * .7], [0, r]], 10, () => col, w, TR([1, 1, 1], [0, 0, 0], [x, y, z]));
@@ -4992,10 +5015,10 @@ const CMS = (() => {
   return {bx};
 })();
 // the props' shapes go to the graphics card like the life's do
-for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'gbBody', 'gbLegL', 'gbLegR', 'gbNeck', 'gbHead', 'gbFood', 'hvBody', 'hvTop', 'hvBrush', 'gdLegs', 'gdTorso', 'gdHead', 'gdArm', 'bkBase', 'bkHead', 'bkArmU', 'bkArmL', 'bkArmR', 'bkRail', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
+for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'cmBonsai', 'cmRipple', 'cmMoss', 'cmRake', 'gbBody', 'gbLegL', 'gbLegR', 'gbNeck', 'gbHead', 'gbFood', 'hvBody', 'hvTop', 'hvBrush', 'gdLegs', 'gdTorso', 'gdHead', 'gdArm', 'bkBase', 'bkHead', 'bkArmU', 'bkArmL', 'bkArmR', 'bkRail', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
   const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
 }
-const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, gbBody: 44, gbLegL: 44, gbLegR: 44, gbNeck: 44, gbHead: 44, gbFood: 44, hvBody: 45, hvTop: 45, hvBrush: 45, gdLegs: 43, gdTorso: 43, gdHead: 43, gdArm: 43, bkBase: 41, bkHead: 41, bkArmU: 41, bkArmL: 41, bkArmR: 41, bkRail: 20, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
+const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, cmBonsai: 26, cmRipple: 20, cmMoss: 20, cmRake: 20, gbBody: 44, gbLegL: 44, gbLegR: 44, gbNeck: 44, gbHead: 44, gbFood: 44, hvBody: 45, hvTop: 45, hvBrush: 45, gdLegs: 43, gdTorso: 43, gdHead: 43, gdArm: 43, bkBase: 41, bkHead: 41, bkArmU: 41, bkArmL: 41, bkArmR: 41, bkRail: 20, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
 const cmGrp = (mesh, inst) => { const ib = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst.length ? inst.flat() : new Array(11).fill(0)), gl.STATIC_DRAW); return {mesh, t: CMT[mesh], n: inst.length, ib, vao: lifeVAO(lifeGeo[mesh], ib)}; };
 // which way something faces in the world, from which way it faces in the room's layout
 const cmFace = (R, fx, fd) => { const w = R.door === 'back' ? [fx, -fd] : [-fx, fd]; return Math.atan2(w[0], w[1]); };
@@ -5472,8 +5495,8 @@ function cmFixMore(R, H) {
 function cmPropsMore(R, put, rnd, F, H, VC) {
   for (const dd of [4.6, 11.4]) put('cmChand', 0, 6.55, dd, 0, 1, 0);
   for (const s of [-1, 1]) [['gdLegs', 0], ['gdTorso', 1], ['gdHead', 2], ['gdArm', 3]].forEach(([m, k]) => put(m, s * 5.3, cmH(s * 5.3, 17.4, 0), 17.4, F(0, 1), 1.12, s + 1, k, 0));   // the door guards, either side of the arcade's mouth
-  { const A = [25.54, 29.28], Bt = [28.25, 31.79], a = cmW(R, A[0], A[1]), bb = cmW(R, Bt[0], Bt[1]), sx = cmW(R, 1, 0)[0], sz = cmW(R, 0, 1)[1] - cmW(R, 0, 0)[1];   // the gardener (bonsai to tank), the hoover (the lounge's open floor)
-    [['gbBody', 0], ['gbLegL', 1], ['gbLegR', 2], ['gbNeck', 3], ['gbHead', 4], ['gbFood', 5]].forEach(([m, k]) => put(m, A[0], -.9, A[1], 0, 1, 0, k, 0, [bb[0] - a[0], 0, bb[1] - a[1]]));
+  { const A = [25.52, 29.3], Bt = [28.18, 31.9], a = cmW(R, A[0], A[1]), bb = cmW(R, Bt[0], Bt[1]), o0 = cmW(R, 0, 0), x1 = cmW(R, 1, 0), tw = Math.atan2(x1[0] - o0[0], x1[1] - o0[1]) - Math.atan2(bb[0] - a[0], bb[1] - a[1]), sx = cmW(R, 1, 0)[0], sz = cmW(R, 0, 1)[1] - cmW(R, 0, 0)[1];   // the gardener (bonsai to tank), the hoover (the lounge's open floor)
+    [['gbBody', 0], ['gbLegL', 1], ['gbLegR', 2], ['gbNeck', 3], ['gbHead', 4], ['gbFood', 5]].forEach(([m, k]) => put(m, A[0], -.9, A[1], 0, 1, 0, k, tw, [bb[0] - a[0], 0, bb[1] - a[1]]));
     [['hvBody', 0], ['hvTop', 1], ['hvBrush', 2], ['hvBrush', 3]].forEach(([m, k]) => put(m, -7.7, cmH(-7.7, 6.6, 0), 6.6, 0, 1.25, 0, k, 0, [sx, 0, sz])); }
   for (const s of [-1, 1]) { put('cmUrn', s * 7.6, 0, 18.1, 0, .75, 0, 0, 0, VC.black); put('cmPalm', s * 7.6, .7, 18.1, rnd() * 6, .95, rnd() * 9); }
   // the chess game, half played
@@ -5496,10 +5519,13 @@ function cmPropsMore(R, put, rnd, F, H, VC) {
     put('cmCue', cx - .1, 2.67, cd - .5, cmYaw(R) + .08, 1, 0); put('cmCue', cx + .2, 2.67, cd + .52, cmYaw(R) - .05, 1, 0); }
   [[-35, 39.5, 0xff4fd8], [-28.5, 41.5, 0x27e1ff], [-27, 30, 0xff4fd8]].forEach(([x, dd, c]) => put('cmHiTable', x, 1.8, dd, 0, 1, 0, 0, 0, H(c)));
   // the garden: bonsai, rocks in the gravel, butterflies over the flowers
-  for (const dd of [28.5, 43]) put('tree', 24.7, -.1, dd, rnd() * 6, .32, rnd() * 9);
+  put('cmBonsai', 24.7, -.1, 28.5, F(.715, .699), 1.25, 2); put('cmBonsai', 24.7, -.1, 43, F(.9, -.4), 1.25, 5);
   for (const [x, dd] of [[28.0, 30.4], [38.0, 30.4], [28.0, 35.7], [38.0, 35.7]]) put('cmToro', x, -.86, dd, .52, 1.0, 0);   // the stone lanterns
   put('cmBasin', 25.9, -.88, 31.2, F(1, 0), 1.0, 0);   // a stone basin by the gate, water running in
   for (const [x, dd, s] of [[31.2, 43.4, .55], [34.6, 44.6, .42], [35.4, 43.0, .3]]) put('rock', x, -.86, dd, rnd() * 6, s, 0, 0, 0, H(0x5a5a56));
+  for (const [x, dd, s] of [[31.2, 43.4, .92], [34.6, 44.6, .7], [35.4, 43.0, .52]]) { put('cmRipple', x, -.842, dd, 0, s, 0); put('cmMoss', x, -.84, dd, rnd() * 6, s * .95, 0); }   // rings raked round each rock, moss at its foot
+  for (const [x, dd, s, c] of [[31.75, 43.75, .22, 0x6a6a64], [30.8, 43.05, .16, 0x4e4e4a], [34.2, 44.3, .17, 0x66665e], [35.7, 43.2, .13, 0x55554f]]) put('rock', x, -.86, dd, rnd() * 6, s, 0, 0, 0, H(c));   // smaller stones beside the big ones
+  put('cmRake', 36.72, -.9, 44.9, F(-1, 0), 1, 0);
   for (const [x, dd, c] of [[30, 23.2, 0xffb03a], [35, 46.8, 0x7ac8ff], [27, 46.5, 0xff8ad8], [39.5, 26.5, 0xffe04a], [32.5, 22.9, 0xffffff]]) put('butterfly', x, -.9, dd, rnd() * 6, .55, rnd() * 9, 0, 0, H(c));
   // by the warehouse door: barrels, cones
   put('cmBarrel', 5.0, 0, 6.0, rnd() * 6, 1, 0, 0, 0, H(0x1a5ad8)); put('cmBarrel', 5.75, 0, 5.75, rnd() * 6, 1, 0, 0, 0, H(0xff6a14));
