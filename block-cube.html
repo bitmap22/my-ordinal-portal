@@ -3248,7 +3248,7 @@ if(T==4){
   p=Q*p;n=Q*n;p.y+=br;}
  em=w>.8?.45+.55*nr+.35*cl*sin(t*5.):0.;
 }else if(T==41){   // the barkeep: glides along its rail, wipes, shakes, watches you; pulls the tap when a pint is poured (uBt.x: when)
- float tp=t-uBt.x,pg=tp>0.?smoothstep(0.,.45,tp)*(1.-smoothstep(2.4,3.8,tp)):0.,pk=tp>0.?smoothstep(.1,.5,tp)*(1.-smoothstep(1.9,2.5,tp)):0.,pull=tp>0.?smoothstep(.5,.8,tp)*(1.-smoothstep(1.6,1.9,tp)):0.;
+ float tp=t-uBt.x,pg=tp>0.?smoothstep(0.,.9,tp)*(1.-smoothstep(3.4,4.8,tp)):0.,pk=tp>0.?smoothstep(.5,1.05,tp)*(1.-smoothstep(3.,3.6,tp)):0.,pull=tp>0.?smoothstep(1.1,1.35,tp)*(1.-smoothstep(2.7,2.95,tp)):0.;   // (it gets to the taps first: the beer runs from 1.1 s)
  float gd=mix(2.3*sin(t*.13)+.9*sin(t*.31+1.),0.,pg),f=mod(t,24.),sh=smoothstep(14.,15.,f)*(1.-smoothstep(19.,20.,f))*(1.-pk);
  int k=int(iS.z+.5);
  if(k==1){vec3 dl=(uE-(iP.xyz+R*vec3(gd,2.,0.)))*R;float nr=smoothstep(17.,11.,length(dl))*(1.-pk);
@@ -5941,7 +5941,7 @@ function cmDo(A) {
     p.seatOut = s.length > 6 ? [s[6], s[7]] : [s[0] + s[3] * .8, s[1] + s[4] * .8]; return;
   }
   if (A.a === 'sip') { cmSip(); return; }
-  if (A.a === 'pour') { cm.pour = {t0: performance.now()}; cmBt[0] = now(); cmNoise(1.6, 900, .05); setTimeout(() => { cm.pour = null; cm.pint = {fill: 1, sipT: 0}; crew.last = ''; }, 1800); return; }
+  if (A.a === 'pour') { cm.pour = {t0: performance.now() + 1100}; cmBt[0] = now(); setTimeout(() => { if (cm.pour) cmNoise(1.6, 900, .05); }, 1100); setTimeout(() => { cm.pour = null; cm.pint = {fill: 1, sipT: 0}; crew.last = ''; }, 2900); return; }
   if (A.a === 'screen') { if (cm.sc) cmUse(true); else cmAsk('screen'); return; }
   if (A.a === 'music') { cmAsk('music'); return; }
   if (A.a === 'board') { cmBigOpen(); return; }
@@ -5967,9 +5967,9 @@ function cmSip() {
 function cmPints(R, B, G, S, tn) {
   const add = (x, y, z, yaw, fill, tilt) => { B.push([x, y, z, yaw, 1, 0, fill, tilt, 1, 1, 1]); G.push([x, y, z, yaw, 1, 0, fill, tilt, 1, 1, 1]); };
   if (cm.pour && cmOn(R)) {
-    const k = Math.min(1, (performance.now() - cm.pour.t0) / 1600), [wx, wz] = cmW(R, CM.TAP[0] + .06, CM.TAP[1]), x = wx, z = R.z0 + wz;
+    const k0 = (performance.now() - cm.pour.t0) / 1600, k = Math.max(0, Math.min(1, k0)), [wx, wz] = cmW(R, CM.TAP[0] + .06, CM.TAP[1]), x = wx, z = R.z0 + wz;
     add(x, 2.985, z, 0, Math.max(.02, k), 0);
-    if (k < 1) S.push([x, 3.31, z, 0, 1, 0, 1, 0, 1, 1, 1]);
+    if (k0 > 0 && k < 1) S.push([x, 3.31, z, 0, 1, 0, 1, 0, 1, 1, 1]);
   }
   if (cm.pint && room.view) {
     const v = room.view, e = v.eye, f = v.dir, yaw = room.p.yaw, rt = [Math.cos(yaw), 0, -Math.sin(yaw)], up = [rt[1] * f[2] - rt[2] * f[1], rt[2] * f[0] - rt[0] * f[2], rt[0] * f[1] - rt[1] * f[0]];
