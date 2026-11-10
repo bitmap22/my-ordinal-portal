@@ -4098,7 +4098,15 @@ function rmDoors(dt) {
     }
   };
   for (let i = 0; i < 3; i++) {
-    const R = r[i]; if (!R || !R.ready || R.gal) continue;
+    const R = r[i]; if (!R || !R.ready) continue;
+    if (R.gal) {   // a collection's own door (the way back): it opens as you come near, and stays open as you go
+      const want = R.gal.leaving || Math.hypot(p.x, p.z - R.z0) < 3.4 ? 1 : 0;
+      R.gdo = R.gdo || 0; R.gdo += (want - R.gdo) * Math.min(1, dt * 5); if (Math.abs(want - R.gdo) < 2e-3) R.gdo = want;
+      for (const s of [-1, 1]) { const x = s * (DOOR / 4 + R.gdo * DOOR / 2 * .98), z = R.z0 + .05;
+        d.push(x, DOORH / 2, z, DOOR / 2 - .01, DOORH - .01, .07, RC.door[0], RC.door[1], RC.door[2], 0, x, DOORH / 2, z, 0, .12, 0, 0, 0, 0);
+        d.push(x - s * (DOOR / 4 - .03), DOORH / 2, z - .04, .02, DOORH * .92, .01, RC.neon[0], RC.neon[1], RC.neon[2], 0, x, DOORH / 2, z, 0, 2, 0, 0, 0, 0); }
+      continue;
+    }
     for (const end of ['back', 'front']) {
       if (R.common && end !== R.door) continue;
       const N = rmNear(R, end), zd = end === 'back' ? R.z0 : R.z0 - R.L;
@@ -7259,7 +7267,14 @@ function galFix(R) {
   box(0, RH - .06, -.015, S, .05, .03, K.neon, 2); box(0, RH - 1.15, -.015, S, .025, .03, K.neon2, 2);
   for (const s of [-1, 1]) box(s * (DOOR / 2 + .07), DOORH / 2, -.03, .1, DOORH + .02, .04, K.neon, 2);
   box(0, DOORH + .07, -.03, DOOR + .24, .1, .04, K.neon, 2);
-  for (const s of [-1, 1]) { box(s * DOOR / 4, DOORH / 2, .05, DOOR / 2 - .01, DOORH - .01, .07, K.door, .12); box(s * .03, DOORH / 2, .01, .02, DOORH * .92, .01, K.neon, 2); }   // the door, shut: walk into it to go back
+  for (const s of [-1, 1]) { }   // (the door itself slides: drawn with the other rooms' doors)
+  {   // behind the door: a short passage, carpeted, lined in light, glowing warm at its end (the way back)
+    const vw = DOOR / 2 + .2, vh = DOORH + .4, v0 = WT, v1 = WT + 2.4, vc = (v0 + v1) / 2, vl = v1 - v0;
+    for (const s of [-1, 1]) { box(s * (vw + .05), vh / 2, vc, .1, vh, vl, K.wall); box(s * (vw - .015), vh - .1, vc, .03, .05, vl, K.neon, 2); box(s * (vw - .015), .1, vc, .03, .03, vl, K.neon2, 2); }
+    box(0, vh + .05, vc, 2 * vw + .2, .1, vl, K.wall); box(0, vh / 2, v1 + .05, 2 * vw + .2, vh, .1, K.wall);
+    box(0, .006, (0 + v1) / 2, 2 * vw, .012, v1, K.sign, 0, [R.tCarpet.x / LT, R.tCarpet.y / LH, R.tCarpet.n / LT]);
+    box(0, DOORH / 2, v1 - .01, DOOR - .4, DOORH - .5, .02, LC('#8a5420'), .5); tiles(0, DOORH * .6, v1 - .035, 0, -1, .42, R.gB.x, R.gB.y, 128, 4); for (const s of [-1, 1]) box(s * (DOOR / 2 - .15), DOORH / 2, v1 - .02, .05, DOORH - .4, .03, K.neon, 2); box(0, DOORH - .2, v1 - .02, DOOR - .25, .05, .03, K.neon, 2);
+  }
   tiles(0, DOORH + .42, -.035, 0, -1, .42, R.gB.x, R.gB.y, 128, 4);
   tiles(0, DOORH + 1.55, -.035, 0, -1, .62, R.gT.x, R.gT.y, 128, 4);
   const T = q => [q.x / LT, q.y / LH, q.n / LT];
@@ -7403,8 +7418,10 @@ $gb.onclick = () => room && room.at && room.at.gal ? galBack() : showBack();
 function galMove(C, p, nx, nz) {
   const S = C.L, H = S / 2, m = DEEP + .3, z0 = C.z0, inDoor = Math.abs(nx) < DOOR / 2 - .3;
   nx = Math.max(-H + m, Math.min(H - m, nx));
-  nz = Math.min(nz, inDoor ? z0 - .2 : z0 - m); nz = Math.max(nz, z0 - S + m);
-  if (inDoor && nz > z0 - .45) galBack();
+  const open = (C.gdo || 0) > .85, through = open && (inDoor || p.z > z0 - .3);   // (in the doorway, or already in the passage)
+  if (through && nz > z0 - m) { nx = Math.max(-(DOOR / 2 - .3), Math.min(DOOR / 2 - .3, nx)); nz = Math.min(nz, z0 + 2.1); if (nz > z0 + .8) galBack(); }
+  else nz = Math.min(nz, inDoor ? z0 - .45 : z0 - m);
+  nz = Math.max(nz, z0 - S + m);
   for (const r of C.lay.rows) {
     const x1 = r.x - GAL.ROWD / 2 - .3, x2 = r.x + GAL.ROWD / 2 + .3, za = z0 + r.za + .3, zb = z0 + r.zb - .3;
     if (nx > x1 && nx < x2 && nz < za && nz > zb) {
