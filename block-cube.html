@@ -288,7 +288,7 @@ body.room #c{cursor:crosshair}body.room.rlock #c{cursor:none}
 body.room #rx{display:block;position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#ffb04a;box-shadow:0 0 0 2px rgba(20,12,5,.55),0 0 10px #f7931a;pointer-events:none;z-index:5}
 body.room.holding #rx{display:none}
 body.room #rl{display:block;position:fixed;left:50%;top:calc(50% + 16px);transform:translateX(-50%);max-width:88vw;overflow:hidden;text-overflow:ellipsis;font:600 12px/1.3 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;color:#f7efe3;background:rgba(14,9,5,.78);border:1px solid rgba(247,147,26,.35);border-radius:9px;padding:6px 10px;opacity:0;transition:opacity .15s;pointer-events:none;white-space:nowrap;z-index:5}
-body.room #rl.on{opacity:1}
+body.room #rl.on{opacity:1} body.room #rl.sip{top:auto;bottom:calc(29% + 4px);left:auto;right:3%;transform:none}@media (max-aspect-ratio:7/10){body.room #rl.sip{left:57%;right:auto;transform:translateX(-50%)}}
 body.room #top{transform:scale(.72);transform-origin:0 0;opacity:.82}
 @media (max-width:760px){body.crewpage.room #top{top:156px}}   /* (inside the together page on a phone: below the players strip and the crew's buttons) */body.room #st,body.room #mn{display:none}body.room.holding #rl{opacity:0}
 body.room #rh{display:none;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:max-content;max-width:92vw;text-align:center;font:500 11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#cbb9a0;background:rgba(14,9,5,.6);border:1px solid rgba(247,147,26,.18);border-radius:10px;padding:6px 12px;pointer-events:none;z-index:4}
@@ -4268,7 +4268,8 @@ const CM_BLOCK = [[13.2, 16, 21, 30], [-16, -13.2, 21, 30]];   // (under the sta
 for (const x of [-10.5, -5, 5, 10.5]) CM_BLOCK.push([x - .45, x + .45, 20.55, 21.45]);   // the balcony's pillars
 CM_BLOCK.push([3.95, 4.85, 18.95, 19.6]);   // the map's stand
 for (const s of [-1, 1]) CM_BLOCK.push([s * 7.6 - .4, s * 7.6 + .4, 17.7, 18.5]);   // the palms' urns by the arcade's mouth
-for (let i = 0; i < 8; i++) { const a = (i + .5) / 8 * 6.2832, x = Math.cos(a) * 8.1, d = CM.PD + Math.sin(a) * 8.1; CM_BLOCK.push([x - .5, x + .5, d - .5, d + .5]); }   // the Forum's block pillars
+const CM_PILA = [22.5, 40, 140, 157.5, 202.5, 247.5, 292.5, 337.5].map(g => g / 180 * Math.PI);   // (the Forum's pillars, round its middle)
+for (let i = 0; i < 8; i++) { const a = CM_PILA[i], x = Math.cos(a) * 8.1, d = CM.PD + Math.sin(a) * 8.1; CM_BLOCK.push([x - .5, x + .5, d - .5, d + .5]); }   // the Forum's block pillars
 for (const s of [-1, 1]) { CM_BLOCK.push([s > 0 ? 9 : -10.6, s > 0 ? 10.6 : -9, 45.7, 47.8], [s > 0 ? 13.6 : -15.9, s > 0 ? 15.9 : -13.6, 44.9, 47.8]); }   // speakers, planters by the screen
 for (const d of [1.2, 4.6, 11.4, 14.8]) for (const s of [-1, 1]) CM_BLOCK.push([s * 3.62 - .4, s * 3.62 + .4, d - .4, d + .4]);   // the arcade's carved pillars
 for (const s of [-1, 1]) CM_BLOCK.push([s * 3.6 - .25, s * 3.6 + .25, 2.2, 3.6]);   // its console tables
@@ -4558,7 +4559,7 @@ function* cmFixG(R) {   // (built a part at a time, the rooms' build letting fra
   yield;
   // the Forum's eight pillars: famous blocks, stacked; each lit from its foot (grazing light up the stone)
   for (let i = 0; i < 8; i++) {
-    const a = (i + .5) / 8 * 6.2832, x = Math.cos(a) * 8.1, dd = CM.PD + Math.sin(a) * 8.1;
+    const a = CM_PILA[i], x = Math.cos(a) * 8.1, dd = CM.PD + Math.sin(a) * 8.1;
     for (let k = 0; k < 4; k++) { const jx = Math.sin(i * 7 + k * 3) * .05, jz = Math.cos(i * 5 + k * 2) * .05; box(x + jx, .45 + k * .92, dd + jz, .9, .9, .9, k === 3 ? K.amber : K.dmarble, k === 3 ? 1 : 0); if (k) box(x, k * .92 - .01, dd, .82, .02, .82, K.gold, 2); }
     const f = R.famous[i], fx = -Math.cos(a), fd = -Math.sin(a); if (Math.abs(fx) > Math.abs(fd)) tiles(x + Math.sign(fx) * .46, 1.4, dd, Math.sign(fx), 0, .21, f.x, f.y, 96, 4); else tiles(x, 1.4, dd + Math.sign(fd) * .46, 0, Math.sign(fd), .21, f.x, f.y, 96, 4);
     light(x + fx * .75, .15, dd + fd * .75, 0xffb060, 1.2, 4.2, [-fx * .35, 1, -fd * .35], .55);
@@ -5767,7 +5768,7 @@ function cmPints(R, B, G, S, tn) {
   if (cm.pint && room.view) {
     const v = room.view, e = v.eye, f = v.dir, yaw = room.p.yaw, rt = [Math.cos(yaw), 0, -Math.sin(yaw)], up = [rt[1] * f[2] - rt[2] * f[1], rt[2] * f[0] - rt[0] * f[2], rt[0] * f[1] - rt[1] * f[0]];
     const st = cm.pint.sipT ? (performance.now() - cm.pint.sipT) / 950 : 1, k = st < 1 ? Math.sin(Math.PI * Math.min(1, st)) : 0, bob = Math.sin((room.p.ph || 0) * 2) * .01;
-    const a = [.2, -.25 + bob, .46], b = [.02, -.1, .24], m = a.map((q, i) => q + (b[i] - q) * k);
+    const tH = Math.tan(v.fov / 2) * v.asp, a = v.asp < .7 ? [.66 * tH * .14, -.32 + bob, .66] : [Math.min(.2, .46 * tH * .64), -.25 + bob, .46], b = [.02, -.1, .24], m = a.map((q, i) => q + (b[i] - q) * k);
     add(e[0] + rt[0] * m[0] + up[0] * m[1] + f[0] * m[2], e[1] + rt[1] * m[0] + up[1] * m[1] + f[1] * m[2] - .1, e[2] + rt[2] * m[0] + up[2] * m[1] + f[2] * m[2], yaw, cm.pint.fill, .15 + 1.15 * k);
   }
   for (const M of crew.mates.values()) if (M.shown && M.R.pintAt) add(M.R.pintAt[0], M.R.pintAt[1] - .02, M.R.pintAt[2], M.R.pintYaw || 0, .7, 0);
@@ -6004,12 +6005,13 @@ function rmHover() {
   if (!room.view || room.held || performance.now() - rmHovAt < 90) return;
   rmHovAt = performance.now();
   const mid = room.lock || coarse, h = rmPick(mid ? null : room.mx, mid ? null : room.my);
-  let s = '';
+  let s = '', sip = false;
   if (h && h.it && h.it.show) s = showHover(h.it);
   else if (h && h.it && h.it.t.gal) s = galHover(h.it);
   else if (h && h.it) { const t = h.it.t, w = t.word && t.word.a; s = TYPES[h.it.k].name + (w ? ' · ' + w.slice(0, 24) : '') + (t.fee >= 0 ? ' · ' + rt(ownRate(t)) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to hold'; }
   else if (h && h.sign) s = 'change where this door goes';
-  else if (cmOn(room.at)) { const A = cmAct(mid ? null : room.mx, mid ? null : room.my); if (A) s = A.label + ' · ' + (coarse ? 'tap' : A.ray || room.lock ? 'click or E' : 'E'); }
+  else if (cmOn(room.at)) { const A = cmAct(mid ? null : room.mx, mid ? null : room.my); if (A) { s = A.label + ' · ' + (coarse ? 'tap' : A.ray || room.lock ? 'click or E' : 'E'); sip = !!cm.pint && (A.a === 'sip' || A.a === 'stand'); } }
+  $rl.classList.toggle('sip', sip);   // (the pint's own words sit just above the glass, not over what you look at)
   if (s !== room.hov || (!s && $rl.classList.contains('on'))) { room.hov = s; $rl.textContent = s; $rl.classList.toggle('on', !!s); }
 }
 // all of a held parcel: the whole transaction (mempool.space), each inscription and the rune it makes or mints (ordinals.com).
