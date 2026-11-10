@@ -1695,7 +1695,7 @@ function showSet(txs) {
   const tn = now(), n = txs.length, spread = Math.min(flipping ? 1.6 : 6, 1.2 + n * 0.0008), keep = new Set(txs);
   for (const t of shown) if (!keep.has(t)) { anim(t, 2, tn); leaving.push(t); }
   txs.slice().sort((u, v) => u.y - v.y || u.z - v.z || u.x - v.x).forEach((t, k) => anim(t, 3, tn + 0.15 + (n > 1 ? k / (n - 1) : 0) * spread));
-  shown = txs; select(null); rebuild();
+  shown = txs; if (!room) select(null); rebuild();
 }
 
 /* ---------- live: the next block, straight from mempool.space ---------- */
@@ -1757,7 +1757,7 @@ function liveDelta(dl) {
   let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h;
   if (top > R) repack();
   if (mode === 'live' && !(now() < sealUntil)) {
-    if (sel && !liveMap.has(sel.id)) select(null);
+    if (sel && !liveMap.has(sel.id) && !room) select(null);
     leaving.push(...out); shown = [...liveMap.values()]; rebuild(); head();
   }
 }
@@ -1818,7 +1818,7 @@ function mined(b) {
   minedMsg = {h: b.height, n: b.tx_count, until: now() + 6};
   liveG = null; wsSeq = -1; wsSend({'track-mempool-block': liveIdx});   // fresh list after a block is found
   const sealing = mode === 'live' && liveIdx === 0 && shown.length > 0 && sealUntil < 0;
-  if (mode === 'live') { const tn = now(); if (sealing) seal(tn, isHalving(b.height)); else for (const t of shown) { anim(t, 2, tn); leaving.push(t); } shown = []; select(null); rebuild(); head(); }
+  if (mode === 'live') { const tn = now(); if (sealing) seal(tn, isHalving(b.height)); else for (const t of shown) { anim(t, 2, tn); leaving.push(t); } shown = []; if (!room) select(null); rebuild(); head(); }
   setTimeout(chime, sealing ? 900 : 0);
 }
 
