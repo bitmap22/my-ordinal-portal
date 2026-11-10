@@ -6530,7 +6530,7 @@ async function folTrace(id, say) {
     if (moves.length) await new Promise(r => setTimeout(r, 250));
     const tx = await folTx(txid), st = tx.status || {}, o = tx.vout[vout];
     moves.push({txid, h: st.confirmed ? st.block_height : null, time: st.block_time || 0, to: o && o.scriptpubkey_address || '', wait: !st.confirmed});
-    if (tx.vin.some(v => v.is_coinbase)) { lost = true; break; }   // (it was paid to a miner, in a fee: before that, its trail is in that block's fees)
+    if (tx.vin.some(v => v.is_coinbase)) { lost = true; moves[moves.length - 1].miner = true; break; }   // (it was paid to a miner, in a fee: before that, its trail is in that block's fees)
     let abs = off; for (let k = 0; k < vout; k++) abs += tx.vout[k].value;   // how far along all the outputs it sits...
     let acc = 0, k = 0; for (; k < tx.vin.length; k++) { const v = tx.vin[k].prevout ? tx.vin[k].prevout.value : 0; if (abs < acc + v) break; acc += v; }   // ...is as far along all the inputs
     if (k >= tx.vin.length) throw new Error('its trail could not be followed past block ' + fmt(moves[moves.length - 1].h));
@@ -6674,8 +6674,9 @@ function folBar() {
   if (fol.busy || !fol.steps) { b.textContent = 'FOLLOWING ' + num + ' BACK'; sp.textContent = fol.n ? 'reading move ' + fmt(fol.n) + '…' : 'finding where it is now…'; }
   else {
     const S = fol.steps, i = fol.i, s = S[i], K = S.length - 1;
-    b.textContent = num + ' · ' + (s.made ? (K ? 'MADE' : 'MADE · NEVER MOVED') : fol.more ? 'ONE OF ITS LAST ' + K + ' MOVES' : 'MOVE ' + i + ' OF ' + K + (i === K ? ' · NOW' : ''));
-    sp.textContent = [s.h != null ? 'block ' + fmt(s.h) : 'waiting to be mined', folDay(s.time), s.to ? 'to ' + folAddr(s.to) : '', s.made && (fol.more || fol.lost) && K ? (fol.lost ? 'went to a miner as a fee later' : 'more moves before these') : ''].filter(Boolean).join(' · ');
+    const c = fol.lost ? S.findIndex(x => x.miner) : -1;   // (paid to a miner in a fee: the moves before that are not known, so count from there)
+    b.textContent = num + ' · ' + (s.made ? (K ? 'MADE' : 'MADE · NEVER MOVED') : s.miner ? 'PAID TO A MINER IN A FEE' : c > 0 ? 'MOVE ' + (i - c) + ' OF ' + (K - c) + ' AFTER THAT' : fol.more ? 'ONE OF ITS LAST ' + K + ' MOVES' : 'MOVE ' + i + ' OF ' + K) + (!s.made && i === K ? ' · NOW' : '');
+    sp.textContent = [s.h != null ? 'block ' + fmt(s.h) : 'waiting to be mined', folDay(s.time), s.to ? 'to ' + folAddr(s.to) : '', s.made && (fol.more || fol.lost) && K ? (fol.lost ? 'later paid to a miner in a fee' : 'more moves after this one') : ''].filter(Boolean).join(' · ');
   }
   document.getElementById('folp').disabled = !fol.steps || fol.busy || fol.i <= 0;
   document.getElementById('foln').disabled = !fol.steps || fol.busy || fol.i >= fol.steps.length - 1;
