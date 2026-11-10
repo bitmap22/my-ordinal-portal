@@ -1,0 +1,49 @@
+# The 0NS name list for the Block Cube. Once an hour this reads any NEW 0NS registrations from Bitcoin (gently, one question
+# at a time) and keeps the list on the "ons-list" branch. The cube looks a name up there in one small file, then checks the
+# answer against Bitcoin itself, so no visitor ever has to read the whole register.
+name: 0NS name list
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/ons-core.mjs', 'tools/ons-robot.mjs', '.github/workflows/ons-list.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ons-list
+  cancel-in-progress: false
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get the list so far
+        run: |
+          git worktree add --detach ons-out HEAD
+          cd ons-out
+          git checkout -q --orphan ons-new
+          git rm -rq --cached . > /dev/null
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          if git fetch -q --depth=1 origin ons-list; then git checkout -q FETCH_HEAD -- .; echo "had a list"; else echo "first list"; fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read new 0NS registrations from Bitcoin, gently
+        run: node tools/ons-robot.mjs ons-out
+
+      - name: Save the list
+        run: |
+          cd ons-out
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "0NS name list"
+          git push -q -f origin ons-new:ons-list
