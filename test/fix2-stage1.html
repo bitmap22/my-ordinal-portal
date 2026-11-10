@@ -7186,8 +7186,12 @@ async function galArtTick(tn) {
   galArt.at = tn;
   const p = room.p, G = C.gal;
   if (tn - galArt.gc > 4) { galArt.gc = tn; let drop = 0; for (const it of C.plan.items) { const t = it.t; if (t.art && !t.par && it !== (room.held && room.held.it) && Math.hypot(it.w[0] - p.x, it.w[2] - p.z) > 30) { t.art = null; t.gTry = 0; drop++; } } if (drop) { C.nl = null; near.rk = ''; } }
-  let best = null, bd = 10; const fv = room.view ? room.view.dir : [0, 0, -1];
-  for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn || (GAL_ST < 3 && !it.t.par)) continue; const ax = it.w[0] - p.x, az = it.w[2] - p.z, dd = Math.hypot(ax, az) + (ax * fv[0] + az * fv[2] < 0 ? 6 : 0); if (dd < bd) { bd = dd; best = it; } }
+  // first the parent on its pedestal and the bookcase holding your piece (the one the arrow leads to), however far, so they
+  // are ready when you get there; then what is near you, the shelves you are facing before the ones behind you
+  if (!G.fq && C.plan.items.length) { const pa = C.plan.items.find(x => x.t.par), f = srT && srT.h === GALLERY && srT.gid ? C.plan.items.find(x => x.t.gid === srT.gid && !x.t.par) : null;
+    if (f || G.loaded >= G.n || !(srT && srT.h === GALLERY)) { const b = f ? Math.floor(f.t.gi / GAL.PER) : -1; G.fq = (pa ? [pa] : []).concat(f ? C.plan.items.filter(x => x.t.gal && !x.t.par && Math.floor(x.t.gi / GAL.PER) === b).sort((a, c) => Math.abs(a.t.gi - f.t.gi) - Math.abs(c.t.gi - f.t.gi)) : []); } }
+  let best = G.fq ? G.fq.find(x => !x.t.gTry && !x.gone && x.t0 <= tn) || null : null, bd = 10; const fv = room.view ? room.view.dir : [0, 0, -1];
+  if (!best) for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn || (GAL_ST < 3 && !it.t.par)) continue; const ax = it.w[0] - p.x, az = it.w[2] - p.z, dd = Math.hypot(ax, az) + (ax * fv[0] + az * fv[2] < 0 ? 6 : 0); if (dd < bd) { bd = dd; best = it; } }
   if (!best) return;
   const it = best, t = it.t; t.gTry = 1; galArt.n++;
   try {
