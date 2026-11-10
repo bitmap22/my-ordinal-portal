@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Block Cube · Play together</title>
+<style>
+:root{--ink:#13222c;--paper:#fffaf0;--soft:#5a6c76;--go:#2e9e5b;--warn:#c2453a;
+  --m-text:#f2e9de;--m-dim:#b8a593;--m-faint:#7a6a5c;--m-line:rgba(247,147,26,.16);--m-box:rgba(14,9,6,.78);--m-hi:#f7931a;--m-go:#93d36c;--m-warn:#e2604f;
+  --cond:ui-monospace,Menlo,Consolas,"Roboto Mono",monospace}
+html,body{margin:0;height:100%;overflow:hidden;background:#050406;font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+[hidden]{display:none!important}
+#game{position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#050406}
+#paint{position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#0f1115}#game[hidden],#paint[hidden]{display:none}
+#gfade{position:fixed;inset:0;z-index:4;background:#000;opacity:0;pointer-events:none;transition:opacity .32s}#gfade.on{opacity:1;pointer-events:auto}
+#gfade span{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);font:700 12px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.16em;color:#b8a593;opacity:0;transition:opacity .4s .7s}#gfade.on.wait span{opacity:1}
+/* everything in the lobby, the panels and the notes: dark, like the 2009 menus */
+button{font:600 16px/1 var(--cond);letter-spacing:.07em;text-transform:uppercase;border:1px solid rgba(255,255,255,.16);border-radius:2px;padding:10px 14px;cursor:pointer;background:rgba(255,255,255,.07);color:#fff;transition:background .12s,color .12s,border-color .12s}
+button:hover{background:rgba(255,255,255,.15)}
+button.main{background:var(--m-hi);border-color:var(--m-hi);color:#160c03}
+button.main:hover{background:#ffb04a}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible{outline:2px solid var(--m-hi);outline-offset:2px}
+input,textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(255,255,255,.16);border-radius:2px;font:15px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;background:rgba(0,0,0,.42);color:#fff;outline:none}
+input::placeholder,textarea::placeholder{color:#78827d}
+input:focus,textarea:focus{border-color:var(--m-hi)}
+input.bad{border-color:var(--m-warn);box-shadow:0 0 0 3px rgba(226,96,79,.3);animation:nudge .32s}
+@keyframes nudge{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@media (prefers-reduced-motion:reduce){input.bad{animation:none}}
+textarea{height:64px;resize:none;font:12px/1.3 ui-monospace,monospace;word-break:break-all}
+.row{display:flex;gap:8px}
+.row input{flex:1;min-width:0}
+label{display:block;font:600 13px/1 var(--cond);letter-spacing:.14em;text-transform:uppercase;color:var(--m-dim);margin:14px 0 7px}
+#lobby{position:fixed;inset:0;z-index:5;overflow:auto;color:var(--m-text);background:linear-gradient(90deg,rgba(8,5,4,.93) 0%,rgba(8,5,4,.82) 32%,rgba(8,5,4,.58) 64%,rgba(8,5,4,.72) 100%);-webkit-backdrop-filter:blur(8px) brightness(.6) saturate(.8);backdrop-filter:blur(8px) brightness(.6) saturate(.8)}
+#lobby::before{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.022) 0 1px,transparent 1px 3px),radial-gradient(ellipse at 62% 42%,transparent 36%,rgba(0,0,0,.55) 100%)}
+.mw{position:relative;box-sizing:border-box;width:min(1180px,100%);min-height:100%;margin:0 auto;padding:max(18px,env(safe-area-inset-top)) max(16px,4vw,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,4vw,env(safe-area-inset-left));padding-top:clamp(18px,5vh,48px)}
+.brand h1{margin:0;font:800 clamp(34px,5vw,56px)/.95 var(--cond);letter-spacing:.02em;text-transform:uppercase;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.5)}
+.brand p{margin:7px 0 0;color:var(--m-dim);font-size:13px}
+.brand::after{content:"";display:block;width:min(440px,72%);height:1px;margin-top:14px;background:linear-gradient(90deg,var(--m-hi),rgba(247,147,26,0));box-shadow:0 0 12px rgba(247,147,26,.8)}
+.view{display:grid;grid-template-columns:minmax(230px,330px) minmax(0,1fr);column-gap:clamp(20px,4.5vw,72px);row-gap:14px;align-items:start;margin-top:clamp(18px,4.5vh,44px)}
+#start{grid-template-areas:"menu side"}
+#wait{grid-template-areas:"menu crew" "menu chat"}
+#start .menu,#wait .menu{grid-area:menu}#start .side{grid-area:side}.crewbox{grid-area:crew}.chatwrap{grid-area:chat}
+/* the menu down the left */
+.menu{display:flex;flex-direction:column;gap:2px}
+.mi{position:relative;display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;margin:0;padding:10px 14px 9px 18px;border:0;border-radius:0;background:transparent;color:var(--m-dim);font:700 clamp(18px,2vw,23px)/1 var(--cond);letter-spacing:.04em;text-transform:uppercase;text-align:left;cursor:pointer}
+.mi::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3px;background:var(--m-hi);transform:scaleY(0);transition:transform .12s}
+.mi:hover,.mi:focus-visible,.mi:focus-within{color:#fff;background:linear-gradient(90deg,rgba(255,255,255,.15),rgba(255,255,255,.03) 70%,transparent);outline:none}
+.mi:hover::before,.mi:focus-visible::before,.mi:focus-within::before{transform:none}
+.mi:disabled{color:var(--m-faint);background:none}
+.mi.go{color:var(--m-go)}.mi.go:hover,.mi.go:focus-visible{color:#cdf2b0}
+.mi.small{margin-top:12px;padding-top:8px;padding-bottom:8px;font-size:16px;letter-spacing:.12em;color:var(--m-faint)}
+.mi .badge{background:var(--m-hi);color:#160c03;font:600 15px/1 var(--cond);letter-spacing:.02em;padding:3px 7px 2px;border-radius:2px}
+.mi .badge:empty{display:none}
+.mi.join{cursor:default;padding-top:6px;padding-bottom:6px}
+.mi.join button{margin:0;padding:4px 0;border:0;background:none;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit}
+.mi.join input{width:118px;flex:0 0 auto;padding:8px 10px;font:600 19px/1 var(--cond);letter-spacing:.18em;text-transform:uppercase}
+.mi.tog input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.mi.tog .sw{margin-left:auto;font:600 14px/1 var(--cond);letter-spacing:.1em;color:var(--m-faint);border:1px solid var(--m-line);padding:4px 7px 3px}
+.mi.tog .sw::before{content:"Off"}
+.mi.tog input:checked~.sw{color:#160c03;background:var(--m-hi);border-color:var(--m-hi)}
+.mi.tog input:checked~.sw::before{content:"On"}
+/* boxes on the right */
+.box{background:var(--m-box);border:1px solid var(--m-line);box-shadow:0 18px 50px rgba(0,0,0,.35);padding:16px 18px 18px}
+.side{display:flex;flex-direction:column;gap:14px;min-width:0}
+.pcard label:first-child{margin-top:2px}
+#name{padding:9px 12px;font:700 22px/1.1 var(--cond);letter-spacing:.02em}
+#chars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
+.ch{position:relative;aspect-ratio:3/4;border:1px solid var(--m-line);border-radius:2px;background:radial-gradient(ellipse at 50% 85%,rgba(var(--gl),.28),rgba(0,0,0,0) 62%),linear-gradient(180deg,#1a0f0a,#0a0605);overflow:hidden;cursor:pointer;padding:0;text-transform:none;letter-spacing:0}
+.ch img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 0 6px rgba(var(--gl),.55))}
+.ch span{position:absolute;left:0;right:0;bottom:4px;font:700 11px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;color:var(--m-text);text-shadow:0 1px 3px #000}
+.ch.on{border-color:rgb(var(--gl));box-shadow:0 0 0 1px rgb(var(--gl)),0 0 14px rgba(var(--gl),.45)}
+.ch:not(.ready) img{opacity:0}
+.pick{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.pick .sw{display:inline-flex;gap:5px}
+.pick button{width:26px;height:26px;padding:0;border-radius:50%;border:2px solid transparent}
+.pick button[aria-pressed="true"]{border-color:var(--m-hi);box-shadow:0 0 8px rgba(247,147,26,.6)}
+.pick .lbl{font:700 11px/1 var(--cond);letter-spacing:.12em;text-transform:uppercase;color:var(--m-faint);margin-right:2px}
+#paste .row,#out .row{margin-top:8px}
+#paste label:first-child{margin-top:2px}
+#note,#rnote{min-height:18px;margin:0;font-size:13px;color:var(--m-dim)}
+#rnote{margin-top:8px}
+/* the crew (the waiting room) */
+.lhead{display:flex;align-items:center;gap:12px;padding-bottom:12px;margin-bottom:10px;border-bottom:1px solid var(--m-line)}
+.lhead h2{margin:0;font:600 28px/1 var(--cond);letter-spacing:.06em;text-transform:uppercase;color:#fff}
+.lhead h2 .cc{color:var(--m-hi);letter-spacing:.12em}
+.lhead .count{margin-left:auto;font:600 22px/1 var(--cond);letter-spacing:.06em;color:var(--m-dim);white-space:nowrap}
+button.sm{padding:6px 9px 5px;font-size:13px}
+.plist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;max-height:40vh;overflow:auto}
+.plist li{display:flex;align-items:center;gap:10px;min-height:42px;box-sizing:border-box;padding:5px 6px 5px 10px;background:rgba(255,255,255,.045);border-left:3px solid transparent}
+.plist li.me{background:linear-gradient(90deg,rgba(247,147,26,.17),rgba(247,147,26,.04));border-left-color:var(--m-hi)}
+.plist .rk{flex:0 0 16px;width:16px;height:16px;color:var(--m-faint)}
+.plist li.host .rk{color:var(--m-hi)}
+.plist .who{flex:1;min-width:0;display:flex;align-items:baseline;gap:9px}
+.plist .nm{font:700 17px/1.15 var(--cond);letter-spacing:.02em;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.plist .tag{font:600 12px/1 var(--cond);letter-spacing:.14em;text-transform:uppercase;color:var(--m-hi);flex:0 0 auto}
+.plist .st{font:600 13px/1.2 var(--cond);letter-spacing:.1em;text-transform:uppercase;color:var(--m-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plist li.on .st.where{color:var(--m-go)}
+.plist .frt{color:var(--m-go)}
+.plist button{flex:0 0 auto;padding:6px 9px 5px;font-size:13px}
+.plist button.fr{background:transparent;color:var(--m-dim)}
+.plist button.fr:hover{color:#fff}
+.plist .x{background:transparent;border-color:transparent;color:var(--m-faint);font:400 20px/1 system-ui,sans-serif;padding:4px 7px}
+.plist .x:hover{color:#fff;background:rgba(255,255,255,.08)}
+.mic{flex:0 0 32px;display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;background:transparent;color:#59625e}
+button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
+.mic{transition:color .2s,filter .2s}.mic svg{display:block}
+.mic .wv{opacity:0;transition:opacity .12s}
+.mic .sl{display:none}
+.plist li.me .mic{color:#d6ddd8}
+.plist li.talk .mic{color:var(--m-go);filter:drop-shadow(0 0 6px rgba(147,211,108,.8))}
+.plist li.talk .mic .wv{opacity:1}
+.plist li.muted .mic{color:var(--m-warn);filter:none}
+.plist li.muted .mic .wv,.plist li.me.micoff .mic .wv{opacity:0}
+.plist li.muted .mic .sl,.plist li.me.micoff .mic .sl{display:inline}
+.plist li.me.micoff .mic{color:#59625e;filter:none}
+.plist .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:#4b5450}
+.plist li.on .dot{background:var(--m-go);box-shadow:0 0 0 3px rgba(147,211,108,.18)}
+.voice{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.voice .vl{font:600 13px/1 var(--cond);letter-spacing:.14em;text-transform:uppercase;color:var(--m-dim)}
+.seg{display:inline-flex;background:rgba(0,0,0,.35);border:1px solid var(--m-line);padding:3px;gap:3px}
+.seg button{padding:7px 10px 6px;font-size:14px;background:transparent;border:0;color:var(--m-dim)}
+.seg button[aria-pressed="true"]{background:rgba(247,147,26,.18);color:var(--m-hi)}
+.micb{display:inline-flex;align-items:center;gap:8px;padding:8px 12px 7px;touch-action:none;-webkit-user-select:none;user-select:none}
+.micb.on{background:rgba(147,211,108,.2);border-color:var(--m-go);color:#e1f6d2}.micb.on .x{display:none}.micb.talk{box-shadow:0 0 0 3px rgba(147,211,108,.35)}
+.micb .lbl::before{content:"Mic off"}.micb.on .lbl::before{content:"Mic on"}.micb.ptt .lbl::before{content:"PTT"}.micb.ptt.on .lbl::before{content:"Talking"}
+.chatbox{border:1px solid var(--m-line);background:rgba(0,0,0,.3)}
+.chatlines{height:106px;overflow:auto;padding:8px 10px;font-size:13.5px;display:flex;flex-direction:column;gap:3px;color:#d9dfdb}
+.chatlines p{margin:0;word-break:break-word}.chatlines b{color:var(--m-hi);margin-right:6px;font:600 15px/1 var(--cond);letter-spacing:.04em}.chatlines i{color:var(--m-faint);font-style:normal}
+.chatbox .row{border-top:1px solid var(--m-line);padding:5px;gap:5px}
+.chatbox input{border:0;background:transparent;padding:8px}
+.chatbox button{padding:8px 12px 7px;font-size:14px}
+.chatwrap{padding:0;background:none;border:0;box-shadow:none}
+/* panels: Friends, the crew list, your crew (from the game); invite by code */
+#panel,#invc{position:fixed;inset:0;display:grid;place-items:center;background:rgba(3,5,6,.72);padding:16px;overflow:auto}
+#panel{z-index:7}#invc{z-index:8}
+#panel .card,#invc .card{position:relative;width:min(480px,100%);box-sizing:border-box;padding:18px 18px 16px;background:rgba(11,15,16,.97);border:1px solid var(--m-line);box-shadow:0 24px 70px rgba(0,0,0,.6);color:var(--m-text)}
+#panel h2,#invc h2{margin:0 0 12px;padding:0 44px 12px 0;border-bottom:1px solid var(--m-line);font:600 28px/1 var(--cond);letter-spacing:.06em;text-transform:uppercase;color:#fff}
+.close{position:absolute;right:12px;top:12px;width:34px;height:34px;padding:0;font:400 22px/1 system-ui,sans-serif;text-transform:none;letter-spacing:0;background:transparent}
+#pbody .sub{margin:0 0 8px;color:var(--m-dim);font:600 15px/1.2 var(--cond);letter-spacing:.1em;text-transform:uppercase}
+#pbody .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#pbody .plist{max-height:46vh}
+.mycode{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid var(--m-line)}
+.mycode span{flex:1;font:600 15px/1.2 var(--cond);letter-spacing:.1em;text-transform:uppercase;color:var(--m-dim)}
+.mycode .code{display:inline-block;white-space:nowrap;margin-left:6px;font:600 21px/1 var(--cond);letter-spacing:.14em;color:var(--m-hi)}
+.mini{padding:6px 10px 5px;font-size:13px}
+.pnote,#note2{min-height:18px;margin:8px 0;font-size:13px;color:var(--m-dim)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.check{display:flex;align-items:center;gap:9px;margin:12px 0 0;cursor:pointer;color:var(--m-text)}
+.check input{width:auto;margin:0;accent-color:var(--m-hi)}
+#pbody .voice .sub{margin:0}
+/* little notes at the top: a friend is online, an invite */
+#toasts{position:fixed;top:calc(50px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:9;display:flex;flex-direction:column;gap:6px;width:min(400px,calc(100% - 24px));pointer-events:none}
+.toast{pointer-events:auto;background:rgba(11,15,16,.95);color:var(--m-text);border:1px solid var(--m-line);border-left:3px solid var(--m-hi);box-shadow:0 10px 30px rgba(0,0,0,.5);padding:8px 8px 8px 12px;display:flex;align-items:center;gap:8px;font-size:14px;animation:tin .25s ease-out}
+.toast span{flex:1;min-width:0}
+.toast button{padding:7px 10px 6px;font-size:14px}
+@keyframes tin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}}
+/* in the game (as before) */
+#hud{position:fixed;top:calc(62px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:3;pointer-events:none;width:max-content;max-width:calc(100vw - 16px);flex-wrap:nowrap}
+#hud[hidden],#hud>[hidden]{display:none}
+#ptop{position:fixed;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:3;width:max-content;max-width:calc(100vw - 240px)}
+#ptop .pl{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;width:clamp(96px,13vw,168px);box-sizing:border-box;padding:5px 10px 5px 9px;border-radius:10px;border:1px solid rgba(247,147,26,.28);border-left:3px solid var(--g,#f7931a);background:rgba(14,9,5,.74);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#f7efe3;text-align:left;text-transform:none;letter-spacing:0;font:600 12px/1.15 system-ui,-apple-system,'Segoe UI',sans-serif;cursor:default;transition:box-shadow .2s}
+#ptop .pl .n{display:flex;gap:5px;align-items:baseline;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#ptop .pl .n b{font:800 10px/1 ui-monospace,Menlo,Consolas,monospace;color:var(--g,#f7931a);letter-spacing:.06em}
+#ptop .pl .w{font:600 11px/1.1 ui-monospace,Menlo,Consolas,monospace;color:#b8a593;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#ptop .pl.here .w{color:#93d36c}#ptop .pl.me{background:rgba(40,24,10,.82)}#ptop .pl.go{cursor:pointer}#ptop .pl.go:hover{background:rgba(40,24,10,.9)}
+#ptop .pl.talk{box-shadow:0 0 0 2px #93d36c,0 0 14px rgba(147,211,108,.6)}#ptop .pl.empty{opacity:.42;border-left-color:rgba(247,147,26,.28)}
+@media (max-width:760px){#ptop{top:calc(66px + env(safe-area-inset-top));max-width:calc(100vw - 16px)}#ptop .pl{width:calc((100vw - 34px) / 4);padding:4px 6px 4px 6px}#hud{top:calc(116px + env(safe-area-inset-top))}}
+.pill{pointer-events:auto;background:rgba(18,11,5,.72);border:1px solid rgba(247,147,26,.32);border-radius:16px;padding:6px 12px;font:600 13px/1.2 system-ui,sans-serif;letter-spacing:normal;text-transform:none;box-shadow:0 2px 10px #0006;color:#f7efe3;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.pill:hover{background:rgba(40,24,10,.85)}
+.pill b{letter-spacing:.08em}
+.pill .short{display:none}
+@media (max-width:440px){.pill{padding:6px 10px;font-size:12.5px}.pill .long{display:none}.pill .short{display:inline}}
+@media (max-width:760px){#hud{top:calc(74px + env(safe-area-inset-top))}}
+.pill .badge{display:inline-block;min-width:8px;padding:2px 6px;border-radius:9px;background:var(--go);color:#fff;font:700 11px/1.3 system-ui,sans-serif;margin-left:6px;vertical-align:1px}
+.pill .badge:empty{display:none}
+#mic{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;touch-action:none;-webkit-user-select:none;user-select:none}#mic.on{background:#2f7a49;border-color:#93d36c;color:#fff}#mic.on .x{display:none}#mic.talk{box-shadow:0 0 0 3px #7fd39a,0 2px 10px #0003}
+#mic .hold{display:none;font-size:12px}#mic.ptt .hold{display:inline}
+#lobby:not([hidden])~#log{display:none}
+#log{position:fixed;left:calc(10px + env(safe-area-inset-left));bottom:calc(150px + env(safe-area-inset-bottom));width:min(320px,70vw);z-index:3;pointer-events:none;display:flex;flex-direction:column;gap:4px}
+#log p{margin:0;padding:5px 9px;border-radius:10px;background:rgba(14,9,5,.72);color:#fff;font-size:13px;transition:opacity 1.2s;word-break:break-word}
+#log p b{color:#ffb04a;margin-right:4px}
+#log p svg{vertical-align:-3px;margin-right:5px}#log p svg:last-child{margin:0 0 0 6px}
+#say{position:fixed;left:50%;bottom:calc(160px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(440px,calc(100% - 32px));z-index:4;display:flex;gap:6px}
+#say input{background:#f7efe3;color:#14100c;border:0;border-radius:10px;padding:11px 12px;box-shadow:0 4px 16px #0004}
+#say button{font:600 15px/1 system-ui,sans-serif;letter-spacing:normal;text-transform:none;border:0;border-radius:10px;padding:12px 14px;background:var(--m-hi);color:#160c03}
+/* phones: one column; in a crew the crew comes first, then what you can do, then the chat */
+@media (max-width:720px){
+  .mw{padding-top:18px}
+  .brand h1{font-size:38px}
+  .brand::after{margin-top:12px}
+  #lobby{background:rgba(5,7,8,.84)}
+  .view{grid-template-columns:minmax(0,1fr);margin-top:16px}
+  #start{grid-template-areas:"menu" "side"}
+  #wait{grid-template-areas:"crew" "menu" "chat"}
+  .mi{font-size:23px;padding:11px 12px 10px 16px}
+  .lhead h2{font-size:25px}
+  .plist{max-height:none}
+}
+@media (max-width:380px){.mi.join input{width:96px}}
+</style></head>
+<body>
+<iframe id="game" title="Block Cube" allow="autoplay"></iframe>
+<iframe id="paint" title="Block Paint City" allow="autoplay; microphone" hidden></iframe>
+<div id="gfade"><span>OPENING THE DOOR…</span></div>
+
+<div id="lobby"><div class="mw">
+  <header class="brand"><h1>Block Cube</h1><p>Walk the Bitcoin blocks together.</p></header>
+  <div id="start" class="view">
+    <nav class="menu" aria-label="Play">
+      <button class="mi" id="crew">Start a crew</button>
+      <button class="mi" id="sea">Open hall</button>
+      <div class="mi join"><button id="join">Join</button><input id="code" maxlength="6" autocomplete="off" spellcheck="false" placeholder="Code" aria-label="Crew code"></div>
+      <button class="mi" id="crewsb">Crew list</button>
+      <button class="mi" id="friendsb">Friends<span class="badge" id="fon"></span></button>
+      <button class="mi" id="solo">Explore alone</button>
+      <button class="mi small" id="have">Invite code</button>
+    </nav>
+    <section class="side">
+      <div class="box pcard">
+        <label for="name">Your runner&#39;s name</label>
+        <input id="name" maxlength="20" autocomplete="off" placeholder="Ghost">
+        <label>Your Node Runner</label>
+        <div id="chars" role="radiogroup" aria-label="Node Runner"></div>
+        <div class="pick"><span class="lbl">Colours</span><span class="sw" id="cols" role="group" aria-label="Colours"></span><span class="lbl" style="margin-left:10px">Skin</span><span class="sw" id="skins" role="group" aria-label="Skin"></span></div>
+      </div>
+      <div class="box" id="paste" hidden><label for="inv">Invite code</label><textarea id="inv" spellcheck="false" placeholder="Paste the invite code"></textarea><div class="row"><button class="main" id="use">Use the code</button></div>
+        <div id="out" hidden><label for="rep">Your reply</label><textarea id="rep" readonly></textarea><div class="row"><button id="cp1">Copy</button></div></div></div>
+      <p id="note" role="status"></p>
+    </section>
+  </div>
+  <div id="wait" class="view" hidden>
+    <nav class="menu" aria-label="Crew">
+      <button class="mi go" id="sail">Walk in</button>
+      <button class="mi" id="rinvite">Invite friends</button>
+      <button class="mi" id="rbycode" hidden>Invite by code</button>
+      <label class="mi tog" id="ropenw" hidden><input type="checkbox" id="ropen"><span>Show in crew list</span><i class="sw" aria-hidden="true"></i></label>
+      <button class="mi" id="rleave">Leave crew</button>
+    </nav>
+    <section class="box crewbox">
+      <div class="lhead"><h2 id="rtitle">Crew</h2><button class="sm" id="rcopy" hidden>Copy</button><span class="count" id="rsub"></span></div>
+      <ul class="plist" id="rplist"></ul>
+      <div class="voice"><button class="micb" id="rmic" aria-pressed="false"><svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="4.5" y="1" width="5" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 7.5a5 5 0 0010 0M7 12.5V15M4.5 15h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="x" d="M1.5 1.5l11 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl"></span></button>
+        <div class="seg" role="group" aria-label="How you talk"><button data-talk="open" aria-pressed="true">Open mic</button><button data-talk="ptt" aria-pressed="false">Push to talk</button></div></div>
+    </section>
+    <section class="box chatwrap">
+      <div class="chatbox"><div class="chatlines" id="rlines" aria-live="polite"></div><div class="row"><input id="rmsg" maxlength="200" autocomplete="off" placeholder="Say something" aria-label="Chat"><button id="rsend">Send</button></div></div>
+      <p id="rnote" role="status"></p>
+    </section>
+  </div>
+</div></div>
+
+<div id="ptop" hidden aria-label="Players"></div>
+<div id="hud" hidden><button class="pill" id="room"></button><button class="pill" id="frpill">Friends<span class="badge" id="fon2"></span></button><button class="pill" id="chat" aria-label="Chat">Chat</button><button class="pill" id="mic" aria-label="Microphone" aria-pressed="false"><svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="4.5" y="1" width="5" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 7.5a5 5 0 0010 0M7 12.5V15M4.5 15h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="x" d="M1.5 1.5l11 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="hold">Hold</span></button></div>
+<div id="invc" hidden><div class="card"><button class="close" id="invx" aria-label="Close">×</button><h2>Invite by code</h2>
+  <label for="off">Their invite code</label><textarea id="off" readonly></textarea><div class="row" style="margin-top:8px"><button id="cp2">Copy</button></div>
+  <label for="ans">Their reply</label><textarea id="ans" spellcheck="false" placeholder="Paste their reply"></textarea><div class="row" style="margin-top:8px"><button class="main" id="add">Add to the crew</button></div>
+  <p id="note2"></p></div></div>
+<div id="panel" hidden><div class="card" role="dialog" aria-modal="true" aria-labelledby="ptitle"><button class="close" id="px" aria-label="Close">×</button><h2 id="ptitle"></h2><div id="pbody"></div></div></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="log"></div>
+<div id="say" hidden><input id="msg" maxlength="200" autocomplete="off" placeholder="Say something"><button class="main" id="send">Send</button></div>
+<script>
+// a small BIP-340 (Schnorr) signer for the relays' signed notes, the same one Block Paint uses (checked against the official BIP-340 test list)
+window.NB = (() => { const T = (()=>{const e=[];for(let t=2;e.length<64;t++)e.every(e=>t%e)&&e.push(t);const t=(e,t)=>0|Number(0xffffffffn&((e,t)=>{let n=0n,o=1n<<40n;for(;n<o;){const i=n+o+1n>>1n;i**t<=e?n=i:o=i-1n}return n})(BigInt(e)<<32n*t,t)),n=e.slice(0,8).map(e=>t(e,2n)),o=e.map(e=>t(e,3n)),i=(e,t)=>e>>>t|e<<32-t;function s(e){const t=e.length,s=t+72>>6<<6,r=new Uint8Array(s),a=new DataView(r.buffer),c=new Int32Array(64),d=n.slice();r.set(e),r[t]=128,a.setUint32(s-4,8*t),a.setUint32(s-8,Math.floor(t/536870912));for(let e=0;e<s;e+=64){for(let t=0;t<64;t++)if(t<16)c[t]=a.getInt32(e+4*t);else{const e=c[t-15],n=c[t-2];c[t]=c[t-16]+(i(e,7)^i(e,18)^e>>>3)+c[t-7]+(i(n,17)^i(n,19)^n>>>10)|0}let[t,n,s,r,p,l,f,h]=d;for(let e=0;e<64;e++){const a=h+(i(p,6)^i(p,11)^i(p,25))+(p&l^~p&f)+o[e]+c[e]|0,d=(i(t,2)^i(t,13)^i(t,22))+(t&n^t&s^n&s)|0;h=f,f=l,l=p,p=r+a|0,r=s,s=n,n=t,t=a+d|0}[t,n,s,r,p,l,f,h].forEach((e,t)=>d[t]=d[t]+e|0)}const p=new Uint8Array(32),l=new DataView(p.buffer);return d.forEach((e,t)=>l.setInt32(4*t,e)),p}const r=e=>Array.from(e,e=>e.toString(16).padStart(2,"0")).join(""),a=e=>Uint8Array.from(e.match(/../g)||[],e=>parseInt(e,16)),c=e=>BigInt("0x"+(r(e)||"0")),d=e=>a(e.toString(16).padStart(64,"0")),p=(...e)=>{const t=new Uint8Array(e.reduce((e,t)=>e+t.length,0));let n=0;for(const o of e)t.set(o,n),n+=o.length;return t},l=e=>(new TextEncoder).encode(e),f=e=>crypto.getRandomValues(new Uint8Array(e)),h={},u=(e,t)=>{const n=h[e]||(h[e]=s(l(e)));return s(p(n,n,t))},w=2n**256n-0x1000003d1n,m=0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n,g=[0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n,0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n,1n],y=(e,t=w)=>(e%=t)<0n?e+t:e,b=(e,t,n=w)=>{let o=1n;for(e=y(e,n);t>0n;t>>=1n)1n&t&&(o=o*e%n),e=e*e%n;return o},k=[0n,1n,0n],v=e=>{const[t,n,o]=e;if(!o||!n)return k;const i=t*t%w,s=n*n%w,r=s*s%w,a=y(2n*((t+s)**2n-i-r)),c=3n*i%w,d=y(c*c%w-2n*a);return[d,y(c*(a-d)-8n*r),2n*n*o%w]},x=(e,t)=>{if(!e[2])return t;if(!t[2])return e;const n=e[2]*e[2]%w,o=t[2]*t[2]%w,i=e[0]*o%w,s=t[0]*n%w,r=e[1]*t[2]%w*o%w,a=t[1]*e[2]%w*n%w,c=y(s-i),d=y(2n*(a-r));if(!c)return d?k:v(e);const p=4n*c*c%w,l=c*p%w,f=i*p%w,h=y(d*d-l-2n*f);return[h,y(d*(f-h)-2n*r*l),y(((e[2]+t[2])**2n-n-o)*c)]},S=(e,t)=>{let n=k;for(let o=255n;o>=0n;o--)n=v(n),e>>o&1n&&(n=x(n,t));return n},L=e=>{if(!e[2])return null;const t=b(e[2],w-2n),n=t*t%w;return[e[0]*n%w,e[1]*n%w*t%w]};return{sha256:s,hex:r,unhex:a,utf8:l,key:()=>{for(;;){const e=c(f(32));if(e>0n&&e<m)return e}},pub:e=>d(L(S(e,g))[0]),sign:function(e,t){const n=L(S(t,g)),o=1n&n[1]?m-t:t,i=d(n[0]),s=d(o),r=u("BIP0340/aux",f(32));for(let e=0;e<32;e++)s[e]^=r[e];const a=y(c(u("BlockPaint/k",p(s,i,e))),m),l=L(S(a,g)),h=1n&l[1]?m-a:a,w=d(l[0]),b=y(c(u("BIP0340/challenge",p(w,i,e))),m);return p(w,d(y(h+b*o,m)))},verify:function(e,t,n){try{const o=c(n);if(64!==e.length||32!==n.length||o>=w)return!1;const i=y(o*o*o+7n);let s=b(i,(w+1n)/4n);if(s*s%w!==i)return!1;1n&s&&(s=w-s);const r=c(e.slice(0,32)),a=c(e.slice(32));if(r>=w||a>=m)return!1;const d=y(c(u("BIP0340/challenge",p(e.slice(0,32),n,t))),m),l=L(x(S(a,g),S(m-d,[o,s,1n])));return!(!l||1n&l[1]||l[0]!==r)}catch(e){return!1}}}})();
+  const big = b => BigInt('0x' + (T.hex(b) || '0'));
+  return { sha256: T.sha256, bytesToHex: T.hex, hexToBytes: T.unhex, schnorr: { utils: { randomPrivateKey: () => T.unhex(T.key().toString(16).padStart(64, '0')) }, getPublicKey: k => T.pub(big(k)), sign: (m, k) => T.sign(m, big(k)), verify: (sg, m, p) => T.verify(sg, m, p) } };
+})();
+</script>
+<script>
+'use strict';
+// ---------------- settings ----------------
+// GAME: the cube (the same folder as this page; open this page with ?game=<address> to use another copy)
+const Q = new URLSearchParams(location.search);
+const GAME = Q.get('game') || 'block-cube.html';
+const RELAYS = Q.get('relay') ? Q.get('relay').split(',') : ['wss://nos.lol', 'wss://relay.damus.io', 'wss://nostr-pub.wellorder.net', 'wss://relay.primal.net'];
+// how two players find a way to each other. STUN tells each player its own public address, which is all most homes and phones need.
+// A TURN server passes the messages along when nothing else gets through (some offices, schools and mobile networks). None is set
+// up yet. To add one later, put it in TURN, e.g.
+//   [{ urls: ['turn:turn.example.com:3478', 'turns:turn.example.com:443?transport=tcp'], username: 'name', credential: 'password' }]
+// (the game's own crew, in the child inscription, has the same settings; ?noice=1 turns them all off, for testing)
+const NOICE = !!Q.get('noice'), STUN = NOICE ? [] : [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], TURN = [];
+const turnOk = t => !!t && typeof t.username === 'string' && typeof t.credential === 'string' && [].concat(t.urls || []).length > 0 && [].concat(t.urls).every(u => typeof u === 'string' && /^turns?:\S+$/.test(u));
+const ice = () => NOICE ? [] : STUN.concat([].concat(window.CREW_TURN || TURN).filter(turnOk));   // read afresh for every link
+// a new link with those servers (and if a TURN entry was typed wrongly, with STUN alone rather than no link at all)
+const newPC = () => { try { return new RTCPeerConnection({ iceServers: ice() }); } catch (e) { return new RTCPeerConnection({ iceServers: STUN }); } };
+const TAG = 'blockcube-crew-v1', MAX = 4, FTAG = 'blockcube-friends-v1';
+const $ = id => document.getElementById(id);
+const store = { get: k => { try { return localStorage.getItem('blockcube.' + k) || ''; } catch (e) { return ''; } }, set: (k, v) => { try { localStorage.setItem('blockcube.' + k, v); } catch (e) {} } };
+const jget = (k, d) => { try { const v = JSON.parse(store.get(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }, jset = (k, v) => store.set(k, JSON.stringify(v));
+const clean = (s, n = 20) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, n);
+const now = () => Math.floor(Date.now() / 1000);
+// a small helper for building the lists
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  if (props) for (const k in props) { const v = props[k]; if (v == null) continue; if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v; else if (k.startsWith('on')) e[k] = v; else if (k === 'data') Object.assign(e.dataset, v); else e.setAttribute(k, v); }
+  for (const c of kids) if (c != null) e.append(c);
+  return e;
+}
+const svgs = {
+  mic: '<svg width="18" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="wv" d="M20.5 7.5a8 8 0 0 1 0 7M3.5 7.5a8 8 0 0 0 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="sl" d="M4 3l16 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  star: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-2.9-5.4 2.9 1.1-6-4.5-4.2 6.1-.8z" fill="currentColor"/></svg>',
+  rank: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8l7 5 7-5M5 13.5l7 5 7-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg>'
+};
+const icon = (name, cls) => { const t = document.createElement('template'); t.innerHTML = svgs[name]; const s = t.content.firstChild; if (cls) s.setAttribute('class', cls); return s; };
+
+// ---------------- the game, in its frame ----------------
+const frame = $('game'); let gameReady = false, gameQueue = [];
+frame.src = GAME;
+const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, '*'); else gameQueue.push(msg); };
+// ---------------- Block Paint City, through the cube's warehouse shutter ----------------
+// The shutter (and Block Paint's Block Cube door) swap the game here, so the crew stays together. The game you are not in
+// waits hidden and quiet (on a phone it is closed, to save memory). Each crewmate shows in whichever game they are in.
+const pframe = $('paint'), PAINT = 'block-paint.html', PHONE = matchMedia('(pointer: coarse)').matches;
+let paintReady = false, paintQueue = [], inPaint = false, swapping = false;
+const mateG = new Map();   // the game each crewmate was last seen in
+const toPaint = m => { if (!pframe.getAttribute('src')) return; const msg = Object.assign({ app: 'blockpaint-host' }, m); if (paintReady) pframe.contentWindow.postMessage(msg, '*'); else paintQueue.push(msg); };
+const inPaintSt = s => !!(s && s.g === 'paint');
+// what the crew does goes to the game each crewmate is in; who left and who is talking go to both
+const toGame = m => {
+  if (m.type === 'state') {
+    const g = inPaintSt(m.s) ? 'paint' : 'cube', was = mateG.get(m.id); mateG.set(m.id, g);
+    if (was && was !== g) (was === 'paint' ? toPaint : toCube)({ type: 'left', id: m.id });   // (they went through the door)
+    (g === 'paint' ? toPaint : toCube)(m); return;
+  }
+  if (m.type === 'go') { if (inPaintSt(voice.st[m.id])) swapTo('paint'); else if (inPaint) swapTo('cube').then(() => toCube(m)); else toCube(m); return; }
+  if (m.type === 'left' || m.type === 'off' || m.type === 'say' || m.type === 'talk') { toCube(m); toPaint(m); if (m.type === 'left') mateG.delete(m.id); return; }
+  if (m.type === 'ready') { toCube(m); if (paintReady) toPaint(m); return; }
+  toCube(m);
+};
+addEventListener('message', e => {
+  if (e.source !== frame.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockcube') return;
+  if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
+  if (m.type === 'hello') { gameReady = true; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, '*'); portraits(); if (net.on && net.sail) startGame(); return; }
+  if (m.type === 'portraits') { gotPortraits(m); return; }
+  if (m.type === 'hear') { voice.hear(m.d); return; }   // how far away each crewmate is in the rooms (for their voices)
+  if (m.type === 'chat-open') { openSay(); return; }
+  if (m.type === 'go' && m.to === 'paint') { swapTo('paint'); return; }   // walked into the warehouse shutter
+  if (m.type === 'paint-soon') { paintSoon(); return; }   // (in the common room: Block Paint gets ready behind the shutter)
+  if (inPaint) return;   // (the cube, waiting hidden)
+  if (m.type === 'state' && m.s && m.s.in && m.s.h === -2) paintSoon();   // in the common room: Block Paint gets ready behind the shutter
+  if (net.on) net.fromGame(m);
+});
+addEventListener('message', e => {
+  if (!pframe.contentWindow || e.source !== pframe.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockpaint') return;
+  if (m.type === 'page?') { pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
+  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, '*'); if (net.on && net.sail) paintStart(); return; }
+  if (m.type === 'go' && m.to === 'cube') { swapTo('cube'); return; }   // walked into Block Paint's Block Cube door
+  if (m.type === 'chat-open') { openSay(); return; }
+  if (!inPaint || !net.on) return;   // (Block Paint, waiting hidden: nothing of it goes to the crew)
+  if (m.type === 'state' && m.s && typeof m.s === 'object' && !Array.isArray(m.s)) net.fromGame({ type: 'state', s: Object.assign({}, m.s, { g: 'paint' }) });
+  else if (m.type === 'event' && m.ev && typeof m.ev === 'object') { const c = check({ t: 'pev', ev: m.ev }); if (c) share(c); }
+});
+// Block Paint opened behind the shutter ahead of time (not on a phone), so walking through is quick
+function paintSoon() { if (PHONE || pframe.getAttribute('src')) return; paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; }
+// in Block Paint with the crew: who you are, and where each crewmate already in it is
+function paintStart() {
+  toPaint({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode });
+  for (const [id, st] of Object.entries(voice.st)) if (id !== ME && inPaintSt(st) && net.players.has(id)) toPaint({ type: 'state', id, name: net.players.get(id).name, s: st });
+}
+const later = ms => new Promise(r => setTimeout(r, ms));
+let swapNext = null;
+async function swapTo(g) {
+  if (swapping) { swapNext = g; return; }   // (asked again mid-swap: done right after)
+  if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive' }); return; }   // (already there: never left dark)
+  swapping = true;
+  const fade = $('gfade'); fade.classList.add('on');
+  (g === 'paint' ? toCube : toPaint)({ type: 'leave' });   // (the game you are leaving: dark and quiet)
+  await later(340);
+  if (g === 'paint') {
+    if (!pframe.getAttribute('src')) { paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; fade.classList.add('wait'); }
+    else toPaint({ type: 'arrive' });
+    for (let i = 0; i < 300 && !paintReady; i++) await later(100);
+    inPaint = true; pframe.hidden = false; frame.hidden = true;
+    if (net.on && net.sail && paintReady) paintStart();
+    if (PHONE) { frame.dataset.closed = 1; gameReady = false; gameQueue = []; frame.src = 'about:blank'; }
+  } else {
+    if (frame.dataset.closed) { delete frame.dataset.closed; gameReady = false; gameQueue = []; frame.src = GAME + '#from-paint'; fade.classList.add('wait'); }
+    else toCube({ type: 'arrive' });
+    for (let i = 0; i < 300 && !gameReady; i++) await later(100);
+    inPaint = false; frame.hidden = false; pframe.hidden = true;
+    if (PHONE) { pframe.removeAttribute('src'); paintReady = false; paintQueue = []; try { pframe.contentWindow.location.replace('about:blank'); } catch (e) {} }
+  }
+  fade.classList.remove('on', 'wait'); swapping = false;
+  if (swapNext) { const n = swapNext; swapNext = null; setTimeout(() => swapTo(n), 0); }
+  try { const f = inPaint ? pframe : frame; f.focus(); f.contentWindow.focus(); } catch (e) {}
+  whereAt = 0; crewWhere();
+}
+// voices in Block Paint: crewmates in it are heard, those in the cube not (in the cube, the cube says how far each one is)
+setInterval(() => { if (!inPaint || !net.on) return; const d = {}; for (const id of net.players.keys()) if (id !== ME) d[id] = inPaintSt(voice.st[id]) ? 3 : 999; voice.hear(d); }, 500);
+
+// ---------------- characters: Node Runners ----------------
+// four runners, three colourways each, five skin tones: [runner, colourway, skin]. The cube draws their pictures.
+const HEX = /^[0-9a-f]{64}i\d+$/, HEXK = /^[0-9a-f]{64}$/;
+const lookOk = l => Array.isArray(l) && l.length === 3 && l.every(n => Number.isInteger(n) && n >= 0 && n < 8) ? [Math.min(l[0], 3), Math.min(l[1], 2), Math.min(l[2], 4)] : null;
+let picked = lookOk(jget('look', null)) || [Math.floor(Math.random() * 4), 0, 1];
+const SKINS = ['#f5cdb0', '#deab84', '#b98660', '#8a5e3f', '#5c3d2b'];
+const PICS = { skin: -1, list: [], looks: [] };
+const rgbOf = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(',');
+function portraits() { toGame({ type: 'portraits', skin: picked[2] }); }
+function gotPortraits(m) {
+  if (!Array.isArray(m.list) || !Array.isArray(m.looks)) return;
+  PICS.skin = m.skin | 0; PICS.list = m.list.filter(x => x && typeof x.url === 'string' && /^data:image\/png;base64,/.test(x.url)); PICS.looks = m.looks.slice(0, 8);
+  drawPicker();
+}
+function drawPicker() {
+  const box = $('chars'), cols = $('cols'), skins = $('skins'); box.textContent = ''; cols.textContent = ''; skins.textContent = '';
+  const looks = PICS.looks.length ? PICS.looks : [{ n: 'Ghost', glow: ['#27e1ff', '#ff2fb4', '#ffa21a'] }, { n: 'Spark', glow: ['#ff2fb4', '#7dff4a', '#ff7a18'] }, { n: 'Relay', glow: ['#f7931a', '#27e1ff', '#b06bff'] }, { n: 'Cipher', glow: ['#ff2d55', '#ffd23f', '#9fe8ff'] }];
+  looks.forEach((L, i) => {
+    const pic = PICS.list.find(x => x.i === i && x.o === (i === picked[0] ? picked[1] : 0)), on = i === picked[0];
+    const b = el('button', { class: 'ch' + (on ? ' on' : '') + (pic ? ' ready' : ''), role: 'radio', 'aria-checked': String(on), 'aria-label': L.n, style: '--gl:' + rgbOf((L.glow || [])[on ? picked[1] : 0] || '#f7931a') },
+      el('img', { alt: '', src: pic ? pic.url : null }), el('span', { text: L.n }));
+    b.onclick = () => { picked = [i, 0, picked[2]]; saveLook(); }; box.append(b);
+  });
+  $('name').placeholder = RUNNERS[picked[0]] || 'Name';
+  (looks[picked[0]].glow || []).forEach((g, o) => { const b = el('button', { 'aria-label': 'Colours ' + (o + 1), 'aria-pressed': String(o === picked[1]), style: 'background:' + g }); b.onclick = () => { picked = [picked[0], o, picked[2]]; saveLook(); }; cols.append(b); });
+  SKINS.forEach((c, k) => { const b = el('button', { 'aria-label': 'Skin ' + (k + 1), 'aria-pressed': String(k === picked[2]), style: 'background:' + c }); b.onclick = () => { picked = [picked[0], picked[1], k]; saveLook(); }; skins.append(b); });
+}
+// a new look: kept on this device, shown to the crew straight away
+function saveLook() {
+  jset('look', picked); if (PICS.skin !== picked[2]) portraits(); drawPicker();
+  toGame({ type: 'look', id: 'me', look: picked });
+  const me = net.players.get(ME); if (me) me.look = picked;
+  if (net.on) { if (net.host) { toAll({ t: 'joined', ...pub(ME, me || { name: myName(), look: picked }), back: 1 }); } else send(net.hostLink && net.hostLink.ch, { t: 'look', look: picked }); }
+}
+const note = t => { $('note').textContent = t; };
+
+// ---------------- Nostr: a tiny relay client (for finding each other) ----------------
+const { schnorr, sha256, bytesToHex, hexToBytes } = window.NB;
+// this visit's key: for crews and links (new every time, so two tabs never mix up)
+const sk = schnorr.utils.randomPrivateKey(), pk = bytesToHex(schnorr.getPublicKey(sk)), ME = pk.slice(0, 12);
+// your friend key: kept on this device, so your friends know it's you next time
+let fsk = null, fpk = '';
+try { const k = store.get('fkey'); if (HEXK.test(k)) { fsk = hexToBytes(k); fpk = bytesToHex(schnorr.getPublicKey(fsk)); } } catch (e) { fsk = null; }
+if (!fsk) { fsk = schnorr.utils.randomPrivateKey(); fpk = bytesToHex(schnorr.getPublicKey(fsk)); store.set('fkey', bytesToHex(fsk)); }
+// a friend code is the start of the friend key, in 8 easy letters and numbers (no I, O, 0 or 1 to mix up)
+const B32 = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const codeOf = hex => { let v = BigInt('0x' + String(hex).slice(0, 10)), s = ''; for (let i = 0; i < 8; i++) { s = B32[Number(v & 31n)] + s; v >>= 5n; } return s; };
+const showCode = c => c.slice(0, 4) + '-' + c.slice(4);
+const FCODE = codeOf(fpk);
+const enc = new TextEncoder();
+function signAs(key, pub, kind, tags, content) {
+  const ev = { pubkey: pub, created_at: now(), kind, tags, content: typeof content === 'string' ? content : JSON.stringify(content) };
+  ev.id = bytesToHex(sha256(enc.encode(JSON.stringify([0, ev.pubkey, ev.created_at, ev.kind, ev.tags, ev.content]))));
+  ev.sig = bytesToHex(schnorr.sign(hexToBytes(ev.id), key)); return ev;
+}
+const sign = (kind, tags, content) => signAs(sk, pk, kind, tags, content), fsign = (kind, tags, content) => signAs(fsk, fpk, kind, tags, content);
+const good = new Set();   // events already checked
+function verify(ev) { if (good.has(ev.id)) return true; try { const id = bytesToHex(sha256(enc.encode(JSON.stringify([0, ev.pubkey, ev.created_at, ev.kind, ev.tags, ev.content])))); const ok = id === ev.id && schnorr.verify(hexToBytes(ev.sig), hexToBytes(id), hexToBytes(ev.pubkey)); if (ok) { good.add(ev.id); if (good.size > 3000) good.clear(); } return ok; } catch (e) { return false; } }
+const relays = []; const subs = new Map(); let subN = 0;
+function relayConnect() {
+  for (const url of RELAYS) { const r = { url, ws: null, open: false, q: [] }; relays.push(r);
+    const go = () => { try { r.ws = new WebSocket(url); } catch (e) { return; }
+      r.ws.onopen = () => { r.open = true; for (const [id, s] of subs) r.ws.send(JSON.stringify(['REQ', id, ...s.filters])); for (const m of r.q.splice(0)) r.ws.send(m); };
+      r.ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m[0] !== 'EVENT') return; const s = subs.get(m[1]), ev = m[2]; if (!s || !ev || typeof ev.id !== 'string' || s.seen.has(ev.id)) return; if (!verify(ev)) return; s.seen.add(ev.id); try { s.cb(ev); } catch (x) {} };
+      r.ws.onclose = () => { r.open = false; setTimeout(go, 4000); }; r.ws.onerror = () => {}; };
+    go(); }
+}
+const relaySend = m => { const s = JSON.stringify(m); for (const r of relays) { if (r.open) r.ws.send(s); else if (r.q.length < 200) r.q.push(s); } };
+const publish = ev => relaySend(['EVENT', ev]);
+// (each subscription keeps its own list of what it has had, so a later search sees the same rooms again)
+function subscribe(filters, cb) { const id = 'a' + (++subN); subs.set(id, { filters, cb, seen: new Set() }); for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['REQ', id, ...filters])); return () => { if (!subs.delete(id)) return; for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['CLOSE', id])); }; }
+let relaysUp = false; const relaysOn = () => { if (!relaysUp) { relaysUp = true; relayConnect(); } };
+
+// ---------------- WebRTC: direct links between players (the host relays for its crew) ----------------
+async function iceDone(pc) { if (pc.iceGatheringState === 'complete') return; await new Promise(res => { const t = setTimeout(res, /iP(hone|ad)/.test(navigator.userAgent) ? 12000 : 8000); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } }); }); }
+// a link's messages, and how it ends: closed (onClose) or lost (onLost: gone quiet for 6 seconds, or failed)
+function wire(pc, ch, onMsg, onOpen, onClose, onLost) {
+  ch.onopen = onOpen; ch.onmessage = e => { if (typeof e.data !== 'string' || e.data.length > 65536) return; let m; try { m = JSON.parse(e.data); } catch (x) { return; } try { onMsg(m); } catch (x) {} }; ch.onclose = onClose;
+  let quiet = null;
+  pc.onconnectionstatechange = () => { const s = pc.connectionState;
+    if (s === 'disconnected') { clearTimeout(quiet); quiet = setTimeout(() => { if (pc.connectionState === 'disconnected' && onLost) onLost('quiet'); }, 6000); }
+    else if (s === 'connected') clearTimeout(quiet);
+    else if (s === 'failed') { clearTimeout(quiet); if (onLost) onLost('failed'); }
+    else if (s === 'closed') onClose(); };
+}
+
+// ---------------- the crew ----------------
+// line: the crew in the order they came (the host first). When the host goes, the next in line takes over and the rest link up to them.
+// rid: the crew's own name on the relays, the same whoever hosts it. gen: how many times the host has changed.
+const net = { on: false, host: false, mode: '', code: '', rid: '', gen: 0, open: false, sail: false, back: false, peers: new Map(), pending: new Map(), hostLink: null, hostId: '', history: [], players: new Map(), unsub: [], line: [], pks: {}, chat: [], regroup: null, leaving: false, started: 0, fast: 0, nextBeat: 0, prev: '' };
+// the host's checks on what a guest sends: the right shape and size, and not too often (KENOBI: 30 a second for where you are, 10 for events, 5 for chat)
+const LIM = { state: 30, event: 10, pev: 60, chat: 5, sdp: 4, hello: 2, me: 2, bye: 1, look: 2 };
+function allow(peer, t) { const r = LIM[t] || 2, s = performance.now() / 1000, b = peer.bk || (peer.bk = {}), q = b[t] || (b[t] = { v: r, at: s }); q.v = Math.min(r, q.v + (s - q.at) * r); q.at = s; if (q.v < 1) return false; q.v--; return true; }
+// (numbers up to a time in milliseconds: a lantern says when it was let go, and the other games work out from that how high it has risen)
+const small = (v, d) => v === null || typeof v === 'boolean' || (typeof v === 'number' && isFinite(v) && Math.abs(v) < 1e13) || (typeof v === 'string' && v.length <= 80) ||
+  (d < 3 && Array.isArray(v) && v.length <= 16 && v.every(x => small(x, d + 1))) || (d < 3 && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length <= 40 && Object.values(v).every(x => small(x, d + 1)));
+// where someone is in the cube: which block's room (h), where in it (x, z, in metres), which way they face (y) and look (p), what they hold (hk: its kind)
+const num = (v, a) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= a;
+const place = s => Number.isInteger(s.h) && s.h >= -2 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
+// someone in Block Paint: where they stand and how they look, small
+const paintOk = s => { try { return JSON.stringify(s).length <= 3000 && Array.isArray(s.q) && s.q.length === 3 && s.q.every(Number.isFinite); } catch (e) { return false; } };
+function check(m) {
+  if (!m || typeof m !== 'object') return null;
+  if (m.t === 'state') return m.s && typeof m.s === 'object' && !Array.isArray(m.s) && (m.s.g === 'paint' ? paintOk(m.s) : place(m.s) && small(m.s, 0)) ? { t: 'state', s: m.s } : null;
+  if (m.t === 'pev') return m.ev && typeof m.ev === 'object' && !Array.isArray(m.ev) && typeof m.ev.t === 'string' && JSON.stringify(m.ev).length <= 60000 ? { t: 'pev', ev: m.ev } : null;
+  if (m.t === 'event') return m.ev && typeof m.ev === 'object' && typeof m.ev.list === 'string' && m.ev.list.length <= 24 && small(m.ev, 0) ? { t: 'event', ev: m.ev } : null;
+  if (m.t === 'chat') return typeof m.text === 'string' && m.text.trim() ? { t: 'chat', text: m.text.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200) } : null;
+  if (m.t === 'sdp') return m.d && (m.d.type === 'offer' || m.d.type === 'answer') && typeof m.d.sdp === 'string' && m.d.sdp.length < 20000 ? { t: 'sdp', d: { type: m.d.type, sdp: m.d.sdp } } : null;
+  if (m.t === 'hello') return { t: 'hello', name: clean(m.name) || 'Runner', look: lookOk(m.look) || [0, 0, 1], pk: HEXK.test(m.pk || '') ? m.pk : '', fpk: HEXK.test(m.fpk || '') ? m.fpk : '', back: !!m.back, sail: !!m.sail };
+  if (m.t === 'look') { const l = lookOk(m.look); return l ? { t: 'look', look: l } : null; }
+  if (m.t === 'me') return { t: 'me', sail: !!m.sail };
+  if (m.t === 'bye') return { t: 'bye' };
+  return null;
+}
+const RUNNERS = ['Ghost', 'Spark', 'Relay', 'Cipher'];
+const myName = () => clean($('name').value) || RUNNERS[picked[0]] || 'Runner';
+const flash = i => { i.classList.remove('bad'); void i.offsetWidth; i.classList.add('bad'); i.focus(); setTimeout(() => i.classList.remove('bad'), 900); };   // (an empty box: it flashes, no words)
+const send = (ch, m) => { if (ch && ch.readyState === 'open') try { ch.send(JSON.stringify(m)); } catch (e) {} };
+const toAll = (m, except) => { for (const [id, p] of net.peers) if (id !== except) send(p.ch, m); };
+const liveCount = () => { let n = 0; for (const p of net.players.values()) if (!p.lost) n++; return Math.max(1, n); };
+const pub = (id, p) => ({ id, name: p.name || 'Runner', look: lookOk(p.look) || [0, 0, 1], fpk: p.fpk || '', sail: p.sail ? 1 : 0 });
+const keepEvent = out => { net.history.push(out); if (net.history.length > 300) net.history.shift(); };
+// a message for the whole crew: the host passes it on; guests send it to the host
+function share(m) { if (net.host) { handle(ME, m); } else send(net.hostLink && net.hostLink.ch, m); }
+// the host's view of every message (from a guest, or its own)
+function handle(from, m) {
+  const p = net.players.get(from) || {}; const meta = { id: from, name: p.name, look: p.look };
+  if (m.t === 'state') { const out = { t: 'state', ...meta, s: m.s }; toAll(out, from); if (from !== ME) gameState(out); }
+  else if (m.t === 'event') { const out = { t: 'event', ...meta, ev: m.ev }; keepEvent(out); toAll(out, from); if (from !== ME) toGame({ type: 'event', id: from, ev: m.ev }); }
+  else if (m.t === 'pev') { const out = { t: 'pev', id: from, ev: m.ev }; toAll(out, from); if (from !== ME) toPaint({ type: 'event', id: from, ev: m.ev }); }
+  else if (m.t === 'chat') { const out = { t: 'chat', ...meta, text: String(m.text || '').slice(0, 200) }; toAll(out, from); if (from !== ME) chatIn(out); }
+  else if (m.t === 'me') { const q = net.players.get(from); if (q) q.sail = m.sail ? 1 : 0; toAll({ t: 'me', id: from, sail: m.sail ? 1 : 0 }, from); drawCrew(); }
+  else if (m.t === 'look') { const q = net.players.get(from); if (q) { q.look = m.look; toAll({ t: 'joined', ...pub(from, q), back: 1 }, from); if (from !== ME) toGame({ type: 'look', id: from, look: m.look }); } }
+}
+// what reaches this player (host included)
+function gameState(m) {
+  if (m.s) voice.st[m.id] = m.s;
+  toGame({ type: 'state', id: m.id, name: m.name, s: m.s });
+  const pl = net.players.get(m.id), look = lookOk(m.look) || lookOk(m.s && m.s.look);
+  if (!pl) { net.players.set(m.id, { name: clean(m.name) || 'Runner', look: look || [0, 0, 1], sail: 1 }); if (look) toGame({ type: 'look', id: m.id, look }); drawCrew(); }
+  else { if (look && String(look) !== String(pl.look)) { pl.look = look; toGame({ type: 'look', id: m.id, look }); } if (!pl.sail) { pl.sail = 1; drawCrew(); } else crewWhere(); }
+}   // (walking about in the cube: in, even on an older page that doesn't say so)
+// a crewmate, as the host describes them
+function upsert(id, pl) {
+  const p = net.players.get(id) || {}, look = lookOk(pl.look) || p.look || [0, 0, 1];
+  const lookNew = String(look) !== String(p.look);
+  Object.assign(p, { name: clean(pl.name) || p.name || 'Runner', look, fpk: HEXK.test(pl.fpk || '') ? pl.fpk : (p.fpk || ''), sail: pl.sail ? 1 : 0 });
+  delete p.lost; clearTimeout(p.goneT); net.players.set(id, p);
+  if (lookNew) toGame({ type: 'look', id, look });
+}
+// a crewmate gone for good (now), or soon unless they turn up again
+function goneNow(id) {
+  const pl = net.players.get(id); if (!pl || id === ME) return; clearTimeout(pl.goneT);
+  net.players.delete(id); voice.gone(id); toGame({ type: 'left', id }); if (net.host) { toAll({ t: 'left', id }); net.line = net.line.filter(x => x !== id); sendLine(); beatSoon(); }
+  logLine('', pl.name + ' left'); updateHud(); drawCrew(); presenceSoon();
+}
+function laterGone(id, ms) { const pl = net.players.get(id); if (!pl || id === ME) return; clearTimeout(pl.goneT); pl.lost = Date.now(); pl.goneT = setTimeout(() => { if (net.players.get(id) === pl && pl.lost) goneNow(id); }, ms); }
+function setLine(line, pks) {
+  if (Array.isArray(line)) net.line = line.filter(x => typeof x === 'string' && /^[0-9a-f]{12}$/.test(x)).slice(0, MAX + 2);
+  if (pks && typeof pks === 'object') for (const [id, k] of Object.entries(pks)) if (/^[0-9a-f]{12}$/.test(id) && HEXK.test(k || '') && k.startsWith(id)) net.pks[id] = k;
+  drawCrew();
+}
+const sendLine = () => { if (!net.host) return; const pks = {}; for (const id of net.line) if (net.pks[id]) pks[id] = net.pks[id]; toAll({ t: 'line', line: net.line, pks }); };
+function guestIn(m) {
+  const L = net.hostLink;
+  if (m.t === 'init') {
+    if (L) L.init = 1;
+    if (m.mode) { net.mode = m.mode === 'sea' ? 'sea' : 'crew'; net.code = String(m.code || '').slice(0, 6); }
+    net.hostId = typeof m.host === 'string' ? m.host.slice(0, 12) : ''; if (typeof m.rid === 'string' && m.rid) net.rid = m.rid.slice(0, 16); net.gen = m.gen | 0; net.open = !!m.open;
+    setLine(m.line, m.pks);
+    const back = net.back || !!net.regroup, had = new Set(net.players.keys()); had.delete(ME);
+    for (const pl of Array.isArray(m.players) ? m.players : []) { if (!pl || typeof pl.id !== 'string' || !/^[0-9a-f]{12}$/.test(pl.id)) continue; had.delete(pl.id); if (pl.id !== ME) upsert(pl.id, pl); }
+    for (const id of had) laterGone(id, 20000);   // crewmates who haven't come along (yet)
+    for (const h of Array.isArray(m.history) ? m.history : []) { if (!h || !h.ev) continue; if (!back) { keepEvent(h); toGame({ type: 'event', id: h.id, ev: h.ev }); } }
+    if (!back && Array.isArray(m.chat)) for (const c of m.chat.slice(-20)) if (c && typeof c.text === 'string') chatLine(c.id, clean(c.name), c.text.slice(0, 200));
+    if (net.regroup) endRegroup();
+    net.back = false; updateHud(); drawCrew(); drawWait(); presenceSoon();
+  }
+  else if (m.t === 'state') gameState(m);
+  else if (m.t === 'event') { keepEvent(m); toGame({ type: 'event', id: m.id, ev: m.ev }); }
+  else if (m.t === 'pev') { if (typeof m.id === 'string') toPaint({ type: 'event', id: m.id, ev: m.ev }); }
+  else if (m.t === 'chat') chatIn(m);
+  else if (m.t === 'sdp') voice.sdp(L, m.d);
+  else if (m.t === 'vmap') voice.map(m.sid, m.id);
+  else if (m.t === 'joined') { if (typeof m.id !== 'string' || m.id === ME) return; const known = net.players.has(m.id); upsert(m.id, m); if (!known && !m.back) logLine('', clean(m.name) + ' joined'); updateHud(); drawCrew(); presenceSoon(); }
+  else if (m.t === 'left') goneNow(m.id);
+  else if (m.t === 'line') setLine(m.line, m.pks);
+  else if (m.t === 'me') { const p = net.players.get(m.id); if (p) { p.sail = m.sail ? 1 : 0; drawCrew(); } }
+  else if (m.t === 'room') { net.open = !!m.open; drawCrew(); }
+  else if (m.t === 'bye') lostHost('bye', typeof m.next === 'string' ? m.next : '');
+  else if (m.t === 'move') moveTo(m.to);
+}
+
+// ---------------- rooms on the relays ----------------
+// a room says it's there every half minute (more often just after the host has changed): its mode, code, the crew's own name, how many are in it
+const beat = status => { if (!relaysUp || !net.rid) return; publish(sign(30311, [['d', 'room'], ['t', TAG], ['title', myName()], ['status', status], ['mode', net.mode], ['r', net.rid], ...(net.code ? [['code', net.code]] : []), ...(net.open ? [['open', '1']] : []), ...(net.prev ? [['prev', net.prev]] : [])], { name: myName(), game: 'blockcube', mode: net.mode, code: net.code, rid: net.rid, gen: net.gen, open: net.open ? 1 : 0, n: liveCount(), max: MAX, ts: Date.now(), v: 2 })); };
+const beatSoon = () => { if (net.on && net.host) net.nextBeat = Math.min(net.nextBeat || Infinity, Date.now() + 800); };
+setInterval(() => { if (!net.on || !net.host || Date.now() < net.nextBeat) return; beat('live'); net.nextBeat = Date.now() + (Date.now() < net.fast ? 4000 : 30000); }, 500);
+function roomOf(ev) {
+  let c; try { c = JSON.parse(ev.content); } catch (e) { return null; } if (!c || typeof c !== 'object') return null;
+  const tag = k => (ev.tags.find(t => Array.isArray(t) && t[0] === k) || [])[1];
+  return { pk: ev.pubkey, at: ev.created_at, status: tag('status') || 'live', mode: c.mode === 'sea' ? 'sea' : 'crew', code: typeof c.code === 'string' ? c.code.slice(0, 6) : '', rid: typeof c.rid === 'string' && c.rid ? c.rid.slice(0, 16) : String(tag('r') || (c.mode === 'crew' ? c.code || '' : '')).slice(0, 16), open: !!c.open, gen: c.gen | 0, n: Math.max(1, c.n | 0), max: Math.min(MAX, (c.max | 0) || MAX), name: clean(c.name) || 'Runner', prev: String(tag('prev') || '') };
+}
+// a timer that counts only the time the page was awake (a phone freezes a page while you're in another app, and a busy computer can stall one):
+// after a freeze it carries on from where it was, instead of going off at once
+function awakeTimer(ms, fn) { let t = 0, last = Date.now(); const iv = setInterval(() => { const n = Date.now(); t += Math.min(n - last, 1100); last = n; if (t >= ms) { clearInterval(iv); fn(); } }, 250); return () => clearInterval(iv); }
+// the rooms on the relays right now (the newest word from each; not ones that have ended, or that a newer host has taken over from).
+// It listens for ms. opt.early: done a moment after a fresh room like this turns up. opt.most: if none has by then, it keeps listening up to this long.
+// (a busy page can run its timers late: only the time the page was awake counts, and what came in meanwhile is looked at first)
+function findRooms(want, ms, opt = {}) { return new Promise(res => {
+  const rooms = new Map(); let done = false, soon = 0, t = 0, last = Date.now();
+  const pick = () => { const all = [...rooms.values()].filter(r => r.status !== 'ended'); const prevs = new Set(all.filter(r => r.prev).map(r => r.prev)); return all.filter(r => !prevs.has(r.pk) && r.pk !== pk && want(r)); };
+  const finish = () => { if (done) return; done = true; clearInterval(iv); clearTimeout(soon); un(); res(pick()); };
+  const un = subscribe([{ kinds: [30311], '#t': [TAG], since: now() - 90 }], ev => { const r = roomOf(ev); if (!r) return; const p = rooms.get(ev.pubkey); if (p && p.at > r.at) return; rooms.set(ev.pubkey, r); if (opt.early && !soon && !done && pick().some(fresh)) soon = setTimeout(finish, 700); });
+  const iv = setInterval(() => { const n = Date.now(); t += Math.min(n - last, 1100); last = n; if (t >= ms && (t >= (opt.most || ms) || pick().length)) { clearInterval(iv); setTimeout(finish, 200); } }, 250);
+}); }
+const fresh = r => now() - r.at <= 45;
+const ranked = rooms => rooms.slice().sort((a, b) => (fresh(b) - fresh(a)) || (b.n - a.n) || (b.gen - a.gen) || (b.at - a.at));
+const pickBest = rooms => ranked(rooms)[0] || null;
+// join the best of these rooms, falling back to the others if it doesn't answer
+const joinBest = rooms => { const [r, ...alts] = ranked(rooms); if (r) joinRoom(r, { alts: alts.filter(x => x.n < x.max) }); return r; };
+const better = (a, b) => a.n !== b.n ? a.n > b.n : a.gen !== b.gen ? a.gen > b.gen : a.pk < b.pk;
+
+// ---------------- hosting ----------------
+// a guest's link, as the host sees it (the guest's id may only be known once its reply comes back, for invite codes)
+function guestLink(peer) {
+  const { pc, ch } = peer;
+  peer.onMsg = raw => { if (!peer.gid) { if ((peer.q = peer.q || []).length < 60) peer.q.push(raw); return; }   // (an invite whose reply isn't pasted in yet)
+    const gid = peer.gid, m = check(raw); if (!gid || !m || !allow(peer, m.t)) { net.drop = (net.drop || 0) + 1; return; }
+    if (m.t === 'hello') { if (peer.hi) return; peer.hi = 1; welcome(peer, m); }
+    else if (m.t === 'sdp') voice.sdp(peer, m.d);
+    else if (m.t === 'bye') { peer.bye = 1; lostGuest(peer, 'bye'); }
+    else { if (!net.players.has(gid)) { net.players.set(gid, { name: 'Runner', look: [0, 0, 1] }); updateHud(); } handle(gid, m); } };
+  wire(pc, ch, raw => peer.onMsg(raw), () => (peer.gid ? voice.linked(peer, peer.gid) : (peer.late = 1)), () => lostGuest(peer, 'closed'), why => lostGuest(peer, why));
+}
+function welcome(peer, m) {
+  const gid = peer.gid, was = net.players.get(gid), back = !!(was || m.back);
+  const pl = Object.assign(was || {}, { name: m.name, look: m.look, fpk: m.fpk, sail: m.sail ? 1 : 0 }); delete pl.lost; clearTimeout(pl.goneT); net.players.set(gid, pl);
+  const gpk = peer.pk || (m.pk && m.pk.startsWith(gid) ? m.pk : ''); if (gpk) net.pks[gid] = gpk;
+  if (!net.line.includes(gid)) net.line.push(gid);
+  const init = { t: 'init', you: gid, host: ME, mode: net.mode, code: net.code, rid: net.rid, gen: net.gen, open: net.open ? 1 : 0, players: [...net.players].filter(([, v]) => !v.lost).map(([id, v]) => pub(id, v)), history: net.history.slice(-200), line: net.line, pks: net.pks, chat: net.chat.slice(-20) };
+  while (JSON.stringify(init).length > 60000 && init.history.length) init.history.splice(0, 20);
+  send(peer.ch, init); toAll({ t: 'joined', ...pub(gid, pl), back: back ? 1 : 0 }, gid); sendLine();
+  toGame({ type: 'look', id: gid, look: pl.look });
+  if (!back) logLine('', pl.name + ' joined');
+  updateHud(); drawCrew(); beatSoon(); presenceSoon();
+}
+// a guest's link has gone: said goodbye (gone now), or dropped (they get a little while to come back before the crew is told)
+function lostGuest(peer, why) {
+  const gid = peer.gid;
+  if (!gid) { for (const [k, p] of net.pending) if (p === peer) net.pending.delete(k); return; }
+  if (net.peers.get(gid) !== peer) return;
+  net.peers.delete(gid); try { peer.pc.close(); } catch (e) {} voice.gone(gid);
+  net.line = net.line.filter(x => x !== gid); sendLine();
+  if (why === 'bye' || peer.bye) { goneNow(gid); return; }
+  laterGone(gid, 20000); updateHud(); drawCrew(); beatSoon();
+}
+// hosting: a room on the relays; each guest that asks gets a direct link. (opt.back: taking over a crew whose host has gone)
+function host(mode, code, opt = {}) {
+  const takeover = !!opt.back;
+  Object.assign(net, { on: true, host: true, mode, code: code || '', rid: opt.rid || (mode === 'crew' ? code : newCode() + newCode()), gen: opt.gen || 0, open: !!opt.open, hostId: ME, started: now(), prev: opt.prev || '', fast: Date.now() + (takeover ? 45000 : 0), nextBeat: 0, hostLink: null, back: false });
+  soloOn = false; net.line = [ME]; net.pks = { [ME]: pk };
+  net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, sail: net.sail ? 1 : 0 }));
+  if (takeover) for (const id of [...net.players.keys()]) if (id !== ME) laterGone(id, 25000);
+  net.unsub.push(subscribe([{ kinds: [1312], '#p': [pk], since: now() - 5 }], async ev => {
+    let q = {}; try { q = JSON.parse(ev.content) || {}; } catch (e) {}
+    const gid = ev.pubkey.slice(0, 12), old = net.peers.get(gid), n = typeof q.n === 'string' ? q.n.slice(0, 16) : '';
+    // (they lost their link and are back: the old one goes. Each ask has its own tag; one from an older page, without, counts as new after 3 seconds)
+    if (old) { if ((!n || n === old.n) && performance.now() - (old.t0 || 0) < 3000) return; net.peers.delete(gid); try { old.pc.close(); } catch (e) {} voice.gone(gid); }
+    if (net.peers.size + net.pending.size >= MAX - 1) return;
+    const pc = newPC(), ch = pc.createDataChannel('game', { ordered: true }), peerId = gid + '-' + Math.random().toString(36).slice(2, 7);
+    const peer = { pc, ch, pk: ev.pubkey, peerId, gid, t0: performance.now(), n }; net.peers.set(gid, peer); guestLink(peer);
+    awakeTimer(60000, () => { if (net.peers.get(gid) === peer && !peer.answered) { net.peers.delete(gid); try { pc.close(); } catch (e) {} } });   // (an ask that's never answered doesn't keep a place)
+    await pc.setLocalDescription(await pc.createOffer()); await iceDone(pc);
+    publish(sign(1314, [['p', ev.pubkey]], { peerId, sdp: pc.localDescription.sdp, ...(n ? { n } : {}) }));   // (the offer carries the ask's tag back, so the guest knows it answers this ask)
+  }));
+  net.unsub.push(subscribe([{ kinds: [1315], '#p': [pk], since: now() - 5 }], async ev => {
+    let a; try { a = JSON.parse(ev.content); } catch (e) { return; } const peer = net.peers.get(ev.pubkey.slice(0, 12)); if (!peer || peer.peerId !== a.peerId || peer.answered || typeof a.sdp !== 'string') return; peer.answered = true;
+    try { await peer.pc.setRemoteDescription({ type: 'answer', sdp: a.sdp }); } catch (e) {}
+  }));
+  // another room of this same crew (after a split): the bigger one wins, and everyone here moves over to it
+  net.unsub.push(subscribe([{ kinds: [30311], '#r': [net.rid], since: net.started }], ev => {
+    if (!net.on || !net.host || ev.pubkey === pk || ev.created_at < net.started) return;
+    const r = roomOf(ev); if (!r || r.status !== 'live' || r.rid !== net.rid) return;
+    if (better(r, { n: liveCount(), gen: net.gen, pk })) yieldTo(r); else if (r.prev === pk) beatSoon();   // (a room put up by someone who thought I'd gone: say I'm here, so they come back quickly)
+  }));
+  beatSoon();
+  if (mode === 'sea' || net.sail) startGame(); else showWait();
+  updateHud(); drawCrew(); presenceSoon();
+}
+function yieldTo(r) { if (net.yielding) return; net.yielding = 1; toAll({ t: 'move', to: r.pk }); beat('ended'); setTimeout(() => { quiet(); net.yielding = 0; joinRoom(r, { back: true }); }, 400); }
+// every link and listener closed, but the crew kept in mind (while moving to another host)
+function quiet() {
+  for (const u of net.unsub.splice(0)) u();
+  for (const p of [...net.peers.values(), ...net.pending.values()]) try { p.pc.close(); } catch (e) {}
+  net.peers.clear(); net.pending.clear();
+  if (net.hostLink) { const L = net.hostLink; net.hostLink = null; try { L.pc.close(); } catch (e) {} }
+  voice.reset(); net.host = false;
+}
+
+// ---------------- joining ----------------
+// the guest's side of a link to a host (found on the relays, or from an invite code)
+function hostSide(pc) {
+  const L = net.hostLink;
+  pc.ondatachannel = e => { const ch = e.channel; L.ch = ch;
+    let opened = false; const onOpen = () => { if (opened) return; opened = true; voice.linked(L, null);
+      // hello (again every few seconds until the host answers, in case it went astray)
+      const hi = () => send(ch, { t: 'hello', name: myName(), look: picked, pk, fpk, back: net.back || net.regroup ? 1 : 0, sail: net.sail ? 1 : 0 }); hi();
+      const iv = setInterval(() => { if (!net.on || net.hostLink !== L || L.init || ch.readyState !== 'open') clearInterval(iv); else hi(); }, 3000);
+      net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, sail: net.sail ? 1 : 0 }));
+      if (net.mode === 'sea' || net.sail) startGame(); else showWait();
+      updateHud(); drawCrew(); };
+    wire(pc, ch, guestIn, onOpen, () => hostGone(L, 'closed'), why => hostGone(L, why));
+    if (ch.readyState === 'open') onOpen(); };   // some browsers hand over the link already open
+}
+// joining: find the room, ask to join, answer its offer. (opt.back: rejoining the same crew, after the host changed or a link dropped)
+function joinRoom(room, opt = {}) {
+  const back = !!opt.back;
+  if (!back && net.on) leave();
+  Object.assign(net, { on: true, host: false, mode: room.mode === 'sea' ? 'sea' : 'crew', code: room.code || '', rid: room.rid || net.rid || '', gen: room.gen | 0, open: !!room.open, back });
+  soloOn = false;
+  if (!back) { net.players.clear(); net.history = []; net.chat = []; net.line = []; net.pks = {}; net.hostId = ''; drawChat(); }
+  const pc = newPC(), L = net.hostLink = { pc, ch: null, pk: room.pk, init: 0, n: Math.random().toString(36).slice(2, 12) }; hostSide(pc);
+  let stopT = null;
+  // (an offer left over from an earlier ask to this host carries another tag, or none from an older page: only this ask's offer is answered)
+  net.unsub.push(subscribe([{ kinds: [1314], '#p': [pk], authors: [room.pk], since: now() - 5 }], async ev => {
+    let o; try { o = JSON.parse(ev.content); } catch (e) { return; } if (ev.pubkey !== room.pk || net.hostLink !== L || L.offered || !o || typeof o.sdp !== 'string' || (typeof o.n === 'string' && o.n !== L.n)) return; L.offered = true;
+    if (stopT) { stopT(); stopT = awakeTimer(30000, fail); }   // (the host has answered: give the link time to finish, however long the wait for it was)
+    try { await pc.setRemoteDescription({ type: 'offer', sdp: o.sdp }); await pc.setLocalDescription(await pc.createAnswer()); await iceDone(pc); } catch (e) { return; }
+    publish(sign(1315, [['p', room.pk]], { peerId: o.peerId, sdp: pc.localDescription.sdp }));
+  }));
+  setTimeout(() => { if (net.hostLink === L) publish(sign(1312, [['p', room.pk]], { name: myName(), n: L.n })); }, 600);   // (not if this try has been dropped already)
+  const fail = () => {
+    if (net.hostLink !== L || L.init) return;
+    // no answer
+    net.hostLink = null; try { pc.close(); } catch (e) {}
+    if (net.regroup) { net.regroup.joining = ''; return; }   // (still finding the crew: someone else will do)
+    if (back && net.line.length > 1) { net.hostLink = { pc: null, pk: room.pk }; lostHost('timeout'); return; }
+    if (opt.alts && opt.alts.length) { const [next, ...rest] = opt.alts; leave(); joinRoom(next, { alts: rest }); return; }
+    if (!back && !opt.again && net.mode === 'crew' && net.rid) {   // (the crew may be with another host by now: look for it once more)
+      const rid = net.rid; leave(); showStart('Finding crew ' + (room.code || '') + '…');
+      findRooms(r => r.mode === 'crew' && r.rid === rid, 3500, { early: true, most: 8000 }).then(rooms => { if (net.on) return; const r = pickBest(rooms); if (r && r.n < r.max) { note('Joining…'); joinRoom(r, { again: true }); } else showStart('Couldn’t reach that crew.'); });
+      return;
+    }
+    if (net.mode === 'sea') { leave(); net.sail = true; host('sea', ''); } else { leave(); showStart('Couldn’t reach that crew.'); }
+  };
+  // (if that host's room closes before we're in, as when it joins up with another room of the crew, there's no point waiting)
+  if (net.rid) net.unsub.push(subscribe([{ kinds: [30311], authors: [room.pk], '#r': [net.rid], since: now() - 5 }], ev => { const r = roomOf(ev); if (r && r.status === 'ended' && net.hostLink === L && !L.init) fail(); }));
+  stopT = awakeTimer(40000, fail);   // (time enough for slow links: a phone can take 12 s on each side to find its way. Awake time: a page frozen meanwhile carries on when it wakes)
+  if (!back && net.mode === 'crew') showWait();
+  updateHud(); presenceSoon();
+}
+// the host has gone (said goodbye, closed, or dropped): the next in line takes over, everyone else links up to them
+function hostGone(L, why) {
+  if (!net.on || net.leaving || net.hostLink !== L) return;
+  if (!L.init) return;   // (a link that never got going: the join's own timer deals with that)
+  if (!net.line.length) { oldEnd(); return; }   // (a host on an older page, with no line to pass the crew on with)
+  lostHost(why);
+}
+function oldEnd() { logLine('', 'The crew’s host has left.'); for (const id of net.players.keys()) if (id !== ME) toGame({ type: 'left', id }); leave(); toGame({ type: 'off' }); setTimeout(() => showStart('The crew’s host has left.'), 1500); }
+function lostHost(why, next) {
+  if (!net.on || net.host || net.leaving) return;
+  const R = net.regroup;
+  if (R) { if (net.hostLink) { const L = net.hostLink; net.hostLink = null; try { if (L.pc) L.pc.close(); } catch (e) {} } R.joining = ''; return; }   // (the next host went quiet too: carry on)
+  const old = net.hostId, oldPk = (net.hostLink && net.hostLink.pk) || '';
+  let c = net.line.filter(id => id !== old && (id === ME || net.pks[id]));
+  if (next && c.includes(next)) c = [next, ...c.filter(id => id !== next)];
+  const k = c.indexOf(ME);
+  if (k < 0) { oldEnd(); return; }
+  if (net.hostLink) { const L = net.hostLink; net.hostLink = null; try { if (L.pc) L.pc.close(); } catch (e) {} }
+  voice.reset();
+  const reg = net.regroup = { t0: Date.now(), c, k, old, oldPk, joining: '', timers: [] };
+  for (const id of [...net.players.keys()]) if (id !== ME) laterGone(id, id === old ? (why === 'bye' ? 1500 : 20000) : 30000);
+  // the crew's next room: whoever in the line puts it up first (or the old host, if it was only this link that dropped)
+  reg.un = subscribe([{ kinds: [30311], '#r': [net.rid], since: now() - 2 }], ev => {
+    if (net.regroup !== reg || ev.pubkey === pk) return;
+    const r = roomOf(ev); if (!r || r.status !== 'live' || r.rid !== net.rid) return;
+    const id = ev.pubkey.slice(0, 12); if (!(c.includes(id) || (ev.pubkey === oldPk && why !== 'bye'))) return;
+    if (reg.joining) return;
+    reg.joining = ev.pubkey; reg.joinAt = Date.now(); joinRoom(r, { back: true });
+  });
+  // my turn to take over, if nobody before me in the line has (first in line: at once if the host said goodbye; if only the link went, the host may still be there and say so in a moment)
+  reg.timers.push(setTimeout(takeOver, k === 0 ? (why === 'bye' ? 400 : 2500) : 1500 + 7000 * k));
+  reg.timers.push(setTimeout(() => { if (net.regroup === reg) giveUp(); }, 90000));
+  logLine('', why === 'bye' ? 'The host left: passing the crew on…' : 'Lost the host: finding the crew again…');
+  updateHud(); drawCrew(); drawWait();
+}
+function takeOver() {
+  const reg = net.regroup; if (!reg || !net.on || net.host) return;
+  if (net.hostLink && net.hostLink.init) return;
+  if (reg.joining && net.hostLink && Date.now() - (reg.joinAt || 0) < 10000) { reg.timers.push(setTimeout(takeOver, 1000)); return; }   // (linking up to a room of the crew right now: give it a few seconds)
+  if (net.hostLink) { const L = net.hostLink; net.hostLink = null; try { if (L.pc) L.pc.close(); } catch (e) {} }
+  endRegroup();
+  host(net.mode, net.code, { back: true, rid: net.rid, gen: net.gen + 1, open: net.open, prev: reg.oldPk });
+  logLine('', 'You’re the host now.');
+}
+function endRegroup() { const reg = net.regroup; if (!reg) return; net.regroup = null; for (const t of reg.timers) clearTimeout(t); if (reg.un) reg.un(); updateHud(); drawCrew(); drawWait(); }
+function giveUp() { endRegroup(); for (const id of net.players.keys()) if (id !== ME) toGame({ type: 'left', id }); leave(); toGame({ type: 'off' }); showStart('Lost touch with the crew.'); }
+function moveTo(to) { if (!HEXK.test(to || '') || net.host || !net.on) return; quiet(); joinRoom({ pk: to, mode: net.mode, code: net.code, rid: net.rid, gen: net.gen, open: net.open }, { back: true }); }
+// everything closed: off the crew
+function leave() {
+  voice.off(); endRegroup(); for (const u of net.unsub.splice(0)) u(); for (const p of [...net.peers.values(), ...net.pending.values()]) try { p.pc.close(); } catch (e) {}
+  net.peers.clear(); net.pending.clear(); if (net.hostLink) try { if (net.hostLink.pc) net.hostLink.pc.close(); } catch (e) {} net.hostLink = null;
+  for (const p of net.players.values()) clearTimeout(p.goneT);
+  Object.assign(net, { on: false, host: false, sail: false, back: false, hostId: '', line: [], pks: {}, history: [], chat: [], rid: '', code: '', open: false, prev: '' });
+  net.players.clear(); updateHud(); drawChat(); presenceSoon();
+}
+// leaving on purpose: the host passes the crew to the next in line
+function leaveCrew(msg) {
+  if (!net.on) return Promise.resolve();
+  net.leaving = true;
+  if (net.host) { toAll({ t: 'bye', next: net.line.find(id => id !== ME) || '' }); beat('ended'); }
+  else send(net.hostLink && net.hostLink.ch, { t: 'bye' });
+  return new Promise(res => setTimeout(() => { for (const id of net.players.keys()) if (id !== ME) toGame({ type: 'left', id }); leave(); net.leaving = false; toGame({ type: 'off' }); showStart(msg || ''); res(); }, 250));
+}
+addEventListener('pagehide', () => { if (net.on) { if (net.host) { toAll({ t: 'bye', next: net.line.find(id => id !== ME) || '' }); beat('ended'); } else send(net.hostLink && net.hostLink.ch, { t: 'bye' }); } presence(true); });
+
+// ---------------- invite codes (for when the relays can't be reached) ----------------
+// just what a link needs (the ICE name and password, the DTLS fingerprint, the addresses to try), short enough to paste in a chat
+const b64 = b => btoa(String.fromCharCode(...b)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_'), unb64 = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+function pack(sdp, kind, id) {
+  const g = re => (sdp.match(re) || [])[1] || '', role = g(/a=setup:(\w+)/);
+  // the addresses to try, at most 8: a few of each kind (the player's own network, their public address, a TURN relay) so each kind gets a place
+  const all = [...sdp.matchAll(/a=candidate:\S+ \d+ udp \d+ (\S+) (\d+) typ (host|srflx|relay)/gi)].map(m => m[1] + ':' + m[2] + ':' + m[3][0].toLowerCase());
+  const keep = ['h', 's', 'r'].flatMap(t => all.filter(c => c.endsWith(':' + t)).slice(0, t === 'h' ? 4 : 2));
+  for (const c of all) if (keep.length < 8 && !keep.includes(c)) keep.push(c);
+  const cands = all.filter((c, i) => keep.includes(c) && all.indexOf(c) === i);
+  return [kind === 'offer' ? 'O' : role === 'passive' ? 'P' : 'A', g(/a=ice-ufrag:(\S+)/), g(/a=ice-pwd:(\S+)/), b64(hexToBytes(g(/a=fingerprint:sha-256 ([0-9A-Fa-f:]+)/).replace(/:/g, '').toLowerCase())), cands.join('|'), id].join(',');
+}
+function unpack(code) {
+  const [k, uf, pw, fp, cs, id] = String(code).replace(/\s+/g, '').split(',');
+  if (!/^[OAP]$/.test(k) || !uf || !pw || !fp || !id) throw Error('code');
+  const f = bytesToHex(unb64(fp)).toUpperCase().match(/../g); if (!f || f.length !== 32) throw Error('code');
+  let c = '', i = 0;
+  for (const x of (cs || '').split('|')) { const a = x.lastIndexOf(':'), b = x.lastIndexOf(':', a - 1); if (b < 1) continue;
+    const ty = { h: 'host', s: 'srflx', r: 'relay' }[x.slice(a + 1)] || 'host', pr = { host: 2122260223, srflx: 1686052607, relay: 41885439 }[ty] - i;
+    c += 'a=candidate:' + (++i) + ' 1 udp ' + pr + ' ' + x.slice(0, b) + ' ' + x.slice(b + 1, a) + ' typ ' + ty + (ty === 'host' ? '' : ' raddr 0.0.0.0 rport 0') + '\r\n'; }
+  const sdp = 'v=0\r\no=- ' + Date.now() + ' 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=msid-semantic: WMS\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\n' + c +
+    'a=end-of-candidates\r\na=ice-ufrag:' + uf + '\r\na=ice-pwd:' + pw + '\r\na=fingerprint:sha-256 ' + f.join(':') + '\r\na=setup:' + (k === 'O' ? 'actpass' : k === 'P' ? 'passive' : 'active') + '\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n';
+  return { type: k === 'O' ? 'offer' : 'answer', sdp, id };
+}
+// the host makes a code for one new crewmate; they paste it and get a reply code; the host pastes that back
+async function makeInvite() {
+  if (!net.on || !net.host || net.peers.size + net.pending.size >= MAX - 1) return null;
+  const pc = newPC(), ch = pc.createDataChannel('game', { ordered: true }), peerId = 'm' + Math.random().toString(36).slice(2, 9);
+  const peer = { pc, ch, peerId, gid: '' }; net.pending.set(peerId, peer); guestLink(peer);
+  await pc.setLocalDescription(await pc.createOffer()); await iceDone(pc);
+  setTimeout(() => { if (net.pending.get(peerId) === peer) { net.pending.delete(peerId); try { pc.close(); } catch (e) {} } }, 15 * 60000);
+  return pack(pc.localDescription.sdp, 'offer', peerId);
+}
+async function takeReply(code) {
+  const a = unpack(code), [gid, peerId] = a.id.split('.');
+  if (a.type !== 'answer' || !/^[0-9a-f]{12}$/.test(gid || '')) throw Error('code');
+  const peer = net.pending.get(peerId); if (!peer) throw Error('old');
+  if (net.peers.has(gid)) throw Error('in');
+  net.pending.delete(peerId); peer.gid = gid; peer.t0 = performance.now(); net.peers.set(gid, peer);
+  if (peer.late) voice.linked(peer, gid);   // (the link can open before the reply is pasted in: anything it said meanwhile is dealt with now)
+  for (const m of (peer.q || []).splice(0)) peer.onMsg(m);
+  await peer.pc.setRemoteDescription({ type: 'answer', sdp: a.sdp });
+}
+async function useInvite(code) {
+  const o = unpack(code); if (o.type !== 'offer') throw Error('code');
+  if (net.on) leave();
+  Object.assign(net, { on: true, host: false, mode: 'crew', code: '', back: false });
+  const pc = newPC(); net.hostLink = { pc, ch: null, pk: '', init: 0 }; hostSide(pc);
+  await pc.setRemoteDescription({ type: 'offer', sdp: o.sdp }); await pc.setLocalDescription(await pc.createAnswer()); await iceDone(pc);
+  return pack(pc.localDescription.sdp, 'answer', ME + '.' + o.id);
+}
+function copyText(text, btn, label) { const done = () => { if (!btn) return; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label || 'Copy'; }, 1500); };
+  const old = () => { const t = el('textarea', { readonly: '', style: 'position:fixed;left:-9999px;top:0' }); t.value = text; document.body.append(t); t.select(); try { if (document.execCommand('copy')) done(); } catch (e) {} t.remove(); };
+  try { navigator.clipboard.writeText(text).then(done, old); } catch (e) { old(); } }
+const copy = (id, btn) => copyText($(id).value, $(btn));
+$('have').onclick = () => { $('paste').hidden = !$('paste').hidden; };
+$('use').onclick = async () => { note('Making your reply…'); $('out').hidden = true;
+  try { $('rep').value = await useInvite($('inv').value); $('out').hidden = false; note(''); } catch (e) { note('That isn’t an invite code.'); } };
+async function inviteByCode() { $('invc').hidden = false; $('note2').textContent = 'Making a code…'; $('off').value = ''; $('ans').value = '';
+  const c = await makeInvite(); if (!c) { $('note2').textContent = 'The crew is full.'; return; } $('off').value = c; $('note2').textContent = ''; }
+$('add').onclick = async () => { try { await takeReply($('ans').value); $('note2').textContent = 'Linking up…'; $('ans').value = ''; setTimeout(() => { $('invc').hidden = true; }, 1200); }
+  catch (e) { $('note2').textContent = e.message === 'old' ? 'That reply is for an older code.' : e.message === 'in' ? 'They’re already in the crew.' : 'That isn’t a reply code.'; } };
+$('invx').onclick = () => { $('invc').hidden = true; };
+$('cp1').onclick = () => copy('rep', 'cp1'); $('cp2').onclick = () => copy('off', 'cp2');
+for (const e of [$('inv'), $('ans')]) e.addEventListener('keydown', ev => ev.stopPropagation());
+
+// ---------------- the game side of being in a crew ----------------
+let soloOn = false;
+// walking in: into the cube's rooms (straight away in the open hall; from the waiting room in a crew)
+function startGame() {
+  hideLobby();
+  if (net.on) { net.sail = true; const me = net.players.get(ME); if (me && !me.sail) { me.sail = 1; if (net.host) handle(ME, { t: 'me', sail: 1 }); else send(net.hostLink && net.hostLink.ch, { t: 'me', sail: 1 }); } }
+  if (!gameReady) return;
+  toGame({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode }); toGame({ type: 'look', id: 'me', look: picked });
+  try { frame.focus(); frame.contentWindow.focus(); } catch (e) {}
+  updateHud(); drawCrew();
+}
+net.fromGame = m => {
+  if (m.type === 'state') { const c = check({ t: 'state', s: m.s }); if (!c) return; const was = voice.st[ME]; voice.st[ME] = c.s; share(c); if (!was || was.h !== c.s.h || was.in !== c.s.in || was.g !== c.s.g) { whereAt = 0; crewWhere(); } }
+  else if (m.type === 'event') share({ t: 'event', ev: m.ev });
+};
+function updateHud() {
+  const inGame = $('lobby').hidden;
+  $('hud').hidden = !inGame || !(net.on || soloOn);
+  drawTop();
+  for (const id of ['room', 'chat', 'mic']) $(id).hidden = !net.on;
+  if (!net.on) return;
+  const n = net.host ? liveCount() : Math.max(net.players.size, 1);
+  $('room').textContent = ''; if (net.mode === 'crew') { $('room').append('Crew '); $('room').append(el('b', { text: net.code || '…' })); } else $('room').append('Open hall');
+  if (net.regroup) $('room').append(' · finding the crew…'); else $('room').append(el('span', { class: 'long', text: ' · ' + n + (n === 1 ? ' player' : ' players') }), el('span', { class: 'short', text: ' · ' + n }));
+}
+
+// ---------------- chat ----------------
+function chatLine(id, name, text) { if (isMuted(id)) return; net.chat.push({ id, name, text }); if (net.chat.length > 60) net.chat.shift(); drawChat(); }
+function chatIn(m) { if (isMuted(m.id)) return; const name = clean(m.name) || 'Runner'; chatLine(m.id, name, m.text); logLine(name, m.text); toGame({ type: 'say', id: m.id, name, text: m.text }); }
+function logLine(who, text) { const p = document.createElement('p'); if (who) { const b = document.createElement('b'); b.textContent = who; p.append(b); } p.append(document.createTextNode(text)); const L = $('log'); L.append(p); while (L.children.length > 5) L.firstChild.remove(); setTimeout(() => { p.style.opacity = 0; setTimeout(() => p.remove(), 1300); }, 12000);
+  if (!who && net.on) { net.chat.push({ id: '', name: '', text }); if (net.chat.length > 60) net.chat.shift(); drawChat(); } }
+function openSay() { if (!net.on || !$('lobby').hidden) return; $('say').hidden = false; $('msg').focus(); }
+function say(t) { t = String(t || '').trim().slice(0, 200); if (!t || !net.on) return; share({ t: 'chat', text: t }); chatLine(ME, myName(), t); logLine(myName(), t); toGame({ type: 'say', id: ME, name: myName(), text: t }); }
+function sayIt() { const t = $('msg').value.trim(); $('msg').value = ''; $('say').hidden = true; try { frame.contentWindow.focus(); } catch (e) {} say(t); }
+$('send').onclick = sayIt; $('chat').onclick = () => $('say').hidden ? openSay() : sayIt();
+$('msg').addEventListener('keydown', e => { if (e.key === 'Enter') sayIt(); if (e.key === 'Escape') { $('msg').value = ''; sayIt(); } e.stopPropagation(); });
+const rsay = () => { say($('rmsg').value); $('rmsg').value = ''; $('rmsg').focus(); };
+$('rsend').onclick = rsay; $('rmsg').addEventListener('keydown', e => { if (e.key === 'Enter') rsay(); e.stopPropagation(); });
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('panel').hidden) { closePanel(); return; }
+  if (e.key !== 'Enter' || !net.on) return;
+  if (!$('lobby').hidden && !$('wait').hidden) { if (document.activeElement !== $('rmsg')) { e.preventDefault(); $('rmsg').focus(); } return; }
+  if ($('say').hidden && $('lobby').hidden && $('panel').hidden) { e.preventDefault(); openSay(); }
+});
+
+// ---------------- muting a crewmate (their voice and their chat, for you only; remembered by their friend key) ----------------
+const mutedF = new Set(jget('muted', []).filter(k => HEXK.test(k))), mutedS = new Set();
+function isMuted(id) { if (!id || id === ME) return false; if (mutedS.has(id)) return true; const p = net.players.get(id); return !!(p && p.fpk && mutedF.has(p.fpk)); }
+function setMute(id, on) { const p = net.players.get(id); if (p && p.fpk) { if (on) mutedF.add(p.fpk); else mutedF.delete(p.fpk); jset('muted', [...mutedF]); } else if (on) mutedS.add(id); else mutedS.delete(id); drawCrew(); }
+
+// ---------------- voices ----------------
+// The mic stays off until you turn it on. Voices travel over the same direct links as the game: each guest sends its voice to
+// the host, and the host passes every voice on to the rest of the crew. You hear a crewmate louder the closer they are
+// in the rooms, and never quite lose them: from another room they come through the walls, muffled. Renegotiation for the voice runs over the link itself.
+// Two ways to talk: an open mic (tap to turn it on and off), or push to talk (hold the mic button while you talk).
+const voice = (() => {
+  const v = { d: {}, dAt: 0, st: {}, track: null, stream: null, ac: null, mine: null, peers: new Map(), heard: new Map(), sids: new Map(), pend: new Map(), fwd: new Map(), level: {}, mode: store.get('talk') === 'ptt' ? 'ptt' : 'open', holding: false };
+  const ctx = () => { if (!v.ac) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; v.ac = new C(); } if (v.ac.state === 'suspended') v.ac.resume().catch(() => {}); return v.ac; };
+  // perfect negotiation: the guest gives way when both sides change at once
+  function linked(L, gid) { if (!L || L.neg) return; const polite = !net.host; let making = false; L.gid = gid;
+    L.pc.onnegotiationneeded = async () => { try { making = true; await L.pc.setLocalDescription(); send(L.ch, { t: 'sdp', d: L.pc.localDescription }); } catch (e) {} finally { making = false; } };
+    L.pc.ontrack = e => heard(L, e.track, e.streams[0]);
+    L.neg = async d => { try { const clash = d.type === 'offer' && (making || L.pc.signalingState !== 'stable'); if (clash && !polite) return; await L.pc.setRemoteDescription(d); if (d.type === 'offer') { await L.pc.setLocalDescription(); send(L.ch, { t: 'sdp', d: L.pc.localDescription }); } } catch (e) {} };
+    if (net.host) { v.peers.set(gid, L); if (v.track) give(L, v.track, v.stream, ME); for (const [id, h] of v.heard) if (id !== gid) give(L, h.track, h.stream, id); }
+    else if (v.track) { try { L.pc.addTrack(v.track, v.stream); } catch (e) {} } }   // (a new host: your mic goes along)
+  const sdp = (L, d) => L && L.neg && L.neg(d);
+  // the host hands a voice to a guest, and tells it whose voice it is
+  function give(L, track, stream, id) { const k = L.gid + '>' + id; if (v.fwd.has(k)) return; try { v.fwd.set(k, L.pc.addTrack(track, stream)); send(L.ch, { t: 'vmap', sid: stream.id, id }); } catch (e) {} }
+  function heard(L, track, stream) {
+    if (!stream) stream = new MediaStream([track]);
+    let id = net.host ? L.gid : v.sids.get(stream.id); if (!id) { v.pend.set(stream.id, [track, stream]); return; }
+    play(id, track, stream);
+    if (net.host) { const fwdStream = new MediaStream([track]); v.heard.get(id).fwd = fwdStream; for (const [gid, P] of v.peers) if (gid !== id) give(P, track, fwdStream, id); }
+  }
+  function map(sid, id) { v.sids.set(sid, id); const p = v.pend.get(sid); if (p) { v.pend.delete(sid); play(id, p[0], p[1]); } }
+  function play(id, track, stream) {
+    const old = v.heard.get(id); if (old && old.track === track) return; if (old) stop(old);
+    const A = ctx(); if (!A) return;
+    const el2 = new Audio(); el2.srcObject = stream; el2.muted = true; el2.play().catch(() => {});   // keeps the stream flowing (a browser quirk)
+    const src = A.createMediaStreamSource(stream), g = A.createGain(), an = A.createAnalyser(); an.fftSize = 16384; g.gain.value = isMuted(id) ? 0 : 1; src.connect(an); src.connect(g).connect(A.destination);
+    const hp = A.createBiquadFilter(), lp = A.createBiquadFilter(), sh = A.createWaveShaper(), rg = A.createGain(), cv = new Float32Array(256); hp.type = 'highpass'; hp.frequency.value = 380; lp.type = 'lowpass'; lp.frequency.value = 2800; for (let i = 0; i < 256; i++) { const x = i / 127.5 - 1; cv[i] = Math.tanh(2.2 * x); } sh.curve = cv; rg.gain.value = 0;
+    src.connect(hp).connect(lp).connect(sh).connect(rg).connect(A.destination);
+    v.heard.set(id, { track, stream, el: el2, g, an, src, rg, buf: new Uint8Array(an.fftSize) });
+  }
+  function stop(h) { try { h.src.disconnect(); h.g.disconnect(); if (h.rg) h.rg.disconnect(); h.el.srcObject = null; } catch (e) {} }
+  function gone(id) { const h = v.heard.get(id); if (h) { stop(h); v.heard.delete(id); } for (const [k, sender] of v.fwd) if (k.endsWith('>' + id) || k.startsWith(id + '>')) { const P = v.peers.get(k.split('>')[0]); try { if (P) P.pc.removeTrack(sender); } catch (e) {} v.fwd.delete(k); } v.peers.delete(id); delete v.level[id]; }
+  // every voice link dropped, but your own mic kept as it is (while the crew links up again)
+  function reset() { for (const h of v.heard.values()) stop(h); v.heard.clear(); v.peers.clear(); v.fwd.clear(); v.sids.clear(); v.pend.clear(); v.level = {}; }
+  function off() { if (v.track) v.track.stop(); v.track = v.stream = null; v.mine = null; v.holding = false; reset(); ui(); }
+  // the mic: asked for the first time it's needed
+  async function getMic() {
+    if (v.track) return true;
+    try { v.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); } catch (e) { logLine('', 'The microphone could not be used.'); rnote('The microphone could not be used.'); return false; }
+    v.track = v.stream.getAudioTracks()[0]; v.track.enabled = false; v.mine = null;
+    if (net.host) { for (const [, P] of v.peers) give(P, v.track, v.stream, ME); } else if (net.hostLink && net.hostLink.neg) { try { net.hostLink.pc.addTrack(v.track, v.stream); } catch (e) {} }
+    return true;
+  }
+  // open mic: a tap turns it on and off
+  async function tap() { ctx(); if (v.mode === 'ptt') return; if (!v.track) { if (!await getMic()) return; v.track.enabled = true; } else v.track.enabled = !v.track.enabled; ui(); }
+  // push to talk: on while the button is held
+  async function press() { ctx(); if (v.mode !== 'ptt') return; v.holding = true; if (!v.track && !await getMic()) return; v.track.enabled = v.holding; ui(); }
+  function release() { if (v.mode !== 'ptt') return; v.holding = false; if (v.track) v.track.enabled = false; ui(); }
+  function setMode(m) { v.mode = m === 'ptt' ? 'ptt' : 'open'; store.set('talk', v.mode); v.holding = false; if (v.track) v.track.enabled = false; ui(); }
+  function ui() {
+    const on = !!(v.track && v.track.enabled), ptt = v.mode === 'ptt';
+    for (const b of [$('mic'), $('rmic')]) { b.classList.toggle('on', on); b.classList.toggle('ptt', ptt); b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-label', ptt ? 'Push to talk' : on ? 'Microphone on' : 'Microphone off'); }
+    for (const b of document.querySelectorAll('[data-talk]')) b.setAttribute('aria-pressed', String(b.dataset.talk === v.mode));
+  }
+  for (const b of [$('mic'), $('rmic')]) {
+    b.onclick = tap;
+    b.addEventListener('pointerdown', e => { if (v.mode === 'ptt') { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (x) {} press(); } });
+    for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(t, release);
+    b.addEventListener('contextmenu', e => { if (v.mode === 'ptt') e.preventDefault(); });
+  }
+  // every quarter second: set each voice's loudness by how far away its owner is in the game, and light up whoever is talking
+  setInterval(() => {
+    // clear up to 3 m away, fading out by 30 m; further off (or in another room) through the walls, quietly
+    const fresh2 = Date.now() - v.dAt < 2000;
+    for (const [id, h] of v.heard) { const d = fresh2 ? v.d[id] : undefined; let g = 1, r = 0; if (typeof d === 'number') { g = Math.max(0, Math.min(1, 1 - (d - 3) / 27)); r = 0.3 * (1 - g); } if (isMuted(id)) { g = 0; r = 0; } if (v.ac) { h.g.gain.setTargetAtTime(g, v.ac.currentTime, 0.3); if (h.rg) h.rg.gain.setTargetAtTime(r, v.ac.currentTime, 0.15); } }
+    // who's talking: the cube lights up their name
+    // (each look takes in the last third of a second of sound, so nothing slips between looks, and the lights fade over about a second, so they don't flicker between words)
+    const loud = (an, a) => { an.getByteTimeDomainData(a); let m = 0; for (let i = 0; i < a.length; i += 4) { const d = a[i] > 128 ? a[i] - 128 : 128 - a[i]; if (d > m) m = d; } return m; };
+    for (const [id, h] of v.heard) { if (!h.an) continue; const m = loud(h.an, h.buf); v.level[id] = Math.max(m, (v.level[id] || 0) * 0.5); if (m > 10 && !isMuted(id)) toGame({ type: 'talk', id, on: 1 }); }
+    let mine = 0;
+    if (v.track && v.track.enabled && v.ac) { if (!v.mine) { v.mine = v.ac.createAnalyser(); v.mine.fftSize = 16384; v.mbuf = new Uint8Array(v.mine.fftSize); v.ac.createMediaStreamSource(v.stream).connect(v.mine); } mine = loud(v.mine, v.mbuf); }
+    v.level[ME] = v.track && v.track.enabled ? Math.max(mine, (v.level[ME] || 0) * 0.5) : 0; for (const b of [$('mic'), $('rmic')]) b.classList.toggle('talk', v.level[ME] > 10);
+    lights();
+  }, 250);
+  ui();
+  // how far away each crewmate is, from the cube (999: not in a room you have up)
+  function hear(d) { if (!d || typeof d !== 'object') return; v.d = {}; for (const k in d) if (/^[0-9a-f]{12}$/.test(k) && num(d[k], 1e4)) v.d[k] = d[k]; v.dAt = Date.now(); }
+  return Object.assign(v, { linked, sdp, map, gone, reset, off, tap, press, release, setMode, ctx, ui, hear });
+})();
+for (const b of document.querySelectorAll('[data-talk]')) b.onclick = () => voice.setMode(b.dataset.talk);
+
+// ---------------- friends ----------------
+// Your friend card goes up on the relays every minute while this page is open (your name, your friend code, where you are);
+// your friends' pages watch for their friends' cards. Invites and "added you" notes are sent to a friend's key.
+let friends = jget('friends', []).filter(f => f && HEXK.test(f.pk) && f.pk !== fpk).slice(0, 200);
+const FR = new Map();   // a friend's key -> the newest card from them
+const isFriend = k => friends.some(f => f.pk === k);
+const saveFriends = () => jset('friends', friends.map(f => ({ pk: f.pk, name: f.name, added: f.added })));
+const online = i => !!i && i.where.s !== 'off' && now() - i.created < 150;
+function where() { if (net.on) return { s: net.mode, code: net.mode === 'crew' ? net.code : '', rid: net.rid, n: net.host ? liveCount() : Math.max(net.players.size, 1), max: MAX, open: net.open ? 1 : 0 }; return { s: soloOn ? 'solo' : 'lobby' }; }
+function presence(off) { if (!relaysUp) return; publish(fsign(30078, [['d', 'blockcube-friend'], ['t', FTAG], ['f', FCODE]], { v: 1, name: myName(), code: FCODE, where: off ? { s: 'off' } : where(), at: Date.now() })); }
+let presT = 0; const presenceSoon = () => { clearTimeout(presT); presT = setTimeout(() => presence(), 1200); };
+setInterval(() => presence(), 60000);
+let frUn = null; const frQuiet = Date.now() + 6000;   // (no "is online" notes for friends already online when the page opens)
+function watchFriends() {
+  if (frUn) { frUn(); frUn = null; } if (!friends.length) return;
+  frUn = subscribe([{ kinds: [30078], authors: friends.map(f => f.pk), '#d': ['blockcube-friend'] }], ev => {
+    let c; try { c = JSON.parse(ev.content); } catch (e) { return; } if (!c || typeof c !== 'object') return;
+    const f = friends.find(x => x.pk === ev.pubkey); if (!f) return;
+    const at = Number.isFinite(c.at) ? c.at : 0, prev = FR.get(ev.pubkey); if (prev && (prev.created > ev.created_at || (prev.created === ev.created_at && prev.at >= at))) return;
+    const w = c.where && typeof c.where === 'object' ? c.where : {};
+    const info = { created: ev.created_at, at, where: { s: ['lobby', 'solo', 'crew', 'sea', 'off'].includes(w.s) ? w.s : 'off', code: typeof w.code === 'string' ? w.code.slice(0, 6) : '', rid: typeof w.rid === 'string' ? w.rid.slice(0, 16) : '', n: Math.max(1, w.n | 0), max: Math.min(MAX, (w.max | 0) || MAX), open: !!w.open } };
+    const was = online(prev); FR.set(ev.pubkey, info);
+    const nm = clean(c.name); if (nm && nm !== f.name) { f.name = nm; saveFriends(); }
+    if (prev && !was && online(info) && Date.now() > frQuiet) { toast(f.name + ' is online', [], 6000); chime('online'); }
+    drawFriends();
+  });
+}
+function addFriend(f, tell) {
+  if (!f || !HEXK.test(f.pk || '') || f.pk === fpk) return false;
+  if (!isFriend(f.pk)) { friends.push({ pk: f.pk, name: clean(f.name) || 'Runner', added: Date.now() }); saveFriends(); watchFriends(); if (tell) publish(fsign(1317, [['p', f.pk], ['t', FTAG]], { name: myName(), code: FCODE })); }
+  for (const t of document.querySelectorAll('.toast[data-key="add:' + f.pk + '"]')) t.remove();
+  drawFriends(); drawCrew(); return true;
+}
+function removeFriend(k) { friends = friends.filter(f => f.pk !== k); FR.delete(k); saveFriends(); watchFriends(); drawFriends(); drawCrew(); }
+// a friend code -> their friend card on the relays (the newest one whose key really gives that code): done a moment after it turns up,
+// or after 4 seconds of the page being awake
+function lookCode(code) { return new Promise(res => {
+  let best = null, done = false, soon = 0, t = 0, last = Date.now();
+  const finish = () => { if (done) return; done = true; clearInterval(iv); clearTimeout(soon); un(); res(best); };
+  const un = subscribe([{ kinds: [30078], '#f': [code], '#d': ['blockcube-friend'] }], ev => { if (codeOf(ev.pubkey) !== code) return; if (!best || ev.created_at > best.created_at) best = ev; if (!soon && !done) soon = setTimeout(finish, 700); });
+  const iv = setInterval(() => { const n = Date.now(); t += Math.min(n - last, 1100); last = n; if (t >= 4000) { clearInterval(iv); setTimeout(finish, 200); } }, 250);
+}); }
+async function addByCode(raw) {
+  const code = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 8 || [...code].some(ch => !B32.includes(ch))) return 'That isn’t a friend code.';
+  if (code === FCODE) return 'That’s your own friend code.';
+  const ev = await lookCode(code);
+  if (!ev) return 'Couldn’t find that code.';
+  let c = {}; try { c = JSON.parse(ev.content) || {}; } catch (e) {}
+  if (isFriend(ev.pubkey)) return (clean(c.name) || 'They') + ' is already your friend.';
+  addFriend({ pk: ev.pubkey, name: c.name }, true); return 'Added ' + (clean(c.name) || 'your friend') + '.';
+}
+function inviteFriend(f) { if (!net.on || !f) return false; publish(fsign(1316, [['p', f.pk], ['t', FTAG]], { name: myName(), mode: net.mode, code: net.mode === 'crew' ? net.code : '', rid: net.rid })); return true; }
+// going to where a friend is (from the friends list, or their invite)
+async function joinFriend(w) {
+  if (net.on) { if (w.rid && w.rid === net.rid) { closePanel(); return; } await leaveCrew(); }
+  closePanel(); showStart('Finding them…');
+  const rooms = await findRooms(r => (w.rid && r.rid === w.rid) || (w.mode === 'crew' && w.code && r.mode === 'crew' && r.code === w.code), 3500, { early: true, most: 12000 });
+  const r = pickBest(rooms);
+  if (!r) { note('Couldn’t find them out there right now.'); return; }
+  if (r.n >= r.max) { note('Their crew is full.'); return; }
+  note('Joining…'); joinBest(rooms);
+}
+// notes for you: invites (from friends only) and "added you as a friend"
+const addedSeen = new Set();
+function inbox() {
+  subscribe([{ kinds: [1316, 1317], '#p': [fpk], since: now() - 120 }], ev => {
+    let c; try { c = JSON.parse(ev.content); } catch (e) { return; } if (!c || typeof c !== 'object') return;
+    const name = clean(c.name) || 'Someone';
+    if (ev.kind === 1317) {
+      if (isFriend(ev.pubkey) || addedSeen.has(ev.pubkey) || ev.pubkey === fpk) return; addedSeen.add(ev.pubkey);
+      toast(name + ' added you as a friend', [['Add back', () => addFriend({ pk: ev.pubkey, name }, true), 1]], 20000, 'add:' + ev.pubkey); chime('online'); return;
+    }
+    const f = friends.find(x => x.pk === ev.pubkey); if (!f || now() - ev.created_at > 120) return;
+    const w = { mode: c.mode === 'sea' ? 'sea' : 'crew', code: typeof c.code === 'string' ? c.code.slice(0, 6) : '', rid: typeof c.rid === 'string' ? c.rid.slice(0, 16) : '' };
+    if (net.on && w.rid && w.rid === net.rid) return;
+    toast(f.name + ' invites you to ' + (w.mode === 'sea' ? 'the open hall' : 'crew ' + w.code), [['Join', () => joinFriend(w), 1], ['Not now', () => {}]], 30000); chime('invite');
+  });
+}
+// a soft chime: two notes when a friend comes online, three for an invite
+function chime(kind) {
+  UI.chimes = (UI.chimes || 0) + 1; UI.lastChime = kind;
+  try { const A = voice.ctx(); if (!A) return; const t = A.currentTime + 0.02, notes = kind === 'invite' ? [659.3, 784, 987.8] : [784, 987.8];
+    notes.forEach((f, i) => { const o = A.createOscillator(), g = A.createGain(), s = t + i * 0.13; o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(0.16, s + 0.02); g.gain.exponentialRampToValueAtTime(0.001, s + 0.6); o.connect(g).connect(A.destination); o.start(s); o.stop(s + 0.65); }); } catch (e) {}
+}
+
+// ---------------- the screens ----------------
+const UI = { chimes: 0 };
+function showStart(msg) { $('lobby').hidden = false; $('start').hidden = false; $('wait').hidden = true; if (msg !== undefined) note(msg); updateHud(); }
+function showWait() { $('lobby').hidden = false; $('start').hidden = true; $('wait').hidden = false; $('rnote').textContent = ''; drawWait(); drawCrew(); drawChat(); updateHud(); }
+function hideLobby() { $('lobby').hidden = true; updateHud(); }
+const rnote = t => { $('rnote').textContent = t; };
+// the waiting room's top: the crew code, how many, and the host's choices
+function drawWait() {
+  if ($('wait').hidden) return;
+  const n = net.host ? liveCount() : Math.max(net.players.size, 1), linked = net.host || (net.hostLink && net.hostLink.init);
+  $('rtitle').textContent = 'Crew '; $('rtitle').append(el('span', { class: 'cc', text: net.code || '…' })); $('rcopy').hidden = !net.code;
+  $('rsub').textContent = net.regroup ? 'Finding the crew again…' : !linked ? 'Joining…' : n + '/' + MAX;
+  $('ropenw').hidden = !(net.host && net.mode === 'crew'); $('ropen').checked = !!net.open;
+  $('rbycode').hidden = !net.host;
+}
+// everyone in the crew: the host's star, which block they're in, friends, and a mic symbol each (lit while they talk; tap someone's to mute them)
+function playerRows(ul) {
+  ul.textContent = '';
+  const rank = id => id === net.hostId ? -1 : (net.line.indexOf(id) + 1 || 99);
+  for (const id of [...net.players.keys()].sort((a, b) => rank(a) - rank(b))) {
+    const p = net.players.get(id), mine = id === ME, host = id === net.hostId, mu = isMuted(id), nm = p.name || 'Runner', st = voice.st[id];
+    const li = el('li', { class: [mine && 'me', host && 'host', p.sail && 'on', mu && 'muted'].filter(Boolean).join(' ') || null, data: { id } });
+    li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), host ? el('span', { class: 'tag', text: 'Host' }) : null),
+      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
+    // (a crewmate in another block's room: go to them)
+    const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && (inPaintSt(st) ? !inPaintSt(mst) : st.in && !(mst && mst.in && !inPaintSt(mst) && mst.h === st.h))) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
+    if (!mine && p.fpk && p.fpk !== fpk) li.append(isFriend(p.fpk) ? el('span', { class: 'st frt', text: 'Friend' }) : el('button', { class: 'fr', text: 'Add friend', onclick: () => { addFriend({ pk: p.fpk, name: p.name }, true); toast('Added ' + nm + ' as a friend.', [], 4000); } }));
+    if (mine) li.append(el('span', { class: 'mic' }, icon('mic')));
+    else li.append(el('button', { class: 'mic', 'aria-label': (mu ? 'Unmute ' : 'Mute ') + nm, 'aria-pressed': String(mu), onclick: () => setMute(id, !isMuted(id)) }, icon('mic')));
+    ul.append(li);
+  }
+  lights();
+}
+function drawCrew() { if (!$('wait').hidden) { playerRows($('rplist')); drawWait(); } if (P.kind === 'crew') crewPanel(false); updateHud(); }
+// which block each crewmate is in (redrawn now and then, not on every step)
+let whereAt = 0; function crewWhere() { if (Date.now() - whereAt < 1000) return; whereAt = Date.now(); if (P.kind === 'crew' || !$('wait').hidden) drawCrew(); else drawTop(); }
+// the strip across the top: player 1 to 4 in the order they came (the host first), the block each one's room is, who is talking.
+// Tap someone in another room to go to them.
+const GLOWS = [['#27e1ff', '#ff2fb4', '#ffa21a'], ['#ff2fb4', '#7dff4a', '#ff7a18'], ['#f7931a', '#27e1ff', '#b06bff'], ['#ff2d55', '#ffd23f', '#9fe8ff']];
+function drawTop() {
+  const box = $('ptop'), show = $('lobby').hidden && net.on; box.hidden = !show; if (!show) return;
+  const ids = net.line.filter(id => net.players.has(id)); for (const id of net.players.keys()) if (!ids.includes(id)) ids.push(id);
+  const mst = voice.st[ME]; box.textContent = '';
+  for (let k = 0; k < MAX; k++) {
+    const id = ids[k];
+    if (!id) { box.append(el('div', { class: 'pl empty' }, el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), 'open'), el('span', { class: 'w', text: net.mode === 'sea' ? 'anyone can join' : 'invite someone' }))); continue; }
+    const p = net.players.get(id), st = voice.st[id], mine = id === ME, lk = lookOk(p.look) || [0, 0, 1];
+    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
+    const here = !mine && st && mst && (inPaintSt(st) ? inPaintSt(mst) : st.in && mst.in && !inPaintSt(mst) && st.h === mst.h), go = !mine && st && (st.in || inPaintSt(st)) && !here;
+    const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + GLOWS[lk[0]][lk[1]], title: go ? 'go to ' + (p.name || 'them') : '' },
+      el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
+    if (go) b.onclick = () => toGame({ type: 'go', id });
+    box.append(b);
+  }
+  lights();
+}
+function lights() { const mine = !!(voice.track && voice.track.enabled); for (const c of document.querySelectorAll('#ptop .pl[data-id]')) c.classList.toggle('talk', (voice.level[c.dataset.id] || 0) > 10 && !isMuted(c.dataset.id)); for (const li of document.querySelectorAll('.plist li[data-id]')) { const id = li.dataset.id; li.classList.toggle('talk', (voice.level[id] || 0) > 10 && !isMuted(id)); if (id === ME) li.classList.toggle('micoff', !mine); } }
+function drawChat() { const box = $('rlines'); if (!box) return; const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 8; box.textContent = '';
+  for (const c of net.chat) box.append(c.name ? el('p', null, el('b', { text: c.name }), c.text) : el('p', null, el('i', { text: c.text })));
+  if (atEnd) box.scrollTop = box.scrollHeight; }
+// panels: Friends, the crew list, your crew (in the game)
+const P = { kind: '' };
+function openPanel(kind) { P.kind = kind; $('panel').hidden = false; $('pbody').textContent = ''; if (kind === 'friends') friendsPanel(); else if (kind === 'crews') crewsPanel(); else if (kind === 'crew') crewPanel(true); }
+function closePanel() { P.kind = ''; $('panel').hidden = true; $('pbody').textContent = ''; }
+$('px').onclick = closePanel; $('panel').addEventListener('click', e => { if (e.target === $('panel')) closePanel(); });
+function friendsPanel() {
+  $('ptitle').textContent = 'Friends';
+  const body = $('pbody'), inp = el('input', { id: 'fcode', maxlength: '9', autocomplete: 'off', spellcheck: 'false', placeholder: 'Friend code', style: 'text-transform:uppercase' }), msg = el('p', { class: 'pnote', id: 'fnote', role: 'status' });
+  const addB = el('button', { class: 'main', text: 'Add' });
+  const go = async () => { if (!inp.value.trim()) { msg.textContent = ''; flash(inp); return; } addB.disabled = true; msg.textContent = 'Looking…'; msg.textContent = await addByCode(inp.value); addB.disabled = false; if (/^Added/.test(msg.textContent)) inp.value = ''; };
+  addB.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); e.stopPropagation(); });
+  const cp = el('button', { class: 'mini', text: 'Copy' }); cp.onclick = () => copyText(showCode(FCODE), cp);
+  body.append(el('div', { class: 'mycode' }, el('span', null, 'Your friend code ', el('b', { class: 'code', text: showCode(FCODE) })), cp),
+    el('label', { for: 'fcode', text: 'Add a friend' }), el('div', { class: 'row' }, inp, addB), msg, el('ul', { class: 'plist', id: 'flist' }));
+  drawFriends();
+}
+const ago = t => { const s = Math.max(0, now() - t); if (s < 3600) return Math.max(1, Math.round(s / 60)) + ' min ago'; if (s < 86400) return Math.round(s / 3600) + ' h ago'; return Math.round(s / 86400) + (s < 172800 ? ' day ago' : ' days ago'); };
+function fstatus(i) { if (!i) return 'Not seen yet'; if (!online(i)) return 'Last seen ' + ago(i.created);
+  const w = i.where; if (net.on && w.rid && w.rid === net.rid) return 'In your crew'; if (w.s === 'crew') return 'In crew ' + w.code + ' · ' + w.n + ' of ' + w.max; if (w.s === 'sea') return 'In the open hall · ' + w.n + ' of ' + w.max; if (w.s === 'solo') return 'Exploring alone'; return 'On the start screen'; }
+function drawFriends() {
+  const on = friends.filter(f => online(FR.get(f.pk))).length;
+  $('fon').textContent = on ? String(on) : ''; $('fon2').textContent = on ? String(on) : '';
+  const ul = $('flist'); if (P.kind !== 'friends' || !ul) return;
+  ul.textContent = '';
+  if (!friends.length) return;
+  const list = friends.slice().sort((a, b) => (online(FR.get(b.pk)) - online(FR.get(a.pk))) || a.name.localeCompare(b.name));
+  for (const f of list) {
+    const i = FR.get(f.pk), live = online(i), li = el('li', { class: live ? 'on' : null });
+    li.append(el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'who' }, el('span', { class: 'nm', text: f.name || 'Runner' }), el('span', { class: 'st', text: fstatus(i) })));
+    const w = live ? i.where : null;
+    if (w && (w.s === 'crew' || w.s === 'sea') && !(net.on && w.rid && w.rid === net.rid)) { const b = el('button', { text: w.n >= w.max ? 'Full' : 'Join' }); b.disabled = w.n >= w.max; b.onclick = () => joinFriend(w); li.append(b); }
+    if (net.on && live && !(w && w.rid && w.rid === net.rid)) { const b = el('button', { text: 'Invite' }); b.onclick = () => { if (inviteFriend(f)) { b.textContent = 'Invited'; b.disabled = true; setTimeout(() => { b.textContent = 'Invite'; b.disabled = false; }, 10000); } }; li.append(b); }
+    const x = el('button', { class: 'x', text: '×', 'aria-label': 'Remove ' + (f.name || 'friend') });
+    x.onclick = () => { if (x.dataset.sure) { removeFriend(f.pk); return; } x.dataset.sure = '1'; x.textContent = 'Remove?'; x.classList.remove('x'); setTimeout(() => { if (x.isConnected) { delete x.dataset.sure; x.textContent = '×'; x.classList.add('x'); } }, 4000); };
+    li.append(x); ul.append(li);
+  }
+}
+setInterval(drawFriends, 20000);
+// the crew list: open crews, and the open hall
+async function crewsPanel() {
+  $('ptitle').textContent = 'Crew list';
+  const body = $('pbody'), msg = el('p', { class: 'pnote', id: 'cnote', role: 'status', text: 'Looking…' }), ul = el('ul', { class: 'plist', id: 'clist' }), again = el('button', { text: 'Refresh' });
+  body.append(ul, msg, el('div', { class: 'btns' }, again));
+  again.onclick = () => openPanel('crews');
+  const rooms = await findRooms(r => r.mode === 'sea' || r.open, 3000);
+  if (P.kind !== 'crews' || !ul.isConnected) return;
+  // one row for each crew (the best room, if a crew is split for a moment)
+  const by = new Map(); for (const r of rooms) { const k = r.rid || r.pk, b = by.get(k); if (!b || pickBest([r, b]) === r) by.set(k, r); }
+  const list = [...by.values()].filter(fresh).sort((a, b) => b.n - a.n);
+  msg.textContent = list.length ? '' : 'Nothing open right now.';
+  for (const r of list) { const b = el('button', { text: r.n >= r.max ? 'Full' : 'Join' }); b.disabled = r.n >= r.max || (net.on && r.rid === net.rid);
+    b.onclick = async () => { closePanel(); if (net.on) await leaveCrew(); if (r.mode === 'sea') showStart('Joining…'); joinRoom(r); };
+    ul.append(el('li', { class: 'on' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'who' }, el('span', { class: 'nm', text: r.mode === 'sea' ? 'Open hall' : 'Crew ' + r.code }), el('span', { class: 'st', text: r.name + ' · ' + r.n + ' of ' + r.max })), b)); }
+}
+// your crew, from the cube: everyone in it, how you talk, inviting, leaving
+function crewPanel(first) {
+  if (!net.on) { closePanel(); return; }
+  const body = $('pbody');
+  $('ptitle').textContent = net.mode === 'crew' ? 'Crew ' + (net.code || '…') : 'Open hall';
+  const n = net.host ? liveCount() : Math.max(net.players.size, 1), sub = net.regroup ? 'Finding the crew again…' : n + '/' + MAX;
+  if (!first && $('pplist')) { $('csub').textContent = sub; playerRows($('pplist')); const ow = $('copenw'); if (ow) { ow.hidden = !(net.host && net.mode === 'crew'); $('copen').checked = !!net.open; } const bc = $('cbycode'); if (bc) bc.hidden = !net.host; return; }
+  body.textContent = '';
+  const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'How you talk' }, el('button', { 'data-talk': 'open', text: 'Open mic' }), el('button', { 'data-talk': 'ptt', text: 'Push to talk' }));
+  for (const b of seg.children) b.onclick = () => voice.setMode(b.dataset.talk);
+  const openBox = el('input', { type: 'checkbox', id: 'copen' }); openBox.onchange = () => setOpen(openBox.checked);
+  const ow = el('label', { class: 'check', id: 'copenw' }, openBox, ' Show in crew list'); ow.hidden = !(net.host && net.mode === 'crew'); openBox.checked = !!net.open;
+  const inv = el('button', { text: 'Invite friends' }); inv.onclick = () => openPanel('friends');
+  const byc = el('button', { id: 'cbycode', text: 'Invite by code' }); byc.hidden = !net.host; byc.onclick = () => { closePanel(); inviteByCode(); };
+  const lv = el('button', { text: 'Leave crew' }); lv.onclick = () => { closePanel(); leaveCrew(); };
+  if (net.mode === 'crew' && net.code) { const cp = el('button', { class: 'mini', text: 'Copy code' }); cp.onclick = () => copyText(net.code, cp, 'Copy code'); body.append(el('div', { class: 'top', style: 'margin-top:2px' }, el('p', { class: 'sub', id: 'csub', style: 'margin:0', text: sub }), cp)); }
+  else body.append(el('p', { class: 'sub', id: 'csub', text: sub }));
+  body.append(el('ul', { class: 'plist', id: 'pplist' }), el('div', { class: 'voice' }, el('span', { class: 'sub', style: 'margin:0', text: 'Talk:' }), seg), ow, el('div', { class: 'btns' }, inv, byc, lv));
+  playerRows($('pplist')); voice.ui();
+}
+function setOpen(on) { if (!net.host) return; net.open = !!on; toAll({ t: 'room', open: net.open ? 1 : 0 }); beatSoon(); presenceSoon(); drawCrew(); }
+// little notes at the top of the screen
+function toast(text, actions = [], ms = 8000, key) {
+  const t = el('div', { class: 'toast', role: 'status', 'data-key': key || null }, el('span', { text }));
+  for (const [label, fn, main] of actions) t.append(el('button', { class: main ? 'main' : null, text: label, onclick: () => { t.remove(); fn(); } }));
+  const box = $('toasts'); box.append(t); while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => t.remove(), ms); return t;
+}
+
+// ---------------- the start screen ----------------
+$('name').value = store.get('name'); drawPicker();
+let nameT = 0; $('name').addEventListener('input', () => { store.set('name', $('name').value.trim()); clearTimeout(nameT); nameT = setTimeout(() => presence(), 3000); });
+const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789', newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), b => letters[b % letters.length]).join('');
+$('crew').onclick = () => { if (net.on) leave(); net.sail = false; host('crew', newCode()); };
+$('join').onclick = async () => { const code = $('code').value.trim().toUpperCase(); if (code.length < 4) { note(''); flash($('code')); return; } note('Finding crew ' + code + '…');
+  const rooms = await findRooms(r => r.mode === 'crew' && r.code === code, 3500, { early: true, most: 12000 }), r = pickBest(rooms); if (!r) { note('No crew with that code is in the cube right now.'); return; } if (r.n >= r.max) { note('That crew is full.'); return; } note('Joining…'); joinBest(rooms); };
+$('sea').onclick = async () => { note('Looking for runners in the open hall…'); const rooms = await findRooms(r => r.mode === 'sea' && r.n < r.max, 3500);
+  const r = rooms.filter(fresh).sort((a, b) => (b.n - a.n) || (b.at - a.at))[0];
+  if (r) { note('Joining…'); joinRoom(r); } else { net.sail = true; host('sea', ''); } };
+$('solo').onclick = () => { soloOn = true; hideLobby(); toGame({ type: 'look', id: 'me', look: picked }); try { frame.contentWindow.focus(); } catch (e) {} presenceSoon(); };
+$('crewsb').onclick = () => openPanel('crews'); $('friendsb').onclick = () => openPanel('friends'); $('frpill').onclick = () => openPanel('friends'); $('room').onclick = () => openPanel('crew');
+$('sail').onclick = () => startGame();
+$('rleave').onclick = () => leaveCrew(); $('rinvite').onclick = () => openPanel('friends'); $('rbycode').onclick = inviteByCode;
+$('rcopy').onclick = () => copyText(net.code, $('rcopy'), 'Copy');
+$('ropen').onchange = () => setOpen($('ropen').checked);
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').onclick(); });
+// online from the start: your friend card goes up, your friends are watched, and invites can reach you
+relaysOn(); presence(); watchFriends(); inbox(); drawFriends();
+window.NET = net; window.VOICE = voice; window.PICS = PICS; window.CREW = { pack, unpack, check, allow, makeInvite, takeReply, useInvite, ME, pk, host, joinRoom, leaveCrew, findRooms, pickBest, lostHost, startGame, get picked() { return picked; } };   // for testing
+window.FRIENDS = { get list() { return friends; }, FR, fpk, FCODE, codeOf, addByCode, addFriend, removeFriend, inviteFriend, joinFriend, presence, online, isFriend };
+window.UI = Object.assign(UI, { openPanel, closePanel, showStart, showWait, setMute, isMuted, P, toast });
+</script>
+</body></html>
