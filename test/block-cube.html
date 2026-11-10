@@ -6421,7 +6421,7 @@ async function srFind(q) {
     return srShow([{t: L, s: 'parcel ' + srNum(i) + ' of block ' + srNum(h) + mined(h), go: h <= tip ? {h, idx: i, label: L} : null}]);
   }
   if ((m = L.match(/^(\d+)\.bitmap$/))) return srBitmap(+m[1], live);
-  if ((m = L.match(/^(?:#|no\.?|inscription#?|insc#?|i#)(-?\d+)$/))) return srShow([srInsRow(+m[1])]);
+  if ((m = L.match(/^(?:#|no\.?|inscription#?|insc#?|i#)(-?\d+)$/))) { const k = +m[1], rows = [srInsRow(k)]; srShow(rows); galOffer(rows, () => srInsNum(k).then(r => r.id), live); return; }
   if ((m = L.match(/^\d+$/))) {
     const n = +m[0], rows = [];
     if (n <= tip) rows.push({t: 'block ' + srNum(n), s: n + '.bitmap, the whole block', go: {h: n, label: n + '.bitmap'}});
@@ -7201,7 +7201,8 @@ async function galOffer(rows, getId, live) {
   try {
     const id = await getId(); if (!live() || !/^[0-9a-f]{64}i\d+$/.test(id || '')) return;
     const j = await galGet('/r/children/' + id); if (!live() || !j || !(j.ids || []).length) return;
-    rows.push({t: 'its collection', s: (j.more ? 'over ' + fmt(j.ids.length) : fmt(j.ids.length)) + (j.ids.length === 1 && !j.more ? ' piece' : ' pieces') + ' · walk among them all: press GO', go: async () => { srClose(); galTravel(id); return null; }});
+    let n = j.ids.length; if (j.more) { const L = await galLast(id); n = L.page * 100 + L.ids.length; } if (!live()) return;
+    rows.push({t: 'its collection', s: fmt(n) + (n === 1 ? ' piece' : ' pieces') + ' · walk among them all: press GO', go: async () => { srClose(); galTravel(id); return null; }});
     srShow(rows);
   } catch (e) {}
 }
