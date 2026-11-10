@@ -7312,8 +7312,9 @@ async function showArtTick(R, it) {
       else if (!t.word) t.word = /^text\/plain|json/.test(ct) && len <= 4000 ? {k: 'text', a: new TextDecoder().decode(await galGet('/content/' + id, 'bytes')).replace(/\s+/g, ' ').trim().slice(0, 300) || 'TEXT'} : {k: 'text', a: galWord(ct)};
     } else if (!t.word) {   // (a stamp's picture is inside the transaction itself)
       const tx = await vwTx(t); let M = []; try { M = tx ? RR.marks(tx) : []; } catch (e) {}
-      const st = M.find(m => m.kind === 'stamp' && m.file && /^image\//.test(m.type || ''));
-      if (st) t.art = {bytes: st.file, ct: st.type};
+      const st = M.find(m => m.kind === 'stamp' && m.file);
+      if (st && /^image\//.test(st.type || '')) t.art = {bytes: st.file, ct: st.type};
+      else if (st) t.word = {k: 'text', a: 'STAMP · ' + galWord(st.type || '')};
     }
     if (room && room.rooms.includes(R)) { R.nl = null; near.rk = ''; room.dirty = true; }
   } catch (e) { t.sFail = (t.sFail || 0) + 1; if (t.sFail < 2) setTimeout(() => { t.sTry = 0; }, 3000); }
