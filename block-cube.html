@@ -5572,7 +5572,7 @@ function cmBanner(title, col, kind) {
   return cv;
 }
 // the rare sats board: [group, name, price for one sat (ordiscan.com, read on CM_RARE_DAY), how many exist: a number, or worked out from the height]
-const CM_RARE_DAY = '10 Nov 2026', CM_RARE = [
+let CM_RARE_DAY = '10 Nov 2026', cmRareGot = false; const CM_RAREP = {}, CM_RARE = [
   ['R', 'UNCOMMON', '$49.68', h => h + 1 - 1 - Math.floor(h / 210000) - Math.floor(h / 2016)], ['R', 'RARE', '$45,785', h => Math.floor(h / 2016) - Math.floor(h / 1260000)], ['R', 'EPIC', '$3,243,919', h => Math.floor(h / 210000) - Math.floor(h / 1260000)], ['R', 'LEGENDARY', '—', h => Math.floor(h / 1260000)], ['R', 'MYTHIC', '—', 1],
   ['B', 'BLACK UNCOMMON', '< $0.01', h => h + 1 - Math.floor((h + 1) / 2016) - Math.floor((h + 1) / 210000)], ['B', 'BLACK RARE', '$43,836', h => Math.floor((h + 1) / 2016)], ['B', 'BLACK EPIC', '—', h => Math.floor((h + 1) / 210000)],
   ['I', 'PALINDROME', '$0.58', 142044825], ['I', 'ALPHA', '$9.74', h => Math.floor(cmMined(h) / 1e8)], ['I', 'OMEGA', '$11.69', h => Math.floor(cmMined(h) / 1e8)],
@@ -5580,6 +5580,8 @@ const CM_RARE_DAY = '10 Nov 2026', CM_RARE = [
 const cmMined = h => { let s = 0, sub = 5e9, a = 0; while (a <= h && sub > 0) { const n = Math.min(210000, h + 1 - a); s += n * sub; a += 210000; sub = Math.floor(sub / 2); } return s; };   // every sat mined up to this height
 let cmRareCv = null;
 function cmRare(tn) {   // (a tall board: six kinds at a time)
+  if (!cmRareGot) { cmRareGot = true;   // today's prices: one small file kept beside the page (refreshed once a day); if it cannot be read, the prices built in stay
+    fetch(CM_PORTAL + 'rare-sats.json', {cache: 'no-cache'}).then(r => r.ok ? r.json() : null).then(j => { if (!j || !j.prices) return; for (const q of CM_RARE) { const v = j.prices[q[1]]; if (typeof v === 'string' && /^[<$0-9.,\u2014 ]{1,14}$/.test(v)) CM_RAREP[q[1]] = v; } if (typeof j.read === 'string' && /^[0-9A-Za-z ]{6,14}$/.test(j.read)) CM_RARE_DAY = j.read; }).catch(() => {}); }
   const W = 640, Hh = 800, [cv, c] = cmRareCv || (cmRareCv = cmCv(W, Hh)), tip = tipH >= 0 ? tipH : -1, mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`;
   c.fillStyle = '#0a070c'; c.fillRect(0, 0, W, Hh); for (let y = 0; y < Hh; y += 4) { c.fillStyle = 'rgba(255,255,255,.018)'; c.fillRect(0, y, W, 2); }
   c.strokeStyle = '#ff4fd8'; c.lineWidth = 6; c.shadowColor = '#ff4fd8'; c.shadowBlur = 18; c.strokeRect(10, 10, W - 20, Hh - 20); c.shadowBlur = 0;
@@ -5587,7 +5589,7 @@ function cmRare(tn) {   // (a tall board: six kinds at a time)
   c.font = mono(700, 19); c.fillStyle = '#27e1ff'; c.fillText(tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING…', 36, 112); c.textAlign = 'right'; c.fillStyle = 'rgba(255,255,255,.5)'; c.fillText('price for one sat', W - 36, 112);
   c.fillStyle = 'rgba(255,79,216,.5)'; c.fillRect(34, 134, W - 68, 2);
   const N = CM_RARE.length, k0 = Math.floor(tn / 3.2) % N, COL = {R: '#ffc94a', B: '#b9b3c6', I: '#27e1ff', H: '#ff8ad8'}, GN = {R: 'RODARMOR', B: 'BLACK', I: 'INTERESTING', H: 'HISTORICAL'};
-  for (let r = 0; r < 6; r++) { const [g, nm, pr, sup] = CM_RARE[(k0 + r) % N], y = 186 + r * 96, live = typeof sup === 'function', n = live ? (tip >= 0 ? sup(tip) : null) : sup;
+  for (let r = 0; r < 6; r++) { const [g, nm, pr0, sup] = CM_RARE[(k0 + r) % N], pr = CM_RAREP[nm] || pr0, y = 186 + r * 96, live = typeof sup === 'function', n = live ? (tip >= 0 ? sup(tip) : null) : sup;
     c.fillStyle = COL[g]; c.fillRect(34, y - 26, 6, 70); c.textAlign = 'left'; c.font = mono(800, 34); c.fillText(nm, 54, y - 6); c.textAlign = 'right'; c.fillStyle = pr === '—' ? 'rgba(255,255,255,.35)' : '#7dff4a'; c.fillText(pr, W - 36, y - 6);
     c.font = mono(600, 19); c.textAlign = 'left'; c.fillStyle = 'rgba(255,255,255,.42)'; c.fillText(GN[g], 54, y + 30); c.textAlign = 'right'; c.fillStyle = '#f7efe3'; c.fillText((n == null ? '…' : n >= 1e12 ? fmt(n / 1e12) + ' trillion' : n >= 1e9 ? fmt(n / 1e9) + ' billion' : fmt(n)) + ' exist', W - (live ? 56 : 36), y + 30);
     if (live) { c.fillStyle = '#27e1ff'; c.beginPath(); c.arc(W - 42, y + 30, 5, 0, 6.29); c.fill(); } }
