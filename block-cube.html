@@ -707,12 +707,17 @@ if(uGold>.01){   // over block 0: the first star, bright, with long glints
  c+=vec3(1.,.88,.62)*uGold*tw*(exp(-sr*sr*12000.)*3.+exp(-sr*sr*700.)*.4+exp(-sr*14.)*.07+(exp(-abs(sp.x)*900.)*exp(-abs(sp.y)*22.)+exp(-abs(sp.y)*900.)*exp(-abs(sp.x)*22.))*.55);}
 c+=(h(gl_FragCoord.xy+uNow)-.5)/255.;o=vec4(c,0.);}`);
 // transactions. iF.w = how this box is moving: 0 settling/staying, 1 just joined (lights up as it lands), 2 leaving, 3 filling in, 4 sealed block lifting away
-const CML = `uniform highp vec4 uCmT;uniform highp sampler2D uCL;uniform highp sampler2D uCC;uniform vec4 uZR[8];uniform vec3 uZA[8];uniform float uCmN,uCmM;
+const CML = `uniform highp vec4 uCmT;uniform highp sampler2D uCL;uniform highp sampler2D uCC;uniform vec4 uZR[8];uniform vec3 uZA[8];uniform float uCmN,uCmM;uniform vec2 uCmD;
 vec2 cmQ(vec3 w){return vec2(uCmT.x*w.x,uCmT.x>0.?uCmT.y-w.z:w.z-uCmT.y+uCmT.z);}
 int cmZ(vec2 q){for(int i=0;i<8;i++){vec4 r=uZR[i];if(q.x>=r.x&&q.x<=r.y&&q.y>=r.z&&q.y<=r.w)return i;}return -1;}
 vec3 cmDots(vec2 q){vec2 p=q-vec2(-32.,35.);float r=length(p);if(r>10.5)return vec3(0.);float i=floor(r/.95+.5);if(i<1.)return vec3(0.);float ri=i*.95,N=floor(6.2832*ri/1.15),s=mod(i,2.)>.5?1.:-.8;
 float th=atan(p.y,p.x)+s*uCmN*.2+i*.37,cl=th*N/6.2832,k=floor(cl),dd=length(vec2(r-ri,(fract(cl)-.5)*6.2832*ri/N)),h=fract(sin(k*12.9898+i*78.233)*43758.5453);
 vec3 col=h<.3?vec3(1.,.95,.88):h<.55?vec3(1.,.3,.8):h<.8?vec3(.25,.85,1.):vec3(1.,.72,.3);return col*smoothstep(.12,.055,dd)*(1.-r/10.5)*(.7+.3*sin(uCmN*2.7+h*31.));}
+vec3 cmDisco(vec3 w,vec2 q){vec3 d=vec3(q.x+32.,w.y-7.05,q.y-35.);float r=length(d);if(r>17.||r<.45)return vec3(0.);d/=r;
+float el=asin(clamp(d.y,-1.,1.)),ie=floor(el/.105+.5),e0=ie*.105,ce=max(cos(e0),.05),N=max(floor(6.2832*ce/.125),1.),az=atan(d.z,d.x)+uCmD.y+ie*.41,cl=az*N/6.2832,k=floor(cl);
+float dd=length(vec2(el-e0,(fract(cl)-.5)*6.2832*ce/N)),h=fract(sin(k*12.9898+ie*78.233)*43758.5453);if(h<.36)return vec3(0.);
+vec3 col=h<.72?vec3(1.,.96,.9):h<.82?vec3(1.,.3,.8):h<.92?vec3(.25,.85,1.):vec3(1.,.72,.3);
+return col*smoothstep(.022,.009,dd)*uCmD.x*1.7/(1.+.011*r*r)*(.75+.25*sin(uCmN*3.+h*31.));}
 vec3 cmLit(vec3 K,vec3 n,vec3 w,vec3 vd,int z,vec2 q,float sp){
 vec3 c=K*uZA[z]*(.62+.38*n.y);
 int ci=int(clamp(floor(q.y*.5),0.,23.))*42+int(clamp(floor((q.x+42.)*.5),0.,41.));
@@ -753,7 +758,7 @@ vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
 float dif=max(dot(n,L),0.),fil=max(dot(n,F),0.),sky=.5+.5*n.y;
 vec3 c=K*(.12*sky+1.08*dif)+K*vec3(.95,.72,.55)*.26*fil+K*uAmb;
 vec3 vd=normalize(uE-vW);int cz=-1;vec2 cq=vec2(0.);if(uCmT.w>.5&&uMir<.5){cq=cmQ(vW);cz=cmZ(cq);}
-float gk=cz>=0?.42:1.;if(cz>=0){c=cmLit(K,n,vW,vd,cz,cq,.12);if(cz==5&&n.y>.9&&vW.y<3.4)c+=cmDots(cq)*(.55+K*2.5);if(vA.w>.5&&min(vS.x,min(vS.y,vS.z))<.03)c+=K*.5;}else{c+=vec3(1.,.58,.2)*pow(1.-max(dot(n,vd),0.),3.)*.16;
+float gk=cz>=0?.42:1.;if(cz>=0){c=cmLit(K,n,vW,vd,cz,cq,.12);if(cz==5&&uCmD.x>.01)c+=cmDisco(vW,cq)*(.45+K*2.5);if(vA.w>.5&&min(vS.x,min(vS.y,vS.z))<.03)c+=K*.5;}else{c+=vec3(1.,.58,.2)*pow(1.-max(dot(n,vd),0.),3.)*.16;
 c+=vec3(1.,.8,.55)*pow(max(dot(reflect(-L,n),vd),0.),28.)*.22;}
 float sd=1.-an.y;c*=mix(1.,vAo*(vA.w>.5?1.:.88+.12*smoothstep(-.5,.5,vQ.y/vS.y)),sd);
 c=mix(c,c*1.6+(cz>=0?.004:.05),edge*.5);
@@ -3162,7 +3167,7 @@ const LIFE = (() => {
 const LTYPE = {xmastree: 16, snowman: 17, magma: 12, snowrock: 10, tuft: 0, flower: 1, tree: 2, pine: 3, penguin: 4, icecrystal: 5, fish: 6, lilypad: 7, lily: 8, butterfly: 9, cactus: 10, tumbleweed: 11, rock: 12, burnt: 13, bubble: 14, shard: 15};
 const lifeP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec3 aC;layout(location=3) in float aW;
 layout(location=4) in vec4 iP;layout(location=5) in vec4 iS;layout(location=6) in vec3 iC;
-uniform mat4 uVP;uniform float uNow,uW,uSR,uEv;uniform int uT,uST;uniform vec4 uRm,uWl;uniform vec2 uCm;
+uniform mat4 uVP;uniform float uNow,uW,uSR,uEv;uniform int uT,uST;uniform vec4 uRm,uWl,uBt;uniform vec3 uE;uniform vec2 uCm;
 out vec3 vN;out vec3 vC;out vec3 vP;out float vE;out float vA;out float vF;
 mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0.,-s,0.,1.,0.,s,0.,c);}
 mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1.,0.,0.,0.,c,s,0.,-s,c);}
@@ -3234,6 +3239,20 @@ if(T==4){
  L=RX(iS.w);
 }else if(T==23){   // the chain of blocks circling slowly over the Forum
  float a=iS.z+t*.07;b=vec3(iP.x+cos(a)*iS.w,iP.y+.35*sin(t*.5+ph),iP.z+sin(a)*iS.w);R=RY(-a-1.5708)*RX(.15*sin(t*.3+ph));
+}else if(T==41){   // the barkeep: glides along its rail, wipes, shakes, watches you; pulls the tap when a pint is poured (uBt.x: when)
+ float tp=t-uBt.x,pg=tp>0.?smoothstep(0.,.45,tp)*(1.-smoothstep(2.4,3.8,tp)):0.,pk=tp>0.?smoothstep(.1,.5,tp)*(1.-smoothstep(1.9,2.5,tp)):0.,pull=tp>0.?smoothstep(.5,.8,tp)*(1.-smoothstep(1.6,1.9,tp)):0.;
+ float gd=mix(2.3*sin(t*.13)+.9*sin(t*.31+1.),0.,pg),f=mod(t,24.),sh=smoothstep(14.,15.,f)*(1.-smoothstep(19.,20.,f))*(1.-pk);
+ int k=int(iS.z+.5);
+ if(k==1){vec3 dl=(uE-(iP.xyz+R*vec3(gd,2.,0.)))*R;float nr=smoothstep(17.,11.,length(dl))*(1.-pk);
+  float yw=clamp(atan(dl.x,dl.z),-1.35,1.35)*nr+(1.-nr)*(1.-pk)*.5*sin(t*.37),pt=mix(clamp(atan(-dl.y,length(dl.xz)),-.35,.45)*nr,.5,pk)+.5*sh*.3;
+  mat3 Q=RY(yw)*RX(pt);p=Q*p+vec3(0.,1.84,0.);n=Q*n;}
+ else if(k>=2){float sd=k<4?-1.:1.;vec3 S=vec3(sd*.36,1.68,.02),Tg;
+  if(sd<0.){Tg=mix(vec3(-.3,1.2,.42),vec3(-.36,1.8+.1*sin(t*21.),.3+.05*cos(t*21.)),sh);Tg=mix(Tg,vec3(-.26,1.32,.7),pk);}
+  else Tg=mix(vec3(.22+.26*cos(t*1.7),1.25,.74+.1*sin(t*3.4)),vec3(.02,1.86-.07*pull,.93-.13*pull),pk);
+  vec3 d=Tg-S;float hl=max(length(d.xz),1e-3);vec2 u=d.xz/hl,d2=vec2(hl,d.y);float ln=clamp(length(d2),.25,1.17),q=atan(d2.y,d2.x),s1=q-acos(ln/1.2);
+  vec2 E=.6*vec2(cos(s1),sin(s1)),Tp=ln*vec2(cos(q),sin(q));bool fo=k==3||k==5;mat3 Q=RZ(fo?atan(Tp.y-E.y,Tp.x-E.x):s1);
+  p=Q*p;n=Q*n;if(fo)p.xy+=E;p=S+vec3(u.x*p.x-u.y*p.z,p.y,u.y*p.x+u.x*p.z);n=vec3(u.x*n.x-u.y*n.z,n.y,u.y*n.x+u.x*n.z);}
+ b=iP.xyz+R*vec3(gd,0.,0.);em=w>.8?1.:0.;
 }else if(T==40){   // the Chain Keeper: its carriage rolls round the ring, one block of the chain at a time; its arm bends at the elbow to reach
  float Tc=14.,cy=floor(t/Tc),f=t-cy*Tc,st=.5236,xx=clamp(f/3.,0.,1.),th=(cy-1.+xx*xx*(3.-2.*xx))*st+t*.07;
  float wk=smoothstep(3.,4.6,f)*(1.-smoothstep(11.4,13.,f)),te=t-uEv,ek=te>0.?smoothstep(0.,1.,te)*(1.-smoothstep(8.,9.5,te)):0.;
@@ -3265,6 +3284,9 @@ if(T==4){
  if(w>.5)p.y+=.014*sin(t*2.1+(b.x+p.x)*5.)*sin(t*1.6+(b.z+p.z)*4.3);
 }else if(T==31){   // the waterfall shivering as it pours
  p.x+=.01*sin(t*11.+p.y*17.+p.z*9.);
+}else if(T==42){   // the mirror ball: still and dull until the music plays; then it turns, and its mirrors glint
+ R=RY(iP.w+uBt.z);float hh=fract(sin(dot(aN,vec3(12.9898,78.233,37.719)))*43758.5453),gt=pow(.5+.5*sin(uBt.z*11.+hh*50.),22.),bl=step(aP.y,.31);
+ c*=mix(.4,1.15,uBt.y);c*=mix(vec3(1.),mix(vec3(1.,.45,.85),vec3(.45,.9,1.),.5+.5*(R*aN).x),.55*uBt.y*bl);em=bl*uBt.y*(.22+2.4*gt);
 }else if(T==32){   // turning slowly in its case
  R=RY(iP.w+t*.6);b.y+=.02*sin(t*1.3+ph);
 }
@@ -3359,8 +3381,9 @@ function lifeWeights(h) {
 let LROOM = [0, 0, 0, 0], LWALL = [1e5, 1e5, -1e5, -1e5];   // in the rooms: [on, turned a quarter, moved on, where you are along the hall]
 const LTALL = new Set(['pine', 'tree', 'cactus', 'rock', 'snowrock', 'burnt']);   // (trees and rocks stay outside: the rooms get what lives on and under the floor)
 function lifeUniforms(VP, eye, tn) {
-  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform4fv(lifeP.u.uWl, LWALL); gl.uniform2fv(lifeP.u.uCm, LCM); gl.uniform1f(lifeP.u.uEv, cmEv);
+  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform4fv(lifeP.u.uWl, LWALL); gl.uniform2fv(lifeP.u.uCm, LCM); gl.uniform1f(lifeP.u.uEv, cmEv); gl.uniform4fv(lifeP.u.uBt, cmBt);
 }
+let cmBtT = 0; const cmBt = [-1e6, 0, 0, 0];   // for the robots: when a pint was last poured; how far the music is on
 let cmEv = -1e6;   // when the newest block was mined (the Chain Keeper presses a new block into the chain)
 // solid things: under = true draws only what lives below the water (drawn before the water surface)
 function lifeDraw(VP, eye, tn, LW, under) {
@@ -4799,6 +4822,32 @@ const CMS = (() => {
     bx(v, 0, 0, .405, .3, .3, .01, [0, 0, 0], 2.75); bx(v, 0, 0, -.405, .3, .3, .01, [0, 0, 0], 2.75);
   });
   make('cmLink', v => { const S = C(0x9aa3b2); bx(v, 0, .14, 0, .5, .05, .05, S, 0); bx(v, 0, -.14, 0, .5, .05, .05, S, 0); bx(v, -.25, 0, 0, .05, .33, .05, S, 0); bx(v, .25, 0, 0, .05, .33, .05, S, 0); });
+  // the barkeep (front: +z; x along the bar): its body on a trolley, its head, an upper arm, the forearm with the shaker, the forearm with the cloth, its rail
+  { const BLK = C(0x15131a), CHR = C(0xc9ced6), DCH = C(0x7c828c), PINK = C(0xff2fb4), CY = C(0x27e1ff), GOLD = C(0xffc94a), RED = C(0xe0263a), WHT = C(0xf2efe6);
+    const ball = (v, x, y, z, r, col, w) => lathe(v, [[0, -r], [r * .7, -r * .7], [r, 0], [r * .7, r * .7], [0, r]], 10, () => col, w, TR([1, 1, 1], [0, 0, 0], [x, y, z]));
+    const rodX = (v, x0, x1, r, col, w, seg = 8) => lathe(v, [[0, x0], [r, x0], [r, x1], [0, x1]], seg, () => col, w, TR([1, 1, 1], [0, 0, -1.5708], [0, 0, 0]));
+    make('bkBase', v => {
+      bx(v, 0, .13, 0, .62, .2, .44, BLK, 0); bx(v, 0, .245, 0, .5, .03, .34, DCH, 0); for (const s of [-1, 1]) { bx(v, 0, .17, s * .222, .54, .02, .008, PINK, .95); bx(v, s * .312, .17, 0, .008, .02, .36, CY, .95); }   // its trolley, edged in light
+      lathe(v, [[.12, .26], [.1, .32], [.07, .4], [.07, .88], [.1, .96]], 12, () => CHR, 0); for (let k = 0; k < 5; k++) lathe(v, [[.075, .46 + k * .08], [.09, .48 + k * .08], [.075, .5 + k * .08]], 12, () => DCH, 0);   // one leg: a chrome column
+      lathe(v, [[0, .95], [.2, .95], [.25, 1.02], [.2, 1.1], [0, 1.1]], 14, () => BLK, 0); lathe(v, [[.252, 1.0], [.262, 1.02], [.252, 1.04]], 14, () => PINK, .95);   // hips, a ring of light
+      bx(v, 0, 1.2, 0, .38, .22, .26, BLK, 0); bx(v, 0, 1.5, 0, .6, .42, .34, BLK, 0); bx(v, 0, 1.72, 0, .76, .07, .26, CHR, 0);   // waist, chest, shoulders
+      for (const s of [-1, 1]) { ball(v, s * .36, 1.68, .02, .09, CHR, 0); bx(v, s * .2, 1.5, .172, .02, .38, .008, PINK, .95); bx(v, s * .301, 1.5, 0, .008, .3, .2, DCH, 0); }   // shoulder joints, the lines of its waistcoat
+      for (const y of [1.36, 1.48, 1.6]) bx(v, 0, y, .174, .035, .035, .012, GOLD, .9);   // gold buttons
+      bx(v, 0, 1.745, .175, .04, .04, .03, RED, 0); for (const s of [-1, 1]) { bx(v, s * .06, 1.745, .172, .08, .07, .02, RED, 0); bx(v, s * .105, 1.745, .172, .02, .09, .02, RED, 0); }   // a bow tie
+      lathe(v, [[.05, 1.75], [.045, 1.86]], 8, () => DCH, 0);
+      bx(v, 0, 1.45, -.2, .3, .36, .08, DCH, 0); lathe(v, [[0, 1.25], [.07, 1.25], [.07, 1.62], [0, 1.66]], 10, () => CHR, 0, TR([1, 1, 1], [0, 0, 0], [0, 0, -.27])); bx(v, 0, 1.45, -.342, .03, .2, .006, CY, .95);   // a tank on its back, its gauge
+    });
+    make('bkHead', v => {   // (turns about its neck)
+      bx(v, 0, .17, 0, .38, .24, .3, BLK, 0); bx(v, 0, .305, 0, .4, .03, .32, CHR, 0); bx(v, 0, .04, 0, .3, .03, .24, DCH, 0);
+      bx(v, 0, .19, .152, .31, .075, .01, CY, .98); bx(v, 0, .19, .156, .31, .012, .006, C(0xeaffff), .98);   // its visor: one bar of light
+      for (const s of [-1, 1]) { bx(v, s * .07, .075, .155, .12, .028, .02, GOLD, 0); bx(v, s * .135, .09, .155, .028, .05, .02, GOLD, 0); bx(v, s * .2, .2, 0, .03, .1, .1, DCH, 0); bx(v, s * .2, .42, 0, .012, .24, .012, CHR, 0); bx(v, s * .2, .55, 0, .035, .035, .035, PINK, .98); }   // a brass moustache, ears, aerials
+    });
+    make('bkArmU', v => { rodX(v, .04, .56, .042, CHR, 0); bx(v, .3, 0, 0, .3, .1, .1, BLK, 0); lathe(v, [[.052, -.012], [.06, 0], [.052, .012]], 10, () => PINK, .95, TR([1, 1, 1], [0, 0, -1.5708], [.5, 0, 0])); ball(v, .6, 0, 0, .065, DCH, 0); });
+    const fore = v => { rodX(v, .04, .46, .036, CHR, 0); bx(v, .2, 0, 0, .2, .085, .085, BLK, 0); bx(v, .5, 0, 0, .08, .1, .1, DCH, 0); lathe(v, [[.045, -.01], [.052, 0], [.045, .01]], 10, () => CY, .95, TR([1, 1, 1], [0, 0, -1.5708], [.42, 0, 0])); for (const s of [-1, 1]) { bx(v, .59, s * .045, 0, .12, .02, .05, CHR, 0); bx(v, .59, 0, s * .045, .12, .05, .02, CHR, 0); } };
+    make('bkArmL', v => { fore(v); lathe(v, [[0, .56], [.052, .56], [.06, .74], [.045, .78], [.04, .86], [0, .87]], 12, (i, a, y) => y > .77 ? DCH : CHR, 0, TR([1, 1, 1], [0, 0, -1.5708], [0, 0, 0])); });   // its shaker
+    make('bkArmR', v => { fore(v); bx(v, .66, -.045, 0, .2, .025, .24, WHT, 0); bx(v, .7, -.06, .04, .14, .02, .16, C(0xd9d4c8), 0); });   // its cloth
+    make('bkRail', v => { for (const s of [-1, 1]) bx(v, 0, .02, s * .16, 7.6, .04, .04, DCH, 0); for (let x = -3.6; x <= 3.61; x += .6) bx(v, x, .008, 0, .08, .016, .42, C(0x2a2d34), 0); for (const s of [-1, 1]) { bx(v, s * 3.82, .1, 0, .06, .2, .44, CHR, 0); bx(v, s * 3.82, .22, 0, .07, .04, .1, RED, .9); } });
+  }
   // the Chain Keeper (a robot on the ring over the Forum): its carriage, the two parts of its arm, its claw and torch,
   // the hot new block it carries, its piston, its sparks
   { const DK = C(0x17181d), GUN = C(0xe8861a), MID = C(0x3a3f49), STL = C(0xaab2bf), AMB = C(0xffb020), COP = C(0xb5683a), HOT = C(0xffe2a0), RED = C(0xff3b30), CY = C(0x6fe8ff);
@@ -4853,10 +4902,10 @@ const CMS = (() => {
   return {bx};
 })();
 // the props' shapes go to the graphics card like the life's do
-for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
+for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'bkBase', 'bkHead', 'bkArmU', 'bkArmL', 'bkArmR', 'bkRail', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
   const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
 }
-const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
+const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, bkBase: 41, bkHead: 41, bkArmU: 41, bkArmL: 41, bkArmR: 41, bkRail: 20, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
 const cmGrp = (mesh, inst) => { const ib = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst.length ? inst.flat() : new Array(11).fill(0)), gl.STATIC_DRAW); return {mesh, t: CMT[mesh], n: inst.length, ib, vao: lifeVAO(lifeGeo[mesh], ib)}; };
 // which way something faces in the world, from which way it faces in the room's layout
 const cmFace = (R, fx, fd) => { const w = R.door === 'back' ? [fx, -fd] : [-fx, fd]; return Math.atan2(w[0], w[1]); };
@@ -4897,7 +4946,8 @@ function cmLU(P, tn, on) {
   gl.uniform4f(P.u.uCmT, R ? (R.door === 'back' ? 1 : -1) : 0, R ? R.z0 : 0, R ? R.L : 0, R ? 1 : 0);
   if (!R) return;
   gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, cmLT); gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, cmCT); gl.activeTexture(gl.TEXTURE0);
-  gl.uniform1i(P.u.uCL, 6); gl.uniform1i(P.u.uCC, 7); gl.uniform4fv(P.u['uZR[0]'], CM_ZR); gl.uniform3fv(P.u['uZA[0]'], CM_ZA); gl.uniform1f(P.u.uCmN, tn); gl.uniform1f(P.u.uCmM, coarse ? 6 : CM_ML);   // (phones: the six strongest lights on each spot)
+  gl.uniform1i(P.u.uCL, 6); gl.uniform1i(P.u.uCC, 7); gl.uniform4fv(P.u['uZR[0]'], CM_ZR); gl.uniform3fv(P.u['uZA[0]'], CM_ZA); if (tn !== cmBtT) { const dt = Math.min(.1, Math.max(0, tn - cmBtT)); cmBtT = tn; cmBt[1] += ((cm.music.k !== 'off' ? 1 : 0) - cmBt[1]) * Math.min(1, dt * 1.2); cmBt[2] = (cmBt[2] + dt * .42 * cmBt[1]) % 628.3185; }   // the mirror ball: lit, and turning, while the music plays
+  gl.uniform2f(P.u.uCmD, cmBt[1], cmBt[2]); gl.uniform1f(P.u.uCmN, tn); gl.uniform1f(P.u.uCmM, coarse ? 6 : CM_ML);   // (phones: the six strongest lights on each spot)
 }
 
 /* ---- more shapes for the rooms: the arcades' gilded vaults, the fire, the koi tank and its waterfall, vases, bamboo, pampas, paper lanterns ---- */
@@ -5024,6 +5074,7 @@ function cmProps(R) {
   for (const x of [-12, -6, 6, 12]) { put('cmFern', x, CM.BY + .62, 16.6, rnd() * 6, 1.05, rnd() * 9); for (let k = 0; k < 6; k++) { const fx = x + (rnd() - .5) * 2.3, fd = 16.5 + (rnd() - .5) * .45; if (k < 3) put('flower', fx, CM.BY + .62, fd, rnd() * 6, .9, rnd() * 9, 0, 0, H([0xff6fa5, 0xffd23f, 0xb28dff][k])); else put('tuft', fx, CM.BY + .62, fd, rnd() * 6, .7, rnd() * 9); } }
   // THE MEMPOOL: the taps, the stools, bottles all along the back bar, the racks' blinking lights, vases at the counter's ends
   put('cmTap', CM.TAP[0], 2.96, CM.TAP[1], F(1, 0), 1, 0);
+  for (const [m, k] of [["bkBase", 0], ["bkRail", 0], ["bkHead", 1], ["bkArmU", 2], ["bkArmL", 3], ["bkArmU", 4], ["bkArmR", 5]]) put(m, -40.72, 1.8, CM.TAP[1], F(1, 0), 1, 0, k, 0);   // the barkeep, in the aisle behind the counter
   for (let dd = 27; dd <= 43; dd += 2) put('cmStool', -38.35, 1.8, dd, 0, 1, 0);
   const BC = [0x1f8a3a, 0x7a3a12, 0x2a6aa8, 0xd9d2c0, 0x9a1f2a, 0x3a2a1a, 0xc9a23a, 0x6a2a8a].map(H);
   for (const y of [3.04, 3.74, 4.44, 5.14]) for (let dd = 25.75; dd < 44.3; dd += .26 + rnd() * .07) if (Math.abs(dd - 35) > .7 || y > 4) put('cmBottle', -41.05, y, dd, rnd() * 6, .85 + rnd() * .35, 0, 0, 0, BC[Math.floor(rnd() * BC.length)]);
@@ -5244,7 +5295,7 @@ function cmProps(R) {
 for (const k of ['cmToro', 'cmMaple', 'cmSakura', 'cmBasin', 'cmChest', 'cmPagoda', 'cmMiniTorii', 'cmDrift', 'cmMossBall', 'cmKoi1', 'cmKoi2', 'cmKoi3', 'cmKoi4', 'cmKoi5', 'cmMBall', 'cmJuke', 'cmSign', 'cmChand', 'cmPalm', 'cmPiece', 'cmKingP', 'cmCandle', 'cmCat', 'cmBull', 'cmBear', 'cmCase', 'cmPizza', 'cmCoin', 'cmBall', 'cmCue', 'cmHiTable', 'cmBarrel', 'cmCone']) {
   const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
 }
-Object.assign(CMT, {cmToro: 20, cmMaple: 26, cmSakura: 26, cmBasin: 20, cmChest: 20, cmPagoda: 20, cmMiniTorii: 20, cmDrift: 20, cmMossBall: 20, cmKoi1: 28, cmKoi2: 28, cmKoi3: 28, cmKoi4: 28, cmKoi5: 28, cmMBall: 32, cmJuke: 20, cmSign: 20, cmChand: 20, cmPalm: 26, cmPiece: 20, cmKingP: 20, cmCandle: 20, cmCat: 20, cmBull: 20, cmBear: 20, cmCase: 22, cmPizza: 20, cmCoin: 32, cmBall: 20, cmCue: 20, cmHiTable: 20, cmBarrel: 20, cmCone: 20, butterfly: 9});
+Object.assign(CMT, {cmToro: 20, cmMaple: 26, cmSakura: 26, cmBasin: 20, cmChest: 20, cmPagoda: 20, cmMiniTorii: 20, cmDrift: 20, cmMossBall: 20, cmKoi1: 28, cmKoi2: 28, cmKoi3: 28, cmKoi4: 28, cmKoi5: 28, cmMBall: 42, cmJuke: 20, cmSign: 20, cmChand: 20, cmPalm: 26, cmPiece: 20, cmKingP: 20, cmCandle: 20, cmCat: 20, cmBull: 20, cmBear: 20, cmCase: 22, cmPizza: 20, cmCoin: 32, cmBall: 20, cmCue: 20, cmHiTable: 20, cmBarrel: 20, cmCone: 20, butterfly: 9});
 Object.assign(CM_SP, {cmKoi1: .5, cmKoi2: .5, cmKoi3: .5, cmKoi4: 1.2, cmKoi5: .5, cmChest: .6, cmMBall: 2, cmJuke: .6, cmCoin2: 1, cmChand: 1, cmPiece: .7, cmKingP: .7, cmBull: 1.5, cmBear: 1.5, cmCoin: 1, cmBall: 1, cmCue: .4, cmHiTable: .6, cmBarrel: .5});
 CM_PASS.cmCase = 1;
 
@@ -5850,7 +5901,7 @@ function cmDo(A) {
     p.seatOut = s.length > 6 ? [s[6], s[7]] : [s[0] + s[3] * .8, s[1] + s[4] * .8]; return;
   }
   if (A.a === 'sip') { cmSip(); return; }
-  if (A.a === 'pour') { cm.pour = {t0: performance.now()}; cmNoise(1.6, 900, .05); setTimeout(() => { cm.pour = null; cm.pint = {fill: 1, sipT: 0}; crew.last = ''; }, 1800); return; }
+  if (A.a === 'pour') { cm.pour = {t0: performance.now()}; cmBt[0] = now(); cmNoise(1.6, 900, .05); setTimeout(() => { cm.pour = null; cm.pint = {fill: 1, sipT: 0}; crew.last = ''; }, 1800); return; }
   if (A.a === 'screen') { if (cm.sc) cmUse(true); else cmAsk('screen'); return; }
   if (A.a === 'music') { cmAsk('music'); return; }
   if (A.a === 'board') { cmBigOpen(); return; }
