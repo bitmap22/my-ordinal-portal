@@ -224,7 +224,7 @@ body.tiny #fw,body.tiny #top,body.tiny #strip,body.tiny #nav,body.tiny #kinds,bo
 #srl .it{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;background:linear-gradient(180deg,#120b06,#080503);border:1px solid rgba(247,147,26,.22);border-radius:12px}
 #srl .it div{flex:1;min-width:0}#srl .it b{display:block;color:#f7efe3;font:700 14px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.03em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #srl .it span{display:block;margin-top:3px;color:#a8916f;font-weight:500;letter-spacing:.03em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#sra{position:fixed;left:0;top:0;z-index:5;pointer-events:none;display:none;flex-direction:column;align-items:center;will-change:transform}body:not(.room) #sra{display:none!important}
+#sra{position:fixed;left:0;top:0;z-index:5;pointer-events:none;display:none;flex-direction:column;align-items:center;will-change:transform}body:not(.room) #sra{display:none!important}body.room.cardon #sra{display:none!important}
 #sra svg{width:46px;height:46px;filter:drop-shadow(0 0 6px #f7931a) drop-shadow(0 0 16px rgba(247,147,26,.8));animation:srb 1s ease-in-out infinite alternate}
 #sra.edge svg{animation:none}
 #sra b{order:-1;margin-bottom:4px;font:700 12px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;color:#140c05;background:#f7931a;border-radius:8px;padding:4px 8px 3px;white-space:nowrap;box-shadow:0 0 14px rgba(247,147,26,.7)}
@@ -4030,6 +4030,11 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texPara
 gl.activeTexture(gl.TEXTURE0); gl.useProgram(parP.p); gl.uniform1i(parP.u.uArt2, 3);
 const near = {slot: new Map(), free: Array.from({length: NCN * NCN}, (_, i) => i), busy: false, at: 0, want: [], keep: new Set(), wx: 1e9, wz: 1e9, wy: 0, wt: 0, rk: '', mip: 0, dirty: false, pend: []};
 function nearClear() { for (const t of near.slot.keys()) t.nearR = null; near.slot.clear(); near.free = Array.from({length: NCN * NCN}, (_, i) => i); near.want = []; near.keep = new Set(); near.wx = 1e9; near.rk = ''; near.pend = []; }
+function galSees(C, it, px) {
+  if (!C || !C.gal || !C.lay) return true;
+  if (it.sp === undefined) { it.sp = null; const z = it.w[2] - (C.z0 || 0); for (const r of C.lay.rows) if (Math.abs(it.w[0] - r.x) < DEEP + .1 && z <= r.za + .1 && z >= r.zb - .1) { it.sp = r.x; break; } }
+  return it.sp == null || (px - it.sp) * (it.w[0] - it.sp) > 0;
+}
 function viewCos() { const v = room && room.view; return v ? Math.cos(Math.min(1.25, Math.atan(Math.tan(v.fov / 2) * v.asp) + .12)) : .6; }
 async function nearTick(tn) {
   if (near.busy || tn - near.at < .2) return;
@@ -4042,7 +4047,7 @@ async function nearTick(tn) {
     if (Math.hypot(p.x - near.wx, p.z - near.wz) > 1.2 || rk !== near.rk || tn - near.wt > 2 || turn > .35) {
       near.wx = p.x; near.wz = p.z; near.wt = tn; near.rk = rk; near.wy = p.yaw;
       const want = [], hx = -Math.sin(p.yaw), hz = -Math.cos(p.yaw), vc = viewCos();
-      for (const R of room.rooms) if (R && R.ready && p.z - 12 < R.z0 && p.z + 12 > R.z0 - R.L) for (const it of R.nl || (R.nl = R.plan.items.filter(i => i.t.art || i.t.word))) { const t = it.t; if ((t.art || t.word) && !it.gone) { const dz = it.w[2] - p.z; if (it.show || R.gal && t.par) want.push([0, t]); else if (dz > -12 && dz < 12) { const ax = it.w[0] - p.x, d = Math.hypot(ax, dz); if (d < 12) want.push([d + (ax * hx + dz * hz < vc * d ? 6 : 0), t]); } } }
+      for (const R of room.rooms) if (R && R.ready && p.z - 12 < R.z0 && p.z + 12 > R.z0 - R.L) for (const it of R.nl || (R.nl = R.plan.items.filter(i => i.t.art || i.t.word))) { const t = it.t; if ((t.art || t.word) && !it.gone && (!R.gal || galSees(R, it, p.x))) { const dz = it.w[2] - p.z; if (it.show || R.gal && t.par) want.push([0, t]); else if (dz > -12 && dz < 12) { const ax = it.w[0] - p.x, d = Math.hypot(ax, dz); if (d < 12) want.push([d + (ax * hx + dz * hz < vc * d ? 6 : 0), t]); } } }
       want.sort((a, b) => a[0] - b[0]); if (want.length > NCN * NCN) want.length = NCN * NCN;
       near.want = want; near.keep = new Set(want.map(x => x[1]));
       for (const [t, sl] of near.slot) if (!near.keep.has(t)) { near.slot.delete(t); near.free.push(sl); t.nearR = null; }
@@ -5983,7 +5988,7 @@ function rmHit(c, h, ray, far) {
 function rmPick(sx, sy) {
   const ray = rmRay(sx, sy), C = room.rooms[1]; if (!ray || !C || !C.ready) return null;
   let best = null, bt = 1e9;
-  for (const it of C.plan.items) { if (it.gone || it.cp || it.t0 > now()) continue; const h = it.e / 2, t = rmHit(it.w, [h, h, h], ray, it.show ? SHOW.REACH : 0); if (t >= 0 && t < bt) { bt = t; best = {it}; } }
+  for (const it of C.plan.items) { if (it.gone || it.cp || it.t0 > now() || C.gal && !galSees(C, it, room.view.eye[0])) continue; const h = it.e / 2, t = rmHit(it.w, [h, h, h], ray, it.show ? SHOW.REACH : 0); if (t >= 0 && t < bt) { bt = t; best = {it}; } }
   for (const end of ['back', 'front']) {   // the signs over the doors
     if (C.gal) break;
     if (C.common && (end !== C.door || BC_COMMON)) continue;
@@ -7203,7 +7208,7 @@ async function galArtTick(tn) {
     if (f || own || G.loaded >= G.n) { const b = f ? Math.floor(f.t.gi / GAL.PER) : -1; G.fq = (pa ? [pa] : []).concat(f ? C.plan.items.filter(x => x.t.gal && !x.t.par && Math.floor(x.t.gi / GAL.PER) === b).sort((a, c) => Math.abs(a.t.gi - f.t.gi) - Math.abs(c.t.gi - f.t.gi)) : []); } }
   const hi = room.held && !room.held.back && room.held.it;
   let best = hi && hi.t.gid && !hi.t.gTry && !hi.t.art ? hi : G.fq ? G.fq.find(x => !x.t.gTry && !x.gone && x.t0 <= tn) || null : null, bd = 13; const hx = -Math.sin(p.yaw), hz = -Math.cos(p.yaw), vc = viewCos();
-  if (!best) for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn || (GAL_ST < 3 && !it.t.par)) continue; const ax = it.w[0] - p.x, az = it.w[2] - p.z, d0 = Math.hypot(ax, az), dd = d0 + (ax * hx + az * hz < vc * d0 ? 6 : 0); if (dd < bd) { bd = dd; best = it; } }
+  if (!best) for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn || (GAL_ST < 3 && !it.t.par) || !galSees(C, it, p.x)) continue; const ax = it.w[0] - p.x, az = it.w[2] - p.z, d0 = Math.hypot(ax, az), dd = d0 + (ax * hx + az * hz < vc * d0 ? 6 : 0); if (dd < bd) { bd = dd; best = it; } }
   if (!best) return;
   const it = best, t = it.t; t.gTry = 1; galArt.n++;
   try {
