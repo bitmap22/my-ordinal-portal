@@ -3705,6 +3705,7 @@ function rmMake(h, of, side) {
   const R = {h, of, side, ready: false, back: {to: h - 1, o: 0}, front: {to: h + 1 > tipH && tipH >= 0 ? COMMON : h + 1, o: 0}};
   R.autoC = R.front.to === COMMON;   // (the door past the newest block: the common room, until the next block is mined)
   if (side === 'front') R.back.to = of.h; else if (side === 'back') R.front.to = of.h;
+  folLink(R, side);
   R.slot = rmSlots.indexOf(null); if (R.slot < 0) R.slot = 0; rmSlots[R.slot] = R;
   rmLoad(h).then(async B => {   // built a step at a time, so walking never stutters while the next room goes up
     const gone = () => !room || !room.rooms.includes(R);
@@ -3972,7 +3973,7 @@ function rmCross(dir) {
   const r = room.rooms;
   if (dir > 0) { rmFree(r[0]); room.rooms = [r[1], r[2], null]; }
   else { rmFree(r[2]); room.rooms = [null, r[0], r[1]]; }
-  rmCurrent(room.rooms[1]); rmNeighbours(); room.fixDirty = room.dirty = true;
+  rmCurrent(room.rooms[1]); folLink(room.rooms[1]); folAt(); rmNeighbours(); room.fixDirty = room.dirty = true;
 }
 
 /* drawing */
@@ -4217,6 +4218,7 @@ function roomFrame(W, H, tn, dpr) {
   all(0);
   gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, tn, LW, false));
   cmDraw(VP, eye, tn); cmQDraw(VP, eye, tn);
+  folDraw(VP, eye, tn);
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); rings(() => lifeDust(VP, tn, LW, H)); gl.depthMask(true); gl.disable(gl.BLEND);
   gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
   cmOverlays(VP, W, H);
@@ -6510,7 +6512,7 @@ document.getElementById('srgn').onclick = () => { srClose(); if (!(room && room.
    step, back to the transaction that made the inscription. One transaction at a time, gently (mempool.space and the
    sites like it, one after another if one is down) ---- */
 const FOL_MAX = 50;   // (at most this many moves read back; the place it was made is always known)
-let fol = null;   // the journey being followed: {id, number, steps (oldest first: made, then each move), i, busy, n, more, lost}
+var fol = null;   // the journey being followed: {id, number, steps (oldest first: made, then each move), i, busy, n, more, lost}
 const folTxs = new Map();
 async function folTx(txid) {
   if (folTxs.has(txid)) return folTxs.get(txid);
@@ -6686,7 +6688,10 @@ function folGo(i) {
   fol.i = Math.max(0, Math.min(fol.steps.length - 1, i)); folBar();
   const s = fol.steps[fol.i];
   if (s.h == null) { srT = null; note('this move is still waiting to be mined: no block yet', 8); return; }
-  srGo({h: s.h, id: s.txid, label: s.made ? 'made here' : s.miner ? 'paid to the miner here' : 'moved here'});
+  srT = null;   // (no arrow: the tether shows the way)
+  if (room.at && !room.at.common && !room.at.gal && room.at.h === s.h) { folLink(room.at); rmNeighbours(); }
+  else srTravel(s.h);
+  folSay(fol.i);
 }
 async function folStart() {
   const H = room && room.held, t = H && !H.back && H.it.t, id = folIds(t)[0]; if (!id) return;
@@ -6695,14 +6700,101 @@ async function folStart() {
   let r; try { r = await folTrace(id, n => { if (fol && fol.id === id) { fol.n = n; folBar(); } }); }
   catch (e) { if (fol && fol.id === id) { fol = null; folBar(); note('its journey could not be read just now: ' + String(e && e.message || e), 9); } return; }
   if (!fol || fol.id !== id) return;
-  Object.assign(fol, r, {busy: false});
-  if (room && room.held && room.held.it.t === t) rmPut();   // (it goes back on its shelf: the journey starts where it last moved)
-  folGo(fol.steps.length - 1);
+  Object.assign(fol, r, {busy: false}); fol.hs = folHs(fol.steps);
+  if (room && room.held && room.held.it.t === t) rmPut();   // (it goes back on its shelf)
+  const here = room && room.at && !room.at.common && !room.at.gal ? fol.steps.findIndex(s => s.h === room.at.h) : -1;   // (standing in a block of its journey: start here; else where it is now)
+  folGo(here >= 0 ? here : fol.steps.length - 1);
 }
 document.getElementById('cfol').onclick = () => folStart();
 document.getElementById('folp').onclick = () => fol && folGo(fol.i - 1);
 document.getElementById('foln').onclick = () => fol && folGo(fol.i + 1);
-document.getElementById('folx').onclick = () => { fol = null; srT = null; folBar(); };
+document.getElementById('folx').onclick = () => {   // stop: the doors go back to the blocks either side
+  fol = null; srT = null; folBar();
+  const C = room && room.rooms[1]; if (C && !C.common && !C.gal && C.h >= 0) { C.back.to = C.h - 1; C.front.to = C.h + 1 > tipH && tipH >= 0 ? COMMON : C.h + 1; C.autoC = C.front.to === COMMON; rmNeighbours(); }
+};
+// the blocks of the journey, oldest first (moves in the same block share its room; one still waiting has no block yet)
+function folHs(S) { const hs = []; for (const s of S) if (s.h != null && hs[hs.length - 1] !== s.h) hs.push(s.h); return hs; }
+// a block of the journey: its doors lead to the block it was in before and the one it went to next (side: the door that
+// already leads back to the room this one was made from stays as it is)
+function folLink(R, side) {
+  if (!fol || !fol.hs || fol.busy || !R || R.common || R.gal) return;
+  const k = fol.hs.indexOf(R.h); if (k < 0) return;
+  if (side !== 'front' && k > 0) R.back.to = fol.hs[k - 1];
+  if (side !== 'back' && k + 1 < fol.hs.length) { R.front.to = fol.hs[k + 1]; R.autoC = false; }
+}
+// walking into a block of the journey: the bar says which step it is
+function folAt() {
+  if (!fol || !fol.steps || fol.busy || !room || !room.at) return;
+  let j = -1; fol.steps.forEach((s, i) => { if (s.h === room.at.h && j < 0) j = i; });
+  if (j >= 0 && j !== fol.i) { fol.i = j; folBar(); folSay(j); }
+}
+function folSay(i) {
+  if (!fol || !fol.steps) return; const S = fol.steps, s = S[i], K = S.length - 1; if (!s || s.h == null) return;
+  note(s.made && !K ? 'made here, and never moved since' : s.made ? 'made here · follow the light: it runs from cube to cube, through the door, to where it went next'
+    : i === K ? (s.miner ? 'paid to a miner here' : 'it is here now') + ' · the light runs back through the door to where it was before'
+    : (s.miner ? 'paid to a miner here' : 'moved here') + ' · the light runs one way to where it was before, the other way to where it went next', 10);
+}
+// ---- the tether: from the parcel that moved it, out of its shelf and up over the hall, along the middle to the door,
+// through it, and down into the parcel in the next block of the journey. A ribbon that always faces you, bright in the
+// middle and soft at its edges, swaying a little in the air; beads of light run along it the way the inscription went ----
+let folP = null; try { folP = prog('#version 300 es\nprecision highp float;\nlayout(location=0) in vec3 aP;layout(location=1) in vec3 aS;uniform mat4 uVP;out vec3 vS;void main(){vS=aS;gl_Position=uVP*vec4(aP,1.);}',
+  '#version 300 es\nprecision highp float;\nin vec3 vS;uniform float uNow;out vec4 o;void main(){float x=vS.x,a=exp(-x*x*3.2),c=exp(-x*x*60.),b=pow(.5+.5*sin(vS.y*1.6-uNow*3.4),14.);float al=clamp(a*.42+c*.85+b*a*.55,0.,1.)*vS.z;vec3 col=mix(vec3(1.,.55,.12),vec3(1.,.93,.74),clamp(c+b*.6,0.,1.));o=vec4(col*al,al);}'); } catch (e) { console.warn('tether', e); }
+const folVB = gl.createBuffer(), folVA = gl.createVertexArray();
+gl.bindVertexArray(folVA); gl.bindBuffer(gl.ARRAY_BUFFER, folVB);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+gl.bindVertexArray(null);
+let folBuf = new Float32Array(20000);
+// which parcels of the journey stand in the rooms there are now
+function folMap(R) { const want = new Set(fol.steps.filter(s => s.h === R.h).map(s => s.txid)), m = new Map(); for (const it of R.plan.items) if (want.has(it.t.id)) m.set(it.t.id, it); R._folM = m; R._folK = fol.id; return m; }
+function folFind(s) {
+  for (let k = 0; k < 3; k++) { const R = room.rooms[k]; if (!R || !R.ready || R.common || R.gal || R.h !== s.h || !R.plan) continue;
+    const it = (R._folK === fol.id && R._folM ? R._folM : folMap(R)).get(s.txid); if (it) return [it, k]; }
+  return null;
+}
+// the way from one parcel to the next: points to pass through (then smoothed)
+function folPath(A, B) {
+  const [ia, ka] = A, [ib, kb] = B, pa = ia.c || ia.w, pb = ib.c || ib.w, FY = 3.1;
+  const up = (p, s) => [p[0] * .45, Math.max(p[1] + .9, 2.3), p[2] + s * .7];   // out of the shelf, rising
+  if (ka === kb) { const s = Math.sign(pb[2] - pa[2]) || -1; return [pa, up(pa, s), [0, FY, (pa[2] + pb[2]) / 2], up(pb, -s), pb]; }
+  const Rb = room.rooms[Math.min(ka, kb)], dz = Rb.z0 - Rb.L - WT / 2, s = Math.sign(dz - pa[2]) || -1;   // (the wall between: the front wall of the room further back)
+  const mid = [[0, FY, pa[2] + s * 2.4], [0, FY, dz - s * 1.6], [0, FY - .15, dz], [0, FY, dz + s * 1.6], [0, FY, pb[2] - s * 2.4]];
+  const P = [pa, up(pa, s)]; let z = P[1][2];
+  for (const q of mid) if ((q[2] - z) * s > .05) { P.push(q); z = q[2]; }   // (always onward: no doubling back near a door)
+  const e = up(pb, -s); if ((e[2] - z) * s > .05) P.push(e); P.push(pb); return P;
+}
+function folDraw(VP, eye, tn) {
+  if (!folP || !fol || !fol.steps || fol.busy || !room) return;
+  const links = []; let prev = null;
+  for (let j = 0; j < fol.steps.length; j++) { const s = fol.steps[j]; if (s.h == null) continue; const f = folFind(s); if (prev && f && Math.abs(prev[1] - f[1]) <= 1 && prev[0] !== f[0]) links.push([prev, f]); prev = f; }
+  if (!links.length) return;
+  let n = 0; const firsts = [];
+  const put = (p, x, u, f) => { if (n + 6 > folBuf.length) { const b = new Float32Array(folBuf.length * 2); b.set(folBuf); folBuf = b; } folBuf[n++] = p[0]; folBuf[n++] = p[1]; folBuf[n++] = p[2]; folBuf[n++] = x; folBuf[n++] = u; folBuf[n++] = f; };
+  for (const [A, B] of links) {
+    const C = folPath(A, B), pts = [];
+    for (let i = 0; i + 1 < C.length; i++) {   // smoothed through its points (Catmull-Rom), a sample every 20 cm
+      const p0 = C[Math.max(0, i - 1)], p1 = C[i], p2 = C[i + 1], p3 = C[Math.min(C.length - 1, i + 2)];
+      const m = Math.max(2, Math.min(240, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]) / .2)));
+      for (let k = 0; k < m; k++) { const t = k / m, t2 = t * t, t3 = t2 * t; pts.push([0, 1, 2].map(d => .5 * (2 * p1[d] + (-p0[d] + p2[d]) * t + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * t2 + (-p0[d] + 3 * p1[d] - 3 * p2[d] + p3[d]) * t3))); }
+    }
+    pts.push(C[C.length - 1]);
+    let U = 0; const us = [0]; for (let i = 1; i < pts.length; i++) { U += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]); us.push(U); }
+    firsts.push([n / 6, pts.length * 2]);
+    for (let i = 0; i < pts.length; i++) {
+      const u = us[i], e = Math.min(1, u / 1.6, (U - u) / 1.6), p = pts[i].slice();   // (floating: it sways a little, but not at its ends)
+      p[0] += .07 * e * Math.sin(u * .55 + tn * .8 + 1); p[1] += .09 * e * Math.sin(u * .8 + tn * 1.2);
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], T = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], V = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
+      let S = [T[1] * V[2] - T[2] * V[1], T[2] * V[0] - T[0] * V[2], T[0] * V[1] - T[1] * V[0]]; const l = Math.hypot(...S) || 1, dv = Math.hypot(...V) || 1, w = Math.min(.11, Math.max(.03, .028 * dv)) / l;   // (thinner close up: overhead it is a line, not a bar)
+      const f = Math.max(.3, Math.min(1, 1.7 * l / ((Math.hypot(...T) || 1) * dv)));   // (seen end on, along the hall, it fades a little: no glare where it runs away from you)
+      S = S.map(v => v * w);
+      put([p[0] - S[0], p[1] - S[1], p[2] - S[2]], -1, u, f); put([p[0] + S[0], p[1] + S[1], p[2] + S[2]], 1, u, f);
+    }
+  }
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);   // (laid over, not added: where it overlaps itself it never goes past its own colour)
+  gl.useProgram(folP.p); gl.uniformMatrix4fv(folP.u.uVP, false, VP); gl.uniform1f(folP.u.uNow, tn);
+  gl.bindVertexArray(folVA); gl.bindBuffer(gl.ARRAY_BUFFER, folVB); gl.bufferData(gl.ARRAY_BUFFER, folBuf.subarray(0, n), gl.DYNAMIC_DRAW);
+  for (const [f, c] of firsts) gl.drawArrays(gl.TRIANGLE_STRIP, f, c);
+  gl.bindVertexArray(null); gl.depthMask(true); gl.disable(gl.BLEND);
+}
 const $sraB = $sra.querySelector('b'), $sraS = $sra.querySelector('svg');
 const srHide = () => { if ($sra.style.display !== 'none') $sra.style.display = 'none'; };
 function srArrow(VP) {
