@@ -5818,15 +5818,16 @@ function cmBoardStats() {
     else if (l1 != null && l1 < l0 * .75) { S.best = 'WAIT 1 BLOCK'; S.bestSub = 'then ~' + r1(l1) + ' gets in, not ' + r1(l0) + ' sat/vB'; S.go = 0; }
     else if (usual != null && m0 > usual * 1.8 && m0 > 3) { S.best = 'LATER'; S.bestSub = 'busy: ~' + r1(m0) + ' now, ~' + r1(usual) + ' is usual today'; S.go = 0; }
     else { S.best = 'NOW'; S.bestSub = since < 150 ? 'a block was just mined · fees are low' : usual != null && m0 < usual * .8 ? 'cheaper than usual today' : 'fees are normal for today'; S.go = 1; } }
-  // the lowest fee that gets into the next block
-  const f = futBlocks && futBlocks[0]; if (f && f.feeRange && f.feeRange.length) { const full = (f.blockVSize || 0) > 0.97e6; S.low = r1(f.feeRange[0]) + ' sat/vB'; S.lowSub = full ? 'the lowest in the next block now' : 'the next block still has room'; } else S.lowSub = 'no forecast just now';
+  // the right fee to pay: the lowest fee in the next block now, and a little over (new ones keep arriving and push it up)
+  const f = futBlocks && futBlocks[0]; if (f && f.feeRange && f.feeRange.length) { const full = (f.blockVSize || 0) > 0.97e6, l = f.feeRange[0], pay = full ? Math.ceil((l * 1.12 + .05) * (l < 10 ? 100 : 10)) / (l < 10 ? 100 : 10) : l;
+    S.low = '~' + r1(pay) + ' sat/vB'; S.lowSub = full ? 'lowest in the next block now: ' + r1(l) : 'the next block still has room'; } else S.lowSub = 'no forecast just now';
   const got = S.bars.filter(r => r != null), last = got.slice(-6), avg = last.length ? last.reduce((p, q) => p + q, 0) / last.length : 0;
   S.mood = got.length < 6 ? 'reading the last day…' : (avg < 5 ? 'calm' : avg < 20 ? 'busy' : avg < 100 ? 'stormy' : 'wild') + ' · now ~' + r1(avg) + ' sat/vB · day high ' + r1(Math.max(...got));
   return S;
 }
 // the three answers and the weather under them (side by side on the wide screen; one under another on the tall one)
 function cmBoardBottom(c, x, y, w, tall) {
-  const S = cmBoardStats(), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, cells = [['NEXT BLOCK DUE IN', S.eta, S.etaSub, '#9fe8ff'], ['BEST TIME TO GET IN', S.best, S.bestSub, S.go === 0 ? '#ffb04a' : '#7dff4a'], ['LOW FEE TO GET IN', S.low, S.lowSub, '#ffd36b']];
+  const S = cmBoardStats(), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, cells = [['NEXT BLOCK DUE IN · ESTIMATE', S.eta, S.etaSub, '#9fe8ff'], ['BEST TIME TO GET IN · ESTIMATE', S.best, S.bestSub, S.go === 0 ? '#ffb04a' : '#7dff4a'], ['RIGHT FEE TO PAY · ESTIMATE', S.low, S.lowSub, '#ffd36b']];
   const cw = tall ? w : (w - 24) / 3, ch = tall ? 86 : 76; c.textBaseline = 'middle';
   cells.forEach(([t, v, sub, col], i) => { const cx = tall ? x : x + i * (cw + 12), cy = tall ? y + i * (ch + 8) : y;
     c.fillStyle = 'rgba(76,201,240,.07)'; c.fillRect(cx, cy, cw, ch); c.strokeStyle = col; c.globalAlpha = .55; c.lineWidth = 2; c.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2); c.globalAlpha = 1;
@@ -5837,7 +5838,7 @@ function cmBoardBottom(c, x, y, w, tall) {
   const n = S.bars.length || 144, bw = w / n, by = wy + (tall ? 38 : 18), bh = wh - 20;
   for (let i = 0; i < n; i++) { const r = S.bars[i]; if (r == null) { c.fillStyle = 'rgba(247,147,26,.15)'; c.fillRect(x + i * bw, by + bh - 2, Math.max(1, bw - 1), 2); continue; }
     const k = Math.max(0, Math.min(1, (Math.log10(Math.max(r, .1)) + 1) / 2.3)), hh = Math.round(4 + k * (bh - 4)); c.fillStyle = feeCss(Math.max(r, .1)); c.fillRect(x + i * bw, by + bh - hh, Math.max(1, bw - 1), hh); }
-  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = mono(600, 11); c.textAlign = 'left'; c.fillText('a day ago', x, by + bh + 9); c.textAlign = 'right'; c.fillText('now', x + w, by + bh + 9);
+  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = mono(600, 11); c.textAlign = 'left'; c.fillText('a day ago', x, by + bh + 9); c.textAlign = 'center'; if (tall) c.fillText('estimates: calculated guesses from the last blocks', x + w / 2, by + bh + 26); else c.fillText('estimates: calculated guesses from the last blocks and the ones waiting', x + w / 2, by + bh + 9); c.textAlign = 'right'; c.fillText('now', x + w, by + bh + 9);
 }
 const cmBoardCv = cmCv(1024, 576);
 function cmBoard() {
@@ -6647,7 +6648,7 @@ function cmBigOpen() {
 function cmBigDraw() {
   if (!vw || !vw.big) return;
   const cv = $vwc.querySelector('canvas.cmbig'); if (!cv) return;
-  const tall = $vwc.clientWidth < $vwc.clientHeight * 1.1, k = tall ? Math.min(3, devicePixelRatio || 1) : 1, W = tall ? 440 : 1024, H = tall ? 1270 : 576;   // (a phone held upright: laid out tall, drawn sharp)
+  const tall = $vwc.clientWidth < $vwc.clientHeight * 1.1, k = tall ? Math.min(3, devicePixelRatio || 1) : 1, W = tall ? 440 : 1024, H = tall ? 1288 : 576;   // (a phone held upright: laid out tall, drawn sharp)
   if (cv.width !== W * k || cv.height !== H * k) { cv.width = W * k; cv.height = H * k; }
   const c = cv.getContext('2d'); c.setTransform(k, 0, 0, k, 0, 0);
   if (tall) cmBoardTall(c, W, H); else c.drawImage(cmBoard(), 0, 0);
