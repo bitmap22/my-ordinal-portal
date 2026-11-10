@@ -7103,7 +7103,7 @@ async function galTravel(pid, focus) {
     if (room) for (const R of room.rooms) rmFree(R);
     room = {rooms: [null, null, null], p: {x: 0, z: -1.6, yaw: 0, pitch: -.04, vx: 0, vz: 0, ph: 0, bob: 0}, dirty: true, fixDirty: true, nPar: 0, nFix: 0, nDoor: 0, hov: ''};
     document.body.classList.add('room', 'gal'); document.body.classList.remove('holding', 'galok', 'shw', 'showcp'); $th.classList.add('on');
-    const C = galMake(pid, focus, from); room.rooms[1] = C; room.at = C;
+    const C = galMake(pid, focus, from); C.gal.focus = focus || null; room.rooms[1] = C; room.at = C;
     head('walking into the collection…');
     const mine = room, t = performance.now();
     while (room === mine && !C.ready && !C.failed && performance.now() - t < 90000) await new Promise(r => setTimeout(r, 150));
@@ -7196,8 +7196,8 @@ async function galArtTick(tn) {
   if (tn - galArt.gc > 4) { galArt.gc = tn; let drop = 0; for (const it of C.plan.items) { const t = it.t; if (t.art && !t.par && it !== (room.held && room.held.it) && Math.hypot(it.w[0] - p.x, it.w[2] - p.z) > 30) { t.art = null; t.gTry = 0; drop++; } } if (drop) { C.nl = null; near.rk = ''; } }
   // first the parent on its pedestal and the bookcase holding your piece (the one the arrow leads to), however far, so they
   // are ready when you get there; then what is near you, the shelves you are facing before the ones behind you
-  if (!G.fq && C.plan.items.length) { const pa = C.plan.items.find(x => x.t.par), f = srT && srT.h === GALLERY && srT.gid ? C.plan.items.find(x => x.t.gid === srT.gid && !x.t.par) : null;
-    if (f || G.loaded >= G.n || !(srT && srT.h === GALLERY)) { const b = f ? Math.floor(f.t.gi / GAL.PER) : -1; G.fq = (pa ? [pa] : []).concat(f ? C.plan.items.filter(x => x.t.gal && !x.t.par && Math.floor(x.t.gi / GAL.PER) === b).sort((a, c) => Math.abs(a.t.gi - f.t.gi) - Math.abs(c.t.gi - f.t.gi)) : []); } }
+  if (!G.fq && C.plan.items.length) { const pa = C.plan.items.find(x => x.t.par), own = !G.focus || G.focus === G.pid, f = own ? null : C.plan.items.find(x => x.t.gid === G.focus && !x.t.par);
+    if (f || own || G.loaded >= G.n) { const b = f ? Math.floor(f.t.gi / GAL.PER) : -1; G.fq = (pa ? [pa] : []).concat(f ? C.plan.items.filter(x => x.t.gal && !x.t.par && Math.floor(x.t.gi / GAL.PER) === b).sort((a, c) => Math.abs(a.t.gi - f.t.gi) - Math.abs(c.t.gi - f.t.gi)) : []); } }
   let best = G.fq ? G.fq.find(x => !x.t.gTry && !x.gone && x.t0 <= tn) || null : null, bd = 10; const fv = room.view ? room.view.dir : [0, 0, -1];
   if (!best) for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn || (GAL_ST < 3 && !it.t.par)) continue; const ax = it.w[0] - p.x, az = it.w[2] - p.z, dd = Math.hypot(ax, az) + (ax * fv[0] + az * fv[2] < 0 ? 6 : 0); if (dd < bd) { bd = dd; best = it; } }
   if (!best) return;
