@@ -6528,7 +6528,7 @@ function srArrow(VP) {
     if (!S.it && R.gal && !R.gal.done) { S.R = null; return srHide(); }   // (its page is still on the way)
     if (!S.it && R.gal) { note('that piece is not in this collection', 8); srT = null; return srHide(); }
     if (!S.it) { note(S.id ? 'that transaction is not in block ' + srNum(S.h) : 'block ' + srNum(S.h) + ' has ' + srNum(R.plan.items.length) + ' parcels: 0 to ' + srNum(R.plan.items.length - 1), 10); srT = null; return srHide(); }
-    if (R === room.at) note(R.gal ? S.label + ' · piece ' + srNum(S.it.t.gi + 1) + ' · follow the arrow' : S.label + ' · parcel ' + srNum(S.it.t.idx) + ' of block ' + srNum(S.h) + ' · follow the arrow', 8);
+    if (R === room.at) note(R.gal ? (S.it.t.par ? 'the parent stands on its pedestal in the middle · follow the arrow' : S.label + ' · piece ' + srNum(S.it.t.gi + 1) + ' · follow the arrow') : S.label + ' · parcel ' + srNum(S.it.t.idx) + ' of block ' + srNum(S.h) + ' · follow the arrow', 8);
   }
   const it = S.it;
   if (it.gone || (room.held && room.held.it === it)) return srHide();
@@ -7098,7 +7098,7 @@ async function galTravel(pid, focus) {
     while (room === mine && !C.ready && !C.failed && performance.now() - t < 90000) await new Promise(r => setTimeout(r, 150));
     if (room !== mine) return;
     if (!C.ready) { await srTravel(from >= 0 || from === COMMON ? from : tipH); note(C.failed === 'none' ? 'that inscription has no children: it is not a collection' : 'that collection could not be read just now: try again in a moment', 8); return; }
-    if (focus && GAL_ST >= 4) srT = {h: GALLERY, gid: focus, id: focus.slice(0, 64), label: 'your piece', R: null, it: null};
+    if (focus && GAL_ST >= 4) srT = {h: GALLERY, gid: focus, id: focus.slice(0, 64), label: focus === pid ? 'the parent' : 'your piece', R: null, it: null};
     rmFade(false);
   } finally { setTimeout(() => { if ($rfx.dataset.say === say && !$rfx.classList.contains('on')) delete $rfx.dataset.say; }, 450); }
 }
@@ -7176,15 +7176,18 @@ async function galArtTick(tn) {
   } catch (e) { t.gFail = (t.gFail || 0) + 1; if (t.gFail < 2) t.gTry = 0; }
   finally { galArt.busy = false; }
 }
-// a parcel you are holding that is a child: which collections it belongs to (asked once, when you pick it up)
+// a parcel you are holding: the collections it belongs to (if it is a child), and its own collection (if it is a parent).
+// Asked once, when you pick it up
 async function galCheck(t) {
   if (GAL_ST < 4) return;
   const ids = t.ordIds || (t.id && t.ins && t.ins.length ? t.ins.map(e => t.id + 'i' + e.i) : []);
   if (!ids.length) return;
-  if (!t.gal && t.sc != null && TF.child != null && !((t.sc >> TF.child) & 1)) return;   // (the block says it has no parent: no need to ask)
+  const noPar = !t.gal && t.sc != null && TF.child != null && !((t.sc >> TF.child) & 1);   // (the block says it has no parent: no need to ask)
   if (!t._par) {
     const here = room && room.at && room.at.gal ? room.at.gal.pid : null, out = [];
-    for (const id of ids.slice(0, 2)) { try { const j = await galGet('/r/parents/' + id); for (const pp of (j && j.ids) || []) if (pp !== here && !out.some(o => o.p === pp)) out.push({p: pp, from: id}); } catch (e) {} }
+    if (!noPar) for (const id of ids.slice(0, 2)) { try { const j = await galGet('/r/parents/' + id); for (const pp of (j && j.ids) || []) if (pp !== here && !out.some(o => o.p === pp)) out.push({p: pp, from: id}); } catch (e) {} }
+    // a parent in your hands: does it have children? then its own collection is a gallery too (not the one you are standing in)
+    for (const id of ids.slice(0, 2)) { if (id === here || out.some(o => o.p === id)) continue; try { const j = await galGet('/r/children/' + id); if (j && (j.ids || []).length) out.push({p: id, from: id, own: true}); } catch (e) {} }
     t._par = out;
   }
   galShowBtn(t);
@@ -7201,8 +7204,8 @@ $cgal.onclick = () => {
   if (t._par.length === 1) return galGo(t._par[0]);
   $cgl.innerHTML = '';   // more than one collection: pick which
   for (const o of t._par) {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = 'collection ' + srShort(o.p); b.onclick = () => galGo(o); $cgl.append(b);
-    galGet('/r/inscription/' + o.p).then(d => { b.textContent = 'collection #' + fmt(d.number); }, () => {});
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = o.own ? 'its own collection' : 'collection ' + srShort(o.p); b.onclick = () => galGo(o); $cgl.append(b);
+    if (!o.own) galGet('/r/inscription/' + o.p).then(d => { b.textContent = 'collection #' + fmt(d.number); }, () => {});
   }
   $cgl.classList.add('on'); fitCard();
 };
