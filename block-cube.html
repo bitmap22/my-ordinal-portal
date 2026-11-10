@@ -5839,8 +5839,14 @@ function cmBoardStats() {
   if (fl.length >= T0 + 12) { const ways = [];
     for (const W of [12, 24, 36]) for (const m of [1, 1.1, 1.25, 1.5]) { let hit = 0, sum = 0; for (let i = T0; i < fl.length; i++) { let mx = 0; for (let k = i - W; k < i; k++) if (fl[k] > mx) mx = fl[k]; const fee = up(mx * m); if (fl[i] <= fee) hit++; sum += fee; }
       let mx = 0; for (let k = fl.length - W; k < fl.length; k++) if (fl[k] > mx) mx = fl[k]; ways.push({W, m, hit, avg: sum / (fl.length - T0), fee: up(Math.max(mx * m, q25))}); }
-    const n = fl.length - T0, top1 = Math.max(...ways.map(w => w.hit)), best = ways.filter(w => w.hit >= top1 - 1).sort((p, q) => p.avg - q.avg)[0], ok = ways.filter(w => w.hit / n >= .95 && w.avg < best.avg * .97).sort((p, q) => p.avg - q.avg)[0];
-    S.low = '~' + r1(best.fee) + ' sat/vB'; S.pct = Math.round(best.hit / n * 100); S.lowSub = 'right ' + best.hit + ' of last ' + n + (ok ? ' · ~' + r1(ok.fee) + ': ' + Math.round(ok.hit / n * 100) + '%' : '');
+    // (low fees first: of the ways that were right at least 19 times in 20, the cheapest; if none was, the one right most often)
+    const n = fl.length - T0, top1 = Math.max(...ways.map(w => w.hit)), good = ways.filter(w => w.hit / n >= .95).sort((p, q) => p.avg - q.avg), best = good[0] || ways.filter(w => w.hit >= top1).sort((p, q) => p.avg - q.avg)[0];
+    S.low = '~' + r1(best.fee) + ' sat/vB'; S.pct = Math.round(best.hit / n * 100); S.lowSub = 'right ' + best.hit + ' of last ' + n;
+    // the patient fee: the lowest fee that, sent before any block of the last day, would have been in within six blocks
+    // (about an hour) nine times in ten: a fee gets in at the first block whose lowest fee is no higher than it
+    const cand = [...new Set(fl.map(up))].sort((p, q) => p - q), st = fl.length - 5; let pat = null;
+    for (const c of cand) { let in6 = 0, in1 = 0; for (let i = 0; i < st; i++) { if (fl[i] <= c) { in1++; in6++; continue; } for (let j = i + 1; j < i + 6; j++) if (fl[j] <= c) { in6++; break; } } if (in6 / st >= .9) { pat = {fee: c, p6: Math.round(in6 / st * 100), p1: Math.round(in1 / st * 100)}; break; } }
+    S.rows = [pat && pat.fee < best.fee * .9 ? ['~' + r1(pat.fee), 'patient: in 6 blocks, ' + pat.p6 + '%'] : null, ['~' + r1(best.fee), 'next block: right ' + S.pct + '%']].filter(Boolean);
     S.way = 'the dearest of the last ' + best.W + ' blocks' + (best.m > 1 ? ' + ' + Math.round((best.m - 1) * 100) + '%' : ''); S.fee = best.fee; }
   else if (fl.length >= 25) { const L = fl.slice(-24); S.fee = up(Math.max(Math.max(...L) * 1.1, q25)); S.low = '~' + r1(S.fee) + ' sat/vB'; S.lowSub = 'still reading blocks to score itself'; }
   else if (F0 != null) { S.low = '…'; S.lowSub = 'next block from ' + r1(F0) + ' now · reading blocks'; } else S.lowSub = 'no forecast just now';
@@ -5854,18 +5860,20 @@ function cmBoardStats() {
 }
 // the three answers and the weather under them (side by side on the wide screen; one under another on the tall one)
 function cmBoardBottom(c, x, y, w, tall) {
-  const S = cmBoardStats(), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, cells = [['NEXT BLOCK · USUAL WAIT', S.eta, S.etaSub, '#9fe8ff'], ['BEST TIME TO GET IN', S.best, S.bestSub, S.go === 0 ? '#ffb04a' : '#7dff4a'], [S.pct != null ? 'FEE · NEXT BLOCK · RIGHT ' + S.pct + '%' : 'FEE FOR THE NEXT BLOCK', S.low, S.lowSub, '#ffd36b']];
+  const S = cmBoardStats(), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, cells = [['NEXT BLOCK · USUAL WAIT', S.eta, S.etaSub, '#9fe8ff'], ['BEST TIME TO GET IN', S.best, S.bestSub, S.go === 0 ? '#ffb04a' : '#7dff4a'], [S.rows ? 'LOW FEE (sat/vB) · SCORED ON TODAY' : 'FEE FOR THE NEXT BLOCK', S.low, S.lowSub, '#ffd36b']];
   const cw = tall ? w : (w - 24) / 3, ch = tall ? 86 : 76; c.textBaseline = 'middle';
   cells.forEach(([t, v, sub, col], i) => { const cx = tall ? x : x + i * (cw + 12), cy = tall ? y + i * (ch + 8) : y;
     c.fillStyle = 'rgba(76,201,240,.07)'; c.fillRect(cx, cy, cw, ch); c.strokeStyle = col; c.globalAlpha = .55; c.lineWidth = 2; c.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2); c.globalAlpha = 1;
-    c.textAlign = 'left'; c.fillStyle = col; c.font = mono(700, 14); c.fillText(t, cx + 12, cy + 15); c.fillStyle = '#f7efe3'; c.font = mono(800, tall ? 26 : 28); c.fillText(v, cx + 12, cy + (tall ? 40 : 43));
+    c.textAlign = 'left'; c.fillStyle = col; c.font = mono(700, 14); c.fillText(t, cx + 12, cy + 15);
+    if (i === 2 && S.rows) { S.rows.forEach(([fv, tx], k) => { const ry = cy + (S.rows.length > 1 ? (tall ? 40 + k * 28 : 37 + k * 25) : 46); c.fillStyle = k === 0 && S.rows.length > 1 ? '#7dff4a' : '#f7efe3'; c.font = mono(800, 21); c.fillText(fv, cx + 12, ry); c.fillStyle = '#cdbca3'; c.font = mono(600, tall ? 13 : 12.5); c.fillText(tx, cx + 86, ry + 1); }); return; }
+    c.fillStyle = '#f7efe3'; c.font = mono(800, tall ? 26 : 28); c.fillText(v, cx + 12, cy + (tall ? 40 : 43));
     c.fillStyle = '#cdbca3'; c.font = mono(600, tall ? 14 : 12.5); c.fillText(sub, cx + 12, cy + (tall ? 70 : 65)); });
   const wy = y + (tall ? 3 * (ch + 8) : ch + 10), wh = tall ? 74 : 62;
   c.textAlign = 'left'; c.fillStyle = '#ffb04a'; c.font = mono(700, 14); c.fillText('BLOCK WEATHER', x, wy + 8); c.fillStyle = '#cdbca3'; c.font = mono(600, 13); if (tall) c.fillText(S.mood, x, wy + 27); else { c.textAlign = 'right'; c.fillText(S.mood, x + w, wy + 8); }
   const n = S.bars.length || 144, bw = w / n, by = wy + (tall ? 38 : 18), bh = wh - 20;
   for (let i = 0; i < n; i++) { const r = S.bars[i]; if (r == null) { c.fillStyle = 'rgba(247,147,26,.15)'; c.fillRect(x + i * bw, by + bh - 2, Math.max(1, bw - 1), 2); continue; }
     const k = Math.max(0, Math.min(1, (Math.log10(Math.max(r, .1)) + 1) / 2.3)), hh = Math.round(4 + k * (bh - 4)); c.fillStyle = feeCss(Math.max(r, .1)); c.fillRect(x + i * bw, by + bh - hh, Math.max(1, bw - 1), hh); }
-  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = mono(600, 11); c.textAlign = 'left'; c.fillText('a day ago', x, by + bh + 9); c.textAlign = 'center'; { const lv = S.live && S.live.n ? 'seen live here: right ' + S.live.h + ' of ' + S.live.n : 'never certain'; if (tall) c.fillText('scored on the last day of blocks · ' + lv, x + w / 2, by + bh + 26); else c.fillText((S.way ? 'best of 12 ways today: ' + S.way : 'scored on the last day of blocks') + ' · ' + lv, x + w / 2, by + bh + 9); } c.textAlign = 'right'; c.fillText('now', x + w, by + bh + 9);
+  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = mono(600, 11); c.textAlign = 'left'; c.fillText('a day ago', x, by + bh + 9); c.textAlign = 'center'; { const lv = S.live && S.live.n ? 'seen live here: right ' + S.live.h + ' of ' + S.live.n : 'never certain'; if (tall) c.fillText('scored on the last day of blocks · ' + lv, x + w / 2, by + bh + 26); else c.fillText((S.way ? 'next-block fee: the cheapest of 12 ways right 19 in 20 today (' + S.way + ')' : 'scored on the last day of blocks') + ' · ' + lv, x + w / 2, by + bh + 9); } c.textAlign = 'right'; c.fillText('now', x + w, by + bh + 9);
 }
 const cmBoardCv = cmCv(1024, 576);
 function cmBoard() {
