@@ -3239,6 +3239,14 @@ if(T==4){
  L=RX(iS.w);
 }else if(T==23){   // the chain of blocks circling slowly over the Forum
  float a=iS.z+t*.07;b=vec3(iP.x+cos(a)*iS.w,iP.y+.35*sin(t*.5+ph),iP.z+sin(a)*iS.w);R=RY(-a-1.5708)*RX(.15*sin(t*.3+ph));
+}else if(T==43){   // a door guard: breathing; its head and shoulders follow you; close up it lifts its spear
+ vec3 dl=(uE-(iP.xyz+vec3(0.,2.6,0.)))*R;float ds=length(dl.xz),nr=smoothstep(14.,8.,ds),cl=smoothstep(5.5,3.,ds);
+ float yw=clamp(atan(dl.x,dl.z),-1.25,1.25)*nr+(1.-nr)*.12*sin(t*.23+ph),br=.012*sin(t*1.1+ph);int k=int(iS.z+.5);
+ if(k>0){mat3 Q=RY(yw*.3);
+  if(k==2){mat3 H=RY(yw*.7)*RX(clamp(atan(-dl.y,ds),-.25,.4)*nr);p=H*p+vec3(0.,2.5,0.);n=H*n;}
+  if(k==3)p.y+=.16*cl;
+  p=Q*p;n=Q*n;p.y+=br;}
+ em=w>.8?.45+.55*nr+.35*cl*sin(t*5.):0.;
 }else if(T==41){   // the barkeep: glides along its rail, wipes, shakes, watches you; pulls the tap when a pint is poured (uBt.x: when)
  float tp=t-uBt.x,pg=tp>0.?smoothstep(0.,.45,tp)*(1.-smoothstep(2.4,3.8,tp)):0.,pk=tp>0.?smoothstep(.1,.5,tp)*(1.-smoothstep(1.9,2.5,tp)):0.,pull=tp>0.?smoothstep(.5,.8,tp)*(1.-smoothstep(1.6,1.9,tp)):0.;
  float gd=mix(2.3*sin(t*.13)+.9*sin(t*.31+1.),0.,pg),f=mod(t,24.),sh=smoothstep(14.,15.,f)*(1.-smoothstep(19.,20.,f))*(1.-pk);
@@ -4343,6 +4351,7 @@ CM_BLOCK.push([27.6, 30.4, 40.2, 40.8], [35.6, 38.4, 40.2, 40.8], [27.6, 30.4, 2
 for (const [x, d] of [[28.0, 30.4], [38.0, 30.4], [28.0, 35.7], [38.0, 35.7]]) CM_BLOCK.push([x - .35, x + .35, d - .35, d + .35]);   // the stone lanterns
 CM_BLOCK.push([24.6, 41.5, 22.0, 22.78], [24.6, 41.5, 47.22, 48], [41.22, 42, 22, 48], [25.45, 26.4, 30.75, 31.65]);   // the bamboo fence, the stone basin
 CM_BLOCK.push([-28.2, -25.3, 22, 23.1]);   // the mining racks
+for (const s of [-1, 1]) CM_BLOCK.push([s * 5.3 - .6, s * 5.3 + .6, 16.9, 17.95]);   // the door guards
 for (const s of [-1, 1]) CM_BLOCK.push([s > 0 ? 10.3 : -11.1, s > 0 ? 11.1 : -10.3, 25.4, 28.6], [s * 9.6 - .4, s * 9.6 + .4, 22.2, 23.0], [s * 9.6 - .4, s * 9.6 + .4, 42.4, 43.2]);   // the hall's benches, its big vases
 CM_BLOCK.push([12.6, 14.9, 9.2, 10.9], [4.2, 5.4, 9.5, 10.9]);   // crates and paint by the warehouse door
 
@@ -4617,7 +4626,7 @@ function* cmFixG(R) {   // (built a part at a time, the rooms' build letting fra
   for (let i = 0; i < 8; i++) {
     const a = CM_PILA[i], x = Math.cos(a) * 8.1, dd = CM.PD + Math.sin(a) * 8.1;
     for (let k = 0; k < 4; k++) { const jx = Math.sin(i * 7 + k * 3) * .05, jz = Math.cos(i * 5 + k * 2) * .05; box(x + jx, .45 + k * .92, dd + jz, .9, .9, .9, k === 3 ? K.amber : K.dmarble, k === 3 ? 1 : 0); if (k) box(x, k * .92 - .01, dd, .82, .02, .82, K.gold, 2); }
-    const f = R.famous[i], fx = -Math.cos(a), fd = -Math.sin(a); if (Math.abs(fx) > Math.abs(fd)) tiles(x + Math.sign(fx) * .46, 1.4, dd, Math.sign(fx), 0, .21, f.x, f.y, 96, 4); else tiles(x, 1.4, dd + Math.sign(fd) * .46, 0, Math.sign(fd), .21, f.x, f.y, 96, 4);
+    const f = R.famous[i], fx = -Math.cos(a), fd = -Math.sin(a), px = x + Math.sin(i * 7 + 3) * .05, pd = dd + Math.cos(i * 5 + 2) * .05; if (Math.abs(fx) > Math.abs(fd)) tiles(px + Math.sign(fx) * .458, 1.4, pd, Math.sign(fx), 0, .21, f.x, f.y, 96, 4); else tiles(px, 1.4, pd + Math.sign(fd) * .458, 0, Math.sign(fd), .21, f.x, f.y, 96, 4);
     light(x + fx * .75, .15, dd + fd * .75, 0xffb060, 1.2, 4.2, [-fx * .35, 1, -fd * .35], .55);
   }
   // its walls: travertine, pilasters with gilded capitals, a cornice of light; openings to the bar and the garden; the arcade's mouth
@@ -4822,6 +4831,36 @@ const CMS = (() => {
     bx(v, 0, 0, .405, .3, .3, .01, [0, 0, 0], 2.75); bx(v, 0, 0, -.405, .3, .3, .01, [0, 0, 0], 2.75);
   });
   make('cmLink', v => { const S = C(0x9aa3b2); bx(v, 0, .14, 0, .5, .05, .05, S, 0); bx(v, 0, -.14, 0, .5, .05, .05, S, 0); bx(v, -.25, 0, 0, .05, .33, .05, S, 0); bx(v, .25, 0, 0, .05, .33, .05, S, 0); });
+  // a door guard (front: +z): legs, torso with its shield arm, head (about its neck), the spear arm
+  { const DK = C(0x1a1a20), GM = C(0x34363e), GOLD = C(0xd9a441), GLD2 = C(0xffc94a), AMB = C(0xffa51e), RED = C(0xc2301c), STL = C(0xaab2bf);
+    const discZ = (v, x, y, z, prof, seg, colf, w) => lathe(v, prof, seg, colf, w, TR([1, 1, 1], [1.5708, 0, 0], [x, y, z]));
+    make('gdLegs', v => {
+      for (const s of [-1, 1]) { bx(v, s * .28, .08, .06, .28, .16, .54, DK, 0); bx(v, s * .28, .17, .22, .22, .04, .2, GOLD, 0); bx(v, s * .28, .58, 0, .21, .84, .25, GM, 0); bx(v, s * .28, .58, .13, .13, .7, .02, GOLD, 0);
+        lathe(v, [[0, -.13], [.14, -.13], [.14, .13], [0, .13]], 10, () => GOLD, 0, TR([1, 1, 1], [0, 0, 1.5708], [s * .28, 1.02, 0])); bx(v, s * .28, 1.34, 0, .25, .56, .29, DK, 0); bx(v, s * .28, 1.34, .15, .17, .4, .012, GM, 0);
+        lathe(v, [[.028, .25], [.028, .95]], 6, () => STL, 0, TR([1, 1, 1], [0, 0, 0], [s * .28, 0, -.17])); lathe(v, [[.045, .5], [.045, .95]], 8, () => GM, 0, TR([1, 1, 1], [0, 0, 0], [s * .28, 0, -.17])); }
+      bx(v, 0, 1.66, 0, .74, .2, .38, GM, 0); bx(v, 0, 1.77, 0, .78, .04, .42, GOLD, 0);
+      for (let k = -2; k <= 2; k++) { bx(v, k * .15, 1.38, .2, .12, .4, .025, k % 2 ? DK : GM, 0); bx(v, k * .15, 1.19, .2, .12, .03, .03, GOLD, 0); }   // a skirt of plates
+    });
+    make('gdTorso', v => {
+      lathe(v, [[.2, 1.78], [.24, 1.9]], 12, () => DK, 0); bx(v, 0, 2.14, 0, .92, .56, .46, DK, 0); bx(v, 0, 2.14, .232, .7, .44, .012, GM, 0);
+      for (const s of [-1, 1]) { bx(v, s * .3, 2.14, .24, .02, .44, .012, GOLD, 0); bx(v, s * .62, 2.36, 0, .36, .2, .52, GM, 0); bx(v, s * .62, 2.47, 0, .38, .03, .54, GOLD, 0); bx(v, s * .78, 2.3, 0, .05, .16, .44, GOLD, 0); }
+      bx(v, 0, 2.36, .24, .7, .02, .012, GOLD, 0); bx(v, 0, 1.93, .24, .7, .02, .012, GOLD, 0);
+      discZ(v, 0, 2.14, .24, [[0, 0], [.11, 0], [.11, .02], [0, .02]], 14, () => AMB, .95); discZ(v, 0, 2.14, .238, [[.12, 0], [.15, 0], [.15, .025], [.12, .025]], 14, () => GOLD, 0);   // the light in its chest
+      bx(v, 0, 2.1, -.26, .5, .44, .1, GM, 0); for (const s of [-1, 1]) lathe(v, [[.05, 1.95], [.05, 2.5], [.03, 2.56]], 8, () => STL, 0, TR([1, 1, 1], [0, 0, 0], [s * .15, 0, -.33]));   // its pack, two stacks
+      bx(v, -.64, 1.95, .04, .17, .54, .19, DK, 0); bx(v, -.64, 1.62, .14, .15, .15, .36, GM, 0);   // the shield arm
+      discZ(v, -.64, 1.6, .34, [[0, .05], [.16, .05], [.4, .02], [.45, 0], [.45, -.03], [0, -.03]], 20, (i, a, y, j) => j === 0 ? AMB : j === 1 ? RED : GOLD, 0); discZ(v, -.64, 1.6, .392, [[0, 0], [.1, 0], [.07, .04], [0, .05]], 12, () => GLD2, .9);   // its round shield
+    });
+    make('gdHead', v => {
+      lathe(v, [[.07, -.06], [.07, .04]], 8, () => GM, 0); bx(v, 0, .2, 0, .38, .3, .4, DK, 0); bx(v, 0, .365, 0, .4, .04, .42, GOLD, 0); bx(v, 0, .3, .203, .4, .05, .012, GOLD, 0);
+      bx(v, 0, .2, .203, .28, .05, .012, AMB, .98); for (const s of [-1, 1]) { bx(v, s * .15, .1, .19, .1, .2, .04, GM, 0); bx(v, s * .197, .2, 0, .012, .2, .26, GOLD, 0); }   // its visor, cheek plates
+      for (let k = 0; k < 9; k++) { const a = (k - 4) / 4 * 1.25; bx(v, 0, .4 + Math.cos(a) * .16, Math.sin(a) * .26, .07, .2, .075, k % 2 ? RED : C(0xe2562a), 0); }   // the crest
+    });
+    make('gdArm', v => {
+      bx(v, .64, 2.0, .05, .17, .5, .19, DK, 0); bx(v, .64, 1.72, .26, .15, .15, .42, GM, 0); bx(v, .64, 1.72, .46, .18, .2, .16, DK, 0); bx(v, .64, 1.83, .26, .16, .02, .3, GOLD, 0);
+      lathe(v, [[.03, .0], [.03, 3.3]], 8, () => C(0x4a2c16), 0, TR([1, 1, 1], [0, 0, 0], [.64, 0, .46])); lathe(v, [[.05, 0], [.05, .1], [.03, .12]], 8, () => GOLD, 0, TR([1, 1, 1], [0, 0, 0], [.64, 0, .46])); lathe(v, [[.045, 3.22], [.05, 3.3], [.045, 3.34]], 8, () => GOLD, 0, TR([1, 1, 1], [0, 0, 0], [.64, 0, .46]));
+      lathe(v, [[.02, 3.34], [.1, 3.5], [.06, 3.75], [0, 4.0]], 4, () => AMB, .95, TR([1, 1, 1], [0, .785, 0], [.64, 0, .46]));   // the spear's head, alight
+    });
+  }
   // the barkeep (front: +z; x along the bar): its body on a trolley, its head, an upper arm, the forearm with the shaker, the forearm with the cloth, its rail
   { const BLK = C(0x15131a), CHR = C(0xc9ced6), DCH = C(0x7c828c), PINK = C(0xff2fb4), CY = C(0x27e1ff), GOLD = C(0xffc94a), RED = C(0xe0263a), WHT = C(0xf2efe6);
     const ball = (v, x, y, z, r, col, w) => lathe(v, [[0, -r], [r * .7, -r * .7], [r, 0], [r * .7, r * .7], [0, r]], 10, () => col, w, TR([1, 1, 1], [0, 0, 0], [x, y, z]));
@@ -4902,10 +4941,10 @@ const CMS = (() => {
   return {bx};
 })();
 // the props' shapes go to the graphics card like the life's do
-for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'bkBase', 'bkHead', 'bkArmU', 'bkArmL', 'bkArmR', 'bkRail', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
+for (const k of ['cmTap', 'cmGlass', 'cmBeer', 'cmStream', 'cmStool', 'cmBottle', 'cmFern', 'cmVine', 'cmBlock', 'cmLink', 'cmLeds', 'cmArch', 'cmPad', 'gdLegs', 'gdTorso', 'gdHead', 'gdArm', 'bkBase', 'bkHead', 'bkArmU', 'bkArmL', 'bkArmR', 'bkRail', 'ckBody', 'ckArm1', 'ckArm2', 'ckTool', 'ckHot', 'ckRod', 'ckSpark']) {
   const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(LIFE.MESH[k]), gl.STATIC_DRAW); lifeGeo[k] = {b, n: LIFE.MESH[k].length / 10};
 }
-const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, bkBase: 41, bkHead: 41, bkArmU: 41, bkArmL: 41, bkArmR: 41, bkRail: 20, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
+const CMT = {cmTap: 20, cmStool: 20, cmBottle: 20, cmArch: 20, cmPad: 20, tree: 2, flower: 1, tuft: 0, cmFern: 26, cmVine: 26, cmBlock: 23, cmLink: 23, gdLegs: 43, gdTorso: 43, gdHead: 43, gdArm: 43, bkBase: 41, bkHead: 41, bkArmU: 41, bkArmL: 41, bkArmR: 41, bkRail: 20, ckBody: 40, ckArm1: 40, ckArm2: 40, ckTool: 40, ckHot: 40, ckRod: 40, ckSpark: 40, cmLeds: 25, cmBeer: 21, cmGlass: 22, cmStream: 24};
 const cmGrp = (mesh, inst) => { const ib = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst.length ? inst.flat() : new Array(11).fill(0)), gl.STATIC_DRAW); return {mesh, t: CMT[mesh], n: inst.length, ib, vao: lifeVAO(lifeGeo[mesh], ib)}; };
 // which way something faces in the world, from which way it faces in the room's layout
 const cmFace = (R, fx, fd) => { const w = R.door === 'back' ? [fx, -fd] : [-fx, fd]; return Math.atan2(w[0], w[1]); };
@@ -5363,6 +5402,7 @@ function cmFixMore(R, H) {
 // the extra props
 function cmPropsMore(R, put, rnd, F, H, VC) {
   for (const dd of [4.6, 11.4]) put('cmChand', 0, 6.55, dd, 0, 1, 0);
+  for (const s of [-1, 1]) [['gdLegs', 0], ['gdTorso', 1], ['gdHead', 2], ['gdArm', 3]].forEach(([m, k]) => put(m, s * 5.3, cmH(s * 5.3, 17.4, 0), 17.4, F(0, 1), 1.12, s + 1, k, 0));   // the door guards, either side of the arcade's mouth
   for (const s of [-1, 1]) { put('cmUrn', s * 7.6, 0, 18.1, 0, .75, 0, 0, 0, VC.black); put('cmPalm', s * 7.6, .7, 18.1, rnd() * 6, .95, rnd() * 9); }
   // the chess game, half played
   { const cx = -8.6, cd = 11, sq = .07, y = .255, P = (i, j) => [cx - .245 + i * sq, cd - .245 + j * sq];
