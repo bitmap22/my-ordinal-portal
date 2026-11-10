@@ -245,7 +245,7 @@ body.tiny #fw,body.tiny #top,body.tiny #strip,body.tiny #nav,body.tiny #kinds,bo
 #vwc pre{margin:0;width:100%;height:100%;box-sizing:border-box;overflow:auto;padding:18px 22px 22px;color:#e9dccb;font:500 13px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
 #vwc .inf{width:min(560px,90%);max-height:100%;overflow:auto;padding:18px 0 20px;font:600 13px ui-monospace,Menlo,Consolas,monospace;color:#d8c6ad}
 #vwc .inf h3{margin:0 0 14px;text-align:center;font-size:15px;letter-spacing:.16em;color:#ffb04a}
-.inf.wpay{width:min(760px,96%)}.inf svg.pay{display:block;width:100%;height:auto;max-height:46vh;margin:0 auto 10px}
+.inf.wpay{width:min(760px,96%)}.inf svg.pay{display:block;width:100%;height:auto;max-height:52vh;margin:0 auto 10px}
 #vwc .inf div{display:flex;justify-content:space-between;gap:14px;padding:7px 2px;border-bottom:1px solid rgba(247,147,26,.12)}#vwc .inf span{color:#8a7258}#vwc .inf b{color:#f7efe3;text-align:right;word-break:break-word}
 #vwc .vh{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:calc(100% - 28px);padding:7px 12px;border-radius:10px;background:rgba(20,12,6,.88);border:1px solid rgba(247,147,26,.3);color:#d8c6ad;font:600 11.5px/1.4 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;text-align:center;pointer-events:none}
 #vwc .wait{color:#8a7258;font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.16em}
@@ -6286,23 +6286,24 @@ function vwItems(t, tx) {
 function vwPay(t) {
   const x = t._x && t._x.tx; if (!x || !x.vin || !x.vout || !x.vout.length) return '';
   const cb = x.vin.length && x.vin[0].is_coinbase, NI = Math.min(6, x.vin.length), NO = Math.min(6, x.vout.length), IN = x.vin.slice(0, NI), OUT = x.vout.slice(0, NO), fee = cb ? 0 : x.fee || 0;
-  const W = 640, H = 300, mx = W / 2, by = 112, bh = 72, bw = 128, cy = by + bh / 2, E = s => vwEsc(s);
+  // (a phone gets a narrower picture with its words above and below each line, so they stay big enough to read)
+  const N = innerWidth < 640, W = N ? 420 : 640, H = N ? 340 : 300, mx = W / 2, bw = N ? 112 : 128, bh = 72, by = (H - 28) / 2 - bh / 2, cy = by + bh / 2, ix = N ? 22 : 150, ox = W - ix, f1 = N ? 15 : 12.5, f2 = N ? 12 : 10.5, E = s => vwEsc(s);
   const vin = IN.map(i => cb ? x.vout.reduce((a, o) => a + o.value, 0) : i.prevout ? i.prevout.value : 0);
   const tot = Math.max(1, vin.reduce((a, b) => a + b, 0), x.vout.reduce((a, o) => a + o.value, 0) + fee), th = v => Math.max(1.5, Math.min(24, 30 * v / tot));
-  const Y = (k, n) => n <= 1 ? cy : 34 + k * 232 / (n - 1), ni = NI + (x.vin.length > NI ? 1 : 0), no = NO + (x.vout.length > NO ? 1 : 0);
-  const lab = (xx, y, a, b, an) => '<text x="' + xx + '" y="' + (y - 3) + '" fill="#ffe2b0" font-size="12.5" text-anchor="' + an + '">' + E(a) + '</text>' + (b ? '<text x="' + xx + '" y="' + (y + 12) + '" fill="#9a8a72" font-size="10.5" text-anchor="' + an + '">' + E(b) + '</text>' : '');
+  const Y = (k, n) => n <= 1 ? cy : 34 + k * (H - 68 - (N ? 10 : 0)) / (n - 1), ni = NI + (x.vin.length > NI ? 1 : 0), no = NO + (x.vout.length > NO ? 1 : 0);
+  const lab = (xx, y, a, b, an) => { const y1 = N ? y - 9 : y - 3, y2 = N ? y + 17 : y + 12; return '<text x="' + xx + '" y="' + y1 + '" fill="#ffe2b0" font-size="' + f1 + '" text-anchor="' + an + '">' + E(a) + '</text>' + (b ? '<text x="' + xx + '" y="' + y2 + '" fill="#9a8a72" font-size="' + f2 + '" text-anchor="' + an + '">' + E(b) + '</text>' : ''); };
   let s = '<svg class="pay" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,Menlo,Consolas,monospace">';
-  IN.forEach((i, k) => { const y = Y(k, ni); s += '<path d="M150 ' + y + ' C ' + (mx - 80) + ' ' + y + ', ' + (mx - 130) + ' ' + cy + ', ' + (mx - bw / 2) + ' ' + cy + '" stroke="#f7931a" stroke-opacity=".5" stroke-width="' + th(vin[k]).toFixed(1) + '" fill="none"/>'; });
-  OUT.forEach((o, k) => { const y = Y(k, no), op = o.scriptpubkey_type === 'op_return'; s += '<path d="M' + (mx + bw / 2) + ' ' + cy + ' C ' + (mx + 130) + ' ' + cy + ', ' + (mx + 80) + ' ' + y + ', ' + (W - 150) + ' ' + y + '" stroke="' + (op ? '#8fd3ff' : '#ffc94a') + '" stroke-opacity=".5" stroke-width="' + th(op ? 0 : o.value).toFixed(1) + '" fill="none"/>'; });
+  IN.forEach((i, k) => { const y = Y(k, ni); s += '<path d="M' + ix + ' ' + y + ' C ' + (mx - 70) + ' ' + y + ', ' + (mx - 110) + ' ' + cy + ', ' + (mx - bw / 2) + ' ' + cy + '" stroke="#f7931a" stroke-opacity=".5" stroke-width="' + th(vin[k]).toFixed(1) + '" fill="none"/>'; });
+  OUT.forEach((o, k) => { const y = Y(k, no), op = o.scriptpubkey_type === 'op_return'; s += '<path d="M' + (mx + bw / 2) + ' ' + cy + ' C ' + (mx + 110) + ' ' + cy + ', ' + (mx + 70) + ' ' + y + ', ' + ox + ' ' + y + '" stroke="' + (op ? '#8fd3ff' : '#ffc94a') + '" stroke-opacity=".5" stroke-width="' + th(op ? 0 : o.value).toFixed(1) + '" fill="none"/>'; });
   if (fee) s += '<path d="M' + mx + ' ' + (by + bh) + ' L' + mx + ' ' + (H - 26) + '" stroke="#ff5a3c" stroke-opacity=".75" stroke-width="' + th(fee).toFixed(1) + '" fill="none"/>';
   s += '<rect x="' + (mx - bw / 2) + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="9" fill="#1a1208" stroke="#f7931a" stroke-width="1.5"/>'
-    + '<text x="' + mx + '" y="' + (by + 31) + '" fill="#ffc94a" font-size="14" font-weight="700" text-anchor="middle">' + (cb ? 'NEW COINS' : 'PAYMENT') + '</text>'
-    + '<text x="' + mx + '" y="' + (by + 51) + '" fill="#c9b79a" font-size="11" text-anchor="middle">' + E(fmt(x.vin.length) + ' in \u00b7 ' + fmt(x.vout.length) + ' out') + '</text>';
-  IN.forEach((i, k) => { const y = Y(k, ni); s += '<circle cx="150" cy="' + y + '" r="5" fill="#f7931a"/>' + lab(140, y, cb ? 'new coins' : btc(vin[k]), cb ? 'the block reward and fees' : shortA(i.prevout && i.prevout.scriptpubkey_address) || typeName(i.prevout && i.prevout.scriptpubkey_type), 'end'); });
-  if (x.vin.length > NI) s += lab(140, Y(NI, ni), '+ ' + fmt(x.vin.length - NI) + ' more in', '', 'end');
-  OUT.forEach((o, k) => { const y = Y(k, no), op = o.scriptpubkey_type === 'op_return'; s += '<circle cx="' + (W - 150) + '" cy="' + y + '" r="5" fill="' + (op ? '#8fd3ff' : '#ffc94a') + '"/>' + lab(W - 140, y, op ? 'a note (OP_RETURN)' : btc(o.value), op ? 'no coins' : shortA(o.scriptpubkey_address) || typeName(o.scriptpubkey_type), 'start'); });
-  if (x.vout.length > NO) s += lab(W - 140, Y(NO, no), '+ ' + fmt(x.vout.length - NO) + ' more out', '', 'start');
-  if (fee) s += '<text x="' + mx + '" y="' + (H - 8) + '" fill="#ff8a6a" font-size="11.5" text-anchor="middle">' + E('fee ' + fmt(fee) + ' sats \u00b7 to the miner') + '</text>';
+    + '<text x="' + mx + '" y="' + (by + 31) + '" fill="#ffc94a" font-size="' + (f1 + 1.5) + '" font-weight="700" text-anchor="middle">' + (cb ? 'NEW COINS' : 'PAYMENT') + '</text>'
+    + '<text x="' + mx + '" y="' + (by + 52) + '" fill="#c9b79a" font-size="' + f2 + '" text-anchor="middle">' + E(fmt(x.vin.length) + ' in \u00b7 ' + fmt(x.vout.length) + ' out') + '</text>';
+  IN.forEach((i, k) => { const y = Y(k, ni); s += '<circle cx="' + ix + '" cy="' + y + '" r="5" fill="#f7931a"/>' + lab(N ? ix - 4 : ix - 10, y, cb ? 'new coins' : btc(vin[k]), cb ? 'the block reward and fees' : shortA(i.prevout && i.prevout.scriptpubkey_address) || typeName(i.prevout && i.prevout.scriptpubkey_type), N ? 'start' : 'end'); });
+  if (x.vin.length > NI) s += lab(N ? ix - 4 : ix - 10, Y(NI, ni), '+ ' + fmt(x.vin.length - NI) + ' more in', '', N ? 'start' : 'end');
+  OUT.forEach((o, k) => { const y = Y(k, no), op = o.scriptpubkey_type === 'op_return'; s += '<circle cx="' + ox + '" cy="' + y + '" r="5" fill="' + (op ? '#8fd3ff' : '#ffc94a') + '"/>' + lab(N ? ox + 4 : ox + 10, y, op ? 'a note (OP_RETURN)' : btc(o.value), op ? 'no coins' : shortA(o.scriptpubkey_address) || typeName(o.scriptpubkey_type), N ? 'end' : 'start'); });
+  if (x.vout.length > NO) s += lab(N ? ox + 4 : ox + 10, Y(NO, no), '+ ' + fmt(x.vout.length - NO) + ' more out', '', N ? 'end' : 'start');
+  if (fee) s += '<text x="' + mx + '" y="' + (H - 8) + '" fill="#ff8a6a" font-size="' + (f2 + .5) + '" text-anchor="middle">' + E('fee ' + fmt(fee) + ' sats \u00b7 to the miner') + '</text>';
   return s + '</svg>';
 }
 const vwEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
@@ -7301,9 +7302,9 @@ async function galOffer(rows, getId, live) {
   if (GAL_ST < 4) return;
   try {
     const id = await getId(); if (!live() || !/^[0-9a-f]{64}i\d+$/.test(id || '')) return;
-    const j = await galGet('/r/children/' + id); if (!live() || !j || !(j.ids || []).length) return;
+    const j = await galQuick('/r/children/' + id); if (!live() || !j || !(j.ids || []).length) return;
     let n = j.ids.length; if (j.more) { const L = await galLast(id); n = L.page * 100 + L.ids.length; } if (!live()) return;
-    rows.push({t: 'its collection', s: fmt(n) + (n === 1 ? ' piece' : ' pieces') + ' · walk among them all: press GO', go: async () => { srClose(); galTravel(id); return null; }});
+    rows.push({t: 'its collection', s: fmt(n) + (n === 1 ? ' piece' : ' pieces') + ' · in its gallery', btn: 'GALLERY', go: async () => { srClose(); galTravel(id); return null; }});
     srShow(rows);
   } catch (e) {}
 }
