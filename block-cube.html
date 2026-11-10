@@ -5805,7 +5805,7 @@ function cmBoardTall(c, W, H) {
 //  - the wait: blocks come at random, about every ten minutes, so the time to the next is the same however long it has been;
 //    measured: the average gap over the last day, and from it the time by which half, and nine in ten, have come
 //  - the time: the lowest fee in the next block now, set against the lowest fee in each of the last day's blocks (counted)
-//  - the fee: the lowest fee that would have got into two in three of the last twelve blocks (and into eleven of them)
+//  - the fee: the fee that would have got into all but about one in twenty of the last 24 blocks (see below)
 function cmBoardStats() {
   const top = pastBlocks.length ? pastBlocks[0].height : -1, S = {bars: [], eta: '…', etaSub: 'waiting for the chain', best: '…', bestSub: 'reading the last day of blocks', low: '…', lowSub: '', mood: '', go: 1};
   if (top < 0) return S;
@@ -5817,19 +5817,28 @@ function cmBoardStats() {
   const f0 = futBlocks && futBlocks[0], F0 = f0 && f0.feeRange && f0.feeRange.length ? f0.feeRange[0] : null, fl = B.map(q => q.fl).filter(v => v != null);
   // the time
   if (F0 != null && fl.length >= 12) { const n = fl.filter(v => v >= F0 * .999).length, k = n / fl.length; S.best = k >= .66 ? 'NOW IS CHEAP' : k >= .33 ? 'NOW IS FAIR' : 'NOW IS DEAR'; S.go = k >= .33 ? 1 : 0;
-    S.bestSub = 'from ' + r1(F0) + ' now · low as ' + fmt(n) + ' of last ' + fmt(fl.length); }
+    S.bestSub = 'from ' + r1(F0) + ' now · low as ' + fmt(n) + ' of last ' + fmt(fl.length);
+    // the pace, as it happened: a quick run of blocks sweeps the cheap ones in (the bar is at its lowest just after); a long gap lets dear ones pile up
+    const now = Date.now() / 1000, m = B.length, run = m >= 3 ? (B[m - 1].t - B[m - 3].t) / 60 : 99, since = (now - B[m - 1].t) / 60;
+    if (since > 20) S.bestSub = Math.round(since) + ' min since a block · the bar is climbing';
+    else if (run < 8 && since < 6) S.bestSub = '3 blocks in ' + Math.max(1, Math.round(run)) + ' min: cheap ones just cleared'; }
   else if (F0 == null) S.bestSub = 'no forecast just now';
-  // the fee
-  const l12 = fl.slice(-12).sort((p, q) => p - q);
-  if (l12.length >= 12) { const a = Math.max(l12[7], F0 || 0), z = Math.max(l12[10], F0 || 0); S.low = '~' + r1(a) + ' sat/vB'; S.lowSub = 'made ' + l12.filter(v => v <= a).length + ' of last 12 · ' + r1(z) + ' made ' + l12.filter(v => v <= z).length; }
-  else if (F0 != null) { S.low = '~' + r1(F0) + ' sat/vB'; S.lowSub = 'the lowest in the next block now'; } else S.lowSub = 'no forecast just now';
+  // the fee. A block takes the dearest million units waiting, so a fee makes the next block only if, when it is found, less
+  // than a block's worth is waiting at a higher fee; the longer the wait, the more dear ones arrive and the higher the bar.
+  // The last blocks show how that went: the fee that would have made all but one in twenty of the last 24 (about 4 hours),
+  // never under a quarter of the way up the next block as it stands now (so there is room above it for new arrivals).
+  // Beside it, the cheap try: the fee that made half of them (it gets in when the next block comes soon; else it waits).
+  const lN = fl.slice(-24).sort((p, q) => p - q), q25 = f0 && f0.feeRange && f0.feeRange.length > 2 ? f0.feeRange[2] : F0 || 0;
+  if (lN.length >= 12) { const n = lN.length, up = v => Math.ceil(v * 100 - 1e-9) / 100, safe = up(Math.max(lN[Math.ceil(n * .95) - 1], q25)), cheap = up(Math.max(lN[Math.floor(n / 2)], F0 || 0)), made = v => lN.filter(x => x <= v).length;
+    S.low = '~' + r1(safe) + ' sat/vB'; S.lowSub = 'made ' + made(safe) + ' of last ' + n + ' · ' + r1(cheap) + ' made ' + made(cheap); }
+  else if (F0 != null) { S.low = '…'; S.lowSub = 'next block from ' + r1(F0) + ' now · reading blocks'; } else S.lowSub = 'no forecast just now';
   const got = S.bars.filter(r => r != null), last = got.slice(-6), avg = last.length ? last.reduce((p, q) => p + q, 0) / last.length : 0;
   S.mood = got.length < 6 ? 'reading the last day…' : (avg < 5 ? 'calm' : avg < 20 ? 'busy' : avg < 100 ? 'stormy' : 'wild') + ' · now ~' + r1(avg) + ' sat/vB · day high ' + r1(Math.max(...got));
   return S;
 }
 // the three answers and the weather under them (side by side on the wide screen; one under another on the tall one)
 function cmBoardBottom(c, x, y, w, tall) {
-  const S = cmBoardStats(), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, cells = [['NEXT BLOCK · USUAL WAIT', S.eta, S.etaSub, '#9fe8ff'], ['BEST TIME TO GET IN', S.best, S.bestSub, S.go === 0 ? '#ffb04a' : '#7dff4a'], ['BEST LOW FEE', S.low, S.lowSub, '#ffd36b']];
+  const S = cmBoardStats(), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, cells = [['NEXT BLOCK · USUAL WAIT', S.eta, S.etaSub, '#9fe8ff'], ['BEST TIME TO GET IN', S.best, S.bestSub, S.go === 0 ? '#ffb04a' : '#7dff4a'], ['FEE TO MAKE THE NEXT BLOCK', S.low, S.lowSub, '#ffd36b']];
   const cw = tall ? w : (w - 24) / 3, ch = tall ? 86 : 76; c.textBaseline = 'middle';
   cells.forEach(([t, v, sub, col], i) => { const cx = tall ? x : x + i * (cw + 12), cy = tall ? y + i * (ch + 8) : y;
     c.fillStyle = 'rgba(76,201,240,.07)'; c.fillRect(cx, cy, cw, ch); c.strokeStyle = col; c.globalAlpha = .55; c.lineWidth = 2; c.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2); c.globalAlpha = 1;
