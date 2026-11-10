@@ -5571,6 +5571,30 @@ function cmBanner(title, col, kind) {
   c.fillStyle = '#f7efe3'; c.font = '800 34px ui-monospace,Menlo,Consolas,monospace'; title.split(' ').forEach((t, i) => c.fillText(t, w / 2, h * .68 + i * 42));
   return cv;
 }
+// the rare sats board: [group, name, price for one sat (ordiscan.com, read on CM_RARE_DAY), how many exist: a number, or worked out from the height]
+const CM_RARE_DAY = '10 Nov 2026', CM_RARE = [
+  ['R', 'UNCOMMON', '$49.68', h => h + 1 - 1 - Math.floor(h / 210000) - Math.floor(h / 2016)], ['R', 'RARE', '$45,785', h => Math.floor(h / 2016) - Math.floor(h / 1260000)], ['R', 'EPIC', '$3,243,919', h => Math.floor(h / 210000) - Math.floor(h / 1260000)], ['R', 'LEGENDARY', '—', h => Math.floor(h / 1260000)], ['R', 'MYTHIC', '—', 1],
+  ['B', 'BLACK UNCOMMON', '< $0.01', h => h + 1 - Math.floor((h + 1) / 2016) - Math.floor((h + 1) / 210000)], ['B', 'BLACK RARE', '$43,836', h => Math.floor((h + 1) / 2016)], ['B', 'BLACK EPIC', '—', h => Math.floor((h + 1) / 210000)],
+  ['I', 'PALINDROME', '$0.58', 142044825], ['I', 'ALPHA', '$9.74', h => Math.floor(cmMined(h) / 1e8)], ['I', 'OMEGA', '$11.69', h => Math.floor(cmMined(h) / 1e8)],
+  ['H', 'BLOCK 9', '$0.85', 5e9], ['H', 'BLOCK 78', '< $0.01', 5e9], ['H', 'NAKAMOTO', '< $0.01', 95e9], ['H', 'FIRST TX', '$0.85', 1e9], ['H', 'VINTAGE', '< $0.01', 5e12], ['H', 'PIZZA', '< $0.01', 1e12], ['H', 'HITMAN', '$1,948', 167e9]];
+const cmMined = h => { let s = 0, sub = 5e9, a = 0; while (a <= h && sub > 0) { const n = Math.min(210000, h + 1 - a); s += n * sub; a += 210000; sub = Math.floor(sub / 2); } return s; };   // every sat mined up to this height
+let cmRareCv = null;
+function cmRare(tn) {
+  const W = 1024, Hh = 640, [cv, c] = cmRareCv || (cmRareCv = cmCv(W, Hh)), tip = tipH >= 0 ? tipH : -1, mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`;
+  c.fillStyle = '#0a070c'; c.fillRect(0, 0, W, Hh); for (let y = 0; y < Hh; y += 4) { c.fillStyle = 'rgba(255,255,255,.018)'; c.fillRect(0, y, W, 2); }
+  c.strokeStyle = '#ff4fd8'; c.lineWidth = 6; c.shadowColor = '#ff4fd8'; c.shadowBlur = 18; c.strokeRect(10, 10, W - 20, Hh - 20); c.shadowBlur = 0;
+  c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = mono(800, 54); c.shadowColor = '#ffb04a'; c.shadowBlur = 16; c.fillStyle = '#ffd6a0'; c.fillText('RARE SATS', 40, 62); c.shadowBlur = 0;
+  c.textAlign = 'right'; c.font = mono(700, 20); c.fillStyle = '#27e1ff'; c.fillText(tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING…', W - 40, 48); c.fillStyle = 'rgba(255,214,160,.6)'; c.fillText('counts: live from the chain', W - 40, 76);
+  c.font = mono(700, 20); c.fillStyle = 'rgba(255,255,255,.5)'; c.textAlign = 'left'; c.fillText('KIND', 40, 128); c.textAlign = 'right'; c.fillText('PRICE FOR ONE SAT', 640, 128); c.fillText('HOW MANY EXIST', W - 40, 128);
+  c.fillStyle = 'rgba(255,79,216,.5)'; c.fillRect(40, 146, W - 80, 2);
+  const N = CM_RARE.length, k0 = Math.floor(tn / 3.2) % N, COL = {R: '#ffc94a', B: '#b9b3c6', I: '#27e1ff', H: '#ff8ad8'}, GN = {R: 'RODARMOR', B: 'BLACK', I: 'INTERESTING', H: 'HISTORICAL'};
+  for (let r = 0; r < 7; r++) { const [g, nm, pr, sup] = CM_RARE[(k0 + r) % N], y = 190 + r * 58, live = typeof sup === 'function', n = live ? (tip >= 0 ? sup(tip) : null) : sup;
+    c.fillStyle = COL[g]; c.fillRect(40, y - 20, 6, 40); c.textAlign = 'left'; c.font = mono(800, 32); c.fillText(nm, 60, y - 4); c.font = mono(600, 13); c.fillStyle = 'rgba(255,255,255,.4)'; c.fillText(GN[g], 60, y + 21);
+    c.textAlign = 'right'; c.font = mono(800, 32); c.fillStyle = pr === '—' ? 'rgba(255,255,255,.35)' : '#7dff4a'; c.fillText(pr, 640, y); c.fillStyle = '#f7efe3'; c.fillText(n == null ? '…' : n >= 1e12 ? fmt(n / 1e12) + ' trillion' : n >= 1e9 ? fmt(n / 1e9) + ' billion' : fmt(n), W - 62, y);
+    if (live) { c.fillStyle = '#27e1ff'; c.beginPath(); c.arc(W - 46, y, 5, 0, 6.29); c.fill(); } }
+  c.textAlign = 'left'; c.font = mono(600, 17); c.fillStyle = 'rgba(255,255,255,.5)'; c.fillText('prices: ordiscan.com/rare-sats · read ' + CM_RARE_DAY, 40, Hh - 34); c.textAlign = 'right'; c.fillStyle = '#27e1ff'; c.fillText('● counted live', W - 40, Hh - 34);
+  return cv;
+}
 let cmTickCv = null;
 function cmTicker() {
   const [cv, c] = cmTickCv || (cmTickCv = cmCv(2048, 64)); c.clearRect(0, 0, 2048, 64);
@@ -5587,6 +5611,7 @@ function cmQuadsMore(R, Q, q, TX) {
   q.push(Q([-15.8, 8.05, 35.8], [0, 0, 1.4], [0, 3.3, 0], 5, .95, TX(() => cmBanner('THE MEMPOOL', '#ff4fd8', 'bar'))));
   q.push(Q([15.8, 8.05, 37.2], [0, 0, -1.4], [0, 3.3, 0], 5, .95, TX(() => cmBanner('KOI GARDEN', '#7dff4a', 'koi'))));
   R.tick = Q([-24.5, 6.95, 22.17], [-17, 0, 0], [0, .45, 0], 6, 1, TX(() => cmTicker())); q.push(R.tick);
+  R.rare = Q([-25.75, 4.05, 22.17], [-4.4, 0, 0], [0, 2.75, 0], 5, .95, TX(() => cmRare(0))); q.push(R.rare);   // the rare sats board: on the wall to your left as you walk into the bar, over the mining racks
   R.map = Q([4.0 - .82 * .03, 1.04, 19.85 - .57 * .03], [.8, 0, -1.15], [0, 1.12, 0], 3, .95, TX(() => cmMap(4.4, 19.3))); q.push(R.map);
 }
 
@@ -5897,6 +5922,7 @@ function cmQDraw(VP, eye, tn) {
     if (pass) { gl.depthMask(true); gl.disable(gl.BLEND); }
   }
   gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(null);
+  if (R === room.at && R.rare && R.rare.tex && tn - (cm.rareAt || 0) > 3.2) { cm.rareAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.rare.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmRare(tn)); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }   // the rare sats board rolls on a row
   if (R === room.at && R.tick && tn - (cm.tickAt || 0) > 20) { cm.tickAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.tick.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmTicker()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
   // the live board, redrawn every couple of seconds while you are in the rooms
   if (R === room.at && cm.media.k === 'live' && tn - (cm.boardAt || 0) > 2) { cm.boardAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.scr.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmBoard()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
