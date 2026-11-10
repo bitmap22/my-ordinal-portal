@@ -5798,38 +5798,69 @@ function cmBoardTall(c, W, H) {
     c.font = mono(700, 17); c.fillText(fmt(left) + ' BLOCKS TO GO', 34, y + 46);
     if (pastBlocks[0]) c.fillText('LAST BLOCK ' + ago(Date.now() / 1000 - pastBlocks[0].timestamp) + ' AGO', 34, y + 68);
   }
+  if (H > 1100) cmBoardBottom(c, 20, 876, W - 40, true);
+}
+// what the bottom of the big screen says, worked out from the blocks the page already has
+function cmBoardStats() {
+  const top = pastBlocks.length ? pastBlocks[0].height : -1, now = Date.now() / 1000, S = {bars: [], eta: '…', etaSub: 'waiting for the chain', best: '…', bestSub: 'watching the last day', low: '…', lowSub: '', mood: ''};
+  if (top < 0) return S;
+  const B = []; for (let i = 0; i < 144; i++) { const h = top - 143 + i, b = blockAt(h); if (!b && SOURCES[0].on && ![...olderAsk].some(x => x >= h && x - 14 <= h)) wantOlder(h + Math.min(14, 143 - i));   // (the same day of blocks the home screen's fee weather reads, if it has not already)
+    const r = b && b.extras && b.extras.medianFee != null ? b.extras.medianFee : null; S.bars.push(r); if (b && b.timestamp) B.push([b.timestamp, r]); }
+  // the next block: blocks come about every ten minutes; how long the last few really took, less how long since the last
+  const rec = B.slice(-13), gap = rec.length > 3 ? (rec[rec.length - 1][0] - rec[0][0]) / (rec.length - 1) : 600, since = now - pastBlocks[0].timestamp, left = gap - since;
+  S.eta = left > 45 ? '~' + Math.max(1, Math.round(left / 60)) + ' min' : 'any moment'; S.etaSub = 'every ~' + (gap / 60).toFixed(1) + ' min · last ' + Math.max(0, Math.round(since / 60)) + ' min ago';
+  // the best time: the three hours of the last day when the middle fee was lowest (your own clock)
+  const hr = Array.from({length: 24}, () => [0, 0]); for (const [t, r] of B) if (r != null) { const h = new Date(t * 1000).getHours(); hr[h][0] += r; hr[h][1]++; }
+  if (hr.filter(x => x[1]).length >= 12) { let bh = -1, bv = 1e9; for (let h = 0; h < 24; h++) { let s = 0, n = 0; for (let k = 0; k < 3; k++) { const q = hr[(h + k) % 24]; s += q[0]; n += q[1]; } if (n >= 3 && s / n < bv) { bv = s / n; bh = h; } }
+    if (bh >= 0) { const p2 = h => String(h % 24).padStart(2, '0') + ':00'; S.best = p2(bh) + ' – ' + p2(bh + 3); S.bestSub = 'cheapest of the last day · ~' + r1(bv) + ' sat/vB'; } }
+  // the lowest fee that gets into the next block
+  const f = futBlocks && futBlocks[0]; if (f && f.feeRange && f.feeRange.length) { const full = (f.blockVSize || 0) > 0.97e6; S.low = r1(f.feeRange[0]) + ' sat/vB'; S.lowSub = full ? 'the lowest in the next block now' : 'the next block still has room'; } else S.lowSub = 'no forecast just now';
+  const got = S.bars.filter(r => r != null), last = got.slice(-6), avg = last.length ? last.reduce((p, q) => p + q, 0) / last.length : 0;
+  S.mood = got.length < 6 ? 'reading the last day…' : (avg < 5 ? 'calm' : avg < 20 ? 'busy' : avg < 100 ? 'stormy' : 'wild') + ' · now ~' + r1(avg) + ' sat/vB · day high ' + r1(Math.max(...got));
+  return S;
+}
+// the three answers and the weather under them (side by side on the wide screen; one under another on the tall one)
+function cmBoardBottom(c, x, y, w, tall) {
+  const S = cmBoardStats(), mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, cells = [['NEXT BLOCK DUE IN', S.eta, S.etaSub, '#9fe8ff'], ['BEST TIME TO GET IN', S.best, S.bestSub, '#7dff4a'], ['LOW FEE TO GET IN', S.low, S.lowSub, '#ffd36b']];
+  const cw = tall ? w : (w - 24) / 3, ch = tall ? 86 : 76; c.textBaseline = 'middle';
+  cells.forEach(([t, v, sub, col], i) => { const cx = tall ? x : x + i * (cw + 12), cy = tall ? y + i * (ch + 8) : y;
+    c.fillStyle = 'rgba(76,201,240,.07)'; c.fillRect(cx, cy, cw, ch); c.strokeStyle = col; c.globalAlpha = .55; c.lineWidth = 2; c.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2); c.globalAlpha = 1;
+    c.textAlign = 'left'; c.fillStyle = col; c.font = mono(700, 14); c.fillText(t, cx + 12, cy + 15); c.fillStyle = '#f7efe3'; c.font = mono(800, tall ? 26 : 28); c.fillText(v, cx + 12, cy + (tall ? 40 : 43));
+    c.fillStyle = '#cdbca3'; c.font = mono(600, tall ? 14 : 12.5); c.fillText(sub, cx + 12, cy + (tall ? 70 : 65)); });
+  const wy = y + (tall ? 3 * (ch + 8) : ch + 10), wh = tall ? 74 : 62;
+  c.textAlign = 'left'; c.fillStyle = '#ffb04a'; c.font = mono(700, 14); c.fillText('BLOCK WEATHER', x, wy + 8); c.fillStyle = '#cdbca3'; c.font = mono(600, 13); if (tall) c.fillText(S.mood, x, wy + 27); else { c.textAlign = 'right'; c.fillText(S.mood, x + w, wy + 8); }
+  const n = S.bars.length || 144, bw = w / n, by = wy + (tall ? 38 : 18), bh = wh - 20;
+  for (let i = 0; i < n; i++) { const r = S.bars[i]; if (r == null) { c.fillStyle = 'rgba(247,147,26,.15)'; c.fillRect(x + i * bw, by + bh - 2, Math.max(1, bw - 1), 2); continue; }
+    const k = Math.max(0, Math.min(1, (Math.log10(Math.max(r, .1)) + 1) / 2.3)), hh = Math.round(4 + k * (bh - 4)); c.fillStyle = feeCss(Math.max(r, .1)); c.fillRect(x + i * bw, by + bh - hh, Math.max(1, bw - 1), hh); }
+  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = mono(600, 11); c.textAlign = 'left'; c.fillText('a day ago', x, by + bh + 9); c.textAlign = 'right'; c.fillText('now', x + w, by + bh + 9);
 }
 const cmBoardCv = cmCv(1024, 576);
 function cmBoard() {
   const [cv, c] = cmBoardCv, W = 1024, H = 576, mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`;
   c.fillStyle = '#05060c'; c.fillRect(0, 0, W, H);
   c.strokeStyle = 'rgba(76,201,240,.08)'; c.lineWidth = 1; for (let x = 0; x < W; x += 32) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); } for (let y = 0; y < H; y += 32) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
-  c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = '#4cc9f0'; c.font = mono(800, 30); c.fillText('LIVE FROM THE BLOCKCHAIN', 40, 46);
+  c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = '#4cc9f0'; c.font = mono(800, 28); c.fillText('LIVE FROM THE BLOCKCHAIN', 40, 34);
   const tip = tipH >= 0 ? tipH : pastBlocks[0] ? pastBlocks[0].height : -1;
-  c.textAlign = 'right'; c.fillStyle = '#ffb04a'; c.font = mono(800, 30); c.fillText(tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING…', W - 40, 46);
+  c.textAlign = 'right'; c.fillStyle = '#ffb04a'; c.font = mono(800, 28); c.fillText(tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING…', W - 40, 34);
   const ago = s => s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
+  if (tip >= 0) { const nx = (Math.floor(tip / 210000) + 1) * 210000; c.fillStyle = '#ffd36b'; c.font = mono(700, 15); c.fillText('NEXT HALVING: BLOCK ' + fmt(nx) + ' · ' + fmt(nx - tip) + ' BLOCKS TO GO' + (pastBlocks[0] ? ' · LAST BLOCK ' + ago(Date.now() / 1000 - pastBlocks[0].timestamp) + ' AGO' : ''), W - 40, 62); }
   const cube = (x, y, s, fill, edge) => { c.fillStyle = fill; c.fillRect(x, y, s, s); c.strokeStyle = edge; c.lineWidth = 3; c.strokeRect(x + 1.5, y + 1.5, s - 3, s - 3); };
-  c.textAlign = 'left'; c.font = mono(700, 20); c.fillStyle = '#9fe8ff'; c.fillText('WAITING TO BE MINED', 40, 104); c.fillStyle = '#ffd36b'; c.fillText('JUST MINED', 540, 104);
+  c.textAlign = 'left'; c.font = mono(700, 18); c.fillStyle = '#9fe8ff'; c.fillText('WAITING TO BE MINED', 40, 66); c.fillStyle = '#ffd36b'; c.fillText('JUST MINED', 540, 92);
   (futBlocks || []).slice(0, 3).forEach((b, i) => {
-    const y = 130 + i * 112; cube(40, y, 96, '#2a1606', '#f7931a');
-    c.fillStyle = '#ffd36b'; c.font = mono(800, 22); c.textAlign = 'center'; c.fillText(i ? '+' + (i + 1) : 'NEXT', 88, y + 48); c.textAlign = 'left';
-    c.fillStyle = '#f7efe3'; c.font = mono(700, 22); c.fillText('~' + Math.round(b.medianFee || 0) + ' sat/vB', 156, y + 24);
-    c.fillStyle = '#cdbca3'; c.font = mono(600, 17); c.fillText(fmt(b.nTx || 0) + ' transactions · ' + ((b.blockVSize || 0) / 1e6).toFixed(2) + ' MvB', 156, y + 54);
-    if (b.feeRange && b.feeRange.length) c.fillText(r1(b.feeRange[0]) + ' – ' + r1(b.feeRange[b.feeRange.length - 1]) + ' sat/vB', 156, y + 80);
+    const y = 84 + i * 98; cube(40, y, 84, '#2a1606', '#f7931a');
+    c.fillStyle = '#ffd36b'; c.font = mono(800, 20); c.textAlign = 'center'; c.fillText(i ? '+' + (i + 1) : 'NEXT', 82, y + 42); c.textAlign = 'left';
+    c.fillStyle = '#f7efe3'; c.font = mono(700, 21); c.fillText('~' + Math.round(b.medianFee || 0) + ' sat/vB', 144, y + 18);
+    c.fillStyle = '#cdbca3'; c.font = mono(600, 16); c.fillText(fmt(b.nTx || 0) + ' transactions · ' + ((b.blockVSize || 0) / 1e6).toFixed(2) + ' MvB', 144, y + 44);
+    if (b.feeRange && b.feeRange.length) c.fillText(r1(b.feeRange[0]) + ' – ' + r1(b.feeRange[b.feeRange.length - 1]) + ' sat/vB', 144, y + 68);
   });
-  if (!futBlocks || !futBlocks.length) { c.fillStyle = '#7a6853'; c.font = mono(600, 18); c.fillText("mempool.space's live feed isn't reachable here", 40, 150); }
+  if (!futBlocks || !futBlocks.length) { c.fillStyle = '#7a6853'; c.font = mono(600, 18); c.fillText("mempool.space's live feed isn't reachable here", 40, 110); }
   pastBlocks.slice(0, 4).forEach((b, i) => {
-    const y = 130 + i * 84, x = 540, e = b.extras || {}; cube(x, y, 70, '#120d06', '#ffc94a');
-    c.fillStyle = '#ffd36b'; c.font = mono(800, 15); c.textAlign = 'center'; c.fillText(fmt(b.height), x + 35, y + 35); c.textAlign = 'left';
-    c.fillStyle = '#f7efe3'; c.font = mono(700, 19); c.fillText(fmt(b.tx_count || 0) + ' tx · ' + ago(Date.now() / 1000 - b.timestamp) + ' ago', x + 88, y + 20);
-    c.fillStyle = '#cdbca3'; c.font = mono(600, 16); c.fillText((e.pool && e.pool.name ? e.pool.name : 'unknown pool') + (e.medianFee ? ' · ~' + Math.round(e.medianFee) + ' sat/vB' : ''), x + 88, y + 48);
+    const y = 108 + i * 68, x = 540, e = b.extras || {}; cube(x, y, 58, '#120d06', '#ffc94a');
+    c.fillStyle = '#ffd36b'; c.font = mono(800, 13); c.textAlign = 'center'; c.fillText(fmt(b.height), x + 29, y + 29); c.textAlign = 'left';
+    c.fillStyle = '#f7efe3'; c.font = mono(700, 18); c.fillText(fmt(b.tx_count || 0) + ' tx · ' + ago(Date.now() / 1000 - b.timestamp) + ' ago', x + 74, y + 16);
+    c.fillStyle = '#cdbca3'; c.font = mono(600, 15); c.fillText((e.pool && e.pool.name ? e.pool.name : 'unknown pool') + (e.medianFee ? ' · ~' + Math.round(e.medianFee) + ' sat/vB' : ''), x + 74, y + 42);
   });
-  if (tip >= 0) {
-    const nx = (Math.floor(tip / 210000) + 1) * 210000, left = nx - tip;
-    c.fillStyle = 'rgba(255,201,74,.1)'; c.fillRect(40, 486, W - 80, 58); c.strokeStyle = '#ffc94a'; c.lineWidth = 2; c.strokeRect(40, 486, W - 80, 58);
-    c.fillStyle = '#ffd36b'; c.font = mono(800, 22); c.textAlign = 'left'; c.fillText('NEXT HALVING: BLOCK ' + fmt(nx), 60, 515);
-    c.textAlign = 'right'; c.fillText(fmt(left) + ' BLOCKS TO GO' + (pastBlocks[0] ? ' · LAST BLOCK ' + ago(Date.now() / 1000 - pastBlocks[0].timestamp) + ' AGO' : ''), W - 60, 515);
-  }
+  cmBoardBottom(c, 40, 392, W - 80, false);
   return cv;
 }
 
@@ -6611,7 +6642,7 @@ function cmBigOpen() {
 function cmBigDraw() {
   if (!vw || !vw.big) return;
   const cv = $vwc.querySelector('canvas.cmbig'); if (!cv) return;
-  const tall = $vwc.clientWidth < $vwc.clientHeight * 1.1, k = tall ? Math.min(3, devicePixelRatio || 1) : 1, W = tall ? 440 : 1024, H = tall ? 876 : 576;   // (a phone held upright: laid out tall, drawn sharp)
+  const tall = $vwc.clientWidth < $vwc.clientHeight * 1.1, k = tall ? Math.min(3, devicePixelRatio || 1) : 1, W = tall ? 440 : 1024, H = tall ? 1270 : 576;   // (a phone held upright: laid out tall, drawn sharp)
   if (cv.width !== W * k || cv.height !== H * k) { cv.width = W * k; cv.height = H * k; }
   const c = cv.getContext('2d'); c.setTransform(k, 0, 0, k, 0, 0);
   if (tall) cmBoardTall(c, W, H); else c.drawImage(cmBoard(), 0, 0);
