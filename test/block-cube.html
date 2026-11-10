@@ -6843,7 +6843,7 @@ const rmFade = on => new Promise(r => { $rf.classList.toggle('on', on); setTimeo
    door you came in by behind you (walk into it, or press the button at the top, to go back). The children are read a page
    (100) at a time through the reader, one page after another; each piece's picture is fetched only when you walk near it, and
    the near sheet then draws it sharp. Laid out like the block rooms: x across, z from the door (0) into the hall (-S). */
-const GALLERY = -3, GAL_ST = 1;
+const GALLERY = -3, GAL_ST = 2;
 const GAL = {AW: 2.2, CA: 6.4, E: .2, ROWD: .98, PER: 30};
 const GKI = n => Math.max(0, TYPES.findIndex(T => T.name === n));
 const GK = {ins: GKI('inscriptions'), img: GKI('images'), text: GKI('text'), html: GKI('HTML'), json: GKI('JSON'), av: GKI('audio / video'), m3d: GKI('3D models'), other: GKI('other files')};
@@ -7105,12 +7105,12 @@ const galArt = {busy: false, at: 0, gc: 0};
 const galKind = ct => /^image\//.test(ct) ? GK.img : /^text\/html/.test(ct) ? GK.html : /json/.test(ct) ? GK.json : /^text\//.test(ct) ? GK.text : /^(audio|video)\//.test(ct) ? GK.av : /model|gltf/.test(ct) ? GK.m3d : ct ? GK.other : GK.ins;
 const galWord = ct => /html/.test(ct) ? 'HTML' : /^audio/.test(ct) ? 'AUDIO' : /^video/.test(ct) ? 'VIDEO' : /model|gltf/.test(ct) ? '3D MODEL' : /javascript/.test(ct) ? 'CODE' : /^image/.test(ct) ? 'BIG PICTURE' : ct ? (ct.split(/[;/]/)[1] || ct).toUpperCase().slice(0, 12) : 'NO CONTENT';
 async function galArtTick(tn) {
-  const C = room && room.at; if (GAL_ST < 3 || !C || !C.gal || !C.ready || galArt.busy || tn - galArt.at < .25) return;
+  const C = room && room.at; if (GAL_ST < 2 || !C || !C.gal || !C.ready || galArt.busy || tn - galArt.at < .25) return;
   galArt.at = tn;
   const p = room.p;
   if (tn - galArt.gc > 4) { galArt.gc = tn; let drop = 0; for (const it of C.plan.items) { const t = it.t; if (t.art && !t.par && it !== (room.held && room.held.it) && Math.hypot(it.w[0] - p.x, it.w[2] - p.z) > 30) { t.art = null; t.gTry = 0; drop++; } } if (drop) { C.nl = null; near.rk = ''; } }
   let best = null, bd = 10;
-  for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn) continue; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < bd) { bd = dd; best = it; } }
+  for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn || (GAL_ST < 3 && !it.t.par)) continue; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < bd) { bd = dd; best = it; } }
   if (!best) return;
   const it = best, t = it.t; t.gTry = 1; galArt.busy = true;
   try {
