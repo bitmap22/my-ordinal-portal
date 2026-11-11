@@ -8527,7 +8527,7 @@ function chPortrait(lk, w, h) {
    BCH.init(gl, url) -> loads the shared body data; BCH.make(look) -> a person; person.pose(dt, state);
    BCH.draw(people, VP, eye, opts) draws them (opts.mir: the floor's reflection, opts.port: a portrait). */
 const BCH = (() => {
-  let gl = null, BASE = null, ANIM = null, ROOT = '', ready = null, PACKX = '.bin.gz';
+  let gl = null, BASE = null, ANIM = null, ROOT = '', ready = null, PACKX = '.bin.gz', HOST = null;
   const packs = new Map(), texs = new Map();
 
   // ---------------------------------------------------------------- packs: 'BCH1' + json + arrays (some delta-coded in byte planes)
@@ -8679,6 +8679,31 @@ if(uMir>.5){float f=clamp(1.+vW.y/2.,0.,1.);c*=.75;a2*=min(.32*f*f*uRf,.8);}
 else if(uPort<.5){float fd=length(vW-uE);c=mix(c,uFogC,1.-exp(-fd*uFog));}
 c*=1.35;c=c*(1.+c/6.)/(1.+c);
 o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a2:uKind==7?.92:(uPort>.5?1.:0.));}`;
+  // A host game (Block Paint) draws people its own way: positions relative to its eye and scaled, its own LIGHT() and FOG()
+  // (host.prelude: its shader chunk), a log depth written by hand, and colour plus glow in two outputs.
+  const hostVS = () => VS.replace('out vec3 vW;out vec3 vN;out vec2 vT;', 'out vec3 vW;out vec3 vN;out vec2 vT;out vec3 vR;out float vWw;uniform float uS;uniform vec3 uEyeW;')
+    .replace('vW=w;vN=n;vT=aT;gl_Position=uVP*vec4(w,1.);}', 'vW=w;vR=(w-uEyeW)*uS;vN=n;vT=aT;gl_Position=uVP*vec4(vR,1.);vWw=gl_Position.w;}');
+  const hostFS = () => `#version 300 es
+precision highp float;precision highp int;
+in vec3 vW;in vec3 vN;in vec2 vT;in vec3 vR;in float vWw;uniform sampler2D uTex;uniform int uKind;uniform vec3 uTint;uniform int uEdge;uniform vec2 u_lz;
+layout(location=0) out vec4 o0;layout(location=1) out vec4 o1;
+${HOST.prelude}
+void main(){vec4 tx=texture(uTex,vT);vec3 alb=tx.rgb;float al=tx.a;
+if(uKind==1||uKind==3||uKind==4||uKind==0){alb*=uTint;}
+if(uKind==1){if(uEdge==0&&al<.5)discard;if(uEdge==1&&(al>=.5||al<.03))discard;}
+if(uKind==2&&al<.1)discard;
+gl_FragDepth=log(max(vWw,1e-9)/u_lz.y)*u_lz.x;
+vec3 n=normalize(vN),vd=normalize(-vR);if(!gl_FrontFacing)n=-n;vec3 c;
+if(uKind==7){vec3 g=vec3(4.,.12,.06)*uTint.x;o0=vec4(FOG(g,vR),1.);o1=vec4(vec3(1.,.06,.03)*uTint.x,1.);return;}
+if(uKind==0){c=LIGHT(alb,n,vd,vR,.6,.22);float wr=clamp((dot(n,u_L)+.45)/1.45,0.,1.)-max(dot(n,u_L),0.);c+=alb*u_Lc*vec3(1.,.42,.28)*wr*.35+alb*vec3(1.,.5,.35)*pow(1.-max(dot(n,vd),0.),3.)*.2;}
+else if(uKind==1)c=LIGHT(alb,n,vd,vR,.45,.3);
+else if(uKind==2)c=LIGHT(alb,n,vd,vR,.03,1.2);
+else if(uKind==3)c=LIGHT(alb,n,vd,vR,1.,0.);
+else if(uKind==5)c=LIGHT(alb*1.1,n,vd,vR,.3,.35);
+else if(uKind==6)c=vec3(.03,.008,.007);
+else c=LIGHT(alb,n,vd,vR,.85,.06)+alb*pow(1.-max(dot(n,vd),0.),4.)*.15;
+float a2=(uKind==3||uKind==1&&uEdge==1)?al:1.;
+o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
   let prog = null, U = {}, boneTex = null, boneRows = 16, boneData = null;
   const freeRows = [];
   // each person drawn has a row of the bone texture; rows are handed back when a person goes, and the texture grows if needed
@@ -8694,9 +8719,10 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
   }
   function compile() {
     const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(o)); return o; };
-    prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+    prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, HOST ? hostVS() : VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, HOST ? hostFS() : FS)); gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(prog));
-    for (const u of ['uVP', 'uB', 'uRow', 'uMir', 'uOff', 'uTex', 'uKind', 'uTint', 'uE', 'uRf', 'uPort', 'uCut', 'uFog', 'uFogC', 'uL', 'uLC', 'uAmb', 'uEdge', 'uMt', 'uMn', 'uMr', 'uMu', 'uMk', 'uGz', 'uEyeL', 'uEyeR']) U[u] = gl.getUniformLocation(prog, u);
+    for (const u of ['uVP', 'uB', 'uRow', 'uMir', 'uOff', 'uTex', 'uKind', 'uTint', 'uE', 'uRf', 'uPort', 'uCut', 'uFog', 'uFogC', 'uL', 'uLC', 'uAmb', 'uEdge', 'uMt', 'uMn', 'uMr', 'uMu', 'uMk', 'uGz', 'uEyeL', 'uEyeR', 'uS', 'uEyeW', 'u_lz']) U[u] = gl.getUniformLocation(prog, u);
+    if (HOST && HOST.bind) HOST.bind(prog);   // (the host finds its own uniforms: light, fog, shadows)
     boneTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, boneTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     boneData = new Float32Array(BASE.bones.length * 3 * 4 * boneRows);
@@ -8707,6 +8733,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
   // ---------------------------------------------------------------- the shared body
   async function init(glc, root, opt) {
     gl = glc; ROOT = root || ''; if (opt && opt.packExt) PACKX = opt.packExt;   // (where .gz files can't be served, the packs are named .bin)
+    if (opt && opt.host) HOST = opt.host;   // (a game with its own camera, light, fog and depth: Block Paint)
     if (ready) return ready;
     ready = (async () => {
       const [b, an] = await Promise.all([pack('base.bin.gz'), pack('anim.bin.gz').catch(() => null)]);
@@ -9086,6 +9113,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     gl.useProgram(prog);
     gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniform3fv(U.uE, eye); gl.uniform1f(U.uMir, o.mir ? 1 : 0); gl.uniform1f(U.uRf, o.rf || 1); gl.uniform1f(U.uPort, o.port ? 1 : 0);
     gl.uniform1f(U.uFog, o.fog ?? .034); gl.uniform3fv(U.uFogC, o.fogC || [.022, .013, .01]);
+    if (HOST) { gl.uniform1f(U.uS, o.scale || 1); gl.uniform3fv(U.uEyeW, eye); if (o.lz) gl.uniform2f(U.u_lz, o.lz[0], o.lz[1]); if (HOST.setup) HOST.setup(o); }
     gl.uniform3fv(U.uL, o.light || [.42, .86, .3]); gl.uniform3fv(U.uLC, o.lightC || [1.05, .98, .9]); gl.uniform3fv(U.uAmb, o.amb || [.34, .3, .28]);
     gl.uniform1i(U.uB, 1); gl.uniform1i(U.uTex, 0); gl.uniform1i(U.uMt, 2);
     gl.activeTexture(gl.TEXTURE2); const was2 = gl.getParameter(gl.TEXTURE_BINDING_2D); gl.activeTexture(gl.TEXTURE0);
