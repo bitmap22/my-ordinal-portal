@@ -118,6 +118,12 @@ def main():
     if len(keys) != 18:
         raise SystemExit("rare-sats.json should have 18 kinds, found %d. Nothing changed." % len(keys))
 
+    # already read today (an earlier run got it): nothing to do
+    now = datetime.datetime.now(ZoneInfo("Europe/London"))
+    if old.get("read") == "%d %s %d" % (now.day, MONTHS[now.month - 1], now.year) and os.environ.get("FORCE") != "1":
+        print("Already read today. Nothing to do.")
+        return
+
     prices = why = None
     for n in range(TRIES):
         if n:
@@ -129,6 +135,10 @@ def main():
             why = str(e)
             print("read %d did not pass: %s" % (n + 1, why))
     if prices is None:
+        # the day has more tries left (the job runs again a few hours on): only the day's last try counts as a failure
+        if os.environ.get("LAST_TRY") != "1":
+            print("Could not get a good, fresh read of the page this time (%s). Nothing changed. It will try again later today." % why)
+            return
         raise SystemExit("Could not get a good, fresh read of the page (%s). Nothing changed." % why)
 
     now = datetime.datetime.now(ZoneInfo("Europe/London"))
