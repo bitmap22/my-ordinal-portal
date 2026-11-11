@@ -24,7 +24,6 @@ jobs:
     env:
       BRANCH: ${{ github.event_name == 'push' && github.ref_name || 'main' }}
       GH_TOKEN: ${{ github.token }}
-      RARE_SATS_NOTE: ${{ runner.temp }}/rare-sats-note.txt
     steps:
       - name: Get the portal files
         run: git clone --quiet --depth 1 --branch "$BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" portal
@@ -33,6 +32,7 @@ jobs:
         working-directory: portal
         run: |
           set -o pipefail
+          export RARE_SATS_NOTE="$RUNNER_TEMP/rare-sats-note.txt"
           python3 .github/scripts/rare-sats-refresh.py | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Save the file if it changed
@@ -42,7 +42,7 @@ jobs:
           git config user.name "bitmap22"
           git config user.email "145838362+bitmap22@users.noreply.github.com"
           git add rare-sats.json
-          git commit --quiet -F "$RARE_SATS_NOTE"
+          git commit --quiet -F "$RUNNER_TEMP/rare-sats-note.txt"
           for n in 1 2 3; do
             if git push --quiet origin "HEAD:$BRANCH"; then echo "Saved."; exit 0; fi
             git pull --quiet --rebase origin "$BRANCH"
