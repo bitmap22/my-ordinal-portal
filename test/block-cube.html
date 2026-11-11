@@ -8911,7 +8911,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
   }
   async function make(look) {
     const m = await model(look);
-    return {look, model: m, meta: m.meta, P: m.P, rest: m.rest, parts: m.parts, tint: m.tint, skinTint: m.skinTint, hipsH: m.hipsH, eyeL: m.eyeL, eyeR: m.eyeR, lift: m.lift || 0, row: takeRow(), st: null};
+    return {look, model: m, meta: m.meta, P: m.P, rest: m.rest, parts: m.parts, tint: m.tint, skinTint: m.skinTint, hipsH: m.hipsH, eyeL: m.eyeL, eyeR: m.eyeR, soles: m.soles, row: takeRow(), st: null};
   }
   // a person who has gone: their row is free again (the model stays, for whoever wears that look next)
   function drop(person) { if (person && person.row >= 0) { freeRows.push(person.row); person.row = -1; } }
@@ -8989,7 +8989,6 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     // how the wardrobe's pieces sit together: each says where its edges are (its `fab` notes), and the others make room
     const slot = s => { const p = pr.find(p => p && p.meta.fab && p.meta.fab.slot === s); return p ? p.meta.fab : null; };
     const ctx = {bot: slot('bottom'), top: slot('top'), shoe: slot('shoes'), glove: slot('gloves'), hat: slot('hat'), az: rest[BASE.boneIdx.Hips].h[2]};
-    person.lift = ctx.shoe && ctx.shoe.lift ? Math.max(0, ctx.shoe.lift - .004) : 0;   // (thick soles lift the wearer; the first few millimetres are left to sink into the floor, as bare soles do)
     const made = new Array(pr.length), isBot = p => !!(p && p.meta.fab && p.meta.fab.slot === 'bottom');
     for (const first of [true, false]) pr.forEach((p, i) => { if (!p || isBot(p) !== first) return; const g = proxyPart(person, p, ctx); if (g.kind === 8) cloth(g, p.meta.fab, styles[i]); made[i] = g; });   // (what is worn below first: tops are fitted round it)
     for (const g of made) if (g) person.parts.push(g);
@@ -8997,6 +8996,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     if (person.eyeL) person.parts.push(beamPart(person));
     person.tint = hexLin(look.hairRGB || cm.hairRGB || '#3a2618');
     person.skinTint = look.skinTint || [1, 1, 1];
+    person.soles = Object.values(person.soles || {});
     return person;
   }
   const hexLin = h => [1, 3, 5].map(i => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2));
@@ -9060,6 +9060,23 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     gl.bindVertexArray(null);
     return {vao, n: idx.length, type: idx instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, mt: mor.count ? mor.tex : null, mr: mor.rows};
   }
+  // The places a foot can touch the ground with, of whatever is on it (the bare sole, or the sole of a shoe): under the heel,
+  // the middle of the foot, the ball and the toes, and the edges that come lowest when the foot tips: the back of the heel
+  // (toes up, as a step lands), the tips of the toes (heel up, as a step pushes off) and the two sides. pose() keeps the
+  // lowest of them at floor height, so feet and shoes neither sink into the ground nor hang above it. Each place is kept
+  // as an offset from the joint of the bone that carries it (the foot or the toes).
+  const SOLE_TIPS = [[.58, 0], [.27, 0], [-.36, 0], [-1, 0], [-2.7, 0], [0, .27], [0, -.27]];   // (how far the foot is tipped: toes up/down, to a side; as slopes)
+  function soleNote(person, pos, j, w, n) {
+    const bi = BASE.boneIdx, S = person.soles || (person.soles = {}), feet = new Map([[bi.LeftFoot, 'L'], [bi.LeftToeBase, 'Lt'], [bi.RightFoot, 'R'], [bi.RightToeBase, 'Rt']]);
+    const put = (key, score, b, d) => { if (!S[key] || score < S[key].y) S[key] = {b, d, y: score}; };
+    for (let v = 0; v < n; v++) {
+      let m = 0; for (let k = 1; k < 4; k++) if (w[v * 4 + k] > w[v * 4 + m]) m = k;
+      const b = j[v * 4 + m], f = feet.get(b); if (!f) continue;
+      const x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2], h = person.rest[b].h, d = [x - h[0], y - h[1], z - h[2]];
+      put(f + (d[2] < (f.length > 1 ? .03 : -.02) ? 0 : 1), y, b, d);   // (flat on the ground: heel / middle of the foot, ball / toes)
+      SOLE_TIPS.forEach(([tz, tx], i) => put(f[0] + 'e' + i, y + z * tz + x * tx, b, d));
+    }
+  }
   function bodyPart(person, hide) {
     const B = BASE.body, n = B.mh.length, P = person.P, pos = new Float32Array(n * 3);
     for (let v = 0; v < n; v++) { const m = B.mh[v] * 3; pos[v * 3] = P[m]; pos[v * 3 + 1] = P[m + 1]; pos[v * 3 + 2] = P[m + 2]; }
@@ -9067,6 +9084,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     const keep = []; for (let i = 0; i < B.idx.length; i += 3) { const a = B.idx[i], b = B.idx[i + 1], c = B.idx[i + 2]; if (hide[B.mh[a]] || hide[B.mh[b]] || hide[B.mh[c]]) continue; keep.push(a, b, c); }
     const refs = new Uint16Array(n * 3); for (let v = 0; v < n; v++) refs[v * 3] = B.mh[v];
     const mor = faceMorphs('body', refs, null, n);
+    soleNote(person, pos, B.j, B.w, n);
     const g = upload(pos, nor, B.uv, B.j, B.w, Uint16Array.from(keep), mor);
     g.kind = 0; g.tex = texture(`skins/${person.look.skin || person.meta.skin}_${person.look.texSize || '1k'}.webp`);
     return g;
@@ -9194,6 +9212,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     const nor = normals(pos, idx, n);
     let extra = null; if (A.sit && m.sitScale) { extra = new Float32Array(n * 3); for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) extra[v * 3 + k] = A.sit[v * 3 + k] / 32767 * m.sitScale * (s[k] || 1); }
     const mor = faceMorphs(m.kind + ':' + m.id + (extra ? ':' + person.meta.id : ''), A.refs, refw, n, extra);
+    if (m.kind === 'clothes') soleNote(person, pos, A.j, A.w, n);
     const g = upload(pos, nor, A.uv, A.j, A.w, idx, mor, m.fab ? A.z : null);
     g.kind = m.fab ? 8 : {hair: 1, eyes: 2, eyebrows: 3, eyelashes: 3, teeth: 5, tongue: 5}[m.kind] ?? 4;
     if (m.kind === 'teeth') { const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); } person.teeth = {lo, hi}; }
@@ -9358,7 +9377,51 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     person.mu = act.map(([u]) => BASE.unitIdx[u]); person.mk = act.map(([, w]) => Math.min(2.4, w));
     if (st.sitW > .003) { person.mu.push(BASE.units.length); person.mk.push(Math.min(1, st.sitW)); }   // (sitting: a skirt draws in round the legs)
     person.by = st.by; person.at = S.at || [0, 0, 0]; person.tq = S.tilt || null;
-    if (person.lift) { const up = person.lift * (1 - st.sitW); person.at = [person.at[0], person.at[1] + up, person.at[2]]; }   // (standing on thick soles: that much taller)
+    // The soles stay on the ground. The lowest place under either foot (the sole of a shoe, when one is worn) is kept at floor
+    // height (a few millimetres in, as a real sole presses), so feet and shoes neither sink into the ground nor hang above
+    // it, whoever the person is and whatever they wear. Standing and walking it works both ways; running, in a dance or
+    // with another whole-body move on top it only ever lifts (a jump is still a jump); sitting, the seat decides.
+    // Feet and toes on the ground, so a shoe lies flat instead of its front curling up.
+    // The foot: standing, a foot on the ground lies flat on it (the moves leave it tipped up on its heel); in a step it may
+    // land heel first, but near the ground it is never tipped up far.
+    // The toes: a move's own turning of the toes is not used (it came out bent far up): they stay in line with the foot, as
+    // they are at rest. When the heel lifts with the foot still on the ground (pushing off in a step, up on tiptoe) the toes
+    // stay flat on the ground and the foot bends at the ball, as real toes and the front of a shoe do.
+    const FK = fk(person, out, hips), sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const stand = (1 - Math.min(1, st.lw * 2.5)) * (1 - (st.emW || 0)) * (1 - st.sitW);
+    for (const sd of ['Left', 'Right']) {
+      const f = bi[sd + 'Foot'], t = bi[sd + 'ToeBase']; if (f === undefined || t === undefined) continue;
+      const Rf = person.rest[f].R, Rt = person.rest[t].R, pb = BASE.bones[f].parent;
+      let D = mm(FK.W[f], mt(Rf)), fw = mv(D, [0, 0, 1]);   // (how the foot has turned from rest; where its length points now)
+      const a = Math.atan2(fw[0], fw[2]), c = Math.cos(a), sn = Math.sin(a), level = [c, 0, sn, 0, 1, 0, -sn, 0, c];   // (the foot's heading; lying flat, turned that way)
+      const near = 1 - sstep(.03, .1, FK.Hd[f][1] - person.rest[f].h[1] + (st.gnd || 0));   // (the ankle about as low as when standing)
+      const over = Math.max(0, Math.asin(Math.max(-1, Math.min(1, fw[1]))) - .24) * near * (1 - (st.emW || 0)), flat = stand * near;
+      if (pb >= 0 && (over > .001 || flat > .001)) {
+        let qd = m2q(D); if (over > .001) qd = qmul(qaxis(c, 0, -sn, over), qd); if (flat > .001) qd = qslerp(qd, m2q(level), flat);
+        D = q2m(qd); out[f] = m2q(mm(mt(Rf), mm(mt(mm(FK.W[pb], mt(person.rest[pb].R))), mm(D, Rf))));
+        FK.W[f] = mm(D, Rf); FK.Hd[t] = vadd(FK.Hd[f], mv(D, [0, 1, 2].map(k => person.rest[t].h[k] - person.rest[f].h[k]))); fw = mv(D, [0, 0, 1]);
+      }
+      const g = sstep(0, .06, -fw[1]) * (1 - sstep(.025, .09, FK.Hd[t][1] - person.rest[t].h[1] + (st.gnd || 0)));   // (heel up, and the ball of the foot near the ground)
+      let q = [0, 0, 0, 1];
+      if (g > .001) {
+        const qf = m2q(mm(mt(Rt), mm(mt(D), mm(level, Rt))));
+        const ang = 2 * Math.acos(Math.min(1, Math.abs(qf[3]))); q = qslerp(q, qf, g * Math.min(1, 1.15 / Math.max(ang, 1e-6)));   // (no further than toes bend)
+      }
+      out[t] = q; FK.W[t] = mm(FK.W[f], mm(mm(mt(Rf), Rt), q2m(q)));
+    }
+    if (person.soles && person.soles.length) {
+      const {W, Hd} = FK, Ms = {}; let lo = 1e9;
+      for (const s of person.soles) { const M = Ms[s.b] || (Ms[s.b] = mm(W[s.b], mt(person.rest[s.b].R))); lo = Math.min(lo, Hd[s.b][1] + M[3] * s.d[0] + M[4] * s.d[1] + M[5] * s.d[2]); }
+      const free = Math.max(st.emW || 0, st.lay && Object.values(st.lay).some(l => (!l.mask || l.mask === 'legs') && l.w > .05) ? 1 : 0);
+      let fix = -.003 - lo;
+      if (fix < 0) {   // (they would come down: running, only as far as the lowest step of the stride, so both feet still leave the ground)
+        st.cyc = Math.min(lo, (st.cyc === undefined ? lo : st.cyc) + dt * .02);
+        fix = (fix * (1 - st.rw) + Math.min(0, -.003 - st.cyc) * st.rw) * (1 - free);
+      }
+      fix = Math.max(-.12, Math.min(.25, fix)) * (1 - st.sitW);
+      st.gnd = st.gnd === undefined ? fix : st.gnd + (fix - st.gnd) * Math.min(1, dt * (fix > st.gnd ? 30 : 12)); st.lo = lo;
+      hips[1] += st.gnd / (person.hipsH / ((ANIM && ANIM.hipsH) || person.hipsH));   // (fk scales the hips' own movement by the person's size)
+    }
     girdle(person, out);
     // the tablet: held in front of the chest, a hand on each side edge (fingers behind, thumb on the front)
     person.tabC = null;
@@ -9674,8 +9737,9 @@ function ppMate(M) {
   }
   return M.H && BCH.loaded(M.H) ? M.H : null;
 }
-// a crewmate whose person is still on the way is not shown as a Node Runner meanwhile (only if their person can't come)
-const ppWait = M => (PP.st === 1 || PP.st === 2) && !M.bad && !(M.H && BCH.loaded(M.H)) && performance.now() - (M.t0 || (M.t0 = performance.now())) < 20000;
+// a crewmate whose person is still on the way is not shown as a Node Runner meanwhile, however long it takes (only if
+// their person can't come at all: the people can't be shown here, or their files failed to load)
+const ppWait = M => (PP.st === 1 || PP.st === 2) && !M.bad && !(M.H && BCH.loaded(M.H));
 // posing a crewmate for this frame: how they walk comes from how they move; the parcel (as a tablet) and the pint go in their hands
 function ppPose(M, H, R, dt) {
   const u = M.pv || (M.pv = {lp: R.p.slice(), vx: 0, vz: 0});
