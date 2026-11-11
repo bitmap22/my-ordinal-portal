@@ -1,0 +1,48 @@
+# Keeps the rare sats board in Block Cube up to date, by itself, once a day.
+# It reads https://ordiscan.com/rare-sats and saves the prices into rare-sats.json.
+# It only ever changes rare-sats.json. If the page can't be read properly it changes nothing.
+name: Rare sats daily refresh
+
+on:
+  schedule:
+    - cron: "17 6 * * *"   # every day at 06:17 UTC
+  workflow_dispatch:        # also lets it be run by hand from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rare-sats-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BRANCH: main
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Get the portal files
+        run: git clone --quiet --depth 1 --branch "$BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" portal
+
+      - name: Read the prices and update rare-sats.json
+        working-directory: portal
+        run: |
+          set -o pipefail
+          export RARE_SATS_NOTE="$RUNNER_TEMP/rare-sats-note.txt"
+          python3 .github/scripts/rare-sats-refresh.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the file if it changed
+        working-directory: portal
+        run: |
+          if git diff --quiet -- rare-sats.json; then echo "Nothing to save."; exit 0; fi
+          git config user.name "bitmap22"
+          git config user.email "145838362+bitmap22@users.noreply.github.com"
+          git add rare-sats.json
+          git commit --quiet -F "$RUNNER_TEMP/rare-sats-note.txt"
+          for n in 1 2 3; do
+            if git push --quiet origin "HEAD:$BRANCH"; then echo "Saved."; exit 0; fi
+            git pull --quiet --rebase origin "$BRANCH"
+          done
+          echo "Could not save the file."; exit 1
