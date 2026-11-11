@@ -4269,7 +4269,7 @@ function roomFrame(W, H, tn, dpr) {
     if (np) { gl.bindVertexArray(rmParVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, np); }
     gl.uniform1f(parP.u.uAmb, 0); gl.uniform1f(parP.u.uMir, 0); cmLU(parP, tn, false);
     if (crewList.length) { chDraw(crewList, VP, eye, mir, rf); if (mir) gl.cullFace(gl.BACK); }
-    if (crew.hum && crew.hum.length) BCH.draw(crew.hum, VP, eye, {mir, rf});
+    if (crew.hum && crew.hum.length) ppSafe(() => BCH.draw(crew.hum, VP, eye, {mir, rf}));
   };
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
@@ -9726,6 +9726,8 @@ function ppLook(l) {
 function ppWd(x) { return typeof x === 'string' && /^([0-9a-f]{2}){1,21}$/.test(x) && /[1-9a-f]/.test(x) ? [x] : []; }
 const ppGlow = l => (PEOPLE[l[0]] || PEOPLE[0]).glow;
 // a crewmate's person, made in the background for their look (the old one stays until the new one is ready)
+// nothing going wrong with the people may ever stop the game itself: a failed step is skipped for that frame (and noted once)
+function ppSafe(f, d) { try { return f(); } catch (x) { if (!PP.oops) { PP.oops = 1; console.warn('people:', x); } return d; } }
 function ppMate(M) {
   if (PP.st !== 2) { if (!PP.st) ppStart(); return null; }
   const key = M.look.join(',');
@@ -9975,9 +9977,9 @@ function crewPose(tn, dt, VP, W, H) {
     else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true;
     R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn);
-    const H = ppMate(M);
+    const H = ppSafe(() => ppMate(M), null);
     if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; R.pintS = 0; }   // (a Node Runner until their person has arrived)
-    const wait = !H && ppWait(M), pose = H ? ppPose(M, H, R, dt) : wait ? [] : chPose(R, tn, dt);
+    const wait = !H && ppWait(M), pose = H ? ppSafe(() => ppPose(M, H, R, dt), []) : wait ? [] : chPose(R, tn, dt);
     if (wait) R.pintAt = null;
     M.tag.style.visibility = wait ? 'hidden' : '';   // (no name tag before their person is here)
     if (eye) { const dx = room.p.x - R.p[0], dz = room.p.z - R.p[2], dd = Math.hypot(dx, dz);   // crewmates are solid: you are kept a step apart
