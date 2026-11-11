@@ -8565,7 +8565,8 @@ const BCH = (() => {
   }
   function pack(name) {
     const txt = /\.txt$/.test(PACKX);   // (a host that serves only text: the packs written out as base64)
-    if (!packs.has(name)) packs.set(name, fetch(ROOT + name.replace(/\.bin\.gz$/, PACKX)).then(r => { if (!r.ok) throw Error(name); return txt ? r.text().then(t => new Response(Uint8Array.from(atob(t.trim()), c => c.charCodeAt(0)))) : r; }).then(gunzip).then(parsePack));
+    if (!packs.has(name)) { const p = fetch(ROOT + name.replace(/\.bin\.gz$/, PACKX)).then(r => { if (!r.ok) throw Error(name); return txt ? r.text().then(t => new Response(Uint8Array.from(atob(t.trim()), c => c.charCodeAt(0)))) : r; }).then(gunzip).then(parsePack);
+      packs.set(name, p); p.catch(() => packs.delete(name)); }   // (a file that did not arrive is asked for again next time, not remembered as missing)
     return packs.get(name);
   }
   function texture(name, opt = {}) {
@@ -9728,18 +9729,18 @@ const ppGlow = l => (PEOPLE[l[0]] || PEOPLE[0]).glow;
 function ppMate(M) {
   if (PP.st !== 2) { if (!PP.st) ppStart(); return null; }
   const key = M.look.join(',');
-  if (M.hk !== key) {
-    M.hk = key; if (!M.t0) M.t0 = performance.now();
+  if (M.hk !== key || (M.bad && performance.now() - M.bad > 5000)) {   // (a new look; or their files did not arrive: tried again every few seconds)
+    M.hk = key; M.bad = 0;
     BCH.make(ppLook(M.look)).then(H => {
       if (M.hk !== key || !crew.mates.has(M.id)) { BCH.drop(H); return; }
       if (M.H) BCH.drop(M.H); M.H = H;
-    }, e => { M.bad = 1; console.warn('person:', e && e.message); });
+    }, e => { M.bad = performance.now(); console.warn('person:', e && e.message); });
   }
   return M.H && BCH.loaded(M.H) ? M.H : null;
 }
-// a crewmate whose person is still on the way is not shown as a Node Runner meanwhile, however long it takes (only if
-// their person can't come at all: the people can't be shown here, or their files failed to load)
-const ppWait = M => (PP.st === 1 || PP.st === 2) && !M.bad && !(M.H && BCH.loaded(M.H));
+// a crewmate is never shown as a Node Runner where the people can be shown: until their person is here (however long it
+// takes, and tried again if their files did not arrive) they are not drawn, only their name tag
+const ppWait = M => (PP.st === 1 || PP.st === 2) && !(M.H && BCH.loaded(M.H));
 // posing a crewmate for this frame: how they walk comes from how they move; the parcel (as a tablet) and the pint go in their hands
 function ppPose(M, H, R, dt) {
   const u = M.pv || (M.pv = {lp: R.p.slice(), vx: 0, vz: 0});
