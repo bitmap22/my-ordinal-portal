@@ -110,7 +110,8 @@ const BCH = (() => {
   }
   function pack(name) {
     const txt = /\.txt$/.test(PACKX);   // (a host that serves only text: the packs written out as base64)
-    if (!packs.has(name)) packs.set(name, fetch(ROOT + name.replace(/\.bin\.gz$/, PACKX)).then(r => { if (!r.ok) throw Error(name); return txt ? r.text().then(t => new Response(Uint8Array.from(atob(t.trim()), c => c.charCodeAt(0)))) : r; }).then(gunzip).then(parsePack));
+    if (!packs.has(name)) { const p = fetch(ROOT + name.replace(/\.bin\.gz$/, PACKX)).then(r => { if (!r.ok) throw Error(name); return txt ? r.text().then(t => new Response(Uint8Array.from(atob(t.trim()), c => c.charCodeAt(0)))) : r; }).then(gunzip).then(parsePack);
+      packs.set(name, p); p.catch(() => packs.delete(name)); }   // (a file that did not arrive is asked for again next time, not remembered as missing)
     return packs.get(name);
   }
   function texture(name, opt = {}) {
@@ -1268,19 +1269,19 @@ function pbInit() {
     bind(p) { const W = {p}; for (const n of ['L', 'Lc', 'A0', 'A1', 'fog', 'pl', 'plc', 'pln', 'smx', 'shm', 'shon', 'tch', 'wet', 'nz']) W[n] = o.getUniformLocation(p, 'u_' + n); PB.W = W; },
     setup(op) { Ft(PB.W, op.env); }}}).then(() => { let m = ao(); pbGuitarMesh(m); PB.guitar = m.done(); m = ao(); pbPhoneMesh(m); PB.phone = m.done(); PB.st = 2; }, e => { PB.st = -1; console.warn('people:', e && e.message); });
 }
-// which of the people to draw are real people now: you, crewmates, and the nearest townsfolk (a lighter version further off,
-// and fewer on a phone); anyone else is drawn the old way
-const PB_PHONE = matchMedia('(pointer: coarse)').matches, PB_NPCS = PB_PHONE ? 6 : 14;
+// who is drawn, all as real people: you, crewmates, and the townsfolk within 80 metres, nearest first (a lighter version
+// further off; up to 32 of them, 12 on a phone). Nobody is drawn the old way: anyone beyond that is not drawn.
+const PB_PHONE = matchMedia('(pointer: coarse)').matches, PB_NPCS = PB_PHONE ? 12 : 32;
 let pbNpcN = 0;
 function pbSplit(n, eye) {
   if (PB.st !== 2) { if (!PB.st) pbInit(); if (PB.st !== 1) return null; }   // (null: people can't be shown here, everyone the old way)
   const loading = PB.st !== 2;   // (the people's own files are still coming: whoever will be a real person is not shown the old way meanwhile)
   const out = [], fr = Fi.time || 0, near = [], recs = loading ? null : pbRec(); PB.hide.clear();
-  for (const q of n) if (q.kit && q.noCan && q.st) { const d = Math.hypot(q.p[0] - eye[0], q.p[2] - eye[2]); if (d < 48) near.push([d, q]); }
+  for (const q of n) if (q.kit && q.noCan && q.st) { const d = Math.hypot(q.p[0] - eye[0], q.p[2] - eye[2]); if (d < 80) near.push([d, q]); }
   near.sort((a, b) => a[0] - b[0]); const npc = new Map(near.slice(0, PB_NPCS).map(([d, q]) => [q, d]));
   for (const q of n) {
     const me = q === en, crew = !me && q.id !== undefined && !q.kit && !q.noCan, town = npc.has(q);
-    if (!me && !crew && !town) continue;
+    if (!me && !crew && !town) { PB.hide.add(q); continue; }   // (too far off, or more than this device shows: not drawn, and never the old way)
     if (q.pose === 'ride' || q.pose === 'lie') continue;   // (not used by Block Paint today: the old figure if it ever is)
     if (loading) { PB.hide.add(q); continue; }
     if (town && !q.st.pbl) {   // (a townsperson: one of the ten, in one of their outfits; or dressed for what they do)
@@ -1293,13 +1294,14 @@ function pbSplit(n, eye) {
     const look = me ? [tn.ch | 0, tn.ou | 0, tn.sk | 0, pbWd(tn.wd)] : town ? q.st.pbl : [q.ch | 0, q.ou | 0, q.sk | 0, pbWd(q.wd)], key = me ? 'me' : town ? 'n' + q.st.pbn : 'c' + q.id, lk = look.join(',');
     let r = PB.hum.get(key); if (!r) PB.hum.set(key, r = {look: '', H: null, pend: null, t0: fr});
     r.seen = fr;
-    if (r.look !== lk && r.pend !== lk) {   // (a new look: the one they had stays until the new one is all there, clothes and all)
-      r.pend = lk;
-      BCH.make(pbLook(look)).then(H => { if (r.pend !== lk) { BCH.drop(H); return; } if (r.nx) BCH.drop(r.nx); r.nx = H; r.nlk = lk; }, e => { r.bad = 1; console.warn('person:', e && e.message); });
+    if (r.look !== lk && r.pend !== lk && !(r.bad && fr - r.bad < 5)) {   // (a new look: the one they had stays until the new one is all there, clothes and all)
+      r.pend = lk; r.bad = 0;
+      BCH.make(pbLook(look)).then(H => { if (r.pend !== lk) { BCH.drop(H); return; } if (r.nx) BCH.drop(r.nx); r.nx = H; r.nlk = lk; },
+        e => { if (r.pend === lk) r.pend = null; r.bad = (Fi.time || 0) + 1e-6; console.warn('person:', e && e.message); });   // (their files did not arrive: tried again in a few seconds)
     }
     if (r.nx && BCH.loaded(r.nx)) { if (r.H) BCH.drop(r.H); r.H = r.nx; r.look = r.nlk; r.nx = null; r.pend = null; }
     if (r.H && BCH.loaded(r.H)) { r.H.lite = town && npc.get(q) > 14; r.H.far = town ? npc.get(q) : 0; out.push([q, r.H]); }
-    else if (!r.bad) PB.hide.add(q);   // (on their way: not shown the old way meanwhile, however long it takes, unless they can't come)
+    else PB.hide.add(q);   // (on their way: not drawn until they are here, however long it takes; never the old way)
   }
   for (const [k2, r] of PB.hum) if (k2[0] === 'n' && fr - (r.seen || 0) > 4) { if (r.H) BCH.drop(r.H); if (r.nx) BCH.drop(r.nx); r.pend = 'gone'; PB.hum.delete(k2); }   // (townsfolk out of sight let go of their place)
   return out;
@@ -1473,8 +1475,9 @@ function pbDraw(env, eye, list) {
   const t = Fi.time || 0, dt = Math.min(.1, Math.max(0, PB.t < 0 ? 0 : t - PB.t)), fresh = t !== PB.t; PB.t = t;
   const cans = [], phones = [], guitars = [], recs = pbRec();
   for (const [q, H] of list) {
-    if (fresh && !(H.far > 22 && (H.skipN = (H.skipN || 0) + 1) % 2)) {
-      const d2 = H.far > 22 ? dt * 2 : dt, u = H.pv || (H.pv = {lp: q.p.slice(), vx: 0, vz: 0});
+    const ev = H.far > 40 ? 4 : H.far > 22 ? 2 : 1;   // (far off they are posed every second frame, further still every fourth)
+    if (fresh && !(ev > 1 && (H.skipN = (H.skipN || 0) + 1) % ev)) {
+      const d2 = dt * ev, u = H.pv || (H.pv = {lp: q.p.slice(), vx: 0, vz: 0});
       const wx = d2 > 0 ? (q.p[0] - u.lp[0]) / d2 : 0, wz = d2 > 0 ? (q.p[2] - u.lp[2]) / d2 : 0; u.lp = q.p.slice();
       if (Math.hypot(wx, wz) > 12) u.vx = u.vz = 0; else { u.vx += (wx - u.vx) * Math.min(1, d2 * 8); u.vz += (wz - u.vz) * Math.min(1, d2 * 8); }
       const S = {at: q.p, yaw: q.yaw || 0, vel: [u.vx, u.vz], pitch: -(q.lp || 0) * .7, turn: q.lookY || 0, talk: !!q.say};
