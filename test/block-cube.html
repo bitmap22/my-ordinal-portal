@@ -9078,6 +9078,25 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
       SOLE_TIPS.forEach(([tz, tx], i) => put(f[0] + 'e' + i, y + z * tz + x * tx, b, d));
     }
   }
+  // A skirt hangs from the hips: its cloth follows a leg less the further out from the leg it stands (a full skirt's hem
+  // hardly at all, cloth that lies on the thigh fully), so a raised leg pushes a skirt out a little instead of carrying
+  // the whole side of it up into the air.
+  function skirtHang(person, pos, j, w, n) {
+    const bi = BASE.boneIdx, r = person.rest, legs = ['LeftUpLeg', 'LeftLeg', 'RightUpLeg', 'RightLeg'].map(k => bi[k]), isLeg = new Set(legs), hip = bi.Hips;
+    const segs = [['LeftUpLeg', 'LeftLeg'], ['LeftLeg', 'LeftFoot'], ['RightUpLeg', 'RightLeg'], ['RightLeg', 'RightFoot']].map(([a, b]) => [r[bi[a]].h, r[bi[b]].h]);
+    const j2 = new Uint8Array(j), w2 = new Uint8Array(w);
+    for (let v = 0; v < n; v++) {
+      let L = 0; for (let k = 0; k < 4; k++) if (isLeg.has(j[v * 4 + k])) L += w[v * 4 + k]; if (L < 8) continue;
+      const p = [pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]]; let d = 1e9;
+      for (const [a, b] of segs) { const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2]))); d = Math.min(d, Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t, p[2] - a[2] - ab[2] * t)); }
+      const t = Math.max(0, Math.min(1, (d - .11) / .13)), keep = 1 - .72 * t * t * (3 - 2 * t); if (keep > .995) continue;
+      let moved = 0, at = -1, low = -1;
+      for (let k = 0; k < 4; k++) { const q = v * 4 + k; if (isLeg.has(j[q])) { const nw = Math.round(w[q] * keep); moved += w[q] - nw; w2[q] = nw; } else if (j[q] === hip) at = q; if (low < 0 || w2[q] < w2[low]) low = q; }
+      if (at < 0) { at = low; moved += w2[at]; j2[at] = hip; w2[at] = 0; }
+      w2[at] = Math.min(255, w2[at] + moved);
+    }
+    return [j2, w2];
+  }
   function bodyPart(person, hide) {
     const B = BASE.body, n = B.mh.length, P = person.P, pos = new Float32Array(n * 3);
     for (let v = 0; v < n; v++) { const m = B.mh[v] * 3; pos[v * 3] = P[m]; pos[v * 3 + 1] = P[m + 1]; pos[v * 3 + 2] = P[m + 2]; }
@@ -9214,7 +9233,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     let extra = null; if (A.sit && m.sitScale) { extra = new Float32Array(n * 3); for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) extra[v * 3 + k] = A.sit[v * 3 + k] / 32767 * m.sitScale * (s[k] || 1); }
     const mor = faceMorphs(m.kind + ':' + m.id + (extra ? ':' + person.meta.id : ''), A.refs, refw, n, extra);
     if (m.kind === 'clothes') soleNote(person, pos, A.j, A.w, n);
-    const g = upload(pos, nor, A.uv, A.j, A.w, idx, mor, m.fab ? A.z : null);
+    const [sj, sw] = m.fab && m.fab.skirt ? skirtHang(person, pos, A.j, A.w, n) : [A.j, A.w];
+    const g = upload(pos, nor, A.uv, sj, sw, idx, mor, m.fab ? A.z : null);
     g.kind = m.fab ? 8 : {hair: 1, eyes: 2, eyebrows: 3, eyelashes: 3, teeth: 5, tongue: 5}[m.kind] ?? 4;
     if (m.kind === 'teeth') { const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); } person.teeth = {lo, hi}; }
     if (m.kind === 'eyes') for (const [side, sg] of [['eyeL', 1], ['eyeR', -1]]) {
