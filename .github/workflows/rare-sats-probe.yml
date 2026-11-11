@@ -1,0 +1,43 @@
+# Temporary test: can GitHub read the rare sats page? (test branch only, makes no changes)
+name: rare sats probe
+on:
+  push:
+    branches: [rare-sats-auto-test]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the page once and show what came back
+        run: |
+          python3 - <<'PY'
+          import re, urllib.request, urllib.error
+          UA = "bitmap22-rare-sats-refresh/1.0 (+https://github.com/bitmap22/my-ordinal-portal)"
+          def get(u):
+              req = urllib.request.Request(u, headers={"User-Agent": UA, "Accept": "text/html,*/*"})
+              try:
+                  with urllib.request.urlopen(req, timeout=40) as r:
+                      return r.status, dict(r.headers), r.read().decode("utf-8", "replace")
+              except urllib.error.HTTPError as e:
+                  return e.code, dict(e.headers), e.read().decode("utf-8", "replace")
+          s, h, b = get("https://ordiscan.com/robots.txt")
+          print("ROBOTS status", s); print(b[:1500]); print("=" * 60)
+          s, h, b = get("https://ordiscan.com/rare-sats")
+          print("PAGE status", s, "bytes", len(b))
+          for k in ("Server", "Content-Type", "X-Powered-By", "Cf-Ray", "X-Vercel-Id", "Cache-Control"):
+              print(" ", k, "=", h.get(k) or h.get(k.lower()))
+          print("challenge markers:", [m for m in ("Just a moment", "cf-chl", "captcha", "Attention Required") if m in b])
+          print("has __NEXT_DATA__:", "__NEXT_DATA__" in b, "| has __next_f:", "self.__next_f" in b)
+          for name in ("Uncommon", "Black Uncommon", "Palindrome", "Hitman", "First TX", "Block 78", "price", "Price"):
+              print("count", repr(name), b.count(name))
+          i = b.find("Uncommon")
+          print("=" * 60); print("RAW around first 'Uncommon':"); print(b[max(0, i - 1500): i + 2500])
+          j = b.find("Hitman")
+          print("=" * 60); print("RAW around first 'Hitman':"); print(b[max(0, j - 1200): j + 1500])
+          t = re.sub(r"(?s)<(script|style)\b.*?</\1>", " ", b)
+          t = re.sub(r"<[^>]+>", " | ", t); t = re.sub(r"(\s*\|\s*)+", " | ", t); t = re.sub(r"\s+", " ", t)
+          k = t.find("Uncommon")
+          print("=" * 60); print("TEXT from first 'Uncommon':"); print(t[max(0, k - 600): k + 5000])
+          PY
