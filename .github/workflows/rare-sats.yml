@@ -5,7 +5,10 @@ name: Rare sats daily refresh
 
 on:
   schedule:
-    - cron: "17 7 * * *"   # every day at 07:17 UTC
+    - cron: "17 7 * * *"    # every day at 07:17 UTC
+    - cron: "17 11 * * *"   # and again at 11:17, 15:17 and 19:17 UTC, but only if the day's
+    - cron: "17 15 * * *"   # prices have not been read yet (a run that finds them already
+    - cron: "17 19 * * *"   # read does nothing). Only the last one failing sends the email.
   workflow_dispatch:        # also lets it be run by hand from the Actions tab
 
 permissions:
@@ -22,6 +25,8 @@ jobs:
     env:
       BRANCH: main
       GH_TOKEN: ${{ github.token }}
+      LAST_TRY: ${{ (github.event_name != 'schedule' || github.event.schedule == '17 19 * * *') && '1' || '0' }}
+      FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
     steps:
       - name: Get the portal files
         run: git clone --quiet --depth 1 --branch "$BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" portal
