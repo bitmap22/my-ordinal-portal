@@ -8620,18 +8620,22 @@ const BCH = (() => {
   const VS = `#version 300 es
 precision highp float;precision highp int;
 layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec2 aT;layout(location=3) in uvec4 aJ;layout(location=4) in vec4 aW;
-layout(location=5) in vec3 aM0;layout(location=6) in vec3 aM1;layout(location=7) in vec3 aM2;layout(location=8) in vec3 aM3;
-uniform mat4 uVP;uniform highp sampler2D uB;uniform int uRow;uniform vec4 uMw;uniform float uMir;uniform vec3 uOff;
+layout(location=5) in float aMi;
+uniform mat4 uVP;uniform highp sampler2D uB;uniform int uRow;uniform float uMir;uniform vec3 uOff;
+uniform highp sampler2D uMt;uniform int uMn;uniform int uMr;uniform int uMu[12];uniform float uMk[12];uniform int uKind;uniform mat3 uGz;uniform vec3 uEyeL;uniform vec3 uEyeR;
 out vec3 vW;out vec3 vN;out vec2 vT;
 void bone(int i,out vec4 a,out vec4 b,out vec4 c){a=texelFetch(uB,ivec2(i*3,uRow),0);b=texelFetch(uB,ivec2(i*3+1,uRow),0);c=texelFetch(uB,ivec2(i*3+2,uRow),0);}
-void main(){vec3 p=aP+aM0*uMw.x+aM1*uMw.y+aM2*uMw.z+aM3*uMw.w;vec4 r0=vec4(0),r1=vec4(0),r2=vec4(0),a,b,c;
+void main(){vec3 p=aP,nn=aN;
+if(aMi>=0.&&uMn>0){int mi=int(aMi+.5),cx=mi%512,ry=mi/512;for(int k=0;k<12;k++){if(k>=uMn)break;p+=texelFetch(uMt,ivec2(cx,uMu[k]*uMr+ry),0).xyz*uMk[k];}}
+if(uKind==2||uKind==7){vec3 c=p.x>0.?uEyeL:uEyeR;p=c+uGz*(p-c);nn=uGz*nn;}
+vec4 r0=vec4(0),r1=vec4(0),r2=vec4(0),a,b,c;
 for(int k=0;k<4;k++){float w=aW[k];if(w<=0.)continue;bone(int(aJ[k]),a,b,c);r0+=a*w;r1+=b*w;r2+=c*w;}
-vec4 hp=vec4(p,1.);vec3 w=vec3(dot(r0,hp),dot(r1,hp),dot(r2,hp))+uOff;vec3 n=vec3(dot(r0.xyz,aN),dot(r1.xyz,aN),dot(r2.xyz,aN));
+vec4 hp=vec4(p,1.);vec3 w=vec3(dot(r0,hp),dot(r1,hp),dot(r2,hp))+uOff;vec3 n=vec3(dot(r0.xyz,nn),dot(r1.xyz,nn),dot(r2.xyz,nn));
 if(uMir>.5){w.y=-w.y;n.y=-n.y;}
 vW=w;vN=n;vT=aT;gl_Position=uVP*vec4(w,1.);}`;
   // kind: 0 skin, 1 hair, 2 eyes, 3 brows/lashes, 4 clothes, 5 teeth
   const FS = `#version 300 es
-precision highp float;
+precision highp float;precision highp int;
 in vec3 vW;in vec3 vN;in vec2 vT;uniform sampler2D uTex;uniform int uKind;uniform vec3 uTint;uniform vec3 uE;uniform float uMir,uRf,uPort,uCut,uFog;uniform vec3 uFogC;uniform vec3 uL;uniform vec3 uLC;uniform vec3 uAmb;uniform int uEdge;out vec4 o;
 float D(float nh,float r){float a=r*r,a2=a*a,d=nh*nh*(a2-1.)+1.;return a2/(3.14159*d*d);}
 void main(){vec4 tx=texture(uTex,vT);vec3 alb=tx.rgb;float al=tx.a;
@@ -8660,7 +8664,11 @@ if(uKind==0){
 }else if(uKind==3){
  c=alb*(sky*.8+uLC*max(nl,0.)*.6+fill);
 }else if(uKind==5){
- c=alb*(sky*.7+uLC*max(nl,0.)*.5);
+ float df=clamp((nl+.5)/1.5,0.,1.);c=alb*(sky*1.05+fill+uLC*df*.7)*1.1+uLC*pow(nh,60.)*.12;
+}else if(uKind==6){
+ c=vec3(.03,.008,.007)*(.6+.4*n.y);
+}else if(uKind==7){
+ c=vec3(4.,.12,.06)*uTint.x;
 }else{
  // cloth: matte, a soft sheen at grazing angles
  float df=clamp((nl+.25)/1.25,0.,1.);float sh=pow(1.-nv,4.)*.25;
@@ -8670,7 +8678,7 @@ float a2=(uKind==3||uKind==1&&uEdge==1)?al:1.;
 if(uMir>.5){float f=clamp(1.+vW.y/2.,0.,1.);c*=.75;a2*=min(.32*f*f*uRf,.8);}
 else if(uPort<.5){float fd=length(vW-uE);c=mix(c,uFogC,1.-exp(-fd*uFog));}
 c*=1.35;c=c*(1.+c/6.)/(1.+c);
-o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a2:(uPort>.5?1.:0.));}`;
+o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a2:uKind==7?.92:(uPort>.5?1.:0.));}`;
   let prog = null, U = {}, boneTex = null, boneRows = 16, boneData = null;
   const freeRows = [];
   // each person drawn has a row of the bone texture; rows are handed back when a person goes, and the texture grows if needed
@@ -8688,7 +8696,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(o)); return o; };
     prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(prog));
-    for (const u of ['uVP', 'uB', 'uRow', 'uMw', 'uMir', 'uOff', 'uTex', 'uKind', 'uTint', 'uE', 'uRf', 'uPort', 'uCut', 'uFog', 'uFogC', 'uL', 'uLC', 'uAmb', 'uEdge']) U[u] = gl.getUniformLocation(prog, u);
+    for (const u of ['uVP', 'uB', 'uRow', 'uMir', 'uOff', 'uTex', 'uKind', 'uTint', 'uE', 'uRf', 'uPort', 'uCut', 'uFog', 'uFogC', 'uL', 'uLC', 'uAmb', 'uEdge', 'uMt', 'uMn', 'uMr', 'uMu', 'uMk', 'uGz', 'uEyeL', 'uEyeR']) U[u] = gl.getUniformLocation(prog, u);
     boneTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, boneTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     boneData = new Float32Array(BASE.bones.length * 3 * 4 * boneRows);
@@ -8709,6 +8717,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
       for (const m of M.morphs) face[m.name] = {i: A['mi:' + m.name], d: A['md:' + m.name], s: m.scale};
       const bones = M.bones.map((bn, k) => ({name: bn.name, parent: bn.parent, head: A['bh:' + k], tail: A['bt:' + k], kind: refKind(bn.name)}));
       BASE = {N, base, face, faceUnits: M.face, bones, body: {mh: A['body.mh'], uv: A['body.uv'], j: A['body.j'], w: A['body.w'], idx: A['body.idx']}};
+      BASE.units = Object.keys(M.face).filter(k => face[M.face[k]]); BASE.unitIdx = Object.fromEntries(BASE.units.map((k, i) => [k, i]));
       BASE.boneIdx = Object.fromEntries(bones.map((b, i) => [b.name, i]));
       if (an) ANIM = readAnims(an);
       compile();
@@ -8752,7 +8761,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
   }
   async function make(look) {
     const m = await model(look);
-    return {look, model: m, meta: m.meta, P: m.P, rest: m.rest, parts: m.parts, tint: m.tint, skinTint: m.skinTint, hipsH: m.hipsH, row: takeRow(), st: null};
+    return {look, model: m, meta: m.meta, P: m.P, rest: m.rest, parts: m.parts, tint: m.tint, skinTint: m.skinTint, hipsH: m.hipsH, eyeL: m.eyeL, eyeR: m.eyeR, row: takeRow(), st: null};
   }
   // a person who has gone: their row is free again (the model stays, for whoever wears that look next)
   function drop(person) { if (person && person.row >= 0) { freeRows.push(person.row); person.row = -1; } }
@@ -8767,7 +8776,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     const mean = idx => { const r = [0, 0, 0]; for (const i of idx) { r[0] += P[i * 3]; r[1] += P[i * 3 + 1]; r[2] += P[i * 3 + 2]; } return r.map(x => x / idx.length); };
     const rest = BASE.bones.map(b => { const h = mean(b.head), t = mean(b.tail); return {h, t, R: restFrame(h, t, b.kind)}; });
     const person = {look, meta: cm, P, rest, parts: [], hipsH: rest[BASE.boneIdx.Hips].h[1]};
-    const want = [['eyes', 'high-poly'], ['eyebrows', look.brows || cm.brows], ['eyelashes', look.lashes || cm.lashes], ['teeth', 'teeth_base'], ['hair', look.hair || cm.hair]];
+    const want = [['eyes', 'high-poly'], ['eyebrows', look.brows || cm.brows], ['eyelashes', look.lashes || cm.lashes], ['teeth', 'teeth_base'], ['tongue', 'tongue01'], ['hair', look.hair || cm.hair]];
     for (const c of (look.clothes || [])) want.push(['clothes', c]);
     const pr = await Promise.all(want.filter(w => w[1]).map(([k, id]) => pack(`p_${k}_${id}.bin.gz`).catch(() => null)));
     // body vertices hidden under clothes
@@ -8775,25 +8784,39 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     for (const p of pr) if (p && p.A.del) for (const v of p.A.del) hide[v] = 1;
     person.parts.push(bodyPart(person, hide));
     for (const p of pr) if (p) person.parts.push(proxyPart(person, p));
+    if (person.teeth) person.parts.push(mouthPart(person));
+    if (person.eyeL) person.parts.push(beamPart(person));
     person.tint = hexLin(look.hairRGB || cm.hairRGB || '#3a2618');
     person.skinTint = look.skinTint || [1, 1, 1];
     return person;
   }
   const hexLin = h => [1, 3, 5].map(i => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2));
 
-  // face morph deltas for any set of MH vertices (weights refw over refs), per unit
-  function faceDeltas(refs, refw, n) {
-    const U = ['blink', 'smile', 'jaw', 'brows'], out = U.map(() => new Float32Array(n * 3));
-    const units = {blink: ['blinkL', 'blinkR'], smile: ['smile'], jaw: ['jaw'], brows: ['browL', 'browR']};
-    U.forEach((u, k) => {
-      const full = new Float32Array(BASE.N * 3); let any = false;
-      for (const key of units[u]) { const nm = BASE.faceUnits[key], f = nm && BASE.face[nm]; if (!f) continue; any = true;
-        for (let i = 0; i < f.i.length; i++) for (let c = 0; c < 3; c++) full[f.i[i] * 3 + c] += f.d[i * 3 + c] * f.s; }
-      if (!any) return;
-      const o = out[k];
-      for (let v = 0; v < n; v++) for (let r = 0; r < 3; r++) { const w = refw ? refw[v * 3 + r] : (r === 0 ? 1 : 0); if (!w) continue; const m = refs[v * 3 + r] * 3; o[v * 3] += full[m] * w; o[v * 3 + 1] += full[m + 1] * w; o[v * 3 + 2] += full[m + 2] * w; }
-    });
-    return out;
+  // face shapes for any set of MH vertices (weights refw over refs): the moving vertices' offsets, one band of a texture per unit.
+  // A part's shapes are the same for everyone (the body's, or a proxy's), so they are made once and shared.
+  const morphCache = new Map();
+  function faceMorphs(key, refs, refw, n) {
+    if (morphCache.has(key)) return morphCache.get(key);
+    const U = BASE.units, full = U.map(k => { const f = BASE.face[BASE.faceUnits[k]], a = new Float32Array(BASE.N * 3);
+      for (let i = 0; i < f.i.length; i++) for (let c = 0; c < 3; c++) a[f.i[i] * 3 + c] = f.d[i * 3 + c] * f.s; return a; });
+    const moved = new Float32Array(n * 3 * U.length), mi = new Float32Array(n).fill(-1); let m = 0;
+    for (let v = 0; v < n; v++) {
+      let any = false;
+      for (let u = 0; u < U.length; u++) {
+        let x = 0, y = 0, z = 0;
+        for (let r = 0; r < 3; r++) { const w = refw ? refw[v * 3 + r] : (r === 0 ? 1 : 0); if (!w) continue; const q = refs[v * 3 + r] * 3, F = full[u]; x += F[q] * w; y += F[q + 1] * w; z += F[q + 2] * w; }
+        if (Math.abs(x) + Math.abs(y) + Math.abs(z) > 1e-6) any = true;
+        const o = (u * n + v) * 3; moved[o] = x; moved[o + 1] = y; moved[o + 2] = z;
+      }
+      if (any) mi[v] = m++;
+    }
+    const rows = Math.max(1, Math.ceil(m / 512)), data = new Float32Array(512 * rows * U.length * 4);
+    for (let v = 0; v < n; v++) { const k = mi[v]; if (k < 0) continue;
+      for (let u = 0; u < U.length; u++) { const o = (u * n + v) * 3, t = ((u * rows + Math.floor(k / 512)) * 512 + k % 512) * 4; data[t] = moved[o]; data[t + 1] = moved[o + 1]; data[t + 2] = moved[o + 2]; } }
+    const tex = gl.createTexture(), was = gl.getParameter(gl.TEXTURE_BINDING_2D); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 512, rows * U.length, 0, gl.RGBA, gl.FLOAT, data); gl.bindTexture(gl.TEXTURE_2D, was);
+    const out = {tex, rows, mi, count: m}; morphCache.set(key, out); return out;
   }
   function normals(pos, idx, n, groupOf) {
     // smooth normals; with groupOf, vertices that are the same point (texture seams) share one
@@ -8807,15 +8830,15 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     for (let v = 0; v < n; v++) { const o = g(v) * 3, l = Math.hypot(acc[o], acc[o + 1], acc[o + 2]) || 1; out[v * 3] = acc[o] / l; out[v * 3 + 1] = acc[o + 1] / l; out[v * 3 + 2] = acc[o + 2] / l; }
     return out;
   }
-  function upload(pos, nor, uv, j, w, idx, morphs) {
+  function upload(pos, nor, uv, j, w, idx, mor) {
     const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
     const buf = (data, loc, n, type, norm, integer) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); gl.enableVertexAttribArray(loc);
       if (integer) gl.vertexAttribIPointer(loc, n, type, 0, 0); else gl.vertexAttribPointer(loc, n, type, norm, 0, 0); };
     buf(pos, 0, 3, gl.FLOAT, false); buf(nor, 1, 3, gl.FLOAT, false); buf(uv, 2, 2, gl.UNSIGNED_SHORT, true); buf(j, 3, 4, gl.UNSIGNED_BYTE, false, true); buf(w, 4, 4, gl.UNSIGNED_BYTE, true);
-    for (let k = 0; k < 4; k++) buf(morphs[k], 5 + k, 3, gl.FLOAT, false);
+    buf(mor.mi, 5, 1, gl.FLOAT, false);
     const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
-    return {vao, n: idx.length, type: idx instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT};
+    return {vao, n: idx.length, type: idx instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, mt: mor.count ? mor.tex : null, mr: mor.rows};
   }
   function bodyPart(person, hide) {
     const B = BASE.body, n = B.mh.length, P = person.P, pos = new Float32Array(n * 3);
@@ -8823,7 +8846,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     const nor = normals(pos, B.idx, n, v => B.mh[v]);
     const keep = []; for (let i = 0; i < B.idx.length; i += 3) { const a = B.idx[i], b = B.idx[i + 1], c = B.idx[i + 2]; if (hide[B.mh[a]] || hide[B.mh[b]] || hide[B.mh[c]]) continue; keep.push(a, b, c); }
     const refs = new Uint16Array(n * 3); for (let v = 0; v < n; v++) refs[v * 3] = B.mh[v];
-    const mor = faceDeltas(refs, null, n);
+    const mor = faceMorphs('body', refs, null, n);
     const g = upload(pos, nor, B.uv, B.j, B.w, Uint16Array.from(keep), mor);
     g.kind = 0; g.tex = texture(`skins/${person.look.skin || person.meta.skin}_${person.look.texSize || '1k'}.webp`);
     return g;
@@ -8837,11 +8860,47 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
       pos[v * 3 + k] = x + A.offs[v * 3 + k] / 32767 * m.offScale * s[k];
     }
     const nor = normals(pos, A.idx, n);
-    const mor = faceDeltas(A.refs, refw, n);
+    const mor = faceMorphs(m.kind + ':' + m.id, A.refs, refw, n);
     const g = upload(pos, nor, A.uv, A.j, A.w, A.idx, mor);
     g.kind = {hair: 1, eyes: 2, eyebrows: 3, eyelashes: 3, teeth: 5, tongue: 5}[m.kind] ?? 4;
+    if (m.kind === 'teeth') { const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); } person.teeth = {lo, hi}; }
+    if (m.kind === 'eyes') for (const [side, sg] of [['eyeL', 1], ['eyeR', -1]]) {
+      const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+      for (let v = 0; v < n; v++) if (Math.sign(pos[v * 3]) === sg) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); }
+      person[side] = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2] + (hi[1] - lo[1]) / 2];   // (the ball's centre: its radius back from the front)
+    }
     g.tex = m.kind === 'eyes' && (person.look.eyes || person.meta.eyes) ? texture(`eyes/${person.look.eyes || person.meta.eyes}.webp`) : m.tex ? texture(m.tex) : null; g.meta = m;
     return g;
+  }
+
+  // the inside of the mouth: a dark rounded hollow inside the teeth, so an open mouth looks into shadow, not through the head.
+  // Each of its points follows the nearest point of the face (so its floor drops with the jaw), held by the head.
+  function mouthPart(person) {
+    const {lo, hi} = person.teeth, c = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2] + (hi[2] - lo[2]) * .42];
+    const r = [(hi[0] - lo[0]) * .4, (hi[1] - lo[1]) * .55, (hi[2] - lo[2]) * .5], SA = 14, SB = 9, P = [], N = [], I = [];
+    for (let j = 0; j <= SB; j++) for (let i = 0; i <= SA; i++) {
+      const a = i / SA * Math.PI * 2, b = j / SB * Math.PI - Math.PI / 2, d = [Math.cos(b) * Math.sin(a), Math.sin(b), Math.cos(b) * Math.cos(a)];
+      P.push(c[0] + d[0] * r[0], c[1] + d[1] * r[1], c[2] + d[2] * r[2]); N.push(...nrm([d[0] / r[0], d[1] / r[1], d[2] / r[2]]));
+    }
+    for (let j = 0; j < SB; j++) for (let i = 0; i < SA; i++) { const a = j * (SA + 1) + i, b = a + SA + 1; I.push(a, a + 1, b, a + 1, b + 1, b); }
+    const n = P.length / 3, jaw = BASE.face[BASE.faceUnits.jaw], cand = jaw ? jaw.i : [], PP = person.P, refs = new Uint16Array(n * 3), refw = new Float32Array(n * 3);
+    for (let v = 0; v < n; v++) { let best = 0, bd = 1e9; for (const q of cand) { const dx = PP[q * 3] - P[v * 3], dy = PP[q * 3 + 1] - P[v * 3 + 1], dz = PP[q * 3 + 2] - P[v * 3 + 2], d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; best = q; } } refs[v * 3] = best; refw[v * 3] = 1; }
+    const hb = BASE.boneIdx.Head, j = new Uint8Array(n * 4), w = new Uint8Array(n * 4); for (let v = 0; v < n; v++) { j[v * 4] = hb; w[v * 4] = 255; }
+    const uv = new Uint16Array(n * 2), mor = faceMorphs('mouth:' + person.meta.id + ':' + n, refs, refw, n);
+    const g = upload(new Float32Array(P), new Float32Array(N), uv, j, w, Uint16Array.from(I), mor);
+    g.kind = 6; g.tex = null; return g;
+  }
+
+  function beamPart(person) {
+    const P = [], N = [], I = [], S = 6;
+    for (const e of [person.eyeL, person.eyeR]) {
+      const o = P.length / 3, z0 = e[2] + .011;
+      for (const [z, r] of [[z0, .0035], [z0 + 9, .03]]) for (let i = 0; i < S; i++) { const a = i / S * Math.PI * 2; P.push(e[0] + Math.cos(a) * r, e[1] + Math.sin(a) * r, z); N.push(Math.cos(a), Math.sin(a), 0); }
+      for (let i = 0; i < S; i++) { const a = o + i, b = o + (i + 1) % S, c = a + S, d = b + S; I.push(a, b, d, a, d, c); }
+    }
+    const n = P.length / 3, hb = BASE.boneIdx.Head, j = new Uint8Array(n * 4), w = new Uint8Array(n * 4); for (let v = 0; v < n; v++) { j[v * 4] = hb; w[v * 4] = 255; }
+    const g = upload(new Float32Array(P), new Float32Array(N), new Uint16Array(n * 2), j, w, Uint16Array.from(I), {mi: new Float32Array(n).fill(-1), count: 0});
+    g.kind = 7; g.tex = null; g.meta = {double: true}; return g;
   }
 
   // ---------------------------------------------------------------- posing: moves + looking about + breathing + blinking
@@ -8869,7 +8928,7 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     if (wk) { const rate2 = sp > .25 ? (1 - st.rw) * (sp / (wk.speed || 1.3)) + st.rw * (sp / ((rn && rn.speed) || 3.6)) : turning ? .8 : 0;
       st.ph += dt * Math.max(.5, Math.min(1.9, rate2 || 0)) * (st.lw > .01 ? st.dir : 0); }
     if (idl && !S.bind) sample(idl, st.t, out, hips); else for (let b = 0; b < B; b++) out[b] = [0, 0, 0, 1];
-    if (S.bind) { person.local = out; person.hips = hips; person.by = st.by; person.at = S.at || [0, 0, 0]; person.mw = [0, 0, 0, 0]; skin(person); return; }
+    if (S.bind) { person.local = out; person.hips = hips; person.by = st.by; person.at = S.at || [0, 0, 0]; person.mu = []; person.mk = []; skin(person); return; }
     const mix = (c, t, w, mask) => { if (!c || w <= .001) return; sample(c, t, tmpQ, tmpH); for (let b = 0; b < B; b++) { if (mask && !mask(b)) continue; out[b] = qslerp(out[b], tmpQ[b], w); } if (!mask) for (let k = 0; k < 3; k++) hips[k] += (tmpH[k] - hips[k]) * w; };
     if (wk) { const cyc = ((st.ph % 1) + 1) % 1; mix(wk, cyc * wk.dur, st.lw * (1 - st.rw)); if (rn) mix(rn, cyc * rn.dur, st.lw * st.rw); }
     // sitting down, holding a parcel like a tablet, holding up a pint (eased in and out)
@@ -8880,12 +8939,13 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     if (clips.tablet) mix(clips.tablet, st.t, st.holdW, isUpper);
     if (clips.pint) mix(clips.pint, st.t, st.pintW, b => /^Right(Shoulder|Arm|ForeArm|Hand)/.test(BASE.bones[b].name));
     // an emote or dance on top (whole body standing still, the upper body while walking)
-    if (S.emote !== st.cur) { st.cur = S.emote; if (S.emote && clips[S.emote]) { st.em = S.emote; st.emT = 0; st.emOut = false; } else if (st.em) st.emOut = true; }
+    const ek = S.emote ? S.emote + '#' + (S.emoteN || 0) : null;
+    if (ek !== st.cur) { st.cur = ek; if (S.emote && clips[S.emote]) { st.em = S.emote; st.emT = S.emoteAt || 0; st.emOut = false; } else if (st.em) st.emOut = true; }
     let face = null;
     if (st.em) { const c = clips[st.em]; st.emT += dt; if (S.emoteT !== undefined) { st.emT = S.emoteT; st.emW = 1; }
       const end = c && !c.loop && st.emT > c.dur - .25, want = (!c || st.emOut || end) ? 0 : 1;
       st.emW += (want - st.emW) * Math.min(1, dt * 7);
-      if (c) { mix(c, st.emT, st.emW, st.lw > .3 ? isUpper : null); face = c.face; }
+      if (c) { mix(c, st.emT, st.emW, st.lw > .3 || st.sitW > .5 ? isUpper : null); face = c.face; }
       if (st.emW < .01 && want === 0) { st.em = null; st.emOut = false; }
     }
     // breathing
@@ -8898,14 +8958,90 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
       const R = person.rest[bi[nm]].R, yax = mv(mt(R), [0, 1, 0]), xax = mv(mt(R), [1, 0, 0]);
       out[bi[nm]] = qmul(out[bi[nm]], qmul(qaxis(...yax, st.ly * k), qaxis(...xax, -st.lp * k)));
     }
-    // the face: blinking, talking, and the emote's expression
-    st.blink -= dt; if (st.blink < 0) { st.bl = .16; st.blink = 1.8 + Math.random() * 4.5; }
+    // the face: the emote's expression (or one asked for), blinking, talking, and the eyes looking about
+    const F = {}, put = (o, k) => { if (o) for (const u in o) if (u !== 'gazeY' && u !== 'gazeP') F[u] = Math.max(F[u] || 0, o[u] * k); };
+    let E = null;
+    if (st.em && face) E = faceAt(face, st.emT, st.emW);
+    if (S.face) E = mixFaces(E, typeof S.face === 'string' ? FACES[S.face] : S.face, S.faceW ?? 1);
+    put(FACES.rest, Math.max(0, 1 - (E ? Math.max(0, ...Object.values(E)) : 0)));
+    put(E, 1);
+    if (S.smile) put({smile: S.smile}, 1); if (S.jaw) put({jaw: S.jaw}, 1); if (S.brows) put({browL: S.brows, browR: S.brows}, 1);
+    // blinking: quick, now and then (and not while the eyes are shut anyway)
+    st.blink -= S.noBlink ? 0 : dt; if (st.blink < 0) { st.bl = .16; st.blink = 1.8 + Math.random() * 4.5; if (Math.random() < .15) st.blink = .25; }   // (sometimes twice)
     st.bl = Math.max(0, st.bl - dt); const bw = st.bl > 0 ? Math.sin((1 - st.bl / .16) * Math.PI) : 0;
-    const talk = S.talk ? .18 + .16 * Math.sin(st.t * 17) * Math.sin(st.t * 5.3 + 1) : 0;
-    const fe = (k, t) => face && face[k] !== undefined ? (Array.isArray(face[k]) ? curve(face[k], t) : face[k]) * st.emW : 0;
-    person.mw = [Math.max(bw, fe('blink', st.emT)), Math.max(S.smile || 0, fe('smile', st.emT)), Math.max(S.jaw || 0, talk, fe('jaw', st.emT)), Math.max(S.brows || 0, fe('brows', st.emT))];
+    put({blinkL: bw, blinkR: bw}, 1);
+    // talking: the jaw and lips shape the sounds; the brows lift now and then for emphasis
+    if (S.talk) {
+      const a = st.t * 10.5, o = .5 + .5 * Math.sin(a) * Math.sin(a * .53 + 1.3);
+      put({jaw: .06 + .3 * o, lowerDown: .12 * o, funnel: .3 * Math.max(0, Math.sin(a * .37 + 2)), pucker: .22 * Math.max(0, Math.sin(a * .23 + .4)), stretch: .12 * Math.max(0, Math.sin(a * .61))}, 1 - .5 * (st.emW || 0));
+      st.flick = (st.flick ?? 2) - dt; if (st.flick < -.45) st.flick = 1.2 + Math.random() * 3;
+      if (st.flick < 0) { const f = Math.sin(-st.flick / .45 * Math.PI) * .45; put({browL: f, browR: f}, 1); }
+    }
+    // the eyes lead the head (they get to where it is turning first), with small glances now and then
+    st.sacT = (st.sacT ?? 1) - dt; if (st.sacT < 0) { st.sacT = .4 + Math.random() * 2.4; st.sac = [(Math.random() - .5) * .14, (Math.random() - .5) * .07]; }
+    const ec = st.em && clips[st.em], eg = ec && ec.gaze ? ec.gaze.map(x => x * st.emW) : [0, 0];
+    person.laser = ec && ec.laser ? Math.max(0, Math.min(1, (st.emT - ec.laser[0]) * 6, (ec.laser[1] - st.emT) * 6)) * st.emW : 0;
+    const gyT = Math.max(-.45, Math.min(.45, (ly - st.ly) * 1.3 + (st.sac ? st.sac[0] : 0) * (1 - st.emW * .7) + eg[0]));
+    const gpT = Math.max(-.32, Math.min(.3, (lp - st.lp) * 1.3 + (st.sac ? st.sac[1] : 0) * (1 - st.emW * .7) + eg[1]));
+    st.gy = (st.gy || 0) + (gyT - (st.gy || 0)) * Math.min(1, dt * 22); st.gp = (st.gp || 0) + (gpT - (st.gp || 0)) * Math.min(1, dt * 22);
+    { const cy = Math.cos(st.gy), sy = Math.sin(st.gy), cp = Math.cos(-st.gp), sp2 = Math.sin(-st.gp);   // (turn about up, then nod about across; columns for GL)
+      const Ry = [cy, 0, sy, 0, 1, 0, -sy, 0, cy], Rx = [1, 0, 0, 0, cp, -sp2, 0, sp2, cp], G = mm(Ry, Rx); person.gaze = mt(G); }
+    const lid = Math.max(0, -st.gp) * 1.1; put({blinkL: lid, blinkR: lid}, 1);   // (looking down, the upper lids follow)
+    const act = Object.entries(F).filter(([u, w]) => w > .003 && BASE.unitIdx[u] !== undefined).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    person.mu = act.map(([u]) => BASE.unitIdx[u]); person.mk = act.map(([, w]) => Math.min(2.4, w));
     person.local = out; person.hips = hips; person.by = st.by; person.at = S.at || [0, 0, 0];
     skin(person);
+  }
+  // expressions: named mixes of the face's units (MakeHuman's expression units; L and R are the person's own left and right)
+  const LR = (k, v) => ({[k + 'L']: v, [k + 'R']: v});
+  const FACES = {
+    rest: {smile: .12, ...LR('brow', .35), ...LR('browIn', .12)},
+    smile: {smile: .8, ...LR('squint', .18), dimple: .3, ...LR('brow', .4)},
+    grin: {smile: 1, ...LR('squint', .32), dimple: .45, jaw: .08, ...LR('brow', .5)},
+    laugh: {smile: 1, ...LR('squint', .55), jaw: .45, dimple: .4, upperUp: .2, ...LR('brow', .7), ...LR('browIn', .4)},
+    joy: {smile: .95, ...LR('squint', .3), ...LR('brow', 1.1), ...LR('browIn', .6), dimple: .35, jaw: .22},
+    cheer: {smile: 1, jaw: .55, ...LR('brow', 1.3), ...LR('browIn', .8), ...LR('squint', .25), dimple: .3},
+    warm: {smile: .65, ...LR('squint', .22), ...LR('browIn', .7), ...LR('brow', .3), dimple: .2},
+    surprise: {...LR('wide', 1), ...LR('brow', 2), ...LR('browIn', 1.3), ...LR('browOut', .6), jaw: .4, funnel: .3},
+    woah: {...LR('wide', .8), ...LR('brow', 1.8), ...LR('browIn', 1.2), ...LR('browOut', .5), funnel: .7, jaw: .3, pucker: .15},
+    mindBlown: {...LR('wide', 1), ...LR('brow', 2.2), ...LR('browIn', 1.5), ...LR('browOut', .8), jaw: .85, stretch: .25},
+    ooh: {funnel: .75, jaw: .2, ...LR('brow', 1.4), ...LR('browIn', .9), pucker: .2},
+    sad: {...LR('browIn', 1.6), frown: .8, ...LR('blink', .25), press: .25},
+    rekt: {...LR('browIn', 1.8), frown: .7, stretch: .6, jaw: .22, ...LR('squint', .3), neckTense: .6},
+    pained: {...LR('blink', 1), frown: .5, ...LR('browIn', 1.2), press: .4, ...LR('browDown', .3)},
+    determined: {...LR('browDown', 1.2), press: .8, ...LR('squint', .2), ...LR('sneer', .15)},
+    focus: {...LR('browDown', .8), ...LR('squint', .3), press: .4, ...LR('browIn', .3)},
+    fierce: {...LR('browDown', 1.6), ...LR('squint', .5), ...LR('sneer', .5), press: .35, upperUp: .2},
+    disgust: {frown: .6, ...LR('sneer', .8), ...LR('browDown', .7), upperUp: .4},
+    doubt: {browL: 1.6, browDownR: .6, frown: .45, press: .55, browOutL: .5},
+    bored: {...LR('blink', .45), press: .35, ...LR('browIn', .3), frown: .15},
+    yawn: {jaw: 1, ...LR('squint', .7), ...LR('blink', .45), ...LR('brow', 1), stretch: .3, funnel: .25},
+    rock: {jaw: .5, ...LR('browDown', 1), ...LR('squint', .5), upperUp: .5, lowerDown: .4, ...LR('sneer', .45)},
+    wink: {blinkL: 1, squintL: .3, smile: .7, squintR: .12, browR: .8, dimple: .3},
+    kiss: {pucker: 1, ...LR('squint', .25), ...LR('blink', .45), ...LR('brow', .5)},
+    cool: {smile: .45, ...LR('squint', .3), browR: .7, dimple: .3, press: .2}
+  };
+  const faceOf = f => typeof f === 'string' ? FACES[f] || null : f;
+  function mixFaces(a, b, k) {   // a, then b on top by k (0..1)
+    const o = {}; a = a || {}; b = b || {};
+    for (const u of new Set([...Object.keys(a), ...Object.keys(b)])) o[u] = (a[u] || 0) * (1 - k) + (b[u] || 0) * k;
+    return o;
+  }
+  // a clip's face at time t: keys [[t, expression (name or units), strength], ...] eased from one to the next;
+  // or (older clips) {unit: value or [[t, v], ...]} with blink/brows meaning both eyes/brows
+  function faceAt(face, t, w) {
+    let o;
+    if (Array.isArray(face)) {
+      const K = face, at = i => { const f = faceOf(K[i][1]); return f ? mixFaces(null, f, K[i][2] ?? 1) : {}; };
+      if (t <= K[0][0]) o = at(0);
+      else if (t >= K[K.length - 1][0]) o = at(K.length - 1);
+      else { let i = 1; while (K[i][0] < t) i++; const u = (t - K[i - 1][0]) / Math.max(1e-6, K[i][0] - K[i - 1][0]); o = mixFaces(at(i - 1), at(i), u * u * (3 - 2 * u)); }
+    } else {
+      o = {}; for (const k in face) { const v = Array.isArray(face[k]) ? curve(face[k], t) : face[k];
+        if (k === 'blink') { o.blinkL = o.blinkR = v; } else if (k === 'brows') { o.browL = o.browR = v; } else o[k] = v; }
+    }
+    for (const u in o) o[u] *= w;
+    return o;
   }
   // an expression curve: [[t, value], ...]
   function curve(k, t) { if (t <= k[0][0]) return k[0][1]; for (let i = 1; i < k.length; i++) if (t <= k[i][0]) { const u = (t - k[i - 1][0]) / (k[i][0] - k[i - 1][0]), e = u * u * (3 - 2 * u); return k[i - 1][1] + (k[i][1] - k[i - 1][1]) * e; } return k[k.length - 1][1]; }
@@ -8950,9 +9086,10 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniform3fv(U.uE, eye); gl.uniform1f(U.uMir, o.mir ? 1 : 0); gl.uniform1f(U.uRf, o.rf || 1); gl.uniform1f(U.uPort, o.port ? 1 : 0);
     gl.uniform1f(U.uFog, o.fog ?? .034); gl.uniform3fv(U.uFogC, o.fogC || [.022, .013, .01]);
     gl.uniform3fv(U.uL, o.light || [.42, .86, .3]); gl.uniform3fv(U.uLC, o.lightC || [1.05, .98, .9]); gl.uniform3fv(U.uAmb, o.amb || [.34, .3, .28]);
-    gl.uniform1i(U.uB, 1); gl.uniform1i(U.uTex, 0);
+    gl.uniform1i(U.uB, 1); gl.uniform1i(U.uTex, 0); gl.uniform1i(U.uMt, 2);
+    gl.activeTexture(gl.TEXTURE2); const was2 = gl.getParameter(gl.TEXTURE_BINDING_2D); gl.activeTexture(gl.TEXTURE0);
     gl.enable(gl.DEPTH_TEST); gl.frontFace(o.mir ? gl.CW : gl.CCW);
-    const passes = [[0, 5, 4, 2], [1], [1, 3]];   // solid things, then hair (its solid middle), then hair's soft edges, brows and lashes
+    const passes = [[0, 5, 6, 4, 2, 7], [1], [1, 3]];   // solid things, then hair (its solid middle), then hair's soft edges, brows and lashes
     for (let pi = 0; pi < passes.length; pi++) {
       const kinds = passes[pi];
       if (pi === 0) { gl.disable(gl.BLEND); gl.depthMask(true); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); }
@@ -8962,23 +9099,28 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
       gl.uniform1i(U.uEdge, pi === 2 ? 1 : 0);
       for (const p of list) {
         if (p.row < 0) continue;
-        gl.uniform1i(U.uRow, p.row); gl.uniform4fv(U.uMw, p.mw || [0, 0, 0, 0]); gl.uniform3fv(U.uOff, p.off || [0, 0, 0]);
+        gl.uniform1i(U.uRow, p.row); gl.uniform3fv(U.uOff, p.off || [0, 0, 0]);
+        const mu = p.mu || [], nU = Math.min(12, mu.length); if (nU) { gl.uniform1iv(U.uMu, Int32Array.from({length: 12}, (_, i) => mu[i] || 0)); gl.uniform1fv(U.uMk, Float32Array.from({length: 12}, (_, i) => (p.mk || [])[i] || 0)); }
+        gl.uniformMatrix3fv(U.uGz, false, p.gaze || [1, 0, 0, 0, 1, 0, 0, 0, 1]); gl.uniform3fv(U.uEyeL, p.eyeL || [0, 0, 0]); gl.uniform3fv(U.uEyeR, p.eyeR || [0, 0, 0]);
         for (const g of p.parts) {
           if (!kinds.includes(g.kind)) continue;
+          if (g.kind === 7 && !(p.laser > .02)) continue;
           if (o.mir) blendAll(); else if (pi === 0) gl.disable(gl.BLEND);
           if (g.meta && g.meta.double && pi === 0) gl.disable(gl.CULL_FACE); else if (pi === 0) gl.enable(gl.CULL_FACE);
           gl.uniform1i(U.uKind, g.kind); gl.uniform1f(U.uCut, o.a2c ? .5 : .35);
-          gl.uniform3fv(U.uTint, g.kind === 1 ? p.tint : g.kind === 3 ? p.tint.map(x => x * .7) : g.kind === 0 ? (p.skinTint || [1, 1, 1]) : (g.tintC || [1, 1, 1]));
+          gl.uniform1i(U.uMn, g.mt ? nU : 0); if (g.mt) { gl.uniform1i(U.uMr, g.mr); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, g.mt); gl.activeTexture(gl.TEXTURE0); }
+          gl.uniform3fv(U.uTint, g.kind === 1 ? p.tint : g.kind === 3 ? p.tint.map(x => x * .7) : g.kind === 0 ? (p.skinTint || [1, 1, 1]) : g.kind === 7 ? [p.laser, 0, 0] : (g.tintC || [1, 1, 1]));
           gl.bindTexture(gl.TEXTURE_2D, g.tex ? g.tex.t : null);
           gl.bindVertexArray(g.vao); gl.drawElements(gl.TRIANGLES, g.n, g.type, 0);
         }
       }
     }
     gl.bindVertexArray(null); gl.disable(gl.BLEND); gl.depthMask(true); gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE); gl.disable(gl.CULL_FACE); gl.frontFace(gl.CCW);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, was2);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, was1); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, was0);
   }
 
-  return {init, make, drop, loaded, model, pose, draw, boneAt, clips: () => ANIM ? Object.keys(ANIM.clips) : [], get base() { return BASE; }};
+  return {init, make, drop, loaded, model, pose, draw, boneAt, faces: FACES, clips: () => ANIM ? Object.keys(ANIM.clips) : [], clip: n => ANIM && ANIM.clips[n] ? {dur: ANIM.clips[n].dur, loop: !!ANIM.clips[n].loop} : null, get base() { return BASE; }};
 })();
 
 /* ---------- The crew as real people (bc-human.js, above): who they are, what they wear, drawing them in the rooms ---------- */
@@ -9037,7 +9179,7 @@ function ppPose(M, H, R, dt) {
   const u = M.pv || (M.pv = {lp: R.p.slice(), vx: 0, vz: 0});
   const wx = dt > 0 ? (R.p[0] - u.lp[0]) / dt : 0, wz = dt > 0 ? (R.p[2] - u.lp[2]) / dt : 0; u.lp = R.p.slice();
   if (Math.hypot(wx, wz) > 12) u.vx = u.vz = 0; else { u.vx = ease(u.vx, wx, 8, dt); u.vz = ease(u.vz, wz, 8, dt); }
-  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null});
+  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null, emoteN: R.emoteN, emoteAt: R.emoteAt});
   const out = [];
   R.pintAt = null;
   if (R.pint) { const g = BCH.boneAt(H, 'RightHand', [.04, .085, .02]); if (g) { R.pintAt = [g.p[0], g.p[1] - .045, g.p[2]]; R.pintYaw = H.by + Math.PI; } }
@@ -9094,6 +9236,70 @@ async function ppPortraits(m) {
   }
 }
 
+/* ---------- Emotes: the menu (Q, or the smile button in a room), played for the crew to see ---------- */
+// Your crewmates see you do it (you see theirs). A gesture plays once and can go on while you walk (arms and face only);
+// a dance keeps going until you move or pick something else.
+const EMOTES = [
+  ['Useful', [['wave', 'Wave'], ['point', 'Point'], ['thumbsUp', 'Thumbs up'], ['thumbsDown', 'Thumbs down'], ['followMe', 'Follow me'], ['waitHere', 'Wait here'], ['showTablet', 'Show tablet'], ['cheers', 'Cheers']]],
+  ['Bitcoin', [['gm', 'GM'], ['hodl', 'HODL'], ['laserEyes', 'Laser eyes'], ['stackSats', 'Stack sats'], ['mining', 'Mining'], ['toTheMoon', 'To the moon'], ['rekt', 'Rekt'], ['waitingForBlock', 'Waiting for block']]],
+  ['Fun', [['heartHands', 'Heart hands'], ['clap', 'Clap'], ['laugh', 'Laugh'], ['bigHug', 'Big hug'], ['bow', 'Bow'], ['shrug', 'Shrug'], ['facepalm', 'Facepalm'], ['mindBlown', 'Mind blown'], ['airGuitar', 'Air guitar']]],
+  ['Dances', [['robot', 'Robot'], ['runningMan', 'Running man'], ['griddy', 'Griddy'], ['woah', 'The Woah'], ['btc', 'B-T-C']]]
+];
+const EM_NAME = Object.fromEntries(EMOTES.flatMap(([, l]) => l)), EM_LOOP = {robot: 1, runningMan: 1, griddy: 1, woah: 1, btc: 1, airGuitar: 1};
+const em = {cur: '', n: 0, t0: 0, tab: 0};
+const emSt = document.createElement('style');
+emSt.textContent = `#emb{display:none}body.room.crewon #emb{display:flex}
+#emp{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:30;width:min(560px,calc(100vw - 20px));background:rgba(14,9,6,.92);border:1px solid rgba(247,147,26,.35);border-radius:10px;padding:10px 10px 12px;color:#f7efe3;font:600 13px/1.2 ui-monospace,Menlo,Consolas,monospace;display:none;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#emp.on{display:block}#emp .tb{display:flex;gap:6px;margin-bottom:8px}#emp .tb button{flex:1;padding:7px 4px;border-radius:6px;border:1px solid rgba(247,147,26,.25);background:rgba(30,18,10,.7);color:#ffb04a;font:inherit;letter-spacing:.04em;cursor:pointer}
+#emp .tb button.on{background:#f7931a;color:#140b04;border-color:#f7931a}#emp .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(122px,1fr));gap:6px}
+#emp .g button{padding:9px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#f7efe3;font:inherit;cursor:pointer;text-align:left}
+#emp .g button:hover,#emp .g button.on{border-color:#f7931a;background:rgba(247,147,26,.16)}#emp .h{margin-top:8px;font-size:11px;color:#bfa58a;font-weight:500}
+#emt{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:29;padding:6px 12px;border-radius:14px;background:rgba(14,9,6,.85);border:1px solid rgba(247,147,26,.4);color:#ffcf8a;font:600 12px/1 ui-monospace,Menlo,Consolas,monospace;opacity:0;transition:opacity .25s;pointer-events:none}#emt.on{opacity:1}`;
+document.head.appendChild(emSt);
+const $emp = document.createElement('div'); $emp.id = 'emp'; $emp.setAttribute('role', 'dialog'); $emp.setAttribute('aria-label', 'Emotes'); document.body.appendChild($emp);
+const $emt = document.createElement('div'); $emt.id = 'emt'; document.body.appendChild($emt);
+const $emb = document.createElement('button'); $emb.id = 'emb'; $emb.className = 'tl'; $emb.title = 'emotes (Q)'; $emb.setAttribute('aria-label', 'emotes');
+$emb.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2"/><circle cx="9" cy="10" r=".6" fill="currentColor"/><circle cx="15" cy="10" r=".6" fill="currentColor"/></svg>';
+{ const tb = document.getElementById('tools'); (tb || document.body).appendChild($emb); }   // (with the room's other buttons, top right)
+function emDraw() {
+  $emp.textContent = '';
+  const tb = document.createElement('div'); tb.className = 'tb';
+  EMOTES.forEach(([t], i) => { const b = document.createElement('button'); b.textContent = t; b.className = i === em.tab ? 'on' : ''; b.onclick = e => { e.stopPropagation(); em.tab = i; emDraw(); }; tb.append(b); });
+  const g = document.createElement('div'); g.className = 'g';
+  EMOTES[em.tab][1].forEach(([id, n], i) => { const b = document.createElement('button'); b.textContent = (i < 9 ? (i + 1) + '  ' : '') + n; b.className = em.cur === id ? 'on' : ''; b.onclick = e => { e.stopPropagation(); emPlay(id); emShow(false); }; g.append(b); });
+  const h = document.createElement('div'); h.className = 'h'; h.textContent = 'Q or Esc to close · 1–9 to pick · Tab for the next set · your crew sees it';
+  $emp.append(tb, g, h);
+}
+function emShow(on) {
+  if (on && !(room && crew.on)) return;
+  $emp.classList.toggle('on', on);
+  if (on) { if (document.pointerLockElement) document.exitPointerLock(); for (const k in rmKeys) rmKeys[k] = false; emDraw(); }
+}
+let emTT = 0;
+function emPlay(id) {
+  if (em.cur === id && EM_LOOP[id]) id = '';   // (a dance picked again stops it)
+  em.cur = id; em.n = (em.n + 1) % 1000; em.t0 = performance.now(); crew.last = '';
+  $emt.textContent = id ? 'You: ' + EM_NAME[id] + (EM_LOOP[id] ? ' (move to stop)' : '') : 'Stopped'; $emt.classList.add('on'); clearTimeout(emTT); emTT = setTimeout(() => $emt.classList.remove('on'), 1800);
+}
+// what goes out with where you are: the emote, which go of it (a new number replays it), and how far into it you are
+function emState(s) {
+  if (!em.cur) return;
+  const age = (performance.now() - em.t0) / 1000, info = typeof BCH !== 'undefined' && BCH.clip(em.cur);
+  const moving = room && room.p && Math.hypot(room.p.vx || 0, room.p.vz || 0) > .4;
+  if ((EM_LOOP[em.cur] && moving) || (!EM_LOOP[em.cur] && age > (info ? info.dur : 4))) { em.cur = ''; return; }
+  s.em = em.cur; s.en = em.n; s.ea = Math.round(age * 10) / 10;
+}
+$emb.onclick = e => { e.stopPropagation(); emShow(!$emp.classList.contains('on')); };
+addEventListener('keydown', e => {
+  if (!room || !crew.on || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase(), open = $emp.classList.contains('on');
+  if (k === 'q' && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); emShow(!open); return; }
+  if (!open) return;
+  if (k === 'escape') { e.preventDefault(); e.stopImmediatePropagation(); emShow(false); return; }
+  if (k === 'tab') { e.preventDefault(); e.stopImmediatePropagation(); em.tab = (em.tab + (e.shiftKey ? EMOTES.length - 1 : 1)) % EMOTES.length; emDraw(); return; }
+  if (/^[1-9]$/.test(k)) { const it = EMOTES[em.tab][1][+k - 1]; if (it) { e.preventDefault(); e.stopImmediatePropagation(); emPlay(it[0]); emShow(false); } }
+}, true);
+
 /* ---------- playing together: the cube inside its "play together" page ---------- */
 // The together page looks after the crew (finding each other, the links, chat and voices). The cube shows the crewmates
 // walking about the rooms as Node Runners, with their names over their heads, and tells the page where you are.
@@ -9115,19 +9321,19 @@ addEventListener('message', e => {
   if (e.source !== parent || parent === window) return;
   const m = e.data; if (!m || m.app !== 'blockcube-host') return;
   if (m.type === 'page') { if (!crew.page) { crew.page = true; document.body.classList.add('crewpage'); } toPage({type: 'hello'}); return; }
-  if (m.type === 'ready') { crew.on = true; crew.me = typeof (m.me && m.me.id) === 'string' ? m.me.id : ''; const self = crew.mates.get(crew.me); if (self) { crew.look = self.look; mateGone(crew.me); } crewIn(); return; }
+  if (m.type === 'ready') { crew.on = true; document.body.classList.add('crewon'); crew.me = typeof (m.me && m.me.id) === 'string' ? m.me.id : ''; const self = crew.mates.get(crew.me); if (self) { crew.look = self.look; mateGone(crew.me); } crewIn(); return; }
   if (m.type === 'look') { const l = chLook(m.look); if (m.id === crew.me || m.id === 'me') crew.look = l; else mate(m.id).look = l; return; }
   if (m.type === 'state') {
     if (!crew.on || m.id === crew.me || typeof m.id !== 'string') return;
     const M = mate(m.id), s = m.s || {};
     if (m.name) M.name = cleanS(m.name, 20);
-    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && (TYPES[s.hk] || s.hk === 60) ? s.hk : -1, in: !!s.in, lv: s.lv ? 1 : 0, sit: s.sit ? 1 : 0, t: performance.now()};
+    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && (TYPES[s.hk] || s.hk === 60) ? s.hk : -1, in: !!s.in, lv: s.lv ? 1 : 0, sit: s.sit ? 1 : 0, t: performance.now(), em: typeof s.em === 'string' && EM_NAME[s.em] ? s.em : '', en: s.en | 0, ea: Math.max(0, Math.min(60, +s.ea || 0))};
     if (Array.isArray(s.look)) M.look = chLook(s.look);
     return;
   }
   if (m.type === 'event') { if (m.ev) cmGot(m.ev); return; }
   if (m.type === 'left') { mateGone(m.id); return; }
-  if (m.type === 'off') { crew.on = false; for (const id of [...crew.mates.keys()]) mateGone(id); return; }
+  if (m.type === 'off') { crew.on = false; document.body.classList.remove('crewon'); emShow(false); em.cur = ''; for (const id of [...crew.mates.keys()]) mateGone(id); return; }
   if (m.type === 'say') { if (m.id === crew.me) return; const M = crew.mates.get(m.id); if (M) { M.say = cleanS(m.text, 120); M.sayT = performance.now() + 7000; } return; }
   if (m.type === 'talk') { const M = crew.mates.get(m.id); if (M) M.talkT = performance.now() + 450; return; }
   if (m.type === 'arrive') { cmFromPaint(); return; }   // back from Block Paint (the page kept the cube open)
@@ -9159,7 +9365,7 @@ function crewSend(tn) {
   if (room && cmOn(room.at) && room.at.ready) { const p = room.p, [x, d] = cmL(room.at, p.x, p.z), y = p.yaw - cmYaw(room.at); s = {in: 1, h: COMMON, x: +x.toFixed(2), z: +(-d).toFixed(2), y: +Math.atan2(Math.sin(y), Math.cos(y)).toFixed(3), p: +p.pitch.toFixed(2), hk: cm.pint ? 60 : -1, lv: p.lv ? 1 : 0, sit: p.sit ? 1 : 0}; }
   else if (room && room.at && room.at.ready && !room.at.gal) { const p = room.p, H = room.held; s = {in: 1, h: room.at.h, x: +p.x.toFixed(2), z: +(p.z - room.at.z0).toFixed(2), y: +Math.atan2(Math.sin(p.yaw), Math.cos(p.yaw)).toFixed(3), p: +p.pitch.toFixed(2), hk: H && !H.back ? H.it.k : -1}; }
   else s = {in: 0, h: cur && cur.height >= 0 ? cur.height : -1, x: 0, z: 0, y: 0, p: 0, hk: -1};
-  s.look = crew.look;
+  s.look = crew.look; emState(s);
   const k = JSON.stringify(s), moving = k !== crew.last;
   if (tn - crew.sent < (moving ? 1 / 12 : .5)) return;
   crew.sent = tn; crew.last = k; toPage({type: 'state', s});
@@ -9177,7 +9383,7 @@ function crewPose(tn, dt, VP, W, H) {
     if (!M.shown || Math.hypot(R.p[0] - tx, R.p[2] - tz) > 4) { R.p = [tx, ty, tz]; R.st = null; }
     else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true;
-    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT;
+    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea;
     const H = ppMate(M);
     if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; }   // (a Node Runner until their person has arrived)
     const pose = H ? ppPose(M, H, R, dt) : chPose(R, tn, dt);
