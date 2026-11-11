@@ -164,8 +164,8 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
 #ptop .pl .w{font:600 11px/1.1 ui-monospace,Menlo,Consolas,monospace;color:#b8a593;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #ptop .pl.here .w{color:#93d36c}#ptop .pl.me{background:rgba(40,24,10,.82)}#ptop .pl.go{cursor:pointer}#ptop .pl.go:hover{background:rgba(40,24,10,.9)}
 #ptop .pl.talk{box-shadow:0 0 0 2px #93d36c,0 0 14px rgba(147,211,108,.6)}#ptop .pl.empty{opacity:.42;border-left-color:rgba(247,147,26,.28)}
-#ptop .pl .nx{display:none}
-@media (max-width:760px){#ptop{top:calc(5px + env(safe-area-inset-top));left:calc(52px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));transform:none;width:auto;max-width:none}#ptop .pl{position:relative;width:100%;padding:4px 44px 4px 8px;cursor:pointer}#ptop .pl .nx{display:block;position:absolute;right:8px;top:50%;transform:translateY(-50%);font:700 10px/1 ui-monospace,Menlo,Consolas,monospace;color:#b8a593;letter-spacing:.04em}#ptop:not([hidden])~#hud{top:calc(54px + env(safe-area-inset-top))}}
+#ptop .pl .nx{display:none}#peekb{display:none}
+@media (max-width:760px){body.atcube #peekb{display:flex;position:fixed;left:calc(4px + env(safe-area-inset-left));top:calc(50px + env(safe-area-inset-top));width:40px;height:40px;border-radius:20px;z-index:4;align-items:center;justify-content:center;padding:0;background:rgba(18,11,5,.78);border:1px solid rgba(247,147,26,.4);color:#ffb04a;box-shadow:none}body.atcube.peek #peekb{background:#f7931a;border-color:#f7931a;color:#160c03}body.atcube:not(.peek) #ptop,body.atcube:not(.peek) #hud{display:none}#ptop{top:calc(5px + env(safe-area-inset-top));left:calc(52px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));transform:none;width:auto;max-width:none}#ptop .pl{position:relative;width:100%;padding:4px 44px 4px 8px;cursor:pointer}#ptop .pl .nx{display:block;position:absolute;right:8px;top:50%;transform:translateY(-50%);font:700 10px/1 ui-monospace,Menlo,Consolas,monospace;color:#b8a593;letter-spacing:.04em}#ptop:not([hidden])~#hud{top:calc(54px + env(safe-area-inset-top))}}
 .pill{pointer-events:auto;background:rgba(18,11,5,.72);border:1px solid rgba(247,147,26,.32);border-radius:16px;padding:6px 12px;font:600 13px/1.2 system-ui,sans-serif;letter-spacing:normal;text-transform:none;box-shadow:0 2px 10px #0006;color:#f7efe3;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .pill:hover{background:rgba(40,24,10,.85)}
 .pill b{letter-spacing:.08em}
@@ -251,6 +251,7 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
 </div></div>
 
 <div id="ptop" hidden aria-label="Players"></div>
+<button id="peekb" aria-label="Crew" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.700 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16.500 14.200c2.600.300 4.500 2.500 4.500 5.300"/></svg></button>
 <div id="hud" hidden><button class="pill" id="room"></button><button class="pill" id="frpill">Friends<span class="badge" id="fon2"></span></button><button class="pill" id="chat" aria-label="Chat">Chat</button><button class="pill" id="mic" aria-label="Microphone" aria-pressed="false"><svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="4.5" y="1" width="5" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 7.5a5 5 0 0010 0M7 12.5V15M4.5 15h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="x" d="M1.5 1.5l11 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="hold">Hold</span></button></div>
 <div id="invc" hidden><div class="card"><button class="close" id="invx" aria-label="Close">×</button><h2>Invite by code</h2>
   <label for="off">Their invite code</label><textarea id="off" readonly></textarea><div class="row" style="margin-top:8px"><button id="cp2">Copy</button></div>
@@ -1138,7 +1139,11 @@ let whereAt = 0; function crewWhere() { if (Date.now() - whereAt < 1000) return;
 // Tap someone in another room to go to them.
 const GLOWS = [['#27e1ff', '#ff2fb4', '#ffa21a'], ['#ff2fb4', '#7dff4a', '#ff7a18'], ['#f7931a', '#27e1ff', '#b06bff'], ['#ff2d55', '#ffd23f', '#9fe8ff']];
 let topAt = 0;
+// on a phone at the cube itself (not in a room): the card and the crew's buttons step aside; the people button brings them back
+function atCubeUi() { const m = voice.st[ME], at = matchMedia('(max-width:760px)').matches && $('lobby').hidden && (net.on || soloOn) && !(m && (m.in || inPaintSt(m))); document.body.classList.toggle('atcube', at); if (!at) document.body.classList.remove('peek'); $('peekb').setAttribute('aria-pressed', String(document.body.classList.contains('peek'))); }
+$('peekb').onclick = () => { document.body.classList.toggle('peek'); atCubeUi(); };
 function drawTop() {
+  atCubeUi();
   const box = $('ptop'), show = $('lobby').hidden && net.on; box.hidden = !show; if (!show) return;
   const ids = net.line.filter(id => net.players.has(id)); for (const id of net.players.keys()) if (!ids.includes(id)) ids.push(id);
   const mst = voice.st[ME]; box.textContent = '';
