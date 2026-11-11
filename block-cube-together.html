@@ -163,7 +163,8 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
 #ptop .pl .w{font:600 11px/1.1 ui-monospace,Menlo,Consolas,monospace;color:#b8a593;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #ptop .pl.here .w{color:#93d36c}#ptop .pl.me{background:rgba(40,24,10,.82)}#ptop .pl.go{cursor:pointer}#ptop .pl.go:hover{background:rgba(40,24,10,.9)}
 #ptop .pl.talk{box-shadow:0 0 0 2px #93d36c,0 0 14px rgba(147,211,108,.6)}#ptop .pl.empty{opacity:.42;border-left-color:rgba(247,147,26,.28)}
-@media (max-width:760px){#ptop{top:calc(66px + env(safe-area-inset-top));max-width:calc(100vw - 16px)}#ptop .pl{width:calc((100vw - 34px) / 4);padding:4px 6px 4px 6px}#hud{top:calc(116px + env(safe-area-inset-top))}}
+#ptop .pl .nx{display:none}
+@media (max-width:760px){#ptop{top:calc(5px + env(safe-area-inset-top));left:calc(52px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));transform:none;width:auto;max-width:none}#ptop .pl{position:relative;width:100%;padding:4px 44px 4px 8px;cursor:pointer}#ptop .pl .nx{display:block;position:absolute;right:8px;top:50%;transform:translateY(-50%);font:700 10px/1 ui-monospace,Menlo,Consolas,monospace;color:#b8a593;letter-spacing:.04em}#ptop:not([hidden])~#hud{top:calc(54px + env(safe-area-inset-top))}}
 .pill{pointer-events:auto;background:rgba(18,11,5,.72);border:1px solid rgba(247,147,26,.32);border-radius:16px;padding:6px 12px;font:600 13px/1.2 system-ui,sans-serif;letter-spacing:normal;text-transform:none;box-shadow:0 2px 10px #0006;color:#f7efe3;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .pill:hover{background:rgba(40,24,10,.85)}
 .pill b{letter-spacing:.08em}
@@ -282,7 +283,7 @@ const turnOk = t => !!t && typeof t.username === 'string' && typeof t.credential
 const ice = () => NOICE ? [] : STUN.concat([].concat(window.CREW_TURN || TURN).filter(turnOk));   // read afresh for every link
 // a new link with those servers (and if a TURN entry was typed wrongly, with STUN alone rather than no link at all)
 const newPC = () => { try { return new RTCPeerConnection({ iceServers: ice() }); } catch (e) { return new RTCPeerConnection({ iceServers: STUN }); } };
-const TAG = 'blockcube-crew-v1', MAX = 4, FTAG = 'blockcube-friends-v1';
+const TAG = 'blockcube-crew-v1', MAX = 6, FTAG = 'blockcube-friends-v1';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('blockcube.' + k) || ''; } catch (e) { return ''; } }, set: (k, v) => { try { localStorage.setItem('blockcube.' + k, v); } catch (e) {} } };
 const jget = (k, d) => { try { const v = JSON.parse(store.get(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }, jset = (k, v) => store.set(k, JSON.stringify(v));
@@ -1127,14 +1128,17 @@ function playerRows(ul) {
 function drawCrew() { if (!$('wait').hidden) { playerRows($('rplist')); drawWait(); } if (P.kind === 'crew') crewPanel(false); updateHud(); }
 // which block each crewmate is in (redrawn now and then, not on every step)
 let whereAt = 0; function crewWhere() { if (Date.now() - whereAt < 1000) return; whereAt = Date.now(); if (P.kind === 'crew' || !$('wait').hidden) drawCrew(); else drawTop(); }
-// the strip across the top: player 1 to 4 in the order they came (the host first), the block each one's room is, who is talking.
+// the strip across the top: player 1 to 6 in the order they came (the host first), the block each one's room is, who is talking.
 // Tap someone in another room to go to them.
 const GLOWS = [['#27e1ff', '#ff2fb4', '#ffa21a'], ['#ff2fb4', '#7dff4a', '#ff7a18'], ['#f7931a', '#27e1ff', '#b06bff'], ['#ff2d55', '#ffd23f', '#9fe8ff']];
+let topAt = 0;
 function drawTop() {
   const box = $('ptop'), show = $('lobby').hidden && net.on; box.hidden = !show; if (!show) return;
   const ids = net.line.filter(id => net.players.has(id)); for (const id of net.players.keys()) if (!ids.includes(id)) ids.push(id);
   const mst = voice.st[ME]; box.textContent = '';
-  for (let k = 0; k < MAX; k++) {
+  // on a phone: one player at a time, tap for the next
+  const one = matchMedia('(max-width:760px)').matches; if (one) topAt = ids.length ? topAt % ids.length : 0;
+  for (let k = one ? topAt : 0; k < (one ? topAt + 1 : MAX); k++) {
     const id = ids[k];
     if (!id) { box.append(el('div', { class: 'pl empty' }, el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), 'open'), el('span', { class: 'w', text: net.mode === 'sea' ? 'anyone can join' : 'invite someone' }))); continue; }
     const p = net.players.get(id), st = voice.st[id], mine = id === ME, lk = lookOk(p.look) || [0, 0, 1];
@@ -1142,7 +1146,8 @@ function drawTop() {
     const here = !mine && st && mst && (inPaintSt(st) ? inPaintSt(mst) : st.in && mst.in && !inPaintSt(mst) && st.h === mst.h), go = !mine && st && (st.in || inPaintSt(st)) && !here;
     const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + GLOWS[lk[0]][lk[1]], title: go ? 'go to ' + (p.name || 'them') : '' },
       el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
-    if (go) b.onclick = () => toGame({ type: 'go', id });
+    if (one) { b.classList.remove('go'); b.title = ''; b.append(el('span', { class: 'nx', text: (k + 1) + '/' + ids.length + ' \u203a' })); b.onclick = () => { topAt++; drawTop(); }; }
+    else if (go) b.onclick = () => toGame({ type: 'go', id });
     box.append(b);
   }
   lights();
