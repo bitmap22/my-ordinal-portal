@@ -8915,7 +8915,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     return {look, model: m, meta: m.meta, P: m.P, rest: m.rest, parts: m.parts, tint: m.tint, skinTint: m.skinTint, hipsH: m.hipsH, eyeL: m.eyeL, eyeR: m.eyeR, soles: m.soles, row: takeRow(), st: null};
   }
   // a person who has gone: their row is free again (the model stays, for whoever wears that look next)
-  function drop(person) { if (person && person.row >= 0) { freeRows.push(person.row); person.row = -1; } }
+  function drop(person) { if (person) SOC.delete(person); if (person && person.row >= 0) { freeRows.push(person.row); person.row = -1; } }
   // once everything a person is drawn with has arrived (their pictures: skin, eyes, hair, clothes)
   function loaded(person) { return person.parts.every(g => !g.tex || g.tex.ok || g.tex.bad); }
   // ---------- the wardrobe: what there is to wear (wardrobe.json beside the people), and what a choice of pieces comes to ----------
@@ -9264,6 +9264,28 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     return {arms: f(b => /Shoulder|Arm|Hand/.test(nm(b))), armR: f(b => /^Right(Shoulder|Arm|ForeArm|Hand)/.test(nm(b))), armL: f(b => /^Left(Shoulder|Arm|ForeArm|Hand)/.test(nm(b))),
       handR: f(b => /^RightHand/.test(nm(b))), handL: f(b => /^LeftHand/.test(nm(b))), upper: f(isUpper), legs: f(b => /UpLeg|Leg$|Foot|Toe/.test(nm(b)))}; })());
   const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+  // ---------------------------------------------------------------- being alive: nothing a person does on their own repeats
+  // A slow wandering between -1 and 1 that never comes round again (three waves whose lengths share no beat); s: whose it is.
+  const drift = (t, s) => (Math.sin(t + s * 12.9898) + Math.sin(t * 1.6180339 + s * 78.233) * .6 + Math.sin(t * 2.7182818 + s * 37.719) * .35) / 1.95;
+  // Each of the ten has their own way of standing, moving and looking:
+  //   up: how upright they hold themselves (chest out +, a slouch -), tilt: the way they hold their head to one side,
+  //   sway: how much they settle from foot to foot, calm: how long they stay as they are (fidgety below 1), blink: seconds
+  //   between blinks, look: how much their eyes wander, eye: how readily they hold someone's eye, arm: how freely the arms
+  //   swing walking, warm: how readily they smile, nod: how much they nod listening, gest: how big their hands talk,
+  //   fid: what they do when left standing, most likely first ('shift' = a change of stance)
+  const WAYS = {
+    m1: {up: -.02, tilt: .02, sway: 1, calm: 1, blink: 3.6, look: .6, eye: .55, arm: .9, warm: .1, nod: 1, gest: .8, fid: ['fold', 'shift', 'watch']},     // Leo: easy-going
+    m2: {up: .035, tilt: 0, sway: .6, calm: 1.5, blink: 4.8, look: .35, eye: .8, arm: 1, warm: .05, nod: .7, gest: 1, fid: ['fold', 'chin']},               // Kofi: sure of himself
+    m3: {up: .01, tilt: -.03, sway: .9, calm: .7, blink: 3, look: .9, eye: .5, arm: .8, warm: .12, nod: 1.2, gest: .9, fid: ['chin', 'watch', 'shift']},    // Ren: curious
+    m4: {up: .02, tilt: .01, sway: .5, calm: 1.8, blink: 4.4, look: .3, eye: .7, arm: .7, warm: 0, nod: .6, gest: .6, fid: ['watch', 'fold', 'chin']},      // Marco: composed
+    m5: {up: -.035, tilt: .04, sway: 1.4, calm: .55, blink: 2.7, look: .8, eye: .45, arm: 1, warm: .08, nod: 1, gest: 1.2, fid: ['shift', 'watch', 'fold']}, // Sam: restless
+    f1: {up: .01, tilt: .06, sway: 1, calm: 1, blink: 3.3, look: .55, eye: .7, arm: .85, warm: .28, nod: 1.2, gest: 1, fid: ['fold', 'shift', 'chin']},     // Mia: warm
+    f2: {up: .04, tilt: -.02, sway: .7, calm: 1.4, blink: 4.6, look: .4, eye: .8, arm: .8, warm: .08, nod: .7, gest: .8, fid: ['fold', 'chin']},            // Zara: poised
+    f3: {up: -.025, tilt: .05, sway: .8, calm: .9, blink: 2.9, look: .7, eye: .3, arm: .65, warm: .15, nod: 1.3, gest: .5, fid: ['shift', 'chin', 'fold']}, // Yuki: shy
+    f4: {up: .03, tilt: .03, sway: .6, calm: 1.6, blink: 4.2, look: .35, eye: .65, arm: .75, warm: .1, nod: .8, gest: .7, fid: ['chin', 'fold', 'watch']},  // Elena: measured
+    f5: {up: 0, tilt: -.05, sway: 1.3, calm: .6, blink: 3.1, look: .85, eye: .6, arm: 1, warm: .3, nod: 1.3, gest: 1.3, fid: ['shift', 'fold', 'watch']},   // Nia: lively
+  };
+  const SOC = new Set(), DBG = {};   // (everyone posed lately: where they are and whether they are talking, so people notice each other)
   function pose(person, dt, S) {
     // S: {at: feet [x,y,z], yaw: where they look, vel: [vx, vz] m/s, pitch: looking up (+) or down, turn: the head turned (not the body), sit, held, pint, talk,
     //     emote: clip name, emoteT (debug: fixed time), smile, jaw, brows,
@@ -9287,10 +9309,14 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     st.rw += ((sp > 2.4 ? Math.min(1, (sp - 2.4) / 1.2) : 0) - st.rw) * Math.min(1, dt * 5);
     if (wk) { const rate2 = sp > .25 ? (1 - st.rw) * (sp / (wk.speed || 1.3)) + st.rw * (sp / ((rn && rn.speed) || 3.6)) : turning ? .8 : 0;
       st.ph += dt * Math.max(.5, Math.min(1.9, rate2 || 0)) * (st.lw > .01 ? st.dir : 0); }
-    if (idl && !S.bind) sample(idl, st.t, out, hips); else for (let b = 0; b < B; b++) out[b] = [0, 0, 0, 1];
+    st.it = (st.it === undefined ? st.t : st.it) + dt * (.8 + .35 * (.5 + .5 * drift(st.t * .05, st.seed + 11)));   // (the standing move's own time: now a little quicker, now slower)
+    if (idl && !S.bind) sample(idl, st.it, out, hips); else for (let b = 0; b < B; b++) out[b] = [0, 0, 0, 1];
     if (S.bind) { person.local = out; person.hips = hips; person.by = st.by; person.at = S.at || [0, 0, 0]; person.mu = []; person.mk = []; skin(person); return; }
     const mix = (c, t, w, mask) => { if (!c || w <= .001) return; sample(c, t, tmpQ, tmpH); for (let b = 0; b < B; b++) { if (mask && !mask(b)) continue; out[b] = qslerp(out[b], tmpQ[b], w); } if (!mask) for (let k = 0; k < 3; k++) hips[k] += (tmpH[k] - hips[k]) * w; };
+    const way = WAYS[person.meta.id] || WAYS.m1, M0 = masks(), armI = {};
+    if (wk && st.lw > .01) for (let b = 0; b < B; b++) if (M0.arms(b)) armI[b] = out[b];
     if (wk) { const cyc = ((st.ph % 1) + 1) % 1; mix(wk, cyc * wk.dur, st.lw * (1 - st.rw)); if (rn) mix(rn, cyc * rn.dur, st.lw * st.rw); }
+    if (wk && st.lw > .01) { const k = Math.max(0, Math.min(.6, 1 - way.arm * (1 + .14 * drift(st.t * .23, st.seed + 2)))) * st.lw * (1 - st.rw); if (k > .005) for (const b in armI) out[b] = qslerp(out[b], armI[b], k); }
     // sitting down, holding a parcel like a tablet, holding up a pint (eased in and out)
     st.sitW += ((S.sit ? 1 : 0) - st.sitW) * Math.min(1, dt * 5);
     st.holdW += ((S.held ? 1 : 0) - st.holdW) * Math.min(1, dt * 7);
@@ -9335,11 +9361,70 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
       if (c) { mix(c, st.emT, st.emW, st.lw > .3 || st.sitW > .5 ? isUpper : null); face = c.face; moveReach(c, c.loop ? st.emT % c.dur : st.emT, st.emW); }
       if (st.emW < .01 && want === 0) { st.em = null; st.emOut = false; }
     }
-    // breathing
-    const br = Math.sin(st.t * 1.7 + st.seed) * .012;
+    // ---- being alive (see WAYS): settling from foot to foot, small changes of posture, breathing, noticing who is near,
+    // something to do when left standing. All of it timed by chance and by the person's own way, so no two stretches match.
+    const N = st.nat || (st.nat = {side: Math.random() < .5 ? -1 : 1, sideT: 1 + Math.random() * 6, sx: 0, post: 0, pz: 0, postT: 3 + Math.random() * 9, br: Math.random() * 6, sigh: 15 + Math.random() * 50, gz: [0, 0], gzT: Math.random() * 2, gzK: 0, gy: 0, gp: 0, nodT: 2, fidT: (6 + Math.random() * 20) * way.calm, fid: null, last: '', smT: 2 + Math.random() * 8, sm: 0, bw: 0, mate: null, gw: 0});
+    const still = (1 - Math.min(1, st.lw * 2.5)) * (1 - (st.emW || 0)), stand = still * (1 - st.sitW);
+    const qb = (nm, ax, ang) => { const b = bi[nm]; if (b === undefined || !ang) return; out[b] = qmul(out[b], qaxis(...mv(mt(person.rest[b].R), ax), ang)); };   // (turn a bone about one of the body's own directions)
+    // from one foot to the other: now and then, by different amounts, never on a beat
+    N.sideT -= dt; if (N.sideT < 0) { N.sideT = (2.5 + Math.random() * Math.random() * 16) * way.calm; const r = Math.random(); N.side = (N.side > 0 ? -1 : 1) * (r < .25 ? .35 : r < .55 ? .7 : 1); }
+    N.sx += (N.side * way.sway - N.sx) * Math.min(1, dt * (.8 + .5 * Math.abs(drift(st.t * .2, st.seed))));
+    const shift = DBG.sx !== undefined ? DBG.sx : (N.sx * .021 + drift(st.t * .31, st.seed + 3) * .004) * stand;   // (metres to one side)
+    if (Math.abs(shift) > 1e-5) { const a = Math.atan2(shift, person.hipsH * .93), K = DBG.K || [-.35, -.65, -.45, .2];
+      hips[0] += shift / (person.hipsH / ((ANIM && ANIM.hipsH) || person.hipsH));
+      qb('Hips', [0, 0, 1], a * K[0]); qb('LeftUpLeg', [0, 0, 1], a * K[1]); qb('RightUpLeg', [0, 0, 1], a * K[1]); qb('Spine1', [0, 0, 1], a * K[2]); qb('Neck', [0, 0, 1], a * K[3]); }
+    // posture: how they hold themselves, and a small change of it now and then
+    N.postT -= dt; if (N.postT < 0) { N.postT = (5 + Math.random() * 18) * way.calm; N.pt = (Math.random() - .5) * .05; N.pr = (Math.random() - .5) * .028; }
+    N.post += ((N.pt || 0) - N.post) * Math.min(1, dt * .8); N.pz += ((N.pr || 0) - N.pz) * Math.min(1, dt * .8);
+    const up = (way.up + N.post * still) * (1 - .5 * st.sitW) * (1 - .6 * st.holdW);
+    qb('Spine1', [1, 0, 0], -up * .6); qb('Spine2', [1, 0, 0], -up * .4); qb('Neck', [1, 0, 0], up * .5); qb('Spine2', [0, 0, 1], N.pz * still);
+    // breathing: its own pace that wanders, quicker after a run, and a deeper breath now and then
+    N.br += dt * (1.45 + .35 * drift(st.t * .07, st.seed + 5)) * (1 + .6 * st.rw + .2 * st.lw);
+    N.sigh -= dt; if (N.sigh < 0) { N.sigh = 25 + Math.random() * 70; N.sg = 1; } N.sg = Math.max(0, (N.sg || 0) - dt * .3);
+    const bwv = Math.sin(N.br), br = (bwv * .011 + Math.max(0, bwv) * .014 * N.sg) * (1 + .5 * st.rw);
     for (const [nm, k] of [['Spine1', 1], ['Spine2', 1.2]]) out[bi[nm]] = qmul(out[bi[nm]], qaxis(1, 0, 0, br * k));
+    { const lift = (br * .5 + .006 * N.sg) * (DBG.sh || 1); qb('LeftShoulder', [0, 0, 1], lift); qb('RightShoulder', [0, 0, 1], -lift); }   // (the shoulders rise a little with each breath)
+    // who is near: the nearest person in front (someone talking counts as nearer)
+    const at0 = S.at || [0, 0, 0], tnow = performance.now(); let mate = null, best = 4.5;
+    for (const o of SOC) { const q = o.soc; if (o === person || !q || tnow - q.t > 800) continue; const dx = q.p[0] - at0[0], dz = q.p[2] - at0[2], d = Math.hypot(dx, dz); if (d < .25 || d > 4.5) continue;
+      const rel = wrapA(Math.atan2(dx, dz) - st.by); if (Math.abs(rel) > 1.9) continue; const sc = d - (q.talk ? 2 : 0); if (sc < best) { best = sc; mate = {o, d, rel, talk: q.talk, dy: q.p[1] + q.h - at0[1] - person.rest[bi.Head].h[1] * (1 - .28 * st.sitW)}; } }
+    const listen = !!(mate && mate.talk && !S.talk);
+    if (mate && N.mate !== mate.o) { N.mate = mate.o; if (mate.d < 3.2) { N.gzK = 1; N.gzT = 1 + Math.random() * 1.8; if (Math.random() < .3 + way.warm * 2) { N.smG = .25 + Math.random() * .3; N.smD = 1.4 + Math.random() * 1.6; } else { N.brG = .2 + Math.random() * .25; N.smD = .5; N.smG = 0; } } }   // (someone new: a look, and a smile or a lift of the brows)
+    if (!mate) N.mate = null;
+    // where the eyes go: to that person and away again, off to something else, back ahead
+    N.gzT -= dt;
+    if (N.gzT < 0) { const r = Math.random();
+      if (mate && r < (listen ? .85 : way.eye)) { N.gzK = 1; N.gzT = 1 + Math.random() * (listen ? 4 : 2.6); }
+      else if (r < .45 + way.look * .45) { N.gzK = 0; N.gz = [(Math.random() - .5) * (.45 + way.look * .7), (Math.random() - .62) * .3]; N.gzT = .4 + Math.random() * 2.2; }
+      else { N.gzK = 0; N.gz = [0, 0]; N.gzT = (.8 + Math.random() * 4) * way.calm; }
+      if (Math.random() < .45) st.blink = Math.min(st.blink, .04); }   // (eyes often blink as they move)
+    const gT = N.fid && N.fid.c === 'watch' && N.fid.w > .5 ? [.25, -.5] : N.gzK && mate ? [Math.max(-1.1, Math.min(1.1, mate.rel - wrapA(look - st.by))), Math.max(-.5, Math.min(.5, Math.atan2(mate.dy, mate.d)))] : N.gzK ? [0, 0] : N.gz;
+    const gk = (1 - .75 * st.lw) * (1 - (st.emW || 0)) * (1 - .8 * st.holdW);
+    N.gy += (gT[0] * gk - N.gy) * Math.min(1, dt * 4.5); N.gp += (gT[1] * gk - N.gp) * Math.min(1, dt * 4.5);
+    // listening: a nod now and then (one, or two together), the head a little to one side
+    if (listen) { N.nodT -= dt; if (N.nodT < 0) { N.nodT = 1.4 + Math.random() * 5; N.nodA = (.05 + Math.random() * .07) * way.nod; N.nodP = 0; N.nodN = Math.random() < .4 ? 2 : 1; } }
+    N.lis = (N.lis || 0) + ((listen ? 1 : 0) - (N.lis || 0)) * Math.min(1, dt * 1.5);
+    let nod = 0; if (N.nodP !== undefined && N.nodP < N.nodN) { N.nodP += dt * 2.3; nod = N.nodA * Math.sin(Math.min(N.nodP, N.nodN) * Math.PI) ** 2; }
+    qb('Head', [1, 0, 0], nod); qb('Head', [0, 0, 1], (way.tilt * (.5 + .7 * N.lis) + drift(st.t * .13, st.seed + 7) * .02) * (DBG.tl || 1)); qb('Neck', [0, 1, 0], drift(st.t * .11, st.seed + 9) * .03 * still);
+    // left standing: something to do now and then, never the same thing twice running
+    const free = stand > .9 && !S.talk && !S.held && !S.pint && !S.emote && !(S.layers && S.layers.length) && !S.reach && !S.noFidget;
+    if (!N.fid) { if (free && (N.fidT -= dt) < 0) { N.fidT = (9 + Math.random() * Math.random() * 45) * way.calm;
+        const opts = way.fid.filter(f => f !== N.last && (f === 'shift' || clips[f])), f = opts[Math.floor(Math.random() * Math.random() * opts.length)]; N.last = f || '';
+        if (f === 'shift') { N.side = -Math.sign(N.side || 1); N.sideT = (4 + Math.random() * 8) * way.calm; N.pt = (Math.random() - .5) * .07; N.postT = 6 + Math.random() * 10; }
+        else if (f) N.fid = {c: f, t: 0, w: 0, hold: clips[f].loop ? 4 + Math.random() * 10 : clips[f].dur}; } }
+    else { const f = N.fid, c = clips[f.c]; f.t += dt; const on = free && f.t < f.hold - .3; f.w += ((on ? 1 : 0) - f.w) * Math.min(1, dt * (on ? 2.4 : 3.2));
+      mix(c, f.t, Math.min(1, f.w), M0.arms); moveReach(c, c.loop ? f.t % c.dur : f.t, Math.min(1, f.w)); if (!on && f.w < .01) N.fid = null; }
+    // talking with the hands: one hand or both come up in front and move as the words go, each time differently
+    { const can = S.talk && !S.held && !S.pint && !N.fid && !(st.lay && Object.keys(st.lay).length) && (st.emW || 0) < .1 && !S.reach && st.lw < .5 ? 1 : 0;
+      N.gw += (can - N.gw) * Math.min(1, dt * (can ? 2.2 : 3));
+      if (N.gw > .01 && bi.Spine2 !== undefined) {
+        if ((N.gN = (N.gN === undefined ? 0 : N.gN) - dt) < 0) { N.gN = .5 + Math.random() * 1.9; const r = Math.random(); N.gH = r < .3 ? [1, 0] : r < .55 ? [0, 1] : r < .85 ? [1, 1] : [0, 0]; N.gO = [0, 1, 2, 3].map(() => Math.random() - .5); }
+        N.gA = N.gA || [0, 0]; const c = vadd(fk(person, out, hips).Hd[bi.Spine2], [0, -.16, .2]), g = way.gest;
+        for (const [i, sd, sg] of [[0, 'L', 1], [1, 'R', -1]]) { N.gA[i] += (N.gH[i] - N.gA[i]) * Math.min(1, dt * 3.5); const w = N.gA[i] * N.gw; if (w < .02 || (RC && RC[sd])) continue;
+          const o = N.gO, wob = drift(st.t * 2.1, st.seed + 20 + i) * .03 * g;
+          (RC || (RC = {}))[sd] = {body: 1, p: [c[0] + sg * (.17 + o[0] * .08 * g), c[1] + .04 + o[1 + i] * .09 * g + wob, c[2] + .06 + o[3] * .06 * g], fd: nrm([-sg * .25, .5, .8]), pn: nrm([-sg, .35, -.1]), pole: [sg * .55, -1, -.25], w, rate: 9}; } } }
     // the head turns to where they look (shared with the neck and upper back)
-    const ly = Math.max(-1.15, Math.min(1.15, wrapA(look - st.by) + (S.turn || 0))) * (1 - .7 * (st.emW || 0)), lp = Math.max(-.6, Math.min(.7, S.pitch || 0)) * (1 - .6 * st.holdW) - .45 * st.holdW;
+    const ly = Math.max(-1.15, Math.min(1.15, wrapA(look - st.by) + (S.turn || 0) + N.gy)) * (1 - .7 * (st.emW || 0)), lp = Math.max(-.6, Math.min(.7, (S.pitch || 0) + N.gp)) * (1 - .6 * st.holdW) - .45 * st.holdW;
     st.ly = (st.ly || 0) + (ly - (st.ly || 0)) * Math.min(1, dt * 8); st.lp = (st.lp || 0) + (lp - (st.lp || 0)) * Math.min(1, dt * 8);
     for (const [nm, k] of [['Spine2', .2], ['Neck', .35], ['Head', .45]]) {
       const R = person.rest[bi[nm]].R, yax = mv(mt(R), [0, 1, 0]), xax = mv(mt(R), [1, 0, 0]);
@@ -9354,9 +9439,13 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     put(E, 1);
     if (S.smile) put({smile: S.smile}, 1); if (S.jaw) put({jaw: S.jaw}, 1); if (S.brows) put({browL: S.brows, browR: S.brows}, 1);
     // blinking: quick, now and then (and not while the eyes are shut anyway)
-    st.blink -= S.noBlink ? 0 : dt; if (st.blink < 0) { st.bl = .16; st.blink = 1.8 + Math.random() * 4.5; if (Math.random() < .15) st.blink = .25; }   // (sometimes twice)
-    st.bl = Math.max(0, st.bl - dt); const bw = st.bl > 0 ? Math.sin((1 - st.bl / .16) * Math.PI) : 0;
-    put({blinkL: bw, blinkR: bw}, 1);
+    st.blink -= S.noBlink ? 0 : dt; if (st.blink < 0) { st.bd = .13 + Math.random() * .07; st.bl = st.bd; st.blink = way.blink * (.3 + Math.random() * Math.random() * 2.6) * (S.talk ? .75 : 1); if (Math.random() < .13) st.blink = .2 + Math.random() * .15; }   // (each at their own pace, never regular; sometimes twice)
+    st.bl = Math.max(0, st.bl - dt); const bd = st.bd || .16, bw = st.bl > 0 ? Math.sin((1 - st.bl / bd) * Math.PI) : 0, bw2 = st.bl > .012 ? Math.sin((1 - (st.bl - .012) / bd) * Math.PI) : bw * .6;
+    put({blinkL: bw, blinkR: Math.max(0, bw2)}, 1);   // (one lid a hair ahead of the other)
+    // the resting face is never frozen: a small smile comes and goes, the brows lift, a little more on one side than the other
+    N.smT -= dt; if (N.smT < 0) { N.smT = 3 + Math.random() * 14; N.smG = Math.random() < .3 + way.warm ? .12 + Math.random() * .28 : 0; N.brG = Math.random() < .3 ? .15 + Math.random() * .3 : 0; N.asy = (Math.random() - .5) * .6; N.smD = 1 + Math.random() * 2.8; }
+    N.smD = (N.smD || 0) - dt; N.sm += ((N.smD > 0 ? N.smG || 0 : 0) - N.sm) * Math.min(1, dt * 1.5); N.bw += ((N.smD > 0 ? N.brG || 0 : 0) - N.bw) * Math.min(1, dt * 2.6);
+    { const a = N.asy || 0, sm = way.warm * .45 + N.sm * (mate && N.gzK ? 1.3 : 1), lb = N.bw + .12 * N.lis; put({smile: sm, dimple: sm * .3, squintL: sm * .28 * (1 + a), squintR: sm * .28 * (1 - a), browL: lb * (1 + a), browR: lb * (1 - a)}, rk); }
     // talking: the jaw and lips shape the sounds; the brows lift now and then for emphasis
     if (S.talk) {
       const a = st.t * 10.5, o = .5 + .5 * Math.sin(a) * Math.sin(a * .53 + 1.3);
@@ -9378,6 +9467,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     person.mu = act.map(([u]) => BASE.unitIdx[u]); person.mk = act.map(([, w]) => Math.min(2.4, w));
     if (st.sitW > .003) { person.mu.push(BASE.units.length); person.mk.push(Math.min(1, st.sitW)); }   // (sitting: a skirt draws in round the legs)
     person.by = st.by; person.at = S.at || [0, 0, 0]; person.tq = S.tilt || null;
+    person.soc = {p: person.at, t: tnow, talk: !!S.talk, h: person.rest[bi.Head].h[1] * (1 - .28 * st.sitW)}; SOC.add(person);
     // The soles stay on the ground. The lowest place under either foot (the sole of a shoe, when one is worn) is kept at floor
     // height (a few millimetres in, as a real sole presses), so feet and shoes neither sink into the ground nor hang above
     // it, whoever the person is and whatever they wear. Standing and walking it works both ways; running, in a dance or
@@ -9389,7 +9479,6 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     // they are at rest. When the heel lifts with the foot still on the ground (pushing off in a step, up on tiptoe) the toes
     // stay flat on the ground and the foot bends at the ball, as real toes and the front of a shoe do.
     const FK = fk(person, out, hips), sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-    const stand = (1 - Math.min(1, st.lw * 2.5)) * (1 - (st.emW || 0)) * (1 - st.sitW);
     for (const sd of ['Left', 'Right']) {
       const f = bi[sd + 'Foot'], t = bi[sd + 'ToeBase']; if (f === undefined || t === undefined) continue;
       const Rf = person.rest[f].R, Rt = person.rest[t].R, pb = BASE.bones[f].parent;
@@ -9681,7 +9770,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, was1); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, was0);
   }
 
-  return {init, make, drop, loaded, model, pose, draw, boneAt, bodyAt, gripAt, held, aimCan, dress, wardOk, wardHex, PALETTE, WPATS, get wardrobe() { return WARD; }, faces: FACES, clips: () => ANIM ? Object.keys(ANIM.clips) : [], clip: n => ANIM && ANIM.clips[n] ? {dur: ANIM.clips[n].dur, loop: !!ANIM.clips[n].loop} : null, get base() { return BASE; }};
+  return {init, make, drop, loaded, model, pose, draw, boneAt, bodyAt, gripAt, held, aimCan, dress, wardOk, wardHex, PALETTE, WPATS, get wardrobe() { return WARD; }, faces: FACES, dbg: DBG, ways: WAYS, clips: () => ANIM ? Object.keys(ANIM.clips) : [], clip: n => ANIM && ANIM.clips[n] ? {dur: ANIM.clips[n].dur, loop: !!ANIM.clips[n].loop} : null, get base() { return BASE; }};
 })();
 
 /* ---------- The crew as real people (bc-human.js, above): who they are, what they wear, drawing them in the rooms ---------- */
