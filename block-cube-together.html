@@ -63,7 +63,7 @@ label{display:block;font:600 13px/1 var(--cond);letter-spacing:.14em;text-transf
 .side{display:flex;flex-direction:column;gap:14px;min-width:0}
 .pcard label:first-child{margin-top:2px}
 #name{padding:9px 12px;font:700 22px/1.1 var(--cond);letter-spacing:.02em}
-#chars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
+#chars{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:10px}
 .ch{position:relative;aspect-ratio:3/4;border:1px solid var(--m-line);border-radius:2px;background:radial-gradient(ellipse at 50% 85%,rgba(var(--gl),.28),rgba(0,0,0,0) 62%),linear-gradient(180deg,#1a0f0a,#0a0605);overflow:hidden;cursor:pointer;padding:0;text-transform:none;letter-spacing:0}
 .ch img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 0 6px rgba(var(--gl),.55))}
 .ch span{position:absolute;left:0;right:0;bottom:4px;font:700 11px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;color:var(--m-text);text-shadow:0 1px 3px #000}
@@ -221,8 +221,10 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
         <label for="name">Your runner&#39;s name</label>
         <input id="name" maxlength="20" autocomplete="off" placeholder="Ghost">
         <label>Your Node Runner</label>
-        <div id="chars" role="radiogroup" aria-label="Node Runner"></div>
-        <div class="pick"><span class="lbl">Colours</span><span class="sw" id="cols" role="group" aria-label="Colours"></span><span class="lbl" style="margin-left:10px">Skin</span><span class="sw" id="skins" role="group" aria-label="Skin"></span></div>
+        <div id="chars" role="radiogroup" aria-label="Who you are"></div>
+        <div class="pick"><span class="lbl">Outfit</span><span class="sw" id="cols" role="group" aria-label="Outfit"></span><span class="lbl" style="margin-left:10px">Skin</span><span class="sw" id="skins" role="group" aria-label="Skin"></span></div>
+        <label>Wardrobe</label>
+        <div id="wardrobe"></div>
       </div>
       <div class="box" id="paste" hidden><label for="inv">Invite code</label><textarea id="inv" spellcheck="false" placeholder="Paste the invite code"></textarea><div class="row"><button class="main" id="use">Use the code</button></div>
         <div id="out" hidden><label for="rep">Your reply</label><textarea id="rep" readonly></textarea><div class="row"><button id="cp1">Copy</button></div></div></div>
@@ -356,7 +358,7 @@ addEventListener('message', e => {
 function paintSoon() { if (PHONE || pframe.getAttribute('src')) return; paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; }
 // in Block Paint with the crew: who you are, and where each crewmate already in it is
 function paintStart() {
-  toPaint({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode });
+  toPaint({ type: 'ready', me: { id: ME, name: myName(), look: picked }, mode: net.mode });   // (Block Paint shows you as the same person)
   for (const [id, st] of Object.entries(voice.st)) if (id !== ME && inPaintSt(st) && net.players.has(id)) toPaint({ type: 'state', id, name: net.players.get(id).name, s: st });
 }
 const later = ms => new Promise(r => setTimeout(r, ms));
@@ -392,39 +394,100 @@ setInterval(() => { if (!inPaint || !net.on) return; const d = {}; for (const id
 
 // ---------------- characters: Node Runners ----------------
 // four runners, three colourways each, five skin tones: [runner, colourway, skin]. The cube draws their pictures.
+/* ---------- The wardrobe picker: seven sections of things to wear, their colours and patterns ---------- */
+// The same in Block Cube's "play together" page and in Block Paint. It only edits a choice (21 small numbers: see "the
+// wardrobe" in bc-human.js) and tells its page when the choice changes. Pictures: people/thumbs/<section>.webp, ten across.
+const WDUI = (() => {
+  // section, its name, where its piece sits in the 21 numbers (then colour, second colour, pattern), and for what is worn below: which section it is
+  const SECS = [['tops', 'Tops', 0], ['trousers', 'Trousers', 5, 1], ['shorts', 'Shorts', 5, 2], ['girl', 'Skirts & dresses', 5, 3], ['shoes', 'Shoes', 9], ['hats', 'Hats', 13], ['gloves', 'Gloves', 17]];
+  const PAL = ['#e8e6e0', '#1a1b1f', '#8a8d91', '#3a3d42', '#e6dcc6', '#b9a582', '#5a3a26', '#b3261f', '#6b2433', '#e0358f', '#e58fb1', '#e06a1c', '#f7931a', '#f0c64a', '#a6d83a', '#1f4d3a', '#4d5a3c', '#1f6b66', '#27e1ff', '#8fb8de', '#2f5f9e', '#27324a', '#5b3a8c', '#b9a4dc'];   // (the same list as bc-human.js PALETTE)
+  const PATS = ['Its own', 'Plain', 'Hoops', 'Stripes', 'Checks', 'Plaid', 'Dots', 'Camo', 'Tie-dye', 'Zigzag', 'Pinstripe'];
+  const CSS = '.wdu-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 6px}.wdu-tabs button{font:inherit;font-size:12px;line-height:1.2;padding:5px 9px;border-radius:12px;border:1px solid rgba(255,255,255,.28);background:transparent;color:inherit;cursor:pointer;width:auto;height:auto;min-width:0}' +
+    '.wdu-tabs button[aria-selected=true]{background:#f7931a;border-color:#f7931a;color:#111}' +
+    '.wdu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:4px;max-height:244px;overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch}' +
+    '.wdu-grid button{aspect-ratio:1;width:auto;height:auto;min-width:0;border-radius:8px;border:2px solid transparent;background-color:#0a0604;background-repeat:no-repeat;padding:0;cursor:pointer;color:inherit;font:inherit;font-size:11px}' +
+    '.wdu-grid button[aria-pressed=true]{border-color:#f7931a;box-shadow:0 0 8px rgba(247,147,26,.6)}' +
+    '.wdu-name{font-size:12px;margin-top:6px;min-height:16px}.wdu-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px}.wdu-row>span{font-size:10px;opacity:.75;min-width:66px;text-transform:uppercase;letter-spacing:.08em}' +
+    '.wdu-row button{width:22px;height:22px;min-width:0;border-radius:50%;border:2px solid rgba(255,255,255,.22);padding:0;cursor:pointer;font:inherit;color:inherit}' +
+    '.wdu-row button[aria-pressed=true]{border-color:#f7931a;box-shadow:0 0 6px rgba(247,147,26,.8)}.wdu-row button.t{width:auto;height:auto;border-radius:10px;padding:3px 8px;font-size:11px;line-height:1.2;background:transparent}';
+  function mount(box, o) {   // o: {root: where people/ is, get: () => the choice, set: choice => ..., tall: how tall the pictures' box may be}
+    if (!document.getElementById('wdu-css')) { const st = document.createElement('style'); st.id = 'wdu-css'; st.textContent = CSS; document.head.append(st); }
+    let tab = 0, cat = null, bad = false, shown = 0; const scr = {};   // (how far down each section's pictures were scrolled)
+    const el = (t, a, ...kids) => { const e = document.createElement(t); for (const k in a || {}) { if (k === 'text') e.textContent = a[k]; else if (k === 'style') e.style.cssText = a[k]; else e.setAttribute(k, a[k]); } e.append(...kids); return e; };
+    const now = () => { const w = (o.get() || []).slice(0, 21); while (w.length < 21) w.push(0); return w; };
+    function draw() {
+      const og = box.querySelector('.wdu-grid'); if (og) scr[shown] = og.scrollTop;
+      box.textContent = ''; shown = tab;
+      const w = now(), [sec, , at, bs] = SECS[tab], on = bs ? (w[4] === bs ? w[5] : 0) : w[at], items = (cat && cat[sec]) || [];
+      box.append(el('div', {class: 'wdu-tabs', role: 'tablist'}, ...SECS.map(([, n], k) => { const b = el('button', {type: 'button', role: 'tab', 'aria-selected': String(k === tab), text: n}); b.onclick = () => { tab = k; draw(); }; return b; })));
+      if (!cat) { box.append(el('div', {class: 'wdu-name', text: bad ? 'The wardrobe could not be loaded here.' : 'Opening the wardrobe…'})); return; }
+      const pick = i => { const v = now(); if (bs) v[4] = i ? bs : 0; v[at] = i; v[at + 1] = v[at + 2] = v[at + 3] = 0; o.set(v); draw(); };
+      const rows = Math.ceil(items.length / 10), grid = el('div', o.tall ? {class: 'wdu-grid', style: 'max-height:' + o.tall + 'px'} : {class: 'wdu-grid'});
+      const none = el('button', {type: 'button', 'aria-pressed': String(!on), 'aria-label': 'None', text: 'None'}); none.onclick = () => pick(0); grid.append(none);
+      items.forEach((it, k) => {
+        const b = el('button', {type: 'button', 'aria-pressed': String(on === k + 1), 'aria-label': it.n, title: it.n,
+          style: 'background-image:url(' + o.root + 'thumbs/' + sec + '.webp);background-size:1000% ' + rows * 100 + '%;background-position:' + (k % 10) / 9 * 100 + '% ' + (rows > 1 ? Math.floor(k / 10) / (rows - 1) * 100 : 0) + '%'});
+        b.onclick = () => pick(k + 1); grid.append(b);
+      });
+      box.append(grid, el('div', {class: 'wdu-name', text: on && items[on - 1] ? items[on - 1].n : ''})); grid.scrollTop = scr[tab] || 0;
+      if (!on) return;
+      const row = (label, slot, list) => { const r = el('div', {class: 'wdu-row'}, el('span', {text: label}));
+        list.forEach(([name, bg], i) => { const b = el('button', Object.assign({type: 'button', 'aria-pressed': String(w[at + slot] === i), 'aria-label': name, title: name}, bg ? {style: 'background:' + bg} : {class: 't', text: name}));
+          b.onclick = () => { const v = now(); v[at + slot] = i; o.set(v); draw(); }; r.append(b); });
+        box.append(r); };
+      const sw = [['Its own', 'conic-gradient(#b3261f,#f0c64a,#1f4d3a,#2f5f9e,#5b3a8c,#b3261f)']].concat(PAL.map((c, i) => ['Colour ' + (i + 1), c]));
+      row('Colour', 1, sw); row('2nd colour', 2, sw); row('Pattern', 3, PATS.map(n => [n]));
+    }
+    fetch(o.root + 'wardrobe.json').then(r => r.ok ? r.json() : Promise.reject()).then(j => { cat = j; draw(); }, () => { bad = true; draw(); });
+    draw();
+    return {refresh: draw};
+  }
+  return {mount, PAL};
+})();
+
 const HEX = /^[0-9a-f]{64}i\d+$/, HEXK = /^[0-9a-f]{64}$/;
-const lookOk = l => Array.isArray(l) && l.length === 3 && l.every(n => Number.isInteger(n) && n >= 0 && n < 8) ? [Math.min(l[0], 3), Math.min(l[1], 2), Math.min(l[2], 4)] : null;
-let picked = lookOk(jget('look', null)) || [Math.floor(Math.random() * 4), 0, 1];
+const WDX = /^([0-9a-f]{2}){1,21}$/;   // what someone wears from the wardrobe: two hex letters for each of up to 21 numbers (see bc-human.js)
+const lookOk = l => Array.isArray(l) && (l.length === 3 || (l.length === 4 && typeof l[3] === 'string' && WDX.test(l[3]))) && l.slice(0, 3).every(n => Number.isInteger(n) && n >= 0 && n < 16) ? [Math.min(l[0], 9), Math.min(l[1], 2), Math.min(l[2], 4)].concat(l[3] && /[1-9a-f]/.test(l[3]) ? [l[3]] : []) : null;
+const TONES = [0, 3, 1, 1, 0, 0, 4, 1, 1, 1];   // each person's own skin (one of the five)
+let picked = lookOk(jget('look', null)) || (i => [i, 0, TONES[i]])(Math.floor(Math.random() * 10));
+let WD = picked[3] ? picked[3].match(/../g).map(h => parseInt(h, 16)) : []; while (WD.length < 21) WD.push(0);   // what you wear from the wardrobe
+const wdKey = () => WD.some(n => n) ? WD.map(n => (n < 16 ? '0' : '') + n.toString(16)).join('') : '';
 const SKINS = ['#f5cdb0', '#deab84', '#b98660', '#8a5e3f', '#5c3d2b'];
 const PICS = { skin: -1, list: [], looks: [] };
 const rgbOf = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(',');
-function portraits() { toGame({ type: 'portraits', skin: picked[2] }); }
+function portraits(one) { toGame({ type: 'portraits', skin: picked[2], look: picked, one: one ? 1 : 0 }); }
+const picFor = (i, o, k, w) => PICS.list.find(x => x.i === i && x.o === o && (x.k === undefined || x.k === k) && (x.w || '') === (w || ''));
 function gotPortraits(m) {
   if (!Array.isArray(m.list) || !Array.isArray(m.looks)) return;
-  PICS.skin = m.skin | 0; PICS.list = m.list.filter(x => x && typeof x.url === 'string' && /^data:image\/png;base64,/.test(x.url)); PICS.looks = m.looks.slice(0, 8);
+  const got = m.list.filter(x => x && typeof x.url === 'string' && /^data:image\/png;base64,/.test(x.url));
+  PICS.skin = m.skin | 0; PICS.looks = m.looks.slice(0, 12);
+  if (m.more) { for (const x of got) { PICS.list = PICS.list.filter(y => !(y.i === x.i && y.o === x.o && y.k === x.k && (y.w || '') === (x.w || '')) && !(x.w && y.w)); PICS.list.push(x); } } else if (got.length || !PICS.list.length || PICS.list.some(x => x.k === undefined)) PICS.list = got;   // (the people's pictures arrive one by one)
   drawPicker();
 }
 function drawPicker() {
   const box = $('chars'), cols = $('cols'), skins = $('skins'); box.textContent = ''; cols.textContent = ''; skins.textContent = '';
-  const looks = PICS.looks.length ? PICS.looks : [{ n: 'Ghost', glow: ['#27e1ff', '#ff2fb4', '#ffa21a'] }, { n: 'Spark', glow: ['#ff2fb4', '#7dff4a', '#ff7a18'] }, { n: 'Relay', glow: ['#f7931a', '#27e1ff', '#b06bff'] }, { n: 'Cipher', glow: ['#ff2d55', '#ffd23f', '#9fe8ff'] }];
+  const looks = PICS.looks.length ? PICS.looks : RUNNERS.map((n, i) => ({ n, glow: ['#f7931a', '#f7931a', '#f7931a'], tone: TONES[i] }));
+  if (picked[0] >= looks.length) picked = [0, 0, looks[0].tone ?? picked[2]];
   looks.forEach((L, i) => {
-    const pic = PICS.list.find(x => x.i === i && x.o === (i === picked[0] ? picked[1] : 0)), on = i === picked[0];
+    const on = i === picked[0], pic = on ? picFor(i, picked[1], picked[2], wdKey()) : picFor(i, 0, L.tone ?? picked[2]);
     const b = el('button', { class: 'ch' + (on ? ' on' : '') + (pic ? ' ready' : ''), role: 'radio', 'aria-checked': String(on), 'aria-label': L.n, style: '--gl:' + rgbOf((L.glow || [])[on ? picked[1] : 0] || '#f7931a') },
       el('img', { alt: '', src: pic ? pic.url : null }), el('span', { text: L.n }));
-    b.onclick = () => { picked = [i, 0, picked[2]]; saveLook(); }; box.append(b);
+    b.onclick = () => { picked = [i, 0, L.tone ?? picked[2]]; saveLook(); }; box.append(b);
   });
   $('name').placeholder = RUNNERS[picked[0]] || 'Name';
-  (looks[picked[0]].glow || []).forEach((g, o) => { const b = el('button', { 'aria-label': 'Colours ' + (o + 1), 'aria-pressed': String(o === picked[1]), style: 'background:' + g }); b.onclick = () => { picked = [picked[0], o, picked[2]]; saveLook(); }; cols.append(b); });
+  (looks[picked[0]].fit || looks[picked[0]].glow || []).forEach((g, o) => { const b = el('button', { 'aria-label': 'Outfit ' + (o + 1), 'aria-pressed': String(o === picked[1]), style: 'background:' + g }); b.onclick = () => { picked = [picked[0], o, picked[2]]; for (let q = 0; q < 9; q++) WD[q] = 0; saveLook(); wdui.refresh(); }; cols.append(b); });
   SKINS.forEach((c, k) => { const b = el('button', { 'aria-label': 'Skin ' + (k + 1), 'aria-pressed': String(k === picked[2]), style: 'background:' + c }); b.onclick = () => { picked = [picked[0], picked[1], k]; saveLook(); }; skins.append(b); });
 }
 // a new look: kept on this device, shown to the crew straight away
 function saveLook() {
-  jset('look', picked); if (PICS.skin !== picked[2]) portraits(); drawPicker();
+  picked = picked.slice(0, 3).concat(wdKey() ? [wdKey()] : []);   // (who, outfit, skin, and what is worn from the wardrobe)
+  jset('look', picked); if (!picFor(picked[0], picked[1], picked[2], wdKey()) && PICS.looks.length) portraits(true); drawPicker();
   toGame({ type: 'look', id: 'me', look: picked });
   const me = net.players.get(ME); if (me) me.look = picked;
   if (net.on) { if (net.host) { toAll({ t: 'joined', ...pub(ME, me || { name: myName(), look: picked }), back: 1 }); } else send(net.hostLink && net.hostLink.ch, { t: 'look', look: picked }); }
 }
 const note = t => { $('note').textContent = t; };
+const wdui = WDUI.mount($('wardrobe'), { root: /github\.io$|^localhost$|^127\./.test(location.hostname) ? 'people/' : 'https://bitmap22.github.io/my-ordinal-portal/people/', get: () => WD, set: w => { WD = w; saveLook(); } });
 
 // ---------------- Nostr: a tiny relay client (for finding each other) ----------------
 const { schnorr, sha256, bytesToHex, hexToBytes } = window.NB;
@@ -504,7 +567,7 @@ function check(m) {
   if (m.t === 'bye') return { t: 'bye' };
   return null;
 }
-const RUNNERS = ['Ghost', 'Spark', 'Relay', 'Cipher'];
+const RUNNERS = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia'];
 const myName = () => clean($('name').value) || RUNNERS[picked[0]] || 'Runner';
 const flash = i => { i.classList.remove('bad'); void i.offsetWidth; i.classList.add('bad'); i.focus(); setTimeout(() => i.classList.remove('bad'), 900); };   // (an empty box: it flashes, no words)
 const send = (ch, m) => { if (ch && ch.readyState === 'open') try { ch.send(JSON.stringify(m)); } catch (e) {} };
