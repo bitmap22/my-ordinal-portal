@@ -8368,7 +8368,7 @@ const CH_LOOKS = [
 ];
 const chCol = h => lin(hexc(parseInt(h.slice(1), 16)));
 // a look as sent between players: [which runner, which colourway, which skin]
-const chLook = l => { const a = Array.isArray(l) ? l : [0, 0, 1]; return [Math.max(0, Math.min(PEOPLE.length - 1, a[0] | 0)), Math.max(0, Math.min(2, a[1] | 0)), Math.max(0, Math.min(4, a[2] | 0))]; };
+const chLook = l => { const a = Array.isArray(l) ? l : [0, 0, 1]; return [Math.max(0, Math.min(PEOPLE.length - 1, a[0] | 0)), Math.max(0, Math.min(2, a[1] | 0)), Math.max(0, Math.min(4, a[2] | 0))].concat(ppWd(a[3])); };
 
 /* quaternions [x, y, z, w] */
 const qm = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
@@ -8637,10 +8637,11 @@ const BCH = (() => {
   const VS = `#version 300 es
 precision highp float;precision highp int;
 layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec2 aT;layout(location=3) in uvec4 aJ;layout(location=4) in vec4 aW;
-layout(location=5) in float aMi;
+layout(location=5) in float aMi;layout(location=6) in vec4 aZ;
 uniform mat4 uVP;uniform highp sampler2D uB;uniform int uRow;uniform float uMir;uniform vec3 uOff;
 uniform highp sampler2D uMt;uniform int uMn;uniform int uMr;uniform int uMu[12];uniform float uMk[12];uniform int uKind;uniform mat3 uGz;uniform vec3 uEyeL;uniform vec3 uEyeR;
 out vec3 vW;out vec3 vN;out vec2 vT;
+out vec4 vZ;
 void bone(int i,out vec4 a,out vec4 b,out vec4 c){a=texelFetch(uB,ivec2(i*3,uRow),0);b=texelFetch(uB,ivec2(i*3+1,uRow),0);c=texelFetch(uB,ivec2(i*3+2,uRow),0);}
 void main(){vec3 p=aP,nn=aN;
 if(aMi>=0.&&uMn>0){int mi=int(aMi+.5),cx=mi%512,ry=mi/512;for(int k=0;k<12;k++){if(k>=uMn)break;p+=texelFetch(uMt,ivec2(cx,uMu[k]*uMr+ry),0).xyz*uMk[k];}}
@@ -8649,17 +8650,104 @@ vec4 r0=vec4(0),r1=vec4(0),r2=vec4(0),a,b,c;
 for(int k=0;k<4;k++){float w=aW[k];if(w<=0.)continue;bone(int(aJ[k]),a,b,c);r0+=a*w;r1+=b*w;r2+=c*w;}
 vec4 hp=vec4(p,1.);vec3 w=vec3(dot(r0,hp),dot(r1,hp),dot(r2,hp))+uOff;vec3 n=vec3(dot(r0.xyz,nn),dot(r1.xyz,nn),dot(r2.xyz,nn));
 if(uMir>.5){w.y=-w.y;n.y=-n.y;}
+vZ=aZ;
 vW=w;vN=n;vT=aT;gl_Position=uVP*vec4(w,1.);}`;
+  // The wardrobe's own cloth (kind 8) has no picture: its colour and bumps are worked out here from where a point is on the
+  // piece (g: metres round the body or limb, and along it), its bands and panels (z.x, z.y: distance from their edges, .5 = on
+  // the edge), its shade (z.z) and how much it creases there (z.w). uFb = the fabric, uPt = the pattern (kind, size, strength).
+  const FAB = `uniform vec3 uC0,uC1,uC2,uC3;uniform vec4 uFb,uPt,uDt;in vec4 vZ;
+float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h1(i),h1(i+vec2(1.,0.)),f.x),mix(h1(i+vec2(0.,1.)),h1(i+vec2(1.,1.)),f.x),f.y);}
+float fbm(vec2 p){return n2(p)*.5+n2(p*2.03+7.1)*.3+n2(p*4.1+3.7)*.2;}
+vec3 bumpN(vec3 n,vec3 p,float h){vec3 dx=dFdx(p),dy=dFdy(p);float hx=dFdx(h),hy=dFdy(h);vec3 r1=cross(dy,n),r2=cross(n,dx);float det=dot(dx,r1);return normalize(abs(det)*n-(hx*r1+hy*r2)*sign(det));}
+float ln(float d,float w){return 1.-smoothstep(w*.5,w*1.5,abs(d));}
+float fd(float f,float px){return 1.-smoothstep(.1,.28,f*px);}
+float bx(vec2 p,vec2 c,vec2 h){vec2 d=abs(p-c)-h;return max(d.x,d.y);}
+void cloth(vec2 g,vec4 z,inout vec3 n,vec3 p,out vec3 alb,out float ro,out float sp,out float sh){
+ int fb=int(uFb.x+.5),pt=int(uPt.x+.5),dk=int(uDt.x+.5),pk=int(uDt.y+.5);
+ float px=max(fwidth(g.x),fwidth(g.y)),ok=1.-smoothstep(.004,.012,px);if(fwidth(g.x)>.04)pk=0;
+ float ps=max(uPt.y,.004),m=0.;vec2 q=g/ps;float fq=px/ps+1e-4;
+ if(pt==1)m=smoothstep(.5-fq,.5+fq,abs(fract(q.y)-.5)*2.);
+ else if(pt==2)m=smoothstep(.5-fq,.5+fq,abs(fract(q.x)-.5)*2.);
+ else if(pt==3){vec2 c=step(.5,fract(q));m=abs(c.x-c.y);}
+ else if(pt==4){float a=smoothstep(.5-fq,.5+fq,abs(fract(q.x)-.5)*2.),b=smoothstep(.5-fq,.5+fq,abs(fract(q.y)-.5)*2.);m=(a+b)*.5;float t2=step(.9,fract(q.x*.5+.25))+step(.9,fract(q.y*.5+.25));m=mix(m,1.,min(t2,1.)*.7);}
+ else if(pt==5){vec2 c=fract(q+vec2(floor(q.y)*.5,0.))-.5;m=1.-smoothstep(.28-fq,.28+fq,length(c));}
+ else if(pt==6){m=step(.5,fbm(q*.8));m=mix(m,.5,step(.62,fbm(q*.8+11.3)));}
+ else if(pt==7){m=.5+.5*sin(length(q)*6.2832+fbm(q*2.)*4.);}
+ else if(pt==8){m=smoothstep(.5-fq,.5+fq,abs(fract(q.y+abs(fract(q.x)-.5))-.5)*2.);}
+ else if(pt==9){m=1.-smoothstep(.06-fq,.06+fq,abs(fract(q.x)-.5));}
+ alb=mix(uC0,uC1,m*uPt.z*ok);
+ float f1=fwidth(z.y)+1e-4,f0=fwidth(z.x)+1e-4,pn=smoothstep(.5-f1,.5+f1,z.y),bd=smoothstep(.5-f0,.5+f0,z.x);
+ alb=mix(alb,uC1,pn);alb=mix(alb,uC2,bd);
+ float zw=z.w;if(dk==16){float f3=fwidth(z.w)+1e-4,t3=smoothstep(.5-f3,.5+f3,z.w);alb=mix(alb,uC3*(uDt.z>1.5?.72+.28*step(.5,fract(g.y*uDt.z)):1.),t3);zw=0.;}
+ float seam=min(max(1.-abs(z.x-.5)/(f0*2.+.02),0.)*step(.03,z.x)+max(1.-abs(z.y-.5)/(f1*2.+.02),0.)*step(.03,z.y),1.);
+ // the details sewn on or printed (st: thread, dh: raised)
+ float lw=.0011+min(px,.003)*.8,st=0.,dh=0.,ax=abs(g.x);bool trunk=ax<.53;
+ if(dk==9){float s1=ln(ax-.682,.022)+ln(ax-1.2,.018);alb=mix(alb,uC1,min(s1,1.)*ok);}
+ if(trunk){
+  if(dk==1||dk==5){if(dk==1||g.y>1.265){st+=ln(ax-.014,lw);vec2 b=vec2(g.x,mod(g.y,.085)-.0425);float bt=1.-smoothstep(.0052,.0052+px,length(b));alb=mix(alb,uC3,bt);dh+=bt*.001;}}
+  else if(dk==2){float zp=ln(g.x,.0035+min(px,.003))*ok;alb=mix(alb,vec3(.5,.52,.56)*(.6+.4*step(.5,fract(g.y*260.))),zp);st+=ln(ax-.009,lw)*.7;dh+=zp*.0008;}
+  else if(dk==3){
+   if(g.y>.80&&g.y<.99){st+=ln(g.x,lw)*.8;float fy=g.y>.875?abs(g.x-.024):abs(length(g-vec2(0.,.875))-.024);if(g.x>-.003&&g.y>.85)st+=ln(fy,lw);}
+   if(ax<.215&&g.y<.99&&g.y>.85)st+=ln(length(vec2(ax-.215,g.y-.995))-.125,lw)+ln(length(vec2(ax-.215,g.y-.995))-.119,lw)*.7;
+   float bp=bx(vec2(ax,g.y),vec2(.395,.9),vec2(.058,.062));if(g.y>.8)st+=ln(bp,lw)+ln(bp+.005,lw)*.7;if(bp<0.)st+=ln(g.y-.9-abs(ax-.395)*.5+.012,lw)*.6;
+   if(ax>.26&&g.y>.9)st+=ln(g.y-.965+(.5-ax)*.12,lw)+ln(g.y-.96+(.5-ax)*.12,lw)*.7;
+   st+=(ln(ax-.2515,lw)+ln(ax-.2565,lw)*.7)*step(g.y,.99);
+   float lp=min(min(bx(vec2(ax,g.y),vec2(.07,1.),vec2(.006,.022)),bx(vec2(ax,g.y),vec2(.22,1.),vec2(.006,.022))),min(bx(vec2(ax,g.y),vec2(.36,1.),vec2(.006,.022)),bx(vec2(ax,g.y),vec2(.497,1.),vec2(.006,.022))));
+   float lo=1.-smoothstep(-px,px,lp);alb*=1.-lo*.12;dh+=lo*.0012;float rv=1.-smoothstep(.004,.004+px,length(vec2(ax-.024,g.y-1.)));alb=mix(alb,uC3,rv*step(0.,g.x));
+  }
+  else if(dk==7){float kp=max(ax-.135+(g.y-.9)*.3,abs(g.y-.96)-.06);st+=ln(kp,lw);if(g.y<1.37&&g.y>1.2){float ds=ln(ax-.03,.003+min(px,.003));alb=mix(alb,uC3,ds*ok);}}
+  else if(dk==8){vec2 b=vec2(g.x-.0,g.y);float bt=1.-smoothstep(.009,.009+px,min(length(b-vec2(0.,1.03)),length(b-vec2(0.,.955))));alb=mix(alb,uC3,bt);dh+=bt*.0012;
+   st+=ln(bx(g,vec2(.085,1.27),vec2(.045,.004)),lw);st+=ln(bx(vec2(ax,g.y),vec2(.15,.95),vec2(.055,.02)),lw);}
+  if(dk==4||dk==1){float cp=bx(g,vec2(.085,1.262),vec2(.043,.048));st+=ln(cp,lw)*step(1.,float(dk==4||dk==1));}
+  if(dk==10){float kn=bx(g,vec2(0.,1.352),vec2(.014,.013)),bl=max(abs(g.x)-.017-(1.34-g.y)*.075,max(g.y-1.34,1.07-g.y-abs(g.x)*-.9+abs(g.x)*1.8));float tie=1.-smoothstep(0.,px,min(kn,bl));alb=mix(alb,uC3,tie);dh+=tie*.0012;}
+  else if(dk==11){float bw=max(abs(g.y-1.352)-abs(g.x)*.55-.004,abs(g.x)-.04);float tie=1.-smoothstep(0.,px,bw);alb=mix(alb,uC3,tie);dh+=tie*.0012;st+=ln(ax-.012,lw)*step(g.y,1.33);}
+  else if(dk==12){if(ax<.03&&g.y>1.04&&g.y<1.3){float t5=fract(g.y/.04);st+=ln(abs(ax-.026*abs(t5*2.-1.))-.0,lw*1.6)+ln(ax-.03,lw);}}
+  else if(dk==13){float bk=bx(g,vec2(0.,uDt.z),vec2(.024,.019));alb=mix(alb,uC3,(1.-smoothstep(0.,px,abs(bk)-.004)));dh+=(1.-smoothstep(0.,px,bk))*.0015;}
+  else if(dk==14){float rb=min(min(abs(g.y-.98)-.022,abs(g.y-1.12)-.022),abs(ax-.11)-.02+step(g.y,.98)*.1);float hv=1.-smoothstep(0.,px,rb);alb=mix(alb,uC3*1.25,hv);}
+  // prints on the chest
+  vec2 c=(g-vec2(0.,1.255))*vec2(.78,1.);
+  if(pk==1){float d=length(c);float coin=1.-smoothstep(.058,.058+px,d);alb=mix(alb,uC3,coin);
+   float B=min(bx(c,vec2(-.017,0.),vec2(.0055,.032)),min(abs(length(c-vec2(-.004,.015))-.0125)-.0055+step(c.x,-.012)*.1,abs(length(c-vec2(-.002,-.016))-.0145)-.0055+step(c.x,-.012)*.1));
+   B=min(B,min(bx(c,vec2(-.009,0.),vec2(.0035,.043)),bx(c,vec2(.003,0.),vec2(.0035,.043)))+step(.034,abs(c.y))*-1.+1.-step(.034,abs(c.y))*0.);
+   alb=mix(alb,uC0,(1.-smoothstep(0.,px,B))*coin);}
+  else if(pk==2){float bn=1.-smoothstep(.03,.03+px,abs(c.y+.02));alb=mix(alb,uC1,bn);alb=mix(alb,uC3,ln(abs(c.y+.02)-.036,.004));}
+  else if(pk==3){float a2=atan(c.x,c.y),r=length(c),sr=.05*(.55+.45*cos(a2*5.));alb=mix(alb,uC3,1.-smoothstep(sr,sr+px*2.,r*(1.+.0)));}
+  else if(pk==4){vec2 hc=c*vec2(1.,1.)/.05;hc.y-=.25;float hh=pow(hc.x*hc.x+hc.y*hc.y-1.,3.)-hc.x*hc.x*hc.y*hc.y*hc.y;alb=mix(alb,uC3,1.-smoothstep(0.,.25,hh));}
+  else if(pk==5){float d=abs(length(c)-.045);alb=mix(alb,uC3,1.-smoothstep(.007,.007+px,d));alb=mix(alb,uC3,1.-smoothstep(.016,.016+px,length(c)));}
+  else if(pk==6){float b1=max(abs(c.x+c.y*.45)-.012,abs(c.y-.02)-.035),b2=max(abs(c.x+c.y*.45-.014)-.012,abs(c.y+.025)-.035);alb=mix(alb,uC3,1.-smoothstep(0.,px,min(b1,b2)));}
+  else if(pk==7){float d1=min(min(bx(c,vec2(-.03,.04),vec2(.02,.006)),bx(c,vec2(-.016,.02),vec2(.006,.026))),min(min(bx(c,vec2(-.03,0.),vec2(.02,.006)),bx(c,vec2(-.044,-.02),vec2(.006,.026))),bx(c,vec2(-.03,-.04),vec2(.02,.006)))),d2=min(bx(c,vec2(.03,0.),vec2(.007,.046)),bx(c,vec2(.02,.034),vec2(.01,.006)));alb=mix(alb,uC3,1.-smoothstep(0.,px,min(d1,d2)));}
+  else if(pk==8){float r=length(c),fc=1.-smoothstep(.05,.05+px,r),ey=min(length(c-vec2(-.018,.014)),length(c-vec2(.018,.014)))-.007,mo=max(abs(length(c-vec2(0.,.004))-.03)-.004,c.y+.008);alb=mix(alb,uC3,fc);alb=mix(alb,uC0*.2,fc*(1.-smoothstep(0.,px,min(ey,mo))));}
+ }
+ if(dk==3||dk==6){if(!trunk&&ax<1.04){st+=ln(ax-.682,lw)+ln(ax-.687,lw)*.7+ln(ax-.918,lw)*.35;}}
+ if(dk==15&&!trunk&&ax<1.04){st+=ln(ax-.8,lw*1.3)*.6;dh+=ln(ax-.8,.004)*.0012;}
+ if(dk==6&&!trunk&&ax<1.04){float cg=bx(vec2(ax,g.y),vec2(.682,.64),vec2(.058,.07));st+=ln(cg,lw)+ln(bx(vec2(ax,g.y),vec2(.682,.692),vec2(.062,.018)),lw);dh+=(1.-smoothstep(-px,px,cg))*.004;}
+ st=min(st,1.)*ok;alb=mix(alb,uC3,st*.85);
+ float fold=(fbm(vec2(g.x*20.,g.y*5.)+3.)-.5)*.003+(fbm(vec2(g.x*6.,g.y*26.)+9.)-.5)*.0045*zw;
+ float wv=0.;ro=.85;sp=.05;sh=.25;fold*=ok;
+ if(fb==1){wv=sin((g.x+g.y)*2200.)*.00014*fd(350.,px);alb*=mix(1.,.84+.3*n2(vec2(g.x*420.,g.y*30.)),fd(420.,px))+.1*(fbm(g*60.)-.5)*fd(250.,px);alb=mix(alb,alb*1.5+.06,zw*.22*fbm(vec2(g.x*20.,g.y*90.))*fd(370.,px));ro=.9;sp=.03;sh=.12;}
+ else if(fb==2){float rib=sin(g.x*1500.)*fd(239.,px);wv=rib*.0004;alb*=.92+.1*rib;ro=.95;sp=.02;sh=.3;}
+ else if(fb==3){wv=(n2(g*900.)-.5)*.0004*fd(900.,px);alb*=1.+.1*(fbm(g*140.)-.5)*fd(570.,px);ro=1.;sp=.01;sh=.38;}
+ else if(fb==4){float c2=mix(.5,fbm(g*160.),fd(650.,px));wv=c2*.0006;fold*=.6;alb*=.82+.25*c2;ro=.5;sp=.2;sh=.08;}
+ else if(fb==5){fold*=1.3;ro=.3;sp=.5;sh=.5;}
+ else if(fb==6){fold=0.;ro=.25;sp=.9;sh=0.;alb*=.9+.15*n2(g*60.);}
+ else if(fb==7){fold*=1.2;ro=.5;sp=.16;sh=.3;}
+ else{wv=sin(g.x*2513.)*sin(g.y*2513.)*.0001*fd(400.,px);alb*=1.+.07*(fbm(g*120.)-.5)*fd(490.,px);}
+ ro=mix(ro,.85,pn);sp=mix(sp,.05,pn);sh=mix(sh,.25,pn);
+ float h=fold+wv*ok+seam*.0012+bd*.0008+dh*ok-st*.0004;
+ n=bumpN(n,p,h);alb*=1.-seam*.35;alb*=mix(.5,1.,z.z);if(!gl_FrontFacing)alb*=.6;}
+`;
   // kind: 0 skin, 1 hair, 2 eyes, 3 brows/lashes, 4 clothes, 5 teeth
   const FS = `#version 300 es
 precision highp float;precision highp int;
 in vec3 vW;in vec3 vN;in vec2 vT;uniform sampler2D uTex;uniform int uKind;uniform vec3 uTint;uniform vec3 uE;uniform float uMir,uRf,uPort,uCut,uFog;uniform vec3 uFogC;uniform vec3 uL;uniform vec3 uLC;uniform vec3 uAmb;uniform int uEdge;out vec4 o;
-float D(float nh,float r){float a=r*r,a2=a*a,d=nh*nh*(a2-1.)+1.;return a2/(3.14159*d*d);}
+${FAB}float D(float nh,float r){float a=r*r,a2=a*a,d=nh*nh*(a2-1.)+1.;return a2/(3.14159*d*d);}
 void main(){vec4 tx=texture(uTex,vT);vec3 alb=tx.rgb;float al=tx.a;
 if(uKind==1||uKind==3||uKind==4||uKind==0){alb*=uTint;}
 if(uKind==1){if(uEdge==0&&al<.5)discard;if(uEdge==1&&(al>=.5||al<.03))discard;}
 if(uKind==2&&al<.1)discard;
 vec3 n=normalize(vN),v=normalize(uE-vW);if(!gl_FrontFacing)n=-n;
+float fro=.85,fsp=.05,fsh=.25;if(uKind==8)cloth((vT-.5)*2.8,vZ,n,vW,alb,fro,fsp,fsh);
 vec3 L=normalize(uL),h=normalize(L+v);float nl=dot(n,L),nv=max(dot(n,v),.001),nh=max(dot(n,h),0.);
 vec3 c;
 vec3 sky=uAmb*(.62+.38*n.y),fill=vec3(1.,.62,.38)*.22*max(dot(n,normalize(vec3(-.6,.2,-.5))),0.);
@@ -8686,6 +8774,9 @@ if(uKind==0){
  c=vec3(.03,.008,.007)*(.6+.4*n.y);
 }else if(uKind==7){
  c=vec3(4.,.12,.06)*uTint.x;
+}else if(uKind==8){
+ float df=clamp((nl+.25)/1.25,0.,1.);
+ c=alb*(sky+fill+uLC*df)+alb*pow(1.-nv,4.)*fsh*.6+uLC*D(nh,max(fro,.22))*fsp*.5*max(nl,0.);
 }else{
  // cloth: matte, a soft sheen at grazing angles
  float df=clamp((nl+.25)/1.25,0.,1.);float sh=pow(1.-nv,4.)*.25;
@@ -8705,7 +8796,7 @@ precision highp float;precision highp int;
 in vec3 vW;in vec3 vN;in vec2 vT;in vec3 vR;in float vWw;uniform sampler2D uTex;uniform int uKind;uniform vec3 uTint;uniform int uEdge;uniform vec2 u_lz;
 layout(location=0) out vec4 o0;layout(location=1) out vec4 o1;
 ${HOST.prelude}
-// people in the host's light, as the host lights its own figures: a brighter fill from the sky and ground, a soft main light that never
+${FAB}// people in the host's light, as the host lights its own figures: a brighter fill from the sky and ground, a soft main light that never
 // goes fully dark, the nearest lamps, your torch, and a soft edge light so nobody is a black shape against a dark street
 vec3 PL(vec3 al,vec3 n,vec3 vd,vec3 p,float ro,float sp,float wr,float rk){
  float dl=dot(n,u_L),s=dl>0.?SHW(p,n):1.,b=clamp((dl+wr)/(1.+wr),0.,1.)*s,sh=mix(200.,4.,ro);
@@ -8723,6 +8814,7 @@ if(uKind==1){if(uEdge==0&&al<.5)discard;if(uEdge==1&&(al>=.5||al<.03))discard;}
 if(uKind==2&&al<.1)discard;
 gl_FragDepth=log(max(vWw,1e-9)/u_lz.y)*u_lz.x;
 vec3 n=normalize(vN),vd=normalize(-vR);if(!gl_FrontFacing)n=-n;vec3 c;
+float fro=.85,fsp=.05,fsh=.25;if(uKind==8)cloth((vT-.5)*2.8,vZ,n,vW,alb,fro,fsp,fsh);
 if(uKind==7){vec3 g=vec3(4.,.12,.06)*uTint.x;o0=vec4(FOG(g,vR),1.);o1=vec4(vec3(1.,.06,.03)*uTint.x,1.);return;}
 if(uKind==0)c=PL(alb,n,vd,vR,.6,.1,.4,.5)+alb*u_Lc*vec3(1.,.5,.36)*max(clamp((dot(n,u_L)+.5)/1.5,0.,1.)-max(dot(n,u_L),0.),0.)*.14;
 else if(uKind==1)c=PL(alb,n,vd,vR,.5,.16,.3,.6);
@@ -8730,6 +8822,7 @@ else if(uKind==2)c=PL(alb,n,vd,vR,.05,.7,.5,0.);
 else if(uKind==3)c=PL(alb,n,vd,vR,1.,0.,.5,0.);
 else if(uKind==5)c=PL(alb*1.1,n,vd,vR,.3,.25,.5,0.);
 else if(uKind==6)c=vec3(.03,.008,.007);
+else if(uKind==8)c=PL(alb,n,vd,vR,fro,fsp,.3,1.);
 else c=PL(alb,n,vd,vR,.85,.05,.3,1.);
 float a2=(uKind==3||uKind==1&&uEdge==1)?al:1.;
 o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
@@ -8750,7 +8843,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(o)); return o; };
     prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, HOST ? hostVS() : VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, HOST ? hostFS() : FS)); gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(prog));
-    for (const u of ['uVP', 'uB', 'uRow', 'uMir', 'uOff', 'uTex', 'uKind', 'uTint', 'uE', 'uRf', 'uPort', 'uCut', 'uFog', 'uFogC', 'uL', 'uLC', 'uAmb', 'uEdge', 'uMt', 'uMn', 'uMr', 'uMu', 'uMk', 'uGz', 'uEyeL', 'uEyeR', 'uS', 'uEyeW', 'u_lz']) U[u] = gl.getUniformLocation(prog, u);
+    for (const u of ['uVP', 'uB', 'uRow', 'uMir', 'uOff', 'uTex', 'uKind', 'uTint', 'uE', 'uRf', 'uPort', 'uCut', 'uFog', 'uFogC', 'uL', 'uLC', 'uAmb', 'uEdge', 'uMt', 'uMn', 'uMr', 'uMu', 'uMk', 'uGz', 'uEyeL', 'uEyeR', 'uS', 'uEyeW', 'u_lz', 'uC0', 'uC1', 'uC2', 'uC3', 'uFb', 'uPt', 'uDt']) U[u] = gl.getUniformLocation(prog, u);
     if (HOST && HOST.bind) HOST.bind(prog);   // (the host finds its own uniforms: light, fog, shadows)
     boneTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, boneTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -8765,7 +8858,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     if (opt && opt.host) HOST = opt.host;   // (a game with its own camera, light, fog and depth: Block Paint)
     if (ready) return ready;
     ready = (async () => {
-      const [b, an] = await Promise.all([pack('base.bin.gz'), pack('anim.bin.gz').catch(() => null)]);
+      const [b, an, wd] = await Promise.all([pack('base.bin.gz'), pack('anim.bin.gz').catch(() => null), fetch(ROOT + 'wardrobe.json').then(r => r.ok ? r.json() : null).catch(() => null)]);
+      WARD = wd && wd.tops ? wd : null;   // (the wardrobe's list, where there is one)
       const M = b.meta, A = b.A, N = M.N;
       const base = new Float32Array(N * 3);
       for (let i = 0; i < N; i++) for (let k = 0; k < 3; k++) base[i * 3 + k] = M.baseMin[k] + A.base[i * 3 + k] * M.baseScale[k];
@@ -8817,12 +8911,64 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
   }
   async function make(look) {
     const m = await model(look);
-    return {look, model: m, meta: m.meta, P: m.P, rest: m.rest, parts: m.parts, tint: m.tint, skinTint: m.skinTint, hipsH: m.hipsH, eyeL: m.eyeL, eyeR: m.eyeR, row: takeRow(), st: null};
+    return {look, model: m, meta: m.meta, P: m.P, rest: m.rest, parts: m.parts, tint: m.tint, skinTint: m.skinTint, hipsH: m.hipsH, eyeL: m.eyeL, eyeR: m.eyeR, lift: m.lift || 0, row: takeRow(), st: null};
   }
   // a person who has gone: their row is free again (the model stays, for whoever wears that look next)
   function drop(person) { if (person && person.row >= 0) { freeRows.push(person.row); person.row = -1; } }
   // once everything a person is drawn with has arrived (their pictures: skin, eyes, hair, clothes)
   function loaded(person) { return person.parts.every(g => !g.tex || g.tex.ok || g.tex.bad); }
+  // ---------- the wardrobe: what there is to wear (wardrobe.json beside the people), and what a choice of pieces comes to ----------
+  // A choice is 21 small numbers: the top [piece, colour, second colour, pattern], what is worn below [section, piece, colour,
+  // second colour, pattern] (section: 1 trousers, 2 shorts, 3 skirts and dresses), then shoes, hat and gloves [piece, colour,
+  // second colour, pattern] each. piece: 0 = none, else its place in its section + 1; colour: 0 = the piece's own, else a
+  // palette colour + 1; pattern: 0 = its own, 1 = plain, 2.. = WPATS.
+  let WARD = null;
+  const PALETTE = ['#e8e6e0', '#1a1b1f', '#8a8d91', '#3a3d42', '#e6dcc6', '#b9a582', '#5a3a26', '#b3261f', '#6b2433', '#e0358f', '#e58fb1', '#e06a1c', '#f7931a', '#f0c64a', '#a6d83a', '#1f4d3a', '#4d5a3c', '#1f6b66', '#27e1ff', '#8fb8de', '#2f5f9e', '#27324a', '#5b3a8c', '#b9a4dc'];
+  const WPATS = ['', 'plain', 'hoops', 'stripes', 'checks', 'plaid', 'dots', 'camo', 'tiedye', 'chevron', 'pinstripe'], WPS = {hoops: .07, stripes: .05, checks: .05, plaid: .08, dots: .05, camo: .12, tiedye: .14, chevron: .09, pinstripe: .022};
+  const WSEC = ['', 'trousers', 'shorts', 'girl'];
+  // (between players and in what is kept, a choice is written as 42 hex letters: two for each number)
+  const wardOk = a => { if (typeof a === 'string' && /^([0-9a-f]{2}){1,21}$/.test(a)) a = a.match(/../g).map(h => parseInt(h, 16));
+    return Array.isArray(a) && a.length <= 21 && a.every(n => Number.isInteger(n) && n >= 0 && n < 256) && a.some(n => n) ? a.concat(new Array(21 - a.length).fill(0)) : null; };
+  const wardHex = a => (a = wardOk(a)) ? a.map(n => (n < 16 ? '0' : '') + n.toString(16)).join('') : '';
+  const rgbOf = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), hexOf = c => '#' + c.map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join('');
+  const lumOf = c => .3 * c[0] + .59 * c[1] + .11 * c[2], farOf = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+  // one piece in the colours and pattern chosen for it (parts that were a shade of its main colour stay a shade of the new one)
+  function styled(it, c1, c2, pt) {
+    if (!c1 && !c2 && !pt) return it.id;
+    const cols = (it.cols || ['#888888']).slice(0, 4); while (cols.length < 4) cols.push(cols.length === 3 ? '#d8d2c4' : cols[0]);
+    if (c1 && PALETTE[c1 - 1]) {
+      const a = rgbOf(cols[0]), nw = rgbOf(PALETTE[c1 - 1]);
+      for (let i = 1; i < 4; i++) { const b = rgbOf(cols[i]); if (farOf(a, b) < 90) cols[i] = hexOf(nw.map(x => x * (lumOf(b) + 14) / (lumOf(a) + 14))); }
+      cols[0] = PALETTE[c1 - 1];
+    }
+    if (c2 && PALETTE[c2 - 1]) cols[1] = PALETTE[c2 - 1];
+    const st = {id: it.id, c: cols};
+    if (pt === 1) st.p = 'plain';
+    else if (pt > 1 && WPATS[pt]) {
+      st.p = WPATS[pt]; st.ps = WPS[st.p] * (it.slot === 'hat' ? 2.2 : it.slot === 'gloves' ? 2.5 : 1); st.pa = 1;
+      if (farOf(rgbOf(cols[0]), rgbOf(cols[1])) < 60) cols[1] = lumOf(rgbOf(cols[0])) > 110 ? '#2a2c33' : '#e8e6e0';   // (a pattern needs a second colour that shows)
+    }
+    return st;
+  }
+  // what someone wears: their ready-made outfit (`base`: a list of clothes), with the wardrobe pieces chosen in W over it.
+  // A top or something below from the wardrobe takes the place of the whole ready-made outfit but its shoes (and brings a plain
+  // T-shirt or jeans with it if only one of the two was chosen); wardrobe shoes take the place of the outfit's shoes.
+  function dress(base, W) {
+    W = wardOk(W); if (!WARD || !W) return base;
+    const at = (sec, i) => (i && WARD[sec] && WARD[sec][i - 1]) || null, both = it => !!(it && it.cv), isShoe = c => /^shoes/.test(typeof c === 'string' ? c : c.id);
+    let top = at('tops', W[0]), bot = at(WSEC[W[4]], W[5]); const shoes = at('shoes', W[9]), hat = at('hats', W[13]), glo = at('gloves', W[17]);
+    let out = base.slice(), ts = [W[1], W[2], W[3]], bs = [W[6], W[7], W[8]];
+    if (top || bot) {
+      if (both(bot)) top = null;
+      else { if (!top) { top = at('tops', 1); ts = [0, 0, 0]; } if (!bot) { bot = at('trousers', 1); bs = [0, 0, 0]; } }
+      out = out.filter(isShoe);
+      if (top) out.push(styled(top, ...ts)); if (bot) out.push(styled(bot, ...bs));
+    }
+    if (shoes) { out = out.filter(c => !isShoe(c)); out.push(styled(shoes, W[10], W[11], W[12])); }
+    if (hat) out.push(styled(hat, W[14], W[15], W[16]));
+    if (glo) out.push(styled(glo, W[18], W[19], W[20]));
+    return out;
+  }
   async function buildModel(look) {
     await ready;
     const C = await pack('c_' + look.id + '.bin.gz'), cm = C.meta;
@@ -8833,13 +8979,20 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     const rest = BASE.bones.map(b => { const h = mean(b.head), t = mean(b.tail); return {h, t, R: restFrame(h, t, b.kind)}; });
     const person = {look, meta: cm, P, rest, parts: [], hipsH: rest[BASE.boneIdx.Hips].h[1]};
     const want = [['eyes', 'high-poly'], ['eyebrows', look.brows || cm.brows], ['eyelashes', look.lashes || cm.lashes], ['teeth', 'teeth_base'], ['tongue', 'tongue01'], ['hair', look.hair || cm.hair]];
-    for (const c of (look.clothes || [])) want.push(['clothes', c]);
+    for (const c of (look.clothes || [])) want.push(['clothes', typeof c === 'string' ? c : c.id, typeof c === 'string' ? null : c]);   // (a piece by name, or {id, c: [3 colours], p: pattern, ps: its size, pa: its strength})
     const pr = await Promise.all(want.filter(w => w[1]).map(([k, id]) => pack(`p_${k}_${id}.bin.gz`).catch(() => null)));
+    const styles = want.filter(w => w[1]).map(w => w[2] || null);
     // body vertices hidden under clothes
     const hide = new Uint8Array(N);
     for (const p of pr) if (p && p.A.del) for (const v of p.A.del) hide[v] = 1;
     person.parts.push(bodyPart(person, hide));
-    for (const p of pr) if (p) person.parts.push(proxyPart(person, p));
+    // how the wardrobe's pieces sit together: each says where its edges are (its `fab` notes), and the others make room
+    const slot = s => { const p = pr.find(p => p && p.meta.fab && p.meta.fab.slot === s); return p ? p.meta.fab : null; };
+    const ctx = {bot: slot('bottom'), top: slot('top'), shoe: slot('shoes'), glove: slot('gloves'), hat: slot('hat'), az: rest[BASE.boneIdx.Hips].h[2]};
+    person.lift = ctx.shoe && ctx.shoe.lift ? Math.max(0, ctx.shoe.lift - .004) : 0;   // (thick soles lift the wearer; the first few millimetres are left to sink into the floor, as bare soles do)
+    const made = new Array(pr.length), isBot = p => !!(p && p.meta.fab && p.meta.fab.slot === 'bottom');
+    for (const first of [true, false]) pr.forEach((p, i) => { if (!p || isBot(p) !== first) return; const g = proxyPart(person, p, ctx); if (g.kind === 8) cloth(g, p.meta.fab, styles[i]); made[i] = g; });   // (what is worn below first: tops are fitted round it)
+    for (const g of made) if (g) person.parts.push(g);
     if (person.teeth) person.parts.push(mouthPart(person));
     if (person.eyeL) person.parts.push(beamPart(person));
     person.tint = hexLin(look.hairRGB || cm.hairRGB || '#3a2618');
@@ -8847,6 +9000,14 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     return person;
   }
   const hexLin = h => [1, 3, 5].map(i => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2));
+  // the wardrobe's own cloth: which fabric, which colours (main, second, bands), which pattern
+  const FABS = {cotton: 0, denim: 1, knit: 2, fleece: 3, leather: 4, satin: 5, metal: 6, nylon: 7}, PATS = {plain: 0, hoops: 1, stripes: 2, checks: 3, plaid: 4, dots: 5, camo: 6, tiedye: 7, chevron: 8, pinstripe: 9};
+  const DETS = {buttons: 1, zip: 2, jeans: 3, pocket: 4, polo: 5, cargo: 6, hoodie: 7, blazer: 8, track: 9, tie: 10, bowtie: 11, laces: 12, buckle: 13, hivis: 14, crease: 15, third: 16}, PRINTS = {coin: 1, band: 2, star: 3, heart: 4, target: 5, bolt: 6, number: 7, smile: 8};
+  function cloth(g, fab, st) {
+    const cols = (st && st.c) || fab.cols || ['#888888', '#666666', '#444444'];
+    g.c = [0, 1, 2, 3].map(i => hexLin(cols[i] || (i === 3 ? '#d8d2c4' : cols[0]))); g.fb = FABS[(st && st.f) || fab.fab] || 0; g.dt = [DETS[fab.det] || 0, PRINTS[(st && st.pr) || fab.print] || 0, fab.dz || 1];
+    g.pt = [PATS[(st && st.p) || fab.pat] || 0, (st && st.ps) || fab.ps || .04, (st && st.pa) ?? fab.pa ?? 1];
+  }
 
   // face shapes for any set of MH vertices (weights refw over refs): the moving vertices' offsets, one band of a texture per unit.
   // A part's shapes are the same for everyone (the body's, or a proxy's), so they are made once and shared.
@@ -8889,12 +9050,12 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     for (let v = 0; v < n; v++) { const o = g(v) * 3, l = Math.hypot(acc[o], acc[o + 1], acc[o + 2]) || 1; out[v * 3] = acc[o] / l; out[v * 3 + 1] = acc[o + 1] / l; out[v * 3 + 2] = acc[o + 2] / l; }
     return out;
   }
-  function upload(pos, nor, uv, j, w, idx, mor) {
+  function upload(pos, nor, uv, j, w, idx, mor, z) {
     const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
     const buf = (data, loc, n, type, norm, integer) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); gl.enableVertexAttribArray(loc);
       if (integer) gl.vertexAttribIPointer(loc, n, type, 0, 0); else gl.vertexAttribPointer(loc, n, type, norm, 0, 0); };
     buf(pos, 0, 3, gl.FLOAT, false); buf(nor, 1, 3, gl.FLOAT, false); buf(uv, 2, 2, gl.UNSIGNED_SHORT, true); buf(j, 3, 4, gl.UNSIGNED_BYTE, false, true); buf(w, 4, 4, gl.UNSIGNED_BYTE, true);
-    buf(mor.mi, 5, 1, gl.FLOAT, false);
+    buf(mor.mi, 5, 1, gl.FLOAT, false); if (z) buf(z, 6, 4, gl.UNSIGNED_BYTE, true);
     const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return {vao, n: idx.length, type: idx instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, mt: mor.count ? mor.tex : null, mr: mor.rows};
@@ -8910,26 +9071,138 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     g.kind = 0; g.tex = texture(`skins/${person.look.skin || person.meta.skin}_${person.look.texSize || '1k'}.webp`);
     return g;
   }
-  function proxyPart(person, pr) {
+  // One wardrobe piece next to another: where two overlap, one goes inside the other (its cloth drawn in close to the body
+  // there, and not drawn a little further in, so it can never show through) or stands clear outside it.
+  //   A top and what is worn below it (the bottom says: wt = the height of its top edge, tuck = tops tuck into it, bib = the
+  //   height of its bib, skirt): close tops tuck into high waists; every top but a jacket tucks into a skirt or under a bib;
+  //   the plain top made in under a jacket always tucks in. Any other top hangs over the waistband and is pushed clear of it
+  //   (`over`, see clearOf), and under a closed top the trousers' own top is not drawn where the top covers it.
+  // Returns {k: how much of its own room each point keeps, cut: points whose cloth is not drawn, over: points to push clear}
+  // or null (nothing to do).
+  const tucks = (T, B) => T.layer <= 2 && !!(B.skirt || B.bib || (T.tk && B.tuck)), ARM = .4808;   // (ARM: shoulder to wrist on the average body, as sleeves are measured)
+  function sitWith(m, A, n, ctx) {
+    const f = m.fab, os = m.offScale / 32767, k = new Float32Array(n).fill(1), cut = new Uint8Array(n), over = new Uint8Array(n); let any = false;
+    const gx = v => (A.uv[v * 2] / 65535 - .5) * 2.8, gy = v => (A.uv[v * 2 + 1] / 65535 - .5) * 2.8;
+    const room = v => Math.hypot(A.offs[v * 3], A.offs[v * 3 + 1], A.offs[v * 3 + 2]) * os || 1e-6;
+    const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const B = ctx.bot, T = ctx.top, both = c => (c.covers || []).includes('bottom');
+    if (f.slot === 'top' && !both(f) && B && B.wt) {
+      const tk = tucks(f, B), hi = (B.bib || B.wt) + .06;
+      for (let v = 0; v < n; v++) {
+        const y = gy(v); if (Math.abs(gx(v)) >= 1.04 || y > hi) continue;   // (not the sleeves)
+        const l = room(v);
+        if (tk || l < .0035) {   // (loose cloth is gathered in over a longer way than close cloth)
+          k[v] = 1 + (Math.min(1, .0015 / l) - 1) * sm(B.wt + .05 + Math.min(.07, l * 2.5), B.wt + .012, y); if (y < B.wt - .03) cut[v] = 1;
+          if (B.bib) k[v] = Math.min(k[v], 1 + (Math.min(1, .004 / l) - 1) * sm(B.bib + .04, B.bib, y));
+        } else over[v] = 1;
+        any = true;
+      }
+    }
+    if (f.slot === 'bottom' && !f.skirt && T && !both(T) && !T.open && !tucks(T, f) && T.hem < f.wt - .04)
+      for (let v = 0; v < n; v++) if (Math.abs(gx(v)) < 1.04 && gy(v) > T.hem + .03) { cut[v] = 1; any = true; }
+    // Legs and boots (the boots say: sh = the height of their tops, so = how far their legs stand off the wearer's): close
+    // trouser legs tuck into a boot's top, wide ones hang over it. Sleeves and gauntlets (gc = how far up the arm the cuff comes,
+    // go = how far it stands off): the same. `inOrOver` does either for the points in `zone` (edge: where the other piece's
+    // edge is on this one; a point's place along is y, growing away from the foot or hand).
+    const inOrOver = (zone, edge, off) => {
+      if (!zone.length) return;
+      // (it goes by the room at the leg's or sleeve's own end: flared jeans go over boots though they are close at the calf)
+      let end = 1e9; for (const v of zone) end = Math.min(end, gy(v));
+      const near = zone.filter(v => gy(v) < end + .06).map(room).sort((a, b) => a - b), tuck = (near.length ? near[near.length >> 1] : 0) < off + .012;
+      for (const v of zone) { const y = gy(v), l = room(v);
+        if (tuck) { k[v] = Math.min(k[v], 1 + (Math.min(1, .0015 / l) - 1) * sm(edge + .03, edge - .005, y)); if (y < edge - .035) cut[v] = 1; }
+        else { const need = (off + .007) * sm(edge + .05, edge + .005, y); if (l < need) k[v] = Math.max(k[v], need / l); } }
+      any = true;
+    };
+    const S = ctx.shoe, G = ctx.glove, worn = f.slot === 'top' || f.slot === 'bottom' || f.slot === 'dress';
+    if (worn && S && S.sh > .12) { const z = []; for (let v = 0; v < n; v++) { const ax = Math.abs(gx(v)); if (ax >= .56 && ax < 1.04 && gy(v) < S.sh + .05) z.push(v); } inOrOver(z, S.sh, S.so || .004); }
+    if (worn && G && G.gc) { const e = 1 - (ARM - G.gc), z = []; for (let v = 0; v < n; v++) if (Math.abs(gx(v)) >= 1.04 && gy(v) < e + .05) z.push(v); inOrOver(z, e, G.go || .01); }
+    return any ? {k, cut, over} : null;
+  }
+  // How far something reaches out from a middle line, all round and at each height: from samples [phi, h, r, ...], a lookup (phi, h) -> r.
+  function polarMap(S, NP, DH) {
+    let y0 = 1e9, y1 = -1e9; for (let i = 0; i < S.length; i += 3) { y0 = Math.min(y0, S[i + 1]); y1 = Math.max(y1, S[i + 1]); }
+    const NY = Math.max(2, Math.ceil((y1 - y0) / DH)), R = new Float32Array(NP * NY);
+    for (let i = 0; i < S.length; i += 3) { const yi = Math.min(NY - 1, Math.floor((S[i + 1] - y0) / (y1 - y0 + 1e-9) * NY)), pi = Math.floor((S[i] + Math.PI) / (2 * Math.PI) * NP) % NP; R[yi * NP + pi] = Math.max(R[yi * NP + pi], S[i + 2]); }
+    for (let pi = 0; pi < NP; pi++) {   // (empty cells: from the rows above and below, else from the next column)
+      let last = -1;
+      for (let yi = 0; yi < NY; yi++) if (R[yi * NP + pi] > 0) { if (last < 0) for (let q = 0; q < yi; q++) R[q * NP + pi] = R[yi * NP + pi]; else for (let q = last + 1; q < yi; q++) R[q * NP + pi] = R[last * NP + pi] + (R[yi * NP + pi] - R[last * NP + pi]) * (q - last) / (yi - last); last = yi; }
+      if (last >= 0) for (let q = last + 1; q < NY; q++) R[q * NP + pi] = R[last * NP + pi];
+    }
+    for (let yi = 0; yi < NY; yi++) for (let pi = 0; pi < NP; pi++) if (!R[yi * NP + pi]) R[yi * NP + pi] = R[yi * NP + (pi + NP - 1) % NP] || R[yi * NP + (pi + 1) % NP];
+    return (phi, y) => { const fy = Math.min(NY - 1, Math.max(0, (y - y0) / (y1 - y0 + 1e-9) * NY - .5)), fp = ((phi + Math.PI) / (2 * Math.PI) * NP - .5 + NP) % NP;
+      const a = Math.floor(fy), b = Math.min(NY - 1, a + 1), c = Math.floor(fp) % NP, d = (c + 1) % NP, u = fy - a, w = fp - Math.floor(fp);
+      return (R[a * NP + c] * (1 - w) + R[a * NP + d] * w) * (1 - u) + (R[b * NP + c] * (1 - w) + R[b * NP + d] * w) * u; };
+  }
+  // ...of a piece, round the body's own upright middle line (from its points at rest)
+  function ringMap(pos, n, az) {
+    const S = new Float32Array(n * 3);
+    for (let v = 0; v < n; v++) { const dx = pos[v * 3], dz = pos[v * 3 + 2] - az; S[v * 3] = Math.atan2(dx, dz); S[v * 3 + 1] = pos[v * 3 + 1]; S[v * 3 + 2] = Math.hypot(dx, dz); }
+    return polarMap(S, 48, .02);
+  }
+  // Hair under a hat. The hat says where its line runs on the wearer's own head (hl: four skin points: front, back, left,
+  // right) and what it does to the hair: hair 1 = a crown (no hair above the line; just under it the hair is pressed in close
+  // to the head, so it comes out from under the hat instead of through it; hp: how far down it is pressed), 2 = a band (pressed
+  // in under the band, hb: from, to), 3 = none shows at all, 4 = a band over the top of the head from ear to ear (pressed in
+  // under it), 0 = left as it is. Moves `pos`, returns the faces still drawn.
+  function hatHair(person, pos, n, idx, hat) {
+    if (!hat || !hat.hair || !hat.hl) return idx;
+    if (hat.hair === 3) return new idx.constructor(0);
+    const P = person.P, pt = v => [P[v * 3], P[v * 3 + 1], P[v * 3 + 2]], F = pt(hat.hl[0]), Bk = pt(hat.hl[1]), L = pt(hat.hl[2]), R = pt(hat.hl[3]);
+    const C = [0, 1, 2].map(k => (F[k] + Bk[k] + L[k] + R[k]) / 4), sd = nrm(vsub(L, R)); let up = nrm(cross(vsub(F, Bk), sd)); if (up[1] < 0) up = up.map(x => -x);
+    const fw = nrm(cross(sd, up)), B = BASE.body, hbn = BASE.boneIdx.Head, S = [];
+    for (let v = 0; v < B.mh.length; v++) {   // the skull's own reach round that line, from the head's skin
+      let wh = 0; for (let k = 0; k < 4; k++) if (B.j[v * 4 + k] === hbn) wh += B.w[v * 4 + k]; if (wh < 128) continue;
+      const m = B.mh[v] * 3, d = [P[m] - C[0], P[m + 1] - C[1], P[m + 2] - C[2]], h = vdot(d, up); if (h < -.12) continue;
+      const x = vdot(d, sd), z = vdot(d, fw); S.push(Math.atan2(x, z), h, Math.hypot(x, z));
+    }
+    const skullR = polarMap(Float32Array.from(S), 32, .012), cut = new Uint8Array(n), sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const hd = hat.hd ?? .012, hp = hat.hp || .035, hb = hat.hb || [-.015, .02];
+    for (let v = 0; v < n; v++) {
+      const d = [pos[v * 3] - C[0], pos[v * 3 + 1] - C[1], pos[v * 3 + 2] - C[2]], h = vdot(d, up), x = vdot(d, sd), z = vdot(d, fw), r = Math.hypot(x, z) || 1e-6;
+      let s; if (hat.hair === 1) { if (h > hd) cut[v] = 1; s = sm(-hp, -.008, h); } else if (hat.hair === 4) s = sm(.04, .012, Math.abs(z)) * sm(-.05, -.02, h); else s = sm(hb[0] - .03, hb[0], h) * sm(hb[1] + .03, hb[1], h);
+      if (s <= 0) continue;
+      const rmax = skullR(Math.atan2(x, z), h) + .0035 + (1 - s) * .25; if (r <= rmax) continue;
+      const k = rmax / r; for (let c = 0; c < 3; c++) pos[v * 3 + c] = C[c] + up[c] * h + (sd[c] * x + fw[c] * z) * k;
+    }
+    const keep = []; for (let i = 0; i < idx.length; i += 3) if (!(cut[idx[i]] && cut[idx[i + 1]] && cut[idx[i + 2]])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
+    return new idx.constructor(keep);
+  }
+  // A top that hangs over what is worn below: pushed out (never in) to clear it, coming out smoothly from above its top edge.
+  function clearOf(pos, n, A, over, ctx) {
+    const B = ctx.bot, map = ctx.botMap; if (!map) return;
+    const az = ctx.az, hi = (B.bib || B.wt) + .06;
+    for (let v = 0; v < n; v++) { if (!over[v]) continue;
+      const y = (A.uv[v * 2 + 1] / 65535 - .5) * 2.8, t = Math.min(1, Math.max(0, (hi - y) / .055)), dx = pos[v * 3], dz = pos[v * 3 + 2] - az, r = Math.hypot(dx, dz) || 1e-6;
+      const need = Math.min((map(Math.atan2(dx, dz), pos[v * 3 + 1]) + .006) * t * t * (3 - 2 * t), r + .1);
+      if (r < need) { pos[v * 3] = dx * need / r; pos[v * 3 + 2] = az + dz * need / r; } }
+  }
+  function proxyPart(person, pr, ctx) {
     const m = pr.meta, A = pr.A, n = A.refs.length / 3, P = person.P, pos = new Float32Array(n * 3);
     const s = m.scale.map(([a, b, d], k) => Math.abs(P[a * 3 + k] - P[b * 3 + k]) / d);
     const refw = new Float32Array(n * 3), rws = (m.refwScale || 1) / 32767; for (let i = 0; i < n * 3; i++) refw[i] = A.refw[i] * rws;
+    const fit = ctx && m.fab ? sitWith(m, A, n, ctx) : null;
     for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) {
       let x = 0; for (let r = 0; r < 3; r++) x += refw[v * 3 + r] * P[A.refs[v * 3 + r] * 3 + k];
-      pos[v * 3 + k] = x + A.offs[v * 3 + k] / 32767 * m.offScale * s[k];
+      pos[v * 3 + k] = x + A.offs[v * 3 + k] / 32767 * m.offScale * s[k] * (fit ? fit.k[v] : 1);
     }
-    const nor = normals(pos, A.idx, n);
+    if (fit && ctx.botMap && fit.over.some(x => x)) clearOf(pos, n, A, fit.over, ctx);
+    if (m.fab && m.fab.slot === 'bottom' && ctx && !ctx.botMap) ctx.botMap = ringMap(pos, n, ctx.az);
+    let idx = A.idx;
+    if (m.kind === 'hair' && ctx && ctx.hat) idx = hatHair(person, pos, n, idx, ctx.hat);
+    if (fit && fit.cut.some(x => x)) { const keep = []; for (let i = 0; i < idx.length; i += 3) if (!(fit.cut[idx[i]] && fit.cut[idx[i + 1]] && fit.cut[idx[i + 2]])) keep.push(idx[i], idx[i + 1], idx[i + 2]); idx = new idx.constructor(keep); }
+    const nor = normals(pos, idx, n);
     let extra = null; if (A.sit && m.sitScale) { extra = new Float32Array(n * 3); for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) extra[v * 3 + k] = A.sit[v * 3 + k] / 32767 * m.sitScale * (s[k] || 1); }
     const mor = faceMorphs(m.kind + ':' + m.id + (extra ? ':' + person.meta.id : ''), A.refs, refw, n, extra);
-    const g = upload(pos, nor, A.uv, A.j, A.w, A.idx, mor);
-    g.kind = {hair: 1, eyes: 2, eyebrows: 3, eyelashes: 3, teeth: 5, tongue: 5}[m.kind] ?? 4;
+    const g = upload(pos, nor, A.uv, A.j, A.w, idx, mor, m.fab ? A.z : null);
+    g.kind = m.fab ? 8 : {hair: 1, eyes: 2, eyebrows: 3, eyelashes: 3, teeth: 5, tongue: 5}[m.kind] ?? 4;
     if (m.kind === 'teeth') { const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); } person.teeth = {lo, hi}; }
     if (m.kind === 'eyes') for (const [side, sg] of [['eyeL', 1], ['eyeR', -1]]) {
       const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
       for (let v = 0; v < n; v++) if (Math.sign(pos[v * 3]) === sg) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); }
       person[side] = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2] + (hi[1] - lo[1]) / 2];   // (the ball's centre: its radius back from the front)
     }
-    g.tex = m.kind === 'eyes' && (person.look.eyes || person.meta.eyes) ? texture(`eyes/${person.look.eyes || person.meta.eyes}.webp`) : m.tex ? texture(m.tex) : null; g.meta = m;
+    g.tex = m.kind === 'eyes' && (person.look.eyes || person.meta.eyes) ? texture(`eyes/${person.look.eyes || person.meta.eyes}.webp`) : m.tex ? texture(m.tex) : null; g.meta = m.fab ? Object.assign({}, m, {double: true}) : m;
     return g;
   }
 
@@ -9085,6 +9358,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     person.mu = act.map(([u]) => BASE.unitIdx[u]); person.mk = act.map(([, w]) => Math.min(2.4, w));
     if (st.sitW > .003) { person.mu.push(BASE.units.length); person.mk.push(Math.min(1, st.sitW)); }   // (sitting: a skirt draws in round the legs)
     person.by = st.by; person.at = S.at || [0, 0, 0]; person.tq = S.tilt || null;
+    if (person.lift) { const up = person.lift * (1 - st.sitW); person.at = [person.at[0], person.at[1] + up, person.at[2]]; }   // (standing on thick soles: that much taller)
     girdle(person, out);
     // the tablet: held in front of the chest, a hand on each side edge (fingers behind, thumb on the front)
     person.tabC = null;
@@ -9310,7 +9584,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     gl.uniform1i(U.uB, 1); gl.uniform1i(U.uTex, 0); gl.uniform1i(U.uMt, 2);
     gl.activeTexture(gl.TEXTURE2); const was2 = gl.getParameter(gl.TEXTURE_BINDING_2D); gl.activeTexture(gl.TEXTURE0);
     gl.enable(gl.DEPTH_TEST); gl.frontFace(o.mir ? gl.CW : gl.CCW);
-    const passes = [[0, 5, 6, 4, 2, 7], [1], [1, 3]];   // solid things, then hair (its solid middle), then hair's soft edges, brows and lashes
+    const passes = [[0, 5, 6, 4, 8, 2, 7], [1], [1, 3]];   // solid things, then hair (its solid middle), then hair's soft edges, brows and lashes
     for (let pi = 0; pi < passes.length; pi++) {
       const kinds = passes[pi];
       if (pi === 0) { gl.disable(gl.BLEND); gl.depthMask(true); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); }
@@ -9332,6 +9606,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
           gl.uniform1i(U.uKind, g.kind); gl.uniform1f(U.uCut, o.a2c ? .5 : .35);
           gl.uniform1i(U.uMn, g.mt ? nU : 0); if (g.mt) { gl.uniform1i(U.uMr, g.mr); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, g.mt); gl.activeTexture(gl.TEXTURE0); }
           gl.uniform3fv(U.uTint, g.kind === 1 ? p.tint : g.kind === 3 ? p.tint.map(x => x * .7) : g.kind === 0 ? (p.skinTint || [1, 1, 1]) : g.kind === 7 ? [p.laser, 0, 0] : (g.tintC || [1, 1, 1]));
+          if (g.kind === 8) { gl.uniform3fv(U.uC0, g.c[0]); gl.uniform3fv(U.uC1, g.c[1]); gl.uniform3fv(U.uC2, g.c[2]); gl.uniform3fv(U.uC3, g.c[3]); gl.uniform4f(U.uFb, g.fb, 0, 0, 0); gl.uniform4f(U.uPt, g.pt[0], g.pt[1], g.pt[2], 0); gl.uniform4f(U.uDt, g.dt[0], g.dt[1], g.dt[2], 0); }
           gl.bindTexture(gl.TEXTURE_2D, g.tex ? g.tex.t : null);
           gl.bindVertexArray(g.vao); gl.drawElements(gl.TRIANGLES, g.n, g.type, 0);
         }
@@ -9342,7 +9617,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, was1); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, was0);
   }
 
-  return {init, make, drop, loaded, model, pose, draw, boneAt, bodyAt, gripAt, held, aimCan, faces: FACES, clips: () => ANIM ? Object.keys(ANIM.clips) : [], clip: n => ANIM && ANIM.clips[n] ? {dur: ANIM.clips[n].dur, loop: !!ANIM.clips[n].loop} : null, get base() { return BASE; }};
+  return {init, make, drop, loaded, model, pose, draw, boneAt, bodyAt, gripAt, held, aimCan, dress, wardOk, wardHex, PALETTE, WPATS, get wardrobe() { return WARD; }, faces: FACES, clips: () => ANIM ? Object.keys(ANIM.clips) : [], clip: n => ANIM && ANIM.clips[n] ? {dur: ANIM.clips[n].dur, loop: !!ANIM.clips[n].loop} : null, get base() { return BASE; }};
 })();
 
 /* ---------- The crew as real people (bc-human.js, above): who they are, what they wear, drawing them in the rooms ---------- */
@@ -9378,11 +9653,13 @@ function ppTone(P, k) {
   const from = own ? P.tone : dark ? (P.g ? 3 : 4) : 0, a = chCol(CH_SKIN[k]), b = chCol(CH_SKIN[from]);
   return {skin, skinTint: a.map((x, i) => Math.max(.25, Math.min(1.8, x / Math.max(b[i], .005))))};
 }
-// what a look [who, outfit, skin tone] is made of
+// what a look [who, outfit, skin tone, wardrobe choice] is made of (the wardrobe's pieces go on over the ready-made outfit)
 function ppLook(l) {
   const P = PEOPLE[l[0]] || PEOPLE[0];
-  return Object.assign({id: P.id, clothes: P.fits[l[1]] || P.fits[0], texSize: '1k'}, ppTone(P, l[2] | 0));
+  return Object.assign({id: P.id, clothes: BCH.dress(P.fits[l[1]] || P.fits[0], l[3]), texSize: '1k'}, ppTone(P, l[2] | 0));
 }
+// a look's wardrobe choice, checked: 42 hex letters (see "the wardrobe" in bc-human.js), or nothing
+function ppWd(x) { return typeof x === 'string' && /^([0-9a-f]{2}){1,21}$/.test(x) && /[1-9a-f]/.test(x) ? [x] : []; }
 const ppGlow = l => (PEOPLE[l[0]] || PEOPLE[0]).glow;
 // a crewmate's person, made in the background for their look (the old one stays until the new one is ready)
 function ppMate(M) {
@@ -9455,10 +9732,11 @@ async function ppPortraits(m) {
   for (const [i, o, k] of want) {
     if (job !== ppPicJob) return;
     try {
-      const H = await BCH.make(ppLook([i, o, k]));
+      const wd = pick && pick[3] && i === pick[0] && o === pick[1] && k === pick[2] ? pick[3] : '';   // (the one picked: in what they picked from the wardrobe)
+      const H = await BCH.make(ppLook(wd ? [i, o, k, wd] : [i, o, k]));
       for (let w = 0; w < 400 && !BCH.loaded(H); w++) await new Promise(r => setTimeout(r, 50));
       const url = ppPortrait(H, 180, 240); BCH.drop(H);
-      toPage({type: 'portraits', skin: m.skin | 0, list: [{i, o, k, url}], looks, more: 1});
+      toPage({type: 'portraits', skin: m.skin | 0, list: [{i, o, k, w: wd, url}], looks, more: 1});
     } catch (e) { console.warn('portrait:', e && e.message); }
   }
 }
