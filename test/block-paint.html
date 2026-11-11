@@ -881,7 +881,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     const way = WAYS[person.meta.id] || WAYS.m1, M0 = masks(), armI = {};
     if (wk && st.lw > .01) for (let b = 0; b < B; b++) if (M0.arms(b)) armI[b] = out[b];
     if (wk) { const cyc = ((st.ph % 1) + 1) % 1; mix(wk, cyc * wk.dur, st.lw * (1 - st.rw)); if (rn) mix(rn, cyc * rn.dur, st.lw * st.rw); }
-    if (wk && st.lw > .01) { const k = Math.max(0, Math.min(.6, 1 - way.arm * (1 + .14 * drift(st.t * .23, st.seed + 2)))) * st.lw * (1 - st.rw); if (k > .005) for (const b in armI) out[b] = qslerp(out[b], armI[b], k); }
+    if (wk && st.lw > .01) { const k = Math.max(0, Math.min(.6, 1 - way.arm * (1 + .14 * drift(st.t * .23, st.seed + 2)))) * st.lw * (1 - st.rw); const asy = ((st.seed * 7.31) % 1 - .5) * .3;   // (one arm swings a little more than the other, as most people's do)
+      for (const b in armI) { const kb = Math.max(0, Math.min(.7, k + (/^Left/.test(BASE.bones[b].name) ? asy : -asy) * st.lw * (1 - st.rw) * .5)); if (kb > .005) out[b] = qslerp(out[b], armI[b], kb); } }
     // sitting down, holding a parcel like a tablet, holding up a pint (eased in and out)
     st.sitW += ((S.sit ? 1 : 0) - st.sitW) * Math.min(1, dt * 5);
     st.holdW += ((S.held ? 1 : 0) - st.holdW) * Math.min(1, dt * 7);
@@ -943,6 +944,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     N.post += ((N.pt || 0) - N.post) * Math.min(1, dt * .8); N.pz += ((N.pr || 0) - N.pz) * Math.min(1, dt * .8);
     const up = (way.up + N.post * still) * (1 - .5 * st.sitW) * (1 - .6 * st.holdW);
     qb('Spine1', [1, 0, 0], -up * .6); qb('Spine2', [1, 0, 0], -up * .4); qb('Neck', [1, 0, 0], up * .5); qb('Spine2', [0, 0, 1], N.pz * still);
+    qb('Spine', [0, 0, 1], N.sx * .022 * st.sitW * still);   // (sitting: settling to one side of the seat and back)
+    { const lean = (.02 + .035 * st.rw) * st.lw * (1 + .3 * drift(st.t * .17, st.seed + 13)); qb('Spine', [1, 0, 0], lean); qb('Neck', [1, 0, 0], -lean * .6); }   // (walking, the body leans into it a little, more at a run; the head stays up)
     // breathing: its own pace that wanders, quicker after a run, and a deeper breath now and then
     N.br += dt * (1.45 + .35 * drift(st.t * .07, st.seed + 5)) * (1 + .6 * st.rw + .2 * st.lw);
     N.sigh -= dt; if (N.sigh < 0) { N.sigh = 25 + Math.random() * 70; N.sg = 1; } N.sg = Math.max(0, (N.sg || 0) - dt * .3);
