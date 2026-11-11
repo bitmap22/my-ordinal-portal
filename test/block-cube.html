@@ -9374,9 +9374,9 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     }
     // an emote or dance on top (whole body standing still, the upper body while walking)
     const ek = S.emote ? S.emote + '#' + (S.emoteN || 0) : null;
-    if (ek !== st.cur) { st.cur = ek; if (S.emote && clips[S.emote]) { st.em = S.emote; st.emT = S.emoteAt || 0; st.emOut = false; } else if (st.em) st.emOut = true; }
+    if (ek !== st.cur) { st.cur = ek; if (S.emote && clips[S.emote]) { st.em = S.emote; st.emT = S.emoteAt || 0; st.emOut = false; st.emR = S.emoteAt ? 1 : .93 + Math.random() * .14; /* no move is done at quite the same pace twice */ } else if (st.em) st.emOut = true; }
     let face = null;
-    if (st.em) { const c = clips[st.em]; st.emT += dt; if (S.emoteT !== undefined) { st.emT = S.emoteT; st.emW = 1; }
+    if (st.em) { const c = clips[st.em]; st.emT += dt * (st.emR || 1); if (S.emoteT !== undefined) { st.emT = S.emoteT; st.emW = 1; }
       const end = c && !c.loop && st.emT > c.dur - .25, want = (!c || st.emOut || end) ? 0 : 1;
       st.emW += (want - st.emW) * Math.min(1, dt * 7);
       if (c) { mix(c, st.emT, st.emW, st.lw > .3 || st.sitW > .5 ? isUpper : null); face = c.face; moveReach(c, c.loop ? st.emT % c.dur : st.emT, st.emW); }
@@ -9412,6 +9412,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     for (const o of SOC) { const q = o.soc; if (o === person || !q || tnow - q.t > 800) continue; const dx = q.p[0] - at0[0], dz = q.p[2] - at0[2], d = Math.hypot(dx, dz); if (d < .25 || d > 4.5) continue;
       const rel = wrapA(Math.atan2(dx, dz) - st.by); if (Math.abs(rel) > 1.9) continue; const sc = d - (q.talk ? 2 : 0); if (sc < best) { best = sc; mate = {o, d, rel, talk: q.talk, dy: q.p[1] + q.h - at0[1] - person.rest[bi.Head].h[1] * (1 - .28 * st.sitW)}; } }
     const listen = !!(mate && mate.talk && !S.talk);
+    N.close = (N.close || 0) + ((mate && mate.d < .85 && Math.abs(mate.rel) < 1 ? 1 : 0) - (N.close || 0)) * Math.min(1, dt * 1.5);   // (someone right in front: a little room is made, leaning back from them)
+    if (N.close > .01) { qb('Spine1', [1, 0, 0], -.045 * N.close * stand); qb('Neck', [1, 0, 0], .02 * N.close * stand); }
     if (mate && N.mate !== mate.o) { N.mate = mate.o; if (mate.d < 3.2) { N.gzK = 1; N.gzT = 1 + Math.random() * 1.8; if (Math.random() < .3 + way.warm * 2) { N.smG = .25 + Math.random() * .3; N.smD = 1.4 + Math.random() * 1.6; } else { N.brG = .2 + Math.random() * .25; N.smD = .5; N.smG = 0; } } }   // (someone new: a look, and a smile or a lift of the brows)
     if (!mate) N.mate = null;
     // where the eyes go: to that person and away again, off to something else, back ahead
