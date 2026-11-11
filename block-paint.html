@@ -866,6 +866,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     let tgt = st.by;
     if (sp > .25) { const m = Math.atan2(vx, vz), d = wrapA(m - look); if (Math.abs(d) < 1.75) { tgt = m; st.dir = 1; } else { tgt = m + Math.PI; st.dir = -1; } }
     else if (Math.abs(wrapA(look - st.by)) > .95 || S.sit || st.em) tgt = look;
+    else if (st.want !== undefined && Math.abs(wrapA(st.want - look)) < .9) tgt = st.want;   // (turning to someone who is talking to them: see the listening below)
+    st.want = undefined;
     const turn = wrapA(tgt - st.by), rate = sp > .25 ? 7 : 4.5; st.by = wrapA(st.by + Math.max(-rate * dt, Math.min(rate * dt, turn * Math.min(1, dt * 8))));
     const turning = sp < .25 && Math.abs(turn) > .3;
     // locomotion: idle / walk / run, one phase so the feet stay in step
@@ -974,6 +976,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     // listening: a nod now and then (one, or two together), the head a little to one side
     if (listen) { N.nodT -= dt; if (N.nodT < 0) { N.nodT = 1.4 + Math.random() * 5; N.nodA = (.05 + Math.random() * .07) * way.nod; N.nodP = 0; N.nodN = Math.random() < .4 ? 2 : 1; } }
     N.lis = (N.lis || 0) + ((listen ? 1 : 0) - (N.lis || 0)) * Math.min(1, dt * 1.5);
+    N.lisT = listen && mate.d < 3 ? (N.lisT || 0) + dt : 0; if (N.lisT > 1.2 + way.calm && stand > .9 && Math.abs(mate.rel) > .45) st.want = st.by + mate.rel * .75;   // (after a moment the body turns to the one talking, not just the head)
     let nod = 0; if (N.nodP !== undefined && N.nodP < N.nodN) { N.nodP += dt * 2.3; nod = N.nodA * Math.sin(Math.min(N.nodP, N.nodN) * Math.PI) ** 2; }
     qb('Head', [1, 0, 0], nod); qb('Head', [0, 0, 1], (way.tilt * (.5 + .7 * N.lis) + drift(st.t * .13, st.seed + 7) * .02) * (DBG.tl || 1)); qb('Neck', [0, 1, 0], drift(st.t * .11, st.seed + 9) * .03 * still);
     // left standing: something to do now and then, never the same thing twice running
