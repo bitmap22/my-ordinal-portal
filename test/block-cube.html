@@ -6200,7 +6200,7 @@ function cmPints(R, B, G, S, tn) {
     const tH = Math.tan(v.fov / 2) * v.asp, a = v.asp < .7 ? [.66 * tH * .14, -.32 + bob, .66] : [Math.min(.2, .46 * tH * .64), -.25 + bob, .46], b = [.02, -.1, .24], m = a.map((q, i) => q + (b[i] - q) * k);
     add(e[0] + rt[0] * m[0] + up[0] * m[1] + f[0] * m[2], e[1] + rt[1] * m[0] + up[1] * m[1] + f[1] * m[2] - .1, e[2] + rt[2] * m[0] + up[2] * m[1] + f[2] * m[2], yaw, cm.pint.fill, .15 + 1.15 * k);
   }
-  for (const M of crew.mates.values()) if (M.shown && M.R.pintAt) add(M.R.pintAt[0], M.R.pintAt[1] - .02, M.R.pintAt[2], M.R.pintYaw || 0, M.s && M.s.pf >= 0 ? Math.max(.02, M.s.pf) : .7, M.R.pintTilt || 0);   // (as full as theirs is, tipped when they sip)
+  for (const M of crew.mates.values()) if (M.shown && M.R.pintAt) { const v = [M.R.pintAt[0], M.R.pintAt[1] - (M.R.pintS ? 0 : .02), M.R.pintAt[2], M.R.pintYaw || 0, M.R.pintS || 1, 0, M.s && M.s.pf >= 0 ? Math.max(.02, M.s.pf) : .7, M.R.pintTilt || 0, 1, 1, 1]; B.push(v); G.push(v.slice()); }   // (as full as theirs is, tipped as their hand tips it)
   for (const e of cm.empties) G.push([e[0], e[1], e[2], e[3], 1, 0, 0, 0, 1, 1, 1]);
 }
 // little sounds (only with the cube's sound on): a pour, a sip
@@ -8705,6 +8705,18 @@ precision highp float;precision highp int;
 in vec3 vW;in vec3 vN;in vec2 vT;in vec3 vR;in float vWw;uniform sampler2D uTex;uniform int uKind;uniform vec3 uTint;uniform int uEdge;uniform vec2 u_lz;
 layout(location=0) out vec4 o0;layout(location=1) out vec4 o1;
 ${HOST.prelude}
+// people in the host's light, as the host lights its own figures: a brighter fill from the sky and ground, a soft main light that never
+// goes fully dark, the nearest lamps, your torch, and a soft edge light so nobody is a black shape against a dark street
+vec3 PL(vec3 al,vec3 n,vec3 vd,vec3 p,float ro,float sp,float wr,float rk){
+ float dl=dot(n,u_L),s=dl>0.?SHW(p,n):1.,b=clamp((dl+wr)/(1.+wr),0.,1.)*s,sh=mix(200.,4.,ro);
+ vec3 c=al*(mix(u_A1,u_A0,n.y*.5+.5)*1.15+u_Lc*(.18+b*.72));
+ c+=u_Lc*pow(max(dot(n,normalize(u_L+vd)),0.),sh)*sp*s*max(dl,0.);
+ for(int i=0;i<8;i++){if(float(i)>=u_pln)break;vec3 d=u_pl[i].xyz-p;float r=length(d),a=max(1.-r/u_pl[i].w,0.);a*=a;vec3 l=d/max(r,1e-6);float nd=clamp((dot(n,l)+wr)/(1.+wr),0.,1.);
+  c+=u_plc[i]*a*(al*nd*.9+pow(max(dot(n,normalize(l+vd)),0.),sh)*sp*max(dot(n,l),0.));}
+ if(u_tch.w>0.){vec3 l=vec3(0.,-.25,0.)-p;float r=length(l);l/=max(r,1e-6);float cs=dot(-l,u_tch.xyz),k=(smoothstep(.88,.975,cs)*.8+smoothstep(.55,.88,cs)*.2)*u_tch.w/(1.+r*r*.05),nd=clamp((dot(n,l)+wr)/(1.+wr),0.,1.);
+  c+=vec3(1.,.95,.86)*k*(al*nd+pow(max(dot(n,normalize(l+vd)),0.),sh)*sp*nd);}
+ float rim=pow(1.-max(dot(n,vd),0.),3.2);c+=(u_Lc*.35+u_A0*.45)*mix(al,vec3(1.),.3)*rim*(.25+.75*b)*.42*rk;
+ return c;}
 void main(){vec4 tx=texture(uTex,vT);vec3 alb=tx.rgb;float al=tx.a;
 if(uKind==1||uKind==3||uKind==4||uKind==0){alb*=uTint;}
 if(uKind==1){if(uEdge==0&&al<.5)discard;if(uEdge==1&&(al>=.5||al<.03))discard;}
@@ -8712,13 +8724,13 @@ if(uKind==2&&al<.1)discard;
 gl_FragDepth=log(max(vWw,1e-9)/u_lz.y)*u_lz.x;
 vec3 n=normalize(vN),vd=normalize(-vR);if(!gl_FrontFacing)n=-n;vec3 c;
 if(uKind==7){vec3 g=vec3(4.,.12,.06)*uTint.x;o0=vec4(FOG(g,vR),1.);o1=vec4(vec3(1.,.06,.03)*uTint.x,1.);return;}
-if(uKind==0){c=LIGHT(alb,n,vd,vR,.6,.22);float wr=clamp((dot(n,u_L)+.45)/1.45,0.,1.)-max(dot(n,u_L),0.);c+=alb*u_Lc*vec3(1.,.42,.28)*wr*.35+alb*vec3(1.,.5,.35)*pow(1.-max(dot(n,vd),0.),3.)*.2;}
-else if(uKind==1)c=LIGHT(alb,n,vd,vR,.45,.3);
-else if(uKind==2)c=LIGHT(alb,n,vd,vR,.03,1.2);
-else if(uKind==3)c=LIGHT(alb,n,vd,vR,1.,0.);
-else if(uKind==5)c=LIGHT(alb*1.1,n,vd,vR,.3,.35);
+if(uKind==0)c=PL(alb,n,vd,vR,.6,.1,.4,.5)+alb*u_Lc*vec3(1.,.5,.36)*max(clamp((dot(n,u_L)+.5)/1.5,0.,1.)-max(dot(n,u_L),0.),0.)*.14;
+else if(uKind==1)c=PL(alb,n,vd,vR,.5,.16,.3,.6);
+else if(uKind==2)c=PL(alb,n,vd,vR,.05,.7,.5,0.);
+else if(uKind==3)c=PL(alb,n,vd,vR,1.,0.,.5,0.);
+else if(uKind==5)c=PL(alb*1.1,n,vd,vR,.3,.25,.5,0.);
 else if(uKind==6)c=vec3(.03,.008,.007);
-else c=LIGHT(alb,n,vd,vR,.85,.06)+alb*pow(1.-max(dot(n,vd),0.),4.)*.15;
+else c=PL(alb,n,vd,vR,.85,.05,.3,1.);
 float a2=(uKind==3||uKind==1&&uEdge==1)?al:1.;
 o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
   let prog = null, U = {}, boneTex = null, boneRows = 16, boneData = null;
@@ -8839,7 +8851,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
   // face shapes for any set of MH vertices (weights refw over refs): the moving vertices' offsets, one band of a texture per unit.
   // A part's shapes are the same for everyone (the body's, or a proxy's), so they are made once and shared.
   const morphCache = new Map();
-  function faceMorphs(key, refs, refw, n) {
+  // (extra: one more shape of the part's own, after the face's: a skirt's drawn-in shape for sitting)
+  function faceMorphs(key, refs, refw, n, extra) {
     if (morphCache.has(key)) return morphCache.get(key);
     const U = BASE.units, full = U.map(k => { const f = BASE.face[BASE.faceUnits[k]], a = new Float32Array(BASE.N * 3);
       for (let i = 0; i < f.i.length; i++) for (let c = 0; c < 3; c++) a[f.i[i] * 3 + c] = f.d[i * 3 + c] * f.s; return a; });
@@ -8852,14 +8865,16 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
         if (Math.abs(x) + Math.abs(y) + Math.abs(z) > 1e-6) any = true;
         const o = (u * n + v) * 3; moved[o] = x; moved[o + 1] = y; moved[o + 2] = z;
       }
+      if (extra && Math.abs(extra[v * 3]) + Math.abs(extra[v * 3 + 1]) + Math.abs(extra[v * 3 + 2]) > 1e-6) any = true;
       if (any) mi[v] = m++;
     }
-    const rows = Math.max(1, Math.ceil(m / 512)), data = new Float32Array(512 * rows * U.length * 4);
+    const rows = Math.max(1, Math.ceil(m / 512)), data = new Float32Array(512 * rows * (U.length + 1) * 4);
+    if (extra) for (let v = 0; v < n; v++) { const k = mi[v]; if (k < 0) continue; const t = ((U.length * rows + Math.floor(k / 512)) * 512 + k % 512) * 4; data[t] = extra[v * 3]; data[t + 1] = extra[v * 3 + 1]; data[t + 2] = extra[v * 3 + 2]; }
     for (let v = 0; v < n; v++) { const k = mi[v]; if (k < 0) continue;
       for (let u = 0; u < U.length; u++) { const o = (u * n + v) * 3, t = ((u * rows + Math.floor(k / 512)) * 512 + k % 512) * 4; data[t] = moved[o]; data[t + 1] = moved[o + 1]; data[t + 2] = moved[o + 2]; } }
     const tex = gl.createTexture(), was = gl.getParameter(gl.TEXTURE_BINDING_2D); gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 512, rows * U.length, 0, gl.RGBA, gl.FLOAT, data); gl.bindTexture(gl.TEXTURE_2D, was);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 512, rows * (U.length + 1), 0, gl.RGBA, gl.FLOAT, data); gl.bindTexture(gl.TEXTURE_2D, was);
     const out = {tex, rows, mi, count: m}; morphCache.set(key, out); return out;
   }
   function normals(pos, idx, n, groupOf) {
@@ -8904,7 +8919,8 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
       pos[v * 3 + k] = x + A.offs[v * 3 + k] / 32767 * m.offScale * s[k];
     }
     const nor = normals(pos, A.idx, n);
-    const mor = faceMorphs(m.kind + ':' + m.id, A.refs, refw, n);
+    let extra = null; if (A.sit && m.sitScale) { extra = new Float32Array(n * 3); for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) extra[v * 3 + k] = A.sit[v * 3 + k] / 32767 * m.sitScale * (s[k] || 1); }
+    const mor = faceMorphs(m.kind + ':' + m.id + (extra ? ':' + person.meta.id : ''), A.refs, refw, n, extra);
     const g = upload(pos, nor, A.uv, A.j, A.w, A.idx, mor);
     g.kind = {hair: 1, eyes: 2, eyebrows: 3, eyelashes: 3, teeth: 5, tongue: 5}[m.kind] ?? 4;
     if (m.kind === 'teeth') { const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); } person.teeth = {lo, hi}; }
@@ -8961,7 +8977,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     //     layers: [{c: clip, w: weight, t: time (else its own clock), mask: 'arms'|'armR'|'armL'|'upper'|'legs', rate}] more moves on top,
     //     reach: {L|R: {p: world point for the palm, fd: fingers' direction, pn: palm's facing, pole: elbow hint (body terms), w}},
     //     tilt: [x, y, z, w] a turn of the whole body about the feet (a ramp, leaning into a turn)}
-    const B = BASE.bones.length, st = person.st || (person.st = {t: 0, ph: 0, blink: 2 + Math.random() * 3, bl: 0, emW: 0, em: null, emT: 0, lw: 0, rw: 0, seed: Math.random() * 100, by: S.yaw || 0, sitW: 0, holdW: 0, pintW: 0, dir: 1});
+    const B = BASE.bones.length, st = person.st || (person.st = {t: Math.random() * 30, ph: 0, blink: 2 + Math.random() * 3, bl: 0, emW: 0, em: null, emT: 0, lw: 0, rw: 0, seed: Math.random() * 100, by: S.yaw || 0, sitW: 0, holdW: 0, pintW: 0, dir: 1});
     st.t += dt;
     const out = new Array(B), hips = [0, 0, 0], tmpQ = new Array(B), tmpH = [0, 0, 0];
     const clips = ANIM ? ANIM.clips : {}, bi = BASE.boneIdx;
@@ -8986,10 +9002,22 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     st.sitW += ((S.sit ? 1 : 0) - st.sitW) * Math.min(1, dt * 5);
     st.holdW += ((S.held ? 1 : 0) - st.holdW) * Math.min(1, dt * 7);
     st.pintW += ((S.pint ? 1 : 0) - st.pintW) * Math.min(1, dt * 7);
-    const sc = S.sit === 'high' && clips.sitHigh ? clips.sitHigh : clips.sit;   // (a bar stool: perched higher)
+    // sitting: S.sit true, 'high' (a bar stool: perched), or which way they sit ('sitLap', 'sitBack', 'sitFwd'); S.seat = how high
+    // the seat is (metres): on a higher seat the hips sit higher and the thighs slope down to the knees (toward the perched pose)
+    if (S.sit) st.sitC = S.sit === 'high' && clips.sitHigh ? 'sitHigh' : typeof S.sit === 'string' && clips[S.sit] ? S.sit : 'sit';
+    const sc = clips[st.sitC || 'sit'];
     if (sc) mix(sc, st.t, st.sitW);
+    if (S.sit && S.seat) st.seatB = Math.max(0, Math.min(1, (S.seat - .37) / .27));
+    if (st.seatB && st.sitW > .001 && clips.sitHigh && st.sitC !== 'sitHigh') seatUp(st.sitW * st.seatB);
+    if (!S.sit && st.sitW < .01) st.seatB = 0;
+    function seatUp(w) { mix(clips.sitHigh, st.t, w, masks().legs); sample(clips.sitHigh, st.t, tmpQ, tmpH); for (let k = 0; k < 3; k++) hips[k] += (tmpH[k] - hips[k]) * w; }
     if (clips.tablet) mix(clips.tablet, st.t, st.holdW, isUpper);
     if (clips.pint) mix(clips.pint, st.t, st.pintW, b => /^Right(Shoulder|Arm|ForeArm|Hand)/.test(BASE.bones[b].name));
+    // a move can ask for a hand to be somewhere exact on the body while it plays (a glass at the mouth, a hand at the chin):
+    // its `reach` = {L|R: {bone, p, fd, pn, off, pole, w: [[time, how much], ...]}}
+    let RC = S.reach ? Object.assign({}, S.reach) : null;
+    const moveReach = (c, t, w) => { if (!c || !c.reach) return; for (const sd of ['L', 'R']) { const r0 = c.reach[sd]; if (!r0) continue;
+      const k = w * (Array.isArray(r0.w) ? curve(r0.w, t) : (r0.w ?? 1)); if (k > .002) (RC || (RC = {}))[sd] = Object.assign({}, r0, {w: k, rate: 40}); } };
     // more moves on top as the game asks (holding a phone, playing a guitar, riding a board...), each eased in and out
     if (S.layers || st.lay) {
       const Ls = st.lay || (st.lay = {}), want = {}, M = masks();
@@ -9000,8 +9028,9 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
         s2.w += ((l ? (l.w ?? 1) : 0) - s2.w) * Math.min(1, dt * ((l && l.rate) || 6));
         s2.t = l && l.t !== undefined ? l.t : s2.t + dt;
         if (!l && s2.w < .004) { delete Ls[c]; continue; }
-        mix(clips[c], s2.t, Math.min(1, s2.w), s2.mask ? M[s2.mask] : null);
+        mix(clips[c], s2.t, Math.min(1, s2.w), s2.mask ? M[s2.mask] : null); moveReach(clips[c], clips[c].loop ? s2.t % clips[c].dur : s2.t, Math.min(1, s2.w));
       }
+      if (!S.sit && S.seat && clips.sitHigh) seatUp(Math.max(0, Math.min(1, (S.seat - .37) / .27)));   // (a seated move on a higher seat)
     }
     // an emote or dance on top (whole body standing still, the upper body while walking)
     const ek = S.emote ? S.emote + '#' + (S.emoteN || 0) : null;
@@ -9010,7 +9039,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     if (st.em) { const c = clips[st.em]; st.emT += dt; if (S.emoteT !== undefined) { st.emT = S.emoteT; st.emW = 1; }
       const end = c && !c.loop && st.emT > c.dur - .25, want = (!c || st.emOut || end) ? 0 : 1;
       st.emW += (want - st.emW) * Math.min(1, dt * 7);
-      if (c) { mix(c, st.emT, st.emW, st.lw > .3 || st.sitW > .5 ? isUpper : null); face = c.face; }
+      if (c) { mix(c, st.emT, st.emW, st.lw > .3 || st.sitW > .5 ? isUpper : null); face = c.face; moveReach(c, c.loop ? st.emT % c.dur : st.emT, st.emW); }
       if (st.emW < .01 && want === 0) { st.em = null; st.emOut = false; }
     }
     // breathing
@@ -9028,7 +9057,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     let E = null;
     if (st.em && face) E = faceAt(face, st.emT, st.emW);
     if (S.face) E = mixFaces(E, typeof S.face === 'string' ? FACES[S.face] : S.face, S.faceW ?? 1);
-    put(FACES.rest, Math.max(0, 1 - (E ? Math.max(0, ...Object.values(E)) : 0)));
+    const rk = Math.max(0, 1 - (E ? Math.max(0, ...Object.values(E)) : 0)); put(FACES.rest, rk); if (!person.meta.gender) put({blinkL: .17, blinkR: .17}, rk);
     put(E, 1);
     if (S.smile) put({smile: S.smile}, 1); if (S.jaw) put({jaw: S.jaw}, 1); if (S.brows) put({browL: S.brows, browR: S.brows}, 1);
     // blinking: quick, now and then (and not while the eyes are shut anyway)
@@ -9052,12 +9081,49 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     { const cy = Math.cos(st.gy), sy = Math.sin(st.gy), cp = Math.cos(-st.gp), sp2 = Math.sin(-st.gp);   // (turn about up, then nod about across; columns for GL)
       const Ry = [cy, 0, sy, 0, 1, 0, -sy, 0, cy], Rx = [1, 0, 0, 0, cp, -sp2, 0, sp2, cp], G = mm(Ry, Rx); person.gaze = mt(G); }
     const lid = Math.max(0, -st.gp) * 1.1; put({blinkL: lid, blinkR: lid}, 1);   // (looking down, the upper lids follow)
-    const act = Object.entries(F).filter(([u, w]) => w > .003 && BASE.unitIdx[u] !== undefined).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const act = Object.entries(F).filter(([u, w]) => w > .003 && BASE.unitIdx[u] !== undefined).sort((a, b) => b[1] - a[1]).slice(0, 11);
     person.mu = act.map(([u]) => BASE.unitIdx[u]); person.mk = act.map(([, w]) => Math.min(2.4, w));
+    if (st.sitW > .003) { person.mu.push(BASE.units.length); person.mk.push(Math.min(1, st.sitW)); }   // (sitting: a skirt draws in round the legs)
     person.by = st.by; person.at = S.at || [0, 0, 0]; person.tq = S.tilt || null;
-    if (S.reach || st.rch) reach(person, out, hips, S.reach || {}, st, dt);
+    girdle(person, out);
+    // the tablet: held in front of the chest, a hand on each side edge (fingers behind, thumb on the front)
+    person.tabC = null;
+    if (st.holdW > .02 && bi.Spine2 !== undefined) {
+      const c = vadd(fk(person, out, hips).Hd[bi.Spine2], TAB.c), X = [1, 0, 0], Y = TAB.y, Z = TAB.z, at = (x, z, y) => [c[0] + x, c[1] + Y[1] * y + Z[1] * z, c[2] + Y[2] * y + Z[2] * z];
+      const hand = sg => ({body: 1, p: at(sg * TAB.hx, TAB.hz, -TAB.t), off: [0, 0, TAB.palm], fd: nrm([-sg * TAB.in, Z[1], Z[2]]), pn: Y, pole: [sg * .55, -1, -.25], w: st.holdW, rate: 30});
+      RC = Object.assign({}, RC, {L: hand(1), R: hand(-1)}); person.tabC = c;
+    }
+    if (RC || st.rch) reach(person, out, hips, RC || {}, st, dt);
     person.local = out; person.hips = hips;
     skin(person);
+  }
+  // The shoulder moves with the arm, as a real one does. The body is modelled with its arms held out; when an arm hangs, the
+  // shoulder drops and comes in a little (so shoulders slope instead of sitting square and high), and when an arm goes up
+  // the shoulder lifts with it. The arm itself keeps pointing where the move put it.
+  const GIRDLE = {low: .34, up: .3};
+  // the tablet in the hands: its middle from the chest joint (body terms), the way its screen faces (y) and its top edge points (z),
+  // and where each palm goes on its back (hx along, hz up it, t behind its middle, the palm's own thickness), fingers turned in by `in`
+  const TAB = {c: [0, -.11, .26], y: [0, .66, -.75], z: [0, .75, .66], hx: .13, hz: -.03, t: .01, palm: .014, in: 1.6};
+  function girdle(person, out) {
+    const bi = BASE.boneIdx, r = person.rest, f = [0, 0, 1];
+    for (const [side, sg] of [['Left', 1], ['Right', -1]]) {
+      const sh = bi[side + 'Shoulder'], ar = bi[side + 'Arm']; if (sh === undefined || ar === undefined) continue;
+      const Ra = r[ar].R, d = mv(mm(Ra, q2m(out[ar])), [0, 1, 0]);   // where the upper arm points (in the body's terms)
+      const e = Math.atan2(d[1], Math.hypot(d[0], d[2])), e0 = Math.atan2(Ra[4], Math.hypot(Ra[1], Ra[7]));
+      const low = Math.max(0, Math.min(.9, e0 - e)), up = Math.max(0, e + .15);
+      const th = sg * (up * GIRDLE.up - low * GIRDLE.low); if (Math.abs(th) < 1e-4) continue;
+      const aS = mv(mt(r[sh].R), f), aA = mv(mt(Ra), f);
+      out[sh] = qmul(qaxis(aS[0], aS[1], aS[2], th), out[sh]);
+      out[ar] = qmul(qaxis(aA[0], aA[1], aA[2], -th), out[ar]);
+    }
+  }
+  // a hand's own grip, in the hand bone's terms: o = the middle of the palm, F = toward the fingers (along the bone),
+  // U = across the knuckles toward the forefinger (the thumb's edge of the hand), N = straight out of the palm
+  function gripOf(person, side) {
+    const G = person.grip || (person.grip = {}); if (G[side]) return G[side];
+    const bi = BASE.boneIdx, r = person.rest, nm = side === 'L' ? 'Left' : 'Right', hd = bi[nm + 'Hand'], Rt = mt(r[hd].R);
+    const loc = f => mv(Rt, vsub(r[bi[nm + 'Hand' + f]].h, r[hd].h)), ix = loc('Index1'), pk = loc('Pinky1'), F = [0, 1, 0], U = nrm([ix[0] - pk[0], 0, ix[2] - pk[2]]);
+    return G[side] = {hd, o: vsc(loc('Middle1'), .55), F, U, N: vsc(cross(U, F), side === 'R' ? 1 : -1)};
   }
   // reaching: an arm put so its palm is where it must be (on a ball, a guitar's neck), the elbow bending a natural way,
   // the hand turned as asked; the turn of the wrist shared with the forearm so it doesn't wring like a sweet wrapper
@@ -9070,14 +9136,20 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
       rw[side] += (tw - rw[side]) * Math.min(1, dt * (want && want.rate || 10));
       if (want) rw[side + 't'] = want; const T = rw[side + 't'];
       if (rw[side] < .003 || !T) continue;
-      const nm = side === 'L' ? 'Left' : 'Right', ua = bi[nm + 'Arm'], fa = bi[nm + 'ForeArm'], hd = bi[nm + 'Hand'], md = bi[nm + 'HandMiddle1'];
+      const nm = side === 'L' ? 'Left' : 'Right', ua = bi[nm + 'Arm'], fa = bi[nm + 'ForeArm'], hd = bi[nm + 'Hand'];
       const F = fk(person, out, hips), Tl = b => mm(mt(r[BASE.bones[b].parent].R), r[b].R), toL = (b, Wb, Wp) => m2q(mm(mt(Tl(b)), mm(mt(Wp), Wb)));
-      const a = vlen(vsub(r[fa].h, r[ua].h)), bl = vlen(vsub(r[hd].h, r[fa].h)), oPalm = vsc(vsub(r[md].h, r[hd].h), .55);
-      // the hand's wanted turn (fingers along fd, palm facing pn), else as the move has it
+      const a = vlen(vsub(r[fa].h, r[ua].h)), bl = vlen(vsub(r[hd].h, r[fa].h)), g = gripOf(person, side);
+      // the place and directions asked for are in the world, or (T.body) in the body's own terms, or (T.bone) riding on a bone
+      let toB = toBody, dB = dirB;
+      if (T.bone && bi[T.bone] !== undefined) { const b = bi[T.bone], M = mm(F.W[b], mt(r[b].R)); toB = p => vadd(F.Hd[b], mv(M, p)); dB = d2 => mv(M, d2); }
+      else if (T.body) { toB = p => p; dB = d2 => d2; }
+      // the hand's wanted turn (the fingers' line along fd, the palm itself facing pn), else as the move has it
       let Wh = null;
-      if (T.fd) { const y = nrm(dirB(T.fd)); let pn = T.pn ? dirB(T.pn) : [0, -1, 0]; pn = nrm(vsub(pn, vsc(y, vdot(pn, y)))); const x = side === 'R' ? pn : vsc(pn, -1), z = cross(x, y);
-        Wh = [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]]; }
-      const P = toBody(T.p), Wpal = Wh || F.W[hd], wrist = vsub(P, mv(mm(Wpal, mt(r[hd].R)), oPalm));
+      if (T.fd) { const y = nrm(dB(T.fd)); let pn = T.pn ? dB(T.pn) : [0, -1, 0]; pn = nrm(vsub(pn, vsc(y, vdot(pn, y)))); const zl = cross(g.N, g.F), zw = cross(pn, y);
+        Wh = [0, 1, 2].flatMap(i => [0, 1, 2].map(j => pn[i] * g.N[j] + y[i] * g.F[j] + zw[i] * zl[j])); }
+      // which point of the hand goes there: the middle of the palm, moved by T.off = [toward the forefinger edge, toward the fingers, out of the palm]
+      const off = T.off || [0, 0, 0], hl = [0, 1, 2].map(k2 => g.o[k2] + off[0] * g.U[k2] + off[1] * g.F[k2] + off[2] * g.N[k2]);
+      const P = toB(T.p), Wpal = Wh || F.W[hd], wrist = vsub(P, mv(Wpal, hl));
       const S0 = F.Hd[ua]; let d = vsub(wrist, S0), dist = vlen(d); const dn = vsc(d, 1 / (dist || 1));
       dist = Math.max(Math.abs(a - bl) + 1e-3, Math.min(a + bl - 1e-3, dist));
       const x = (a * a + dist * dist - bl * bl) / (2 * dist), y = Math.sqrt(Math.max(0, a * a - x * x));
@@ -9102,7 +9174,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
   // expressions: named mixes of the face's units (MakeHuman's expression units; L and R are the person's own left and right)
   const LR = (k, v) => ({[k + 'L']: v, [k + 'R']: v});
   const FACES = {
-    rest: {smile: .12, ...LR('brow', .35), ...LR('browIn', .12)},
+    rest: {smile: .12, ...LR('brow', .14), ...LR('browIn', .06), ...LR('blink', .1)},
     smile: {smile: .8, ...LR('squint', .18), dimple: .3, ...LR('brow', .4)},
     grin: {smile: 1, ...LR('squint', .32), dimple: .45, jaw: .08, ...LR('brow', .5)},
     laugh: {smile: 1, ...LR('squint', .55), jaw: .45, dimple: .4, upperUp: .2, ...LR('brow', .7), ...LR('browIn', .4)},
@@ -9174,13 +9246,48 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     const by = person.by || 0, c = Math.cos(by), sn = Math.sin(by), at = person.at || [0, 0, 0];
     let Ry = [c, 0, sn, 0, 1, 0, -sn, 0, c]; if (person.tq) Ry = mm(q2m(person.tq), Ry);
     for (let b = 0; b < n; b++) { W[b] = mm(Ry, W[b]); const h = mv(Ry, Hd[b]); Hd[b] = [h[0] + at[0], h[1] + at[1], h[2] + at[2]]; }
-    person.W = W; person.Hd = Hd;
+    person.W = W; person.Hd = Hd; person.Ry = Ry;
     const row = person.row, base = row * n * 12;
     for (let b = 0; b < n; b++) {
       const S = mm(W[b], mt(r[b].R)), h = r[b].h, t = [Hd[b][0] - (S[0] * h[0] + S[1] * h[1] + S[2] * h[2]), Hd[b][1] - (S[3] * h[0] + S[4] * h[1] + S[5] * h[2]), Hd[b][2] - (S[6] * h[0] + S[7] * h[1] + S[8] * h[2])];
       boneData.set([S[0], S[1], S[2], t[0], S[3], S[4], S[5], t[1], S[6], S[7], S[8], t[2]], base + b * 12);
     }
     person.dirty = true;
+  }
+  // a place on the body, in the world: `local` in the body's own terms (x their left, y up, z forward) from a bone's joint,
+  // carried along as that bone moves; R = how that bone has turned (rows)
+  function bodyAt(person, name, local = [0, 0, 0]) {
+    const b = BASE.boneIdx[name]; if (b === undefined || !person.W) return null;
+    const M = mm(person.W[b], mt(person.rest[b].R)); return {p: vadd(person.Hd[b], mv(M, local)), R: M};
+  }
+  // a place in a hand's grip, in the world: at = [toward the forefinger edge, toward the fingers, out of the palm] in metres
+  // from the middle of the palm; U, F, N = those three directions
+  function gripAt(person, side, at = [0, 0, 0]) {
+    if (!person.W) return null; const g = gripOf(person, side), W = person.W[g.hd];
+    return {p: vadd(person.Hd[g.hd], mv(W, [0, 1, 2].map(k => g.o[k] + at[0] * g.U[k] + at[1] * g.F[k] + at[2] * g.N[k]))), U: mv(W, g.U), F: mv(W, g.F), N: mv(W, g.N)};
+  }
+  // where something held is, in the world: the tablet's middle (held in both hands at the chest), the pint (a place on the
+  // glass's own middle line where the hand has it, and which way the glass's top points)
+  const PINT = [0, .028, .058], PHONE = {at: [.02, .058, .03], lean: .57}, CAN = {at: [.07, .02, .047], len: .2};
+  const cols = (x, y, z) => [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]];
+  function held(person, what) {
+    if (!person.W) return null;
+    if (what === 'tablet') return person.tabC ? {p: vadd(mv(person.Ry, person.tabC), person.at || [0, 0, 0])} : null;
+    if (what === 'pint') { const g = gripAt(person, 'R', PINT); return {p: g.p, up: g.U}; }
+    // a phone lying on the right hand's fingers, its screen facing out of the palm: p = its middle, R = its turn (rows; its
+    // long side along y, its screen facing z)
+    if (what === 'phone') { const g = gripAt(person, 'R', PHONE.at), y = nrm(vadd(g.U, vsc(g.F, PHONE.lean))), z = g.N; return {p: g.p, R: cols(cross(y, z), y, z)}; }
+    // a spray can in the right fist, standing along the knuckles (the forefinger on top, on the button): p = the middle of its
+    // bottom, R = its turn (rows; y up the can, z the way it sprays: the way the knuckles point)
+    if (what === 'can') { const g = gripAt(person, 'R', [CAN.at[0] - CAN.len, CAN.at[1], CAN.at[2]]); return {p: g.p, R: cols(cross(g.U, g.F), g.U, g.F)}; }
+    return null;
+  }
+  // spraying: where the right hand goes to point a can at a spot (the knuckles toward it, the can upright in the fist); a
+  // reach for S.reach.R. `at`, `yaw`: where the person stands and faces
+  function aimCan(person, at, yaw, aim) {
+    const c = Math.cos(yaw), sn = Math.sin(yaw), k = (person.meta.heightM || 1.75) / 1.75, sh = [at[0] + (-.17 * c + .02 * sn) * k, at[1] + 1.38 * k, at[2] + (.17 * sn + .02 * c) * k];
+    const to = vsub(aim, sh), dd = vlen(to), dir = vsc(to, 1 / (dd || 1)), up = nrm(vsub([0, 1, 0], vsc(dir, dir[1])));
+    return {p: vadd(sh, vsc(dir, Math.max(.25, Math.min(.52, dd - .16)) * k)), fd: dir, pn: cross(up, dir), pole: [-.5, -1, -.3], w: 1};
   }
   // where a bone is in the world (for props: a tablet, a pint, a coffee mug)
   function boneAt(person, name, local = [0, 0, 0]) {
@@ -9235,7 +9342,7 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, was1); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, was0);
   }
 
-  return {init, make, drop, loaded, model, pose, draw, boneAt, faces: FACES, clips: () => ANIM ? Object.keys(ANIM.clips) : [], clip: n => ANIM && ANIM.clips[n] ? {dur: ANIM.clips[n].dur, loop: !!ANIM.clips[n].loop} : null, get base() { return BASE; }};
+  return {init, make, drop, loaded, model, pose, draw, boneAt, bodyAt, gripAt, held, aimCan, faces: FACES, clips: () => ANIM ? Object.keys(ANIM.clips) : [], clip: n => ANIM && ANIM.clips[n] ? {dur: ANIM.clips[n].dur, loop: !!ANIM.clips[n].loop} : null, get base() { return BASE; }};
 })();
 
 /* ---------- The crew as real people (bc-human.js, above): who they are, what they wear, drawing them in the rooms ---------- */
@@ -9255,6 +9362,7 @@ const PEOPLE = [
   {id: 'f4', n: 'Elena', g: 0, skin: 'middleage_caucasian_female', tone: 1, glow: '#9fe8ff', fits: [['toigo_female_double-breasted_suit', 'shoes04'], ['toigo_halter_dress_knee_length', 'shoes06'], ['toigo_cut_out_dress', 'shoes06']], cols: ['#58585e', '#7b2a33', '#8f6c42']},
   {id: 'f5', n: 'Nia', g: 0, skin: 'young_caucasian_female2', tone: 1, glow: '#ffa21a', fits: [['toigo_halter_dress_midi', 'shoes01'], ['toigo_strapless_ruffle_top_dress', 'shoes03'], ['female_elegantsuit01', 'shoes04']], cols: ['#6c222b', '#b44274', '#6b2b39']}
 ];
+const PP_PINT = .74;   // (a held pint is drawn this much of the bar's glass: a real pint glass in a real hand)
 const PP = {st: 0};   // 0: not started, 1: loading, 2: ready, -1: can't here (the runners stay)
 function ppStart() {
   if (PP.st) return;
@@ -9281,26 +9389,30 @@ function ppMate(M) {
   if (PP.st !== 2) { if (!PP.st) ppStart(); return null; }
   const key = M.look.join(',');
   if (M.hk !== key) {
-    M.hk = key;
+    M.hk = key; if (!M.t0) M.t0 = performance.now();
     BCH.make(ppLook(M.look)).then(H => {
       if (M.hk !== key || !crew.mates.has(M.id)) { BCH.drop(H); return; }
       if (M.H) BCH.drop(M.H); M.H = H;
-    }, e => console.warn('person:', e && e.message));
+    }, e => { M.bad = 1; console.warn('person:', e && e.message); });
   }
   return M.H && BCH.loaded(M.H) ? M.H : null;
 }
+// a crewmate whose person is still on the way is not shown as a Node Runner meanwhile (only if their person can't come)
+const ppWait = M => (PP.st === 1 || PP.st === 2) && !M.bad && !(M.H && BCH.loaded(M.H)) && performance.now() - (M.t0 || (M.t0 = performance.now())) < 20000;
 // posing a crewmate for this frame: how they walk comes from how they move; the parcel (as a tablet) and the pint go in their hands
 function ppPose(M, H, R, dt) {
   const u = M.pv || (M.pv = {lp: R.p.slice(), vx: 0, vz: 0});
   const wx = dt > 0 ? (R.p[0] - u.lp[0]) / dt : 0, wz = dt > 0 ? (R.p[2] - u.lp[2]) / dt : 0; u.lp = R.p.slice();
   if (Math.hypot(wx, wz) > 12) u.vx = u.vz = 0; else { u.vx = ease(u.vx, wx, 8, dt); u.vz = ease(u.vz, wz, 8, dt); }
-  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit ? (R.sitHigh ? 'high' : true) : false, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null, emoteN: R.emoteN, emoteAt: R.emoteAt});
+  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit ? (R.sitHigh ? 'high' : R.sitWay || true) : false, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null, emoteN: R.emoteN, emoteAt: R.emoteAt});
   const out = [];
-  R.pintAt = null;
-  if (R.pint) { const g = BCH.boneAt(H, 'RightHand', [.045, .08, .02]); if (g) { R.pintAt = [g.p[0], g.p[1] - .085, g.p[2]]; R.pintYaw = H.by + Math.PI; } }   // (gripped round its middle)
+  // the pint: in the hand that is round it (the glass goes wherever the hand takes it, and tips as the hand tips it), drawn the
+  // size of a real pint glass so the fingers can close round it; the tablet: where the hands have it, in front of the chest
+  R.pintAt = null; R.pintS = PP_PINT;
+  if (R.pint) { const g = BCH.held(H, 'pint'); if (g) { const u = g.up, d = .0855 * PP_PINT; R.pintAt = [g.p[0] - u[0] * d, g.p[1] - u[1] * d, g.p[2] - u[2] * d]; R.pintYaw = Math.atan2(u[0], u[2]); R.pintTilt = Math.acos(Math.max(-1, Math.min(1, u[1]))); } }
   if (R.held && H.st && H.st.holdW > .5) {
-    const a = BCH.boneAt(H, 'LeftHand', [-.03, .08, .02]), b = BCH.boneAt(H, 'RightHand', [.03, .08, .02]);
-    if (a && b) { const c = [(a.p[0] + b.p[0]) / 2, (a.p[1] + b.p[1]) / 2 + .02, (a.p[2] + b.p[2]) / 2], q = qm(qY(H.by), qX(-.85)); out.push([CHM.tablet, c, q, [1, 1, 1]], [CHM.tabScreen, c, q, R.held]); }
+    const g = BCH.held(H, 'tablet');
+    if (g) { const q = qm(qY(H.by), qX(-.85)); out.push([CHM.tablet, g.p, q, [1, 1, 1]], [CHM.tabScreen, g.p, q, R.held]); }
   }
   const hd = BCH.boneAt(H, 'Head', [0, .21, 0]); R.tagY = hd ? hd.p[1] + .05 : null;
   return out;
@@ -9419,10 +9531,12 @@ addEventListener('keydown', e => {
 // where a seated crewmate's body goes: on a seat (raised for the bar stools), or on a step of the Forum (feet on the step below)
 function ppSeat(s) {
   const d = -s.z;
-  for (const q of CM_SEATS) if (Math.hypot(s.x - q[0], d - q[1]) < .35) { const r = q[5] || 0; return r > .3 ? {dy: r - .27, dx: 0, dd: 0, high: true} : {dy: r, dx: 0, dd: 0, high: false}; }
+  // (how they sit: on a sofa or in a booth hands on the thighs or together in the lap; on the Forum's steps leaning forward, elbows on knees)
+  const own = (Math.abs(Math.round(s.x * 7 + d * 13)) % 2), way = ['sit', 'sitLap'][own];
+  for (const q of CM_SEATS) if (Math.hypot(s.x - q[0], d - q[1]) < .35) { const r = q[5] || 0; return r > .3 ? {dy: r - .27, dx: 0, dd: 0, high: true} : {dy: r, dx: 0, dd: 0, high: false, way}; }
   const v = [-s.x, CM.PD - d], l = Math.hypot(v[0], v[1]);
-  if (l < 7.6 && l > .1) return {dy: -CM.STEP, dx: v[0] / l * .34, dd: v[1] / l * .34, high: false};   // (toward the middle, one step down)
-  return {dy: 0, dx: 0, dd: 0, high: false};
+  if (l < 7.6 && l > .1) return {dy: -CM.STEP, dx: v[0] / l * .34, dd: v[1] / l * .34, high: false, way: 'sitFwd'};   // (toward the middle, one step down)
+  return {dy: 0, dx: 0, dd: 0, high: false, way: 'sit'};
 }
 
 // a crewmate's sip: when their sip count changes, they lift the glass to their mouth (unless they are in the middle of an emote)
@@ -9513,14 +9627,15 @@ function crewPose(tn, dt, VP, W, H) {
     if (!C) { M.shown = false; M.tag.style.display = 'none'; hear[M.id] = 999; continue; }
     let tx = s.x, tz = C.z0 + s.z, ty = 0; const R = M.R;
     if (C.common) { const [wx, wz] = cmW(C, s.x, -s.z); tx = wx; tz = C.z0 + wz; ty = cmH(s.x, -s.z, s.lv); }
-    if (C.common && s.sit) { const q = ppSeat(s); if (q.dx || q.dd) { const [wx, wz] = cmW(C, s.x + q.dx, -s.z + q.dd); tx = wx; tz = C.z0 + wz; } ty += q.dy; R.sitHigh = q.high; } else R.sitHigh = false;   // (people sit on the seat, or on the step)
+    if (C.common && s.sit) { const q = ppSeat(s); if (q.dx || q.dd) { const [wx, wz] = cmW(C, s.x + q.dx, -s.z + q.dd); tx = wx; tz = C.z0 + wz; } ty += q.dy; R.sitHigh = q.high; R.sitWay = q.way || null; } else { R.sitHigh = false; R.sitWay = null; }   // (people sit on the seat, or on the step)
     if (!M.shown || Math.hypot(R.p[0] - tx, R.p[2] - tz) > 4) { R.p = [tx, ty, tz]; R.st = null; }
     else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true;
     R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn);
     const H = ppMate(M);
-    if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; }   // (a Node Runner until their person has arrived)
-    const pose = H ? ppPose(M, H, R, dt) : chPose(R, tn, dt);
+    if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; R.pintS = 0; }   // (a Node Runner until their person has arrived)
+    const wait = !H && ppWait(M), pose = H ? ppPose(M, H, R, dt) : wait ? [] : chPose(R, tn, dt);
+    if (wait) R.pintAt = null;
     if (eye) { const dx = room.p.x - R.p[0], dz = room.p.z - R.p[2], dd = Math.hypot(dx, dz);   // crewmates are solid: you are kept a step apart
       if (dd < .5) { const k = (.5 - dd) / Math.max(dd, 1e-3); room.p.x += (dd > 1e-3 ? dx : .5) * k; room.p.z += (dd > 1e-3 ? dz : 0) * k; } }
     if (!eye || Math.hypot(R.p[0] - eye[0], R.p[2] - eye[2]) > .42) { out.push(...pose); if (H) crew.hum.push(H); }   // (never drawn from inside)
