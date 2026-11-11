@@ -6200,7 +6200,7 @@ function cmPints(R, B, G, S, tn) {
     const tH = Math.tan(v.fov / 2) * v.asp, a = v.asp < .7 ? [.66 * tH * .14, -.32 + bob, .66] : [Math.min(.2, .46 * tH * .64), -.25 + bob, .46], b = [.02, -.1, .24], m = a.map((q, i) => q + (b[i] - q) * k);
     add(e[0] + rt[0] * m[0] + up[0] * m[1] + f[0] * m[2], e[1] + rt[1] * m[0] + up[1] * m[1] + f[1] * m[2] - .1, e[2] + rt[2] * m[0] + up[2] * m[1] + f[2] * m[2], yaw, cm.pint.fill, .15 + 1.15 * k);
   }
-  for (const M of crew.mates.values()) if (M.shown && M.R.pintAt) add(M.R.pintAt[0], M.R.pintAt[1] - .02, M.R.pintAt[2], M.R.pintYaw || 0, .7, 0);
+  for (const M of crew.mates.values()) if (M.shown && M.R.pintAt) add(M.R.pintAt[0], M.R.pintAt[1] - .02, M.R.pintAt[2], M.R.pintYaw || 0, M.s && M.s.pf >= 0 ? Math.max(.02, M.s.pf) : .7, M.R.pintTilt || 0);   // (as full as theirs is, tipped when they sip)
   for (const e of cm.empties) G.push([e[0], e[1], e[2], e[3], 1, 0, 0, 0, 1, 1, 1]);
 }
 // little sounds (only with the cube's sound on): a pour, a sip
@@ -8935,7 +8935,8 @@ o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),(uKind==3||uKind==1&&uEdge==1||uMir>.5)?a
     st.sitW += ((S.sit ? 1 : 0) - st.sitW) * Math.min(1, dt * 5);
     st.holdW += ((S.held ? 1 : 0) - st.holdW) * Math.min(1, dt * 7);
     st.pintW += ((S.pint ? 1 : 0) - st.pintW) * Math.min(1, dt * 7);
-    if (clips.sit) mix(clips.sit, st.t, st.sitW);
+    const sc = S.sit === 'high' && clips.sitHigh ? clips.sitHigh : clips.sit;   // (a bar stool: perched higher)
+    if (sc) mix(sc, st.t, st.sitW);
     if (clips.tablet) mix(clips.tablet, st.t, st.holdW, isUpper);
     if (clips.pint) mix(clips.pint, st.t, st.pintW, b => /^Right(Shoulder|Arm|ForeArm|Hand)/.test(BASE.bones[b].name));
     // an emote or dance on top (whole body standing still, the upper body while walking)
@@ -9179,10 +9180,10 @@ function ppPose(M, H, R, dt) {
   const u = M.pv || (M.pv = {lp: R.p.slice(), vx: 0, vz: 0});
   const wx = dt > 0 ? (R.p[0] - u.lp[0]) / dt : 0, wz = dt > 0 ? (R.p[2] - u.lp[2]) / dt : 0; u.lp = R.p.slice();
   if (Math.hypot(wx, wz) > 12) u.vx = u.vz = 0; else { u.vx = ease(u.vx, wx, 8, dt); u.vz = ease(u.vz, wz, 8, dt); }
-  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null, emoteN: R.emoteN, emoteAt: R.emoteAt});
+  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit ? (R.sitHigh ? 'high' : true) : false, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null, emoteN: R.emoteN, emoteAt: R.emoteAt});
   const out = [];
   R.pintAt = null;
-  if (R.pint) { const g = BCH.boneAt(H, 'RightHand', [.04, .085, .02]); if (g) { R.pintAt = [g.p[0], g.p[1] - .045, g.p[2]]; R.pintYaw = H.by + Math.PI; } }
+  if (R.pint) { const g = BCH.boneAt(H, 'RightHand', [.045, .08, .02]); if (g) { R.pintAt = [g.p[0], g.p[1] - .085, g.p[2]]; R.pintYaw = H.by + Math.PI; } }   // (gripped round its middle)
   if (R.held && H.st && H.st.holdW > .5) {
     const a = BCH.boneAt(H, 'LeftHand', [-.03, .08, .02]), b = BCH.boneAt(H, 'RightHand', [.03, .08, .02]);
     if (a && b) { const c = [(a.p[0] + b.p[0]) / 2, (a.p[1] + b.p[1]) / 2 + .02, (a.p[2] + b.p[2]) / 2], q = qm(qY(H.by), qX(-.85)); out.push([CHM.tablet, c, q, [1, 1, 1]], [CHM.tabScreen, c, q, R.held]); }
@@ -9283,6 +9284,7 @@ function emPlay(id) {
 }
 // what goes out with where you are: the emote, which go of it (a new number replays it), and how far into it you are
 function emState(s) {
+  if (cm.pint) { s.sp = Math.floor((cm.pint.sipT || 0) / 100) % 100000; s.pf = Math.round(cm.pint.fill * 100) / 100; }   // (your sips and how full your glass is, for the crew to see)
   if (!em.cur) return;
   const age = (performance.now() - em.t0) / 1000, info = typeof BCH !== 'undefined' && BCH.clip(em.cur);
   const moving = room && room.p && Math.hypot(room.p.vx || 0, room.p.vz || 0) > .4;
@@ -9299,6 +9301,23 @@ addEventListener('keydown', e => {
   if (k === 'tab') { e.preventDefault(); e.stopImmediatePropagation(); em.tab = (em.tab + (e.shiftKey ? EMOTES.length - 1 : 1)) % EMOTES.length; emDraw(); return; }
   if (/^[1-9]$/.test(k)) { const it = EMOTES[em.tab][1][+k - 1]; if (it) { e.preventDefault(); e.stopImmediatePropagation(); emPlay(it[0]); emShow(false); } }
 }, true);
+
+// where a seated crewmate's body goes: on a seat (raised for the bar stools), or on a step of the Forum (feet on the step below)
+function ppSeat(s) {
+  const d = -s.z;
+  for (const q of CM_SEATS) if (Math.hypot(s.x - q[0], d - q[1]) < .35) { const r = q[5] || 0; return r > .3 ? {dy: r - .27, dx: 0, dd: 0, high: true} : {dy: r, dx: 0, dd: 0, high: false}; }
+  const v = [-s.x, CM.PD - d], l = Math.hypot(v[0], v[1]);
+  if (l < 7.6 && l > .1) return {dy: -CM.STEP, dx: v[0] / l * .34, dd: v[1] / l * .34, high: false};   // (toward the middle, one step down)
+  return {dy: 0, dx: 0, dd: 0, high: false};
+}
+
+// a crewmate's sip: when their sip count changes, they lift the glass to their mouth (unless they are in the middle of an emote)
+function ppSip(M, R, s, pn) {
+  if (s.sp !== M.lsp) { if (M.lsp !== undefined && s.sp) { M.sipAt = pn; M.sipN = (M.sipN || 0) + 1; } M.lsp = s.sp; }
+  const k = M.sipAt ? (pn - M.sipAt) / 1100 : 9;
+  R.pintTilt = R.pint && k < 1 ? .15 + 1.15 * Math.sin(Math.PI * Math.min(1, Math.max(0, (k - .2) / .55))) : 0;
+  if (!R.emote && R.pint && k < 1) { R.emote = 'sip'; R.emoteN = 5000 + M.sipN; R.emoteAt = 0; }
+}
 
 /* ---------- playing together: the cube inside its "play together" page ---------- */
 // The together page looks after the crew (finding each other, the links, chat and voices). The cube shows the crewmates
@@ -9327,7 +9346,7 @@ addEventListener('message', e => {
     if (!crew.on || m.id === crew.me || typeof m.id !== 'string') return;
     const M = mate(m.id), s = m.s || {};
     if (m.name) M.name = cleanS(m.name, 20);
-    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && (TYPES[s.hk] || s.hk === 60) ? s.hk : -1, in: !!s.in, lv: s.lv ? 1 : 0, sit: s.sit ? 1 : 0, t: performance.now(), em: typeof s.em === 'string' && EM_NAME[s.em] ? s.em : '', en: s.en | 0, ea: Math.max(0, Math.min(60, +s.ea || 0))};
+    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && (TYPES[s.hk] || s.hk === 60) ? s.hk : -1, in: !!s.in, lv: s.lv ? 1 : 0, sit: s.sit ? 1 : 0, t: performance.now(), em: typeof s.em === 'string' && EM_NAME[s.em] ? s.em : '', en: s.en | 0, ea: Math.max(0, Math.min(60, +s.ea || 0)), sp: s.sp | 0, pf: s.pf === undefined ? -1 : Math.max(0, Math.min(1, +s.pf || 0))};
     if (Array.isArray(s.look)) M.look = chLook(s.look);
     return;
   }
@@ -9380,10 +9399,11 @@ function crewPose(tn, dt, VP, W, H) {
     if (!C) { M.shown = false; M.tag.style.display = 'none'; hear[M.id] = 999; continue; }
     let tx = s.x, tz = C.z0 + s.z, ty = 0; const R = M.R;
     if (C.common) { const [wx, wz] = cmW(C, s.x, -s.z); tx = wx; tz = C.z0 + wz; ty = cmH(s.x, -s.z, s.lv); }
+    if (C.common && s.sit) { const q = ppSeat(s); if (q.dx || q.dd) { const [wx, wz] = cmW(C, s.x + q.dx, -s.z + q.dd); tx = wx; tz = C.z0 + wz; } ty += q.dy; R.sitHigh = q.high; } else R.sitHigh = false;   // (people sit on the seat, or on the step)
     if (!M.shown || Math.hypot(R.p[0] - tx, R.p[2] - tz) > 4) { R.p = [tx, ty, tz]; R.st = null; }
     else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true;
-    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea;
+    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn);
     const H = ppMate(M);
     if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; }   // (a Node Runner until their person has arrived)
     const pose = H ? ppPose(M, H, R, dt) : chPose(R, tn, dt);
