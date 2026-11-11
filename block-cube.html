@@ -1303,6 +1303,11 @@ async function scanBytes(X, h) {
     if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
     if ((r.sc >> TF.cp) & 1 && !((r.sc >> TF.stamps) & 1) && !r.word) r.word = {k: 'cp', a: '', b: ''};
     if ((r.sc >> TF.stamps) & 1 && artN < 2048 && artB < 64e6) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; artB += a.bytes.length; } }
+    if (mso && (r.sc >> TF.stamps) & 1) try { const D = rc4(key, catB(mso.flatMap(pk => pk.length < 2 ? [] : pk.slice(0, -1).map(k => k.subarray(1, k.length - 1))))), L = D[0] << 8 | D[1];   // SRC-20 in multisig outputs (the older way): a 2-byte length, then "stamp:" and its JSON
+      if (L > 6 && L <= D.length - 2 && /^stamp:/i.test(L1D.decode(D.subarray(2, 8)))) { const o = JSON.parse(U8D.decode(D.subarray(8, 2 + L)));
+        if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.sc &= ~(1 << TF.stamps); const tk = String(o.tick || '').toUpperCase().slice(0, 16), op = String(o.op || '').toLowerCase(); r.tick = tk;
+          if (!r.word) r.word = {k: 'src20', a: tk, b: (op + (o.amt != null ? ' ' + String(o.amt).slice(0, 14) : o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')).trim()}; } }
+    } catch (e) {}
     if (wsh) { const W = catB(wsh), L = W[0] << 8 | W[1];   // SRC-20 in P2WSH outputs: a 2-byte length, then "stamp:" and its JSON
       if (L > 6 && L <= W.length - 2 && /^stamp:/i.test(L1D.decode(W.subarray(2, 8)))) try {
         const o = JSON.parse(U8D.decode(W.subarray(8, 2 + L)));
@@ -4195,7 +4200,7 @@ function rmStep(dt) {
   let f = (rmKeys.w || rmKeys.arrowup ? 1 : 0) - (rmKeys.s || rmKeys.arrowdown ? 1 : 0) - rmPad.y, s = (rmKeys.d || rmKeys.arrowright ? 1 : 0) - (rmKeys.a || rmKeys.arrowleft ? 1 : 0) + rmPad.x;
   const m = Math.hypot(f, s); if (m > 1) { f /= m; s /= m; }
   const sp = rmKeys.shift ? 5 : 2.7, sy = Math.sin(p.yaw), cy = Math.cos(p.yaw);
-  const tx = (-sy * f + cy * s) * sp, tz = (-cy * f - sy * s) * sp, k = Math.min(1, dt * 9);
+  const tx = (-sy * f + cy * s) * sp, tz = (-cy * f - sy * s) * sp, k = Math.min(1, dt * (f || s ? 9 : 22));
   p.vx += (tx - p.vx) * k; p.vz += (tz - p.vz) * k;
   let nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
   const v = Math.hypot(p.vx, p.vz); p.ph += v * dt * 2.3; p.bob = Math.sin(p.ph * 2) * .007 * Math.min(1, v / 2.7);   // (a gentle bob: the view stays steady as you walk)
@@ -5573,11 +5578,13 @@ function cmBanner(title, col, kind) {
 }
 // the rare sats board: [group, name, price for one sat (ordiscan.com, read on CM_RARE_DAY), how many exist: a number, or worked out from the height]
 let CM_RARE_DAY = '10 Nov 2026', cmRareGot = false; const CM_RAREP = {}, CM_RARE = [
-  ['R', 'UNCOMMON', '$49.68', h => h + 1 - 1 - Math.floor(h / 210000) - Math.floor(h / 2016)], ['R', 'RARE', '$45,785', h => Math.floor(h / 2016) - Math.floor(h / 1260000)], ['R', 'EPIC', '$3,243,919', h => Math.floor(h / 210000) - Math.floor(h / 1260000)], ['R', 'LEGENDARY', '—', h => Math.floor(h / 1260000)], ['R', 'MYTHIC', '—', 1],
-  ['B', 'BLACK UNCOMMON', '< $0.01', h => h + 1 - Math.floor((h + 1) / 2016) - Math.floor((h + 1) / 210000)], ['B', 'BLACK RARE', '$43,836', h => Math.floor((h + 1) / 2016)], ['B', 'BLACK EPIC', '—', h => Math.floor((h + 1) / 210000)],
-  ['I', 'PALINDROME', '$0.58', 142044825], ['I', 'ALPHA', '$9.74', h => Math.floor(cmMined(h) / 1e8)], ['I', 'OMEGA', '$11.69', h => Math.floor(cmMined(h) / 1e8)],
+  ['R', 'UNCOMMON', '$49.68', h => h - Math.floor(h / 210000) - Math.floor(h / 2016) + Math.floor(h / 1260000)], ['R', 'RARE', '$45,785', h => Math.floor(h / 2016) - Math.floor(h / 1260000)], ['R', 'EPIC', '$3,243,919', h => Math.floor(h / 210000) - Math.floor(h / 1260000)], ['R', 'LEGENDARY', '—', h => Math.floor(h / 1260000)], ['R', 'MYTHIC', '—', 1],
+  ['B', 'BLACK UNCOMMON', '< $0.01', h => h + 1 - Math.floor((h + 1) / 2016) - Math.floor((h + 1) / 210000) + Math.floor((h + 1) / 1260000)], ['B', 'BLACK RARE', '$43,836', h => Math.floor((h + 1) / 2016)], ['B', 'BLACK EPIC', '—', h => Math.floor((h + 1) / 210000)],
+  ['I', 'PALINDROME', '$0.58', h => cmPal(h)], ['I', 'ALPHA', '$9.74', h => Math.ceil(cmMined(h) / 1e8)], ['I', 'OMEGA', '$11.69', h => Math.floor(cmMined(h) / 1e8)],
   ['H', 'BLOCK 9', '$0.85', 5e9], ['H', 'BLOCK 78', '< $0.01', 5e9], ['H', 'NAKAMOTO', '< $0.01', 95e9], ['H', 'FIRST TX', '$0.85', 1e9], ['H', 'VINTAGE', '< $0.01', 5e12], ['H', 'PIZZA', '< $0.01', 1e12], ['H', 'HITMAN', '$1,948', 167e9]];
 const cmMined = h => { let s = 0, sub = 5e9, a = 0; while (a <= h && sub > 0) { const n = Math.min(210000, h + 1 - a); s += n * sub; a += 210000; sub = Math.floor(sub / 2); } return s; };   // every sat mined up to this height
+// sat numbers that read the same both ways, among those mined so far: every one of up to 15 digits (109,999,999 with 0), and the 16-digit ones below the newest sat
+const cmPal = h => { const S = cmMined(h), a = Math.floor(S / 1e8); if (a < 1e7) return null; const s = String(a), pal = Number(s + s.split('').reverse().join('')); return 109999999 + (a - 1e7) + (pal < S ? 1 : 0); };
 let cmRareCv = null;
 function cmRare(tn) {   // (a tall board: six kinds at a time)
   if (!cmRareGot) { cmRareGot = true;   // today's prices: one small file kept beside the page (refreshed once a day); if it cannot be read, the prices built in stay
@@ -5807,14 +5814,29 @@ function cmBoardTall(c, W, H) {
 //  - the time: the lowest fee in the next block now, set against the lowest fee in each of the last day's blocks (counted)
 //  - the fee: the fee that would have got into all but about one in twenty of the last 24 blocks (see below)
 const cmScore = (() => { try { const j = JSON.parse(localStorage.getItem('bcScore') || 'null'); if (j && j.n >= 0 && j.h >= 0 && j.h <= j.n) return {n: j.n, h: j.h}; } catch (e) {} return {n: 0, h: 0}; })(), cmScoreAt = {top: -1, fee: null};
+// the day's blocks with their fees to the decimal. mempool.space's list of older blocks is mostly whole numbers, rounded
+// down (a lowest fee of 0.6 reads 0); ordpool.space's list of the same blocks is not. Read 15 at a time, gently, only
+// while the screen is being looked at; anything it cannot give falls back to what the page already had.
+const cmFine = new Map(); let cmFineAt = 0, cmFineBusy = false;
+const cmWhole = fr => fr.every(v => Math.abs(v - Math.round(v)) < 1e-9);
+async function cmFineLoad(top) {
+  if (cmFineBusy || performance.now() - cmFineAt < 1500) return; let h = -1; for (let x = top; x > top - 144; x--) if (!cmFine.has(x)) { h = x; break; } if (h < 0) return;
+  cmFineBusy = true; cmFineAt = performance.now();
+  for (const site of ['https://ordpool.space', 'https://mempool.emzy.de']) { try { const a = await (await fetchT(site + '/api/v1/blocks/' + h, null, 12000)).json(); if (!Array.isArray(a) || !a.length) continue; let ok = 0;
+      for (const b of a) { const e = b.extras; if (e && e.feeRange && e.feeRange.length > 1 && !cmFine.get(b.height)) { cmFine.set(b.height, {fr: e.feeRange, med: e.medianFee, fine: !cmWhole(e.feeRange)}); ok++; } } if (ok) break; } catch (e) {} }
+  if (!cmFine.has(h)) cmFine.set(h, null);   // (asked and not had: not asked again)
+  if (cmFine.size > 600) for (const k of [...cmFine.keys()]) if (k < top - 300) cmFine.delete(k);
+  cmFineBusy = false;
+}
 function cmBoardStats() {
   const top = pastBlocks.length ? pastBlocks[0].height : -1, S = {bars: [], eta: '…', etaSub: 'waiting for the chain', best: '…', bestSub: 'reading the last day of blocks', low: '…', lowSub: '', mood: '', go: 1};
   if (top < 0) return S;
+  cmFineLoad(top);
   const B = []; for (let i = 0; i < 144; i++) { const h = top - 143 + i, b = blockAt(h); if (!b && SOURCES[0].on && ![...olderAsk].some(x => x >= h && x - 14 <= h)) wantOlder(h + Math.min(14, 143 - i));   // (the same day of blocks the home screen's fee weather reads, if it has not already)
-    const e = b && b.extras, r = e && e.medianFee != null ? e.medianFee : null, fr = e && e.feeRange && e.feeRange.length > 1 ? e.feeRange : null;
-    S.bars.push(r); if (b && b.timestamp) B.push({h, t: b.timestamp, fl: fr ? (fr[0] < fr[1] * .5 ? fr[1] : fr[0]) : null}); }   // (a block's floor: its lowest fee; if a few got in far under the rest, by arrangement, the fee one in ten paid less than)
+    const e = b && b.extras, F = cmFine.get(h), fr0 = e && e.feeRange && e.feeRange.length > 1 ? e.feeRange : null, pick = F && F.fine ? F : fr0 && !cmWhole(fr0) ? {fr: fr0, med: e.medianFee, fine: true} : F || (fr0 ? {fr: fr0, med: e.medianFee, fine: false} : null), r = pick && pick.med != null ? pick.med : e && e.medianFee != null ? e.medianFee : null, fr = pick ? pick.fr : null;
+    S.bars.push(r); if (b && b.timestamp) B.push({h, t: b.timestamp, fl: fr ? (pick.fine ? fr[0] : fr[0] < fr[1] * .5 ? fr[1] : fr[0]) : null}); }   // (a block's floor: its lowest fee; if a few got in far under the rest, by arrangement, the fee one in ten paid less than)
   // the wait
-  if (B.length > 6) { const gap = (B[B.length - 1].t - B[0].t) / (B.length - 1) / 60, t9 = gap * 2.303, gs = []; for (let i = 1; i < B.length; i++) if (B[i].h === B[i - 1].h + 1) gs.push((B[i].t - B[i - 1].t) / 60);
+  if (B.length > 6) { const gap = (B[B.length - 1].t - B[0].t) / Math.max(1, B[B.length - 1].h - B[0].h) / 60, t9 = gap * 2.303, gs = []; for (let i = 1; i < B.length; i++) if (B[i].h === B[i - 1].h + 1) gs.push((B[i].t - B[i - 1].t) / 60);
     S.eta = '~' + gap.toFixed(1) + ' min'; S.etaSub = '9 in 10 within ' + t9.toFixed(0) + ' min' + (gs.length >= 20 ? ' · held ' + Math.round(gs.filter(g => g <= t9).length / gs.length * 100) + '% today' : ''); }
   const f0 = futBlocks && futBlocks[0], F0 = f0 && f0.feeRange && f0.feeRange.length ? f0.feeRange[0] : null, fl = B.map(q => q.fl).filter(v => v != null);
   // the time
@@ -5836,26 +5858,28 @@ function cmBoardStats() {
   // (the cheaper, if two are within a block of each other), and shows how often that was. Beside it, the cheapest way that
   // was still right 19 times in 20. And it keeps a live record: each fee it showed, checked against the block that came.
   const up = v => Math.ceil(v * 100 - 1e-9) / 100, q25 = f0 && f0.feeRange && f0.feeRange.length > 2 ? f0.feeRange[2] : F0 || 0, T0 = 36;
-  if (fl.length >= T0 + 12) { const ways = [];
-    for (const W of [12, 24, 36]) for (const m of [1, 1.1, 1.25, 1.5]) { let hit = 0, sum = 0; for (let i = T0; i < fl.length; i++) { let mx = 0; for (let k = i - W; k < i; k++) if (fl[k] > mx) mx = fl[k]; const fee = up(mx * m); if (fl[i] <= fee) hit++; sum += fee; }
-      let mx = 0; for (let k = fl.length - W; k < fl.length; k++) if (fl[k] > mx) mx = fl[k]; ways.push({W, m, hit, avg: sum / (fl.length - T0), fee: up(Math.max(mx * m, q25))}); }
+  if (fl.length >= T0 + 12) { const ways = [], H = T0 + Math.floor((fl.length - T0) / 2);
+    for (const W of [12, 24, 36]) for (const m of [1, 1.1, 1.25, 1.5]) { let hit = 0, sum = 0, hb = 0; for (let i = T0; i < fl.length; i++) { let mx = 0; for (let k = i - W; k < i; k++) if (fl[k] > mx) mx = fl[k]; const fee = up(mx * m); if (i < H) { if (fl[i] <= fee) hit++; sum += fee; } else if (fl[i] <= fee) hb++; }
+      let mx = 0; for (let k = fl.length - W; k < fl.length; k++) if (fl[k] > mx) mx = fl[k]; ways.push({W, m, hit, hb, avg: sum / (H - T0), fee: up(Math.max(mx * m, q25))}); }
     // (low fees first: of the ways that were right at least 19 times in 20, the cheapest; if none was, the one right most often)
-    const n = fl.length - T0, top1 = Math.max(...ways.map(w => w.hit)), good = ways.filter(w => w.hit / n >= .95).sort((p, q) => p.avg - q.avg), best = good[0] || ways.filter(w => w.hit >= top1).sort((p, q) => p.avg - q.avg)[0];
-    S.low = '~' + r1(best.fee) + ' sat/vB'; S.pct = Math.round(best.hit / n * 100); S.lowSub = 'right ' + best.hit + ' of last ' + n;
+    const n = H - T0, nb = fl.length - H, top1 = Math.max(...ways.map(w => w.hit)), good = ways.filter(w => w.hit / n >= .95).sort((p, q) => p.avg - q.avg), best = good[0] || ways.filter(w => w.hit >= top1).sort((p, q) => p.avg - q.avg)[0];
+    S.low = '~' + r1(best.fee) + ' sat/vB'; S.pct = Math.round(best.hb / nb * 100); S.lowSub = 'right ' + best.hb + ' of last ' + nb;
     // the patient fee: the lowest fee that, sent before any block of the last day, would have been in within six blocks
     // (about an hour) nine times in ten: a fee gets in at the first block whose lowest fee is no higher than it
-    const cand = [...new Set(fl.map(up))].sort((p, q) => p - q), st = fl.length - 5; let pat = null;
+    const cand = [...new Set(fl.map(up))].filter(c => c >= .1).sort((p, q) => p - q), st = fl.length - 5; let pat = null;
     for (const c of cand) { let in6 = 0, in1 = 0; for (let i = 0; i < st; i++) { if (fl[i] <= c) { in1++; in6++; continue; } for (let j = i + 1; j < i + 6; j++) if (fl[j] <= c) { in6++; break; } } if (in6 / st >= .9) { pat = {fee: c, p6: Math.round(in6 / st * 100), p1: Math.round(in1 / st * 100)}; break; } }
-    S.rows = [pat && pat.fee < best.fee * .9 ? ['~' + r1(pat.fee), 'patient: in 6 blocks, ' + pat.p6 + '%'] : null, ['~' + r1(best.fee), 'next block: right ' + S.pct + '%']].filter(Boolean);
+    // the cheap fee: the lowest that, sent before any block of the last day, was in within 18 blocks (about three hours) nine times in ten
+    let chp = null; { const s2 = fl.length - 17; if (s2 > 30) for (const c of cand) { let ok = 0; for (let i = 0; i < s2; i++) for (let j = i; j < i + 18; j++) if (fl[j] <= c) { ok++; break; } if (ok / s2 >= .9) { chp = {fee: c, p: Math.round(ok / s2 * 100)}; break; } } }
+    S.rows = [chp && chp.fee < best.fee * .9 && (!pat || chp.fee < pat.fee * .9) ? ['~' + r1(chp.fee), 'cheap: in 3 hours, ' + chp.p + '%'] : null, pat && pat.fee < best.fee * .9 ? ['~' + r1(pat.fee), 'patient: in 1 hour, ' + pat.p6 + '%'] : null, ['~' + r1(best.fee), 'next block: right ' + best.hb + ' of ' + nb]].filter(Boolean);
     S.way = 'the dearest of the last ' + best.W + ' blocks' + (best.m > 1 ? ' + ' + Math.round((best.m - 1) * 100) + '%' : ''); S.fee = best.fee; }
   else if (fl.length >= 25) { const L = fl.slice(-24); S.fee = up(Math.max(Math.max(...L) * 1.1, q25)); S.low = '~' + r1(S.fee) + ' sat/vB'; S.lowSub = 'still reading blocks to score itself'; }
   else if (F0 != null) { S.low = '…'; S.lowSub = 'next block from ' + r1(F0) + ' now · reading blocks'; } else S.lowSub = 'no forecast just now';
   // the live record (on this device): the fee shown before each block came, against the lowest fee that got into it
   { const nb = pastBlocks[0], e = nb && nb.extras, fr = e && e.feeRange && e.feeRange.length > 1 ? e.feeRange : null;
-    if (cmScoreAt.top >= 0 && top === cmScoreAt.top + 1 && cmScoreAt.fee != null && fr) { const floor = fr[0] < fr[1] * .5 ? fr[1] : fr[0]; cmScore.n++; if (floor <= cmScoreAt.fee) cmScore.h++; try { localStorage.setItem('bcScore', JSON.stringify(cmScore)); } catch (e2) {} }
-    if (top !== cmScoreAt.top) cmScoreAt.fee = null; cmScoreAt.top = top; if (S.fee != null) cmScoreAt.fee = S.fee; S.live = cmScore; }
+    if (cmScoreAt.top >= 0 && top === cmScoreAt.top + 1 && cmScoreAt.fee != null && fr) { const floor = !cmWhole(fr) ? fr[0] : fr[0] < fr[1] * .5 ? fr[1] : fr[0]; cmScore.n++; if (floor <= cmScoreAt.fee) cmScore.h++; try { localStorage.setItem('bcScore', JSON.stringify(cmScore)); } catch (e2) {} }
+    if (top !== cmScoreAt.top) cmScoreAt.fee = null; cmScoreAt.top = top; if (S.fee != null) cmScoreAt.fee = cmScoreAt.fee == null ? S.fee : Math.min(cmScoreAt.fee, S.fee); S.live = cmScore; }
   const got = S.bars.filter(r => r != null), last = got.slice(-6), avg = last.length ? last.reduce((p, q) => p + q, 0) / last.length : 0;
-  S.mood = got.length < 6 ? 'reading the last day…' : (avg < 5 ? 'calm' : avg < 20 ? 'busy' : avg < 100 ? 'stormy' : 'wild') + ' · now ~' + r1(avg) + ' sat/vB · day high ' + r1(Math.max(...got));
+  S.mood = got.length < 6 ? 'reading the last day…' : (md => avg < md * .7 ? 'quieter than today' : avg < md * 1.5 ? 'usual for today' : avg < md * 3 ? 'busier than today' : 'far busier than today')(got.slice().sort((p, q) => p - q)[got.length >> 1] || 1) + ' · now ~' + r1(avg) + ' sat/vB · day high ' + r1(Math.max(...got));
   return S;
 }
 // the three answers and the weather under them (side by side on the wide screen; one under another on the tall one)
@@ -5865,7 +5889,7 @@ function cmBoardBottom(c, x, y, w, tall) {
   cells.forEach(([t, v, sub, col], i) => { const cx = tall ? x : x + i * (cw + 12), cy = tall ? y + i * (ch + 8) : y;
     c.fillStyle = 'rgba(76,201,240,.07)'; c.fillRect(cx, cy, cw, ch); c.strokeStyle = col; c.globalAlpha = .55; c.lineWidth = 2; c.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2); c.globalAlpha = 1;
     c.textAlign = 'left'; c.fillStyle = col; c.font = mono(700, 14); c.fillText(t, cx + 12, cy + 15);
-    if (i === 2 && S.rows) { S.rows.forEach(([fv, tx], k) => { const ry = cy + (S.rows.length > 1 ? (tall ? 40 + k * 28 : 37 + k * 25) : 46); c.fillStyle = k === 0 && S.rows.length > 1 ? '#7dff4a' : '#f7efe3'; c.font = mono(800, 21); c.fillText(fv, cx + 12, ry); c.fillStyle = '#cdbca3'; c.font = mono(600, tall ? 13 : 12.5); c.fillText(tx, cx + 86, ry + 1); }); return; }
+    if (i === 2 && S.rows) { S.rows.forEach(([fv, tx], k) => { const ry = cy + (S.rows.length > 2 ? (tall ? 36 + k * 21 : 31 + k * 18) : S.rows.length > 1 ? (tall ? 40 + k * 28 : 37 + k * 25) : 46); c.fillStyle = k < S.rows.length - 1 ? '#7dff4a' : '#f7efe3'; c.font = mono(800, S.rows.length > 2 ? (tall ? 17 : 16) : 21); c.fillText(fv, cx + 12, ry); c.fillStyle = '#cdbca3'; c.font = mono(600, tall ? 13 : 12.5); c.fillText(tx, cx + 86, ry + 1); }); return; }
     c.fillStyle = '#f7efe3'; c.font = mono(800, tall ? 26 : 28); c.fillText(v, cx + 12, cy + (tall ? 40 : 43));
     c.fillStyle = '#cdbca3'; c.font = mono(600, tall ? 14 : 12.5); c.fillText(sub, cx + 12, cy + (tall ? 70 : 65)); });
   const wy = y + (tall ? 3 * (ch + 8) : ch + 10), wh = tall ? 74 : 62;
@@ -5873,7 +5897,7 @@ function cmBoardBottom(c, x, y, w, tall) {
   const n = S.bars.length || 144, bw = w / n, by = wy + (tall ? 38 : 18), bh = wh - 20;
   for (let i = 0; i < n; i++) { const r = S.bars[i]; if (r == null) { c.fillStyle = 'rgba(247,147,26,.15)'; c.fillRect(x + i * bw, by + bh - 2, Math.max(1, bw - 1), 2); continue; }
     const k = Math.max(0, Math.min(1, (Math.log10(Math.max(r, .1)) + 1) / 2.3)), hh = Math.round(4 + k * (bh - 4)); c.fillStyle = feeCss(Math.max(r, .1)); c.fillRect(x + i * bw, by + bh - hh, Math.max(1, bw - 1), hh); }
-  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = mono(600, 11); c.textAlign = 'left'; c.fillText('a day ago', x, by + bh + 9); c.textAlign = 'center'; { const lv = S.live && S.live.n ? 'seen live here: right ' + S.live.h + ' of ' + S.live.n : 'never certain'; if (tall) c.fillText('scored on the last day of blocks · ' + lv, x + w / 2, by + bh + 26); else c.fillText((S.way ? 'next-block fee: the cheapest of 12 ways right 19 in 20 today (' + S.way + ')' : 'scored on the last day of blocks') + ' · ' + lv, x + w / 2, by + bh + 9); } c.textAlign = 'right'; c.fillText('now', x + w, by + bh + 9);
+  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = mono(600, 11); c.textAlign = 'left'; c.fillText('a day ago', x, by + bh + 9); c.textAlign = 'center'; { const lv = S.live && S.live.n ? 'seen live here: right ' + S.live.h + ' of ' + S.live.n : 'never certain'; if (tall) c.fillText('scored on the last day of blocks · ' + lv, x + w / 2, by + bh + 26); else c.fillText((S.way ? 'next-block fee: ' + S.way + ' · scored on blocks it had not seen' : 'scored on the last day of blocks') + ' · ' + lv, x + w / 2, by + bh + 9); } c.textAlign = 'right'; c.fillText('now', x + w, by + bh + 9);
 }
 const cmBoardCv = cmCv(1024, 576);
 function cmBoard() {
@@ -8118,6 +8142,13 @@ $th.onclick = () => room ? roomExit() : roomEnter();
 addEventListener('keydown', e => {
   if (!room || e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
+  // (the room keeps the keyboard: Tab does not wander on to the buttons, Space and Enter do not press one, and the browser's
+  //  own shortcuts on the room's letters stay shut; a box that is open keeps Tab for itself)
+  if (k === 'tab' && !rmBoxOpen()) { e.preventDefault(); return; }
+  if ((k === ' ' || k === 'enter') && e.target.tagName === 'BUTTON' && !rmBoxOpen()) { e.preventDefault(); e.target.blur(); if (k === ' ') return; }
+  if (k === ' ' && !rmBoxOpen()) { e.preventDefault(); return; }
+  if ((e.ctrlKey || e.metaKey) && ['o', 'p', 'f', 'u', 'e', 'g', 'j', 'h'].includes(k)) { e.preventDefault(); return; }
+  if ((e.altKey && (k === 'e' || k === 'f')) || k === 'f1' || k === 'f3') { e.preventDefault(); return; }
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) { rmKeys[k] = true; e.preventDefault(); }
   else if (k === 'escape') rmPut();
   else if (k === 'v' && !e.repeat && room.held && !room.held.back && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); vwOpen(); }
@@ -8127,7 +8158,11 @@ addEventListener('keydown', e => {
   else if (k === 'f' && !e.repeat && room.held && !room.held.back && document.body.classList.contains('folok') && !document.body.classList.contains('untok') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); folStart(); }
   else if (k === 'u' && !e.repeat && room.held && !room.held.back && document.body.classList.contains('untok') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); $cunt.click(); }
 });
-addEventListener('keyup', e => { rmKeys[e.key.toLowerCase()] = false; });
+addEventListener('keyup', e => { rmKeys[e.key.toLowerCase()] = false; if (room && e.key === ' ' && e.target.tagName === 'BUTTON' && !rmBoxOpen()) e.preventDefault(); });
+// a button you clicked in a room hands the keyboard straight back (so Space or Enter cannot press it again)
+addEventListener('click', e => { if (!room || rmBoxOpen()) return; const b = e.target && e.target.closest ? e.target.closest('button') : null; if (b) setTimeout(() => { if (document.activeElement === b) b.blur(); }, 0); }, true);
+// the browser's right-click menu stays shut over the room (while it is open the page never hears a key let go)
+addEventListener('contextmenu', e => { if (room && e.target === cv) { e.preventDefault(); rmLetGo(); } });
 const rmLetGo = () => { for (const k in rmKeys) rmKeys[k] = false; rmPad.x = rmPad.y = 0; if (room) room.p.vx = room.p.vz = 0; };
 addEventListener('blur', rmLetGo); addEventListener('focus', rmLetGo); document.addEventListener('visibilitychange', rmLetGo);
 // a box open on the screen (the tablet, a door's sign, the big view, the ask box): the mouse stays free for it
