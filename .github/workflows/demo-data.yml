@@ -2,10 +2,21 @@ name: demo-data (temporary)
 on:
   push:
     branches: [demo-data]
+    paths: ['.github/demo/**', '.github/workflows/demo-data.yml']
 permissions:
   contents: write
 jobs:
-  probe:
+  record:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - run: curl -sS https://mempool.space/api/blocks/tip/height
+      - uses: actions/checkout@v4
+        with: {ref: demo-data}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install playwright && python -m playwright install --with-deps chromium
+      - run: python .github/demo/record.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add demo-out && git commit -q -m "Temporary: recorded demo data" && git push
