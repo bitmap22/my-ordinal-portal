@@ -35,7 +35,7 @@ async def main():
         g = pg.frames[1]
         await g.wait_for_function('window.agent', timeout=180000); await pg.wait_for_timeout(20000)
         A = lambda js: g.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 400); } catch (e) { return 'ERR ' + e; } }")
-        OFF = {'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'common': 140e3, 'crew': 170e3}
+        OFF = {'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
         await g.evaluate(f"__vtStart({D['t0'] * 1000 + OFF.get(SC, 0)})")
         tstep = [0, time.time()]
         async def step(n=1):
@@ -53,18 +53,24 @@ async def main():
                 await step(); r = await g.evaluate("(() => { const s = agent.state(); return !!(s.room && s.room.ready); })()")
                 if r: print('   ready after', i, flush=True); return True
             print('   NOT ready', flush=True); return False
-        BH = D.get('h')   # (the block with pictures, from the recording)
+        BH = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)   # (the block with pictures, from the recording)
         await run("agent.feed({on: false})")
         st = {}
         if SC == 'cube': N = 240; act = lambda f: "agent.turnCube({right: .35})"
         elif SC == 'layers':
             await run("agent.view({name: 'fees'})"); await step(60); N = 240
             act = lambda f: "agent.layers({open: true})" if f == 45 else "agent.turnCube({right: .3})"
-        elif SC in ('hall', 'hold'):
+        elif SC in ('hall', 'hold', 'hall2', 'hold2'):
             if BH: await run(f"agent.block({{height: {BH}}})"); await step(60)
             await run(f"agent.walkIn({{height: {BH}}})" if BH else "agent.walkIn()"); await ready(); await step(150)
-            if SC == 'hall': N = 240; act = lambda f: "agent.walk({direction: 'forward', seconds: 7})" if f == 15 else None
-            else: N = 300; act = lambda f: "agent.hold({type: 'images'})" if f == 10 else None
+            if SC in ('hall', 'hall2'): N = 240; act = lambda f: "agent.walk({direction: 'forward', seconds: 7})" if f == 15 else None
+            elif SC == 'hold': N = 300; act = lambda f: "agent.hold({type: 'images'})" if f == 10 else None
+            else:   # (picked up before filming: the card in your hands, then seen big)
+                for ty in ('images', 'inscriptions', 'text', None):
+                    r = await run("agent.hold(" + ("{type: '" + ty + "'}" if ty else "{}") + ")", 1800)
+                    if r and '"ok":false' not in r and 'ERR' not in r: break
+                await step(90); N = 300
+                act = lambda f: "agent.viewBig()" if f == 120 else None
         elif SC in ('common', 'crew'):
             await run("agent.commonRoom()"); await ready(); await step(150)
             if SC == 'common':
