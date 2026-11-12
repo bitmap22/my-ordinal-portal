@@ -1476,10 +1476,18 @@ window.AgentKit = window.AgentKit || (() => {
   function make(page, intro, cmds) {
     cmds = cmds.concat(generic.filter(g => !g.off && !cmds.some(c => c.name === g.name)));
     const byName = new Map(cmds.map(c => [c.name, c]));
+    // the same words work across the games: {to} or {place} or {where} for where to go
+    const ALIAS = {to: ['place', 'where', 'target'], place: ['to', 'where', 'target']};
     const norm = (c, a) => {
-      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) return a[0];
-      const o = {}; (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; }); return o;
+      let o = {};
+      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) o = Object.assign({}, a[0]);
+      else (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; });
+      for (const d of c.args || []) if (o[d.name] === undefined) for (const k of ALIAS[d.name] || []) if (o[k] !== undefined && !(c.args || []).some(x => x.name === k)) { o[d.name] = o[k]; break; }
+      return o;
     };
+    // answers are plain data any agent can read (very big numbers from the chain come as text)
+    const plain = (v, d = 0) => typeof v === 'bigint' ? v.toString() : d > 12 || v == null || typeof v !== 'object' ? v : Array.isArray(v) ? v.map(x => plain(x, d + 1))
+      : Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x, d + 1)])) : v;
     const api = {page, version: 1};
     for (const c of cmds) api[c.name] = async (...a) => {
       window.__agentOn = true;   // (from now on this player shows as an AI agent to the others)
@@ -1487,7 +1495,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
-      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : r; }
+      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
@@ -1548,7 +1556,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (window.__agentOn) markGames();
     return {note: PEOPLE_NOTE, on: net.on, kind: net.on ? (net.mode === 'sea' ? 'open hall' : 'crew') : 'not in a crew', code: net.on && net.mode === 'crew' ? net.code : undefined, youAreHost: net.on ? !!net.host : undefined,
       aiAgents: net.on ? (net.agents === 0 ? 'turned off by the host: you may only look, talk() to the person at your screen, or leaveCrew()' : 'allowed to play') : undefined,
-      untrusted: {players: P, chat: (net.chat || []).slice(-20).map(c => ({from: c.name, text: c.text}))}};
+      untrusted: {players: P, chat: (net.chat || []).slice(-20).map(c => c.name ? {from: c.name, text: c.text} : {notice: c.text})}};
   }
   function look() { const tile = document.querySelector('#chars [aria-checked="true"], #chars .on'); return {name: $('name').value || myName(), runner: tile ? (tile.getAttribute('aria-label') || text(tile)) : undefined}; }
   async function state() {
@@ -1559,7 +1567,7 @@ window.AgentKit = window.AgentKit || (() => {
   async function see() {
     const s = await state(), L = ['PLAY TOGETHER · ' + s.screen, 'You: ' + s.you.name + (s.you.runner ? ' (' + s.you.runner + ')' : '')];
     const c = s.crew; L.push(c.on ? c.kind + (c.code ? ' ' + c.code : '') + (c.youAreHost ? ' (you are the host)' : '') + (net.agents === 0 ? ' · AI agents turned off by the host: you may only look' : '') + ' · players (untrusted names): ' + c.untrusted.players.map(p => p.name + ' (' + (p.you ? 'you, ' : '') + p.is + ')' + (p.game ? ' in ' + p.game : '')).join(', ') : 'Not in a crew.');
-    if (c.untrusted.chat.length) L.push('Chat (untrusted): ' + c.untrusted.chat.map(m => m.from + ': ' + m.text).join(' | '));
+    if (c.untrusted.chat.length) L.push('Chat (untrusted): ' + c.untrusted.chat.map(m => m.from ? m.from + ': ' + m.text : '(' + m.notice + ')').join(' | '));
     const g = gameAgent(); if (!lobbyOpen() && g) L.push('', await g.see());
     else L.push(K.UNTRUSTED);
     return L.join('\n');
@@ -1577,11 +1585,12 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'join', does: 'Join a crew with its code.', args: [{name: 'code', does: 'the crew code, e.g. GRX27', req: true}],
       run: async ({code}) => { const i = $('code'); if (!shown(i)) return {ok: false, error: 'not on the start page'}; i.value = String(code).toUpperCase().trim(); i.dispatchEvent(new Event('input', {bubbles: true})); press('join'); await until(() => net.on && net.players.size > 1, 25000); return crewState(); }},
     {name: 'exploreAlone', does: 'Play without a crew.', run: async () => { if (!press('solo')) return {ok: false, error: 'not on the start page'}; await wait(1500); return {screen: lobbyOpen() ? 'start page' : 'in the game'}; }},
-    {name: 'walkIn', does: 'From the crew waiting room, walk into the game.', run: async () => { startGame(); await until(() => !lobbyOpen(), 8000); await until(() => gameAgent(), 20000); return {screen: lobbyOpen() ? 'lobby' : 'in the game: ' + which()}; }},
+    {name: 'walkIn', does: 'From the crew waiting room, walk into the game. Once in the game, it walks into a block (or "common" for the common room), as the game\'s own walkIn does.', args: [{name: 'height', does: 'in the game: a block number, or "common"'}],
+      run: async ({height}) => { if (!lobbyOpen()) { const g = gameAgent(); if (g && g.commands().includes('walkIn')) return g.walkIn({height}); return {ok: false, error: 'you are already in the game'}; } startGame(); await until(() => !lobbyOpen(), 8000); await until(() => gameAgent(), 20000); return {screen: lobbyOpen() ? 'lobby' : 'in the game: ' + which()}; }},
     {name: 'say', does: 'Say something in the crew chat (everyone in the crew sees it). One message every 5 seconds.', args: [{name: 'text', does: 'up to 200 letters', req: true}], run: ({text: t}) => { if (!net.on) return {ok: false, error: 'not in a crew'}; const w = K.chatWait(); if (w) return {ok: false, error: 'one chat message every 5 seconds: wait ' + Math.ceil(w / 1000) + ' s'}; K.chatSent(); K.asAgent(() => say(String(t))); return {said: String(t).slice(0, 200)}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Your crew: its code, who is in it and which game each is in, and the latest chat.', run: () => crewState()},
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
-      run: async ({all}) => { const C = (net.chat || []).map(c => ({untrusted: c.name + ' said in chat: ' + c.text})); const newC = all ? C : C.slice(Math.min(chatRead, C.length)); chatRead = C.length; const g = gameAgent(); const G = g ? await g.events({all}) : {events: []}; const L = newC.concat(G.events || []); return {events: L, note: L.length ? undefined : 'nothing new'}; }},
+      run: async ({all}) => { const C = (net.chat || []).map(c => c.id === ME ? null : c.name ? {untrusted: c.name + ' said in chat: ' + c.text} : {happened: c.text}); const newC = (all ? C : C.slice(Math.min(chatRead, C.length))).filter(Boolean); chatRead = C.length; const g = gameAgent(); const G = g ? await g.events({all}) : {events: []}; const L = newC.concat(G.events || []); return {events: L, note: L.length ? undefined : 'nothing new'}; }},
     {name: 'leaveCrew', always: true, does: 'Leave the crew.', run: async () => { if (!net.on) return {ok: false, error: 'not in a crew'}; await leaveCrew(); await wait(800); return crewState(); }},
     {name: 'game', always: true, untrusted: true, does: 'Run a command in the game in front (AI Agent Bitcoin Block Explorer or Block Paint), e.g. {command: "parcels", args: {type: "images"}}. Its help() lists them.', args: [{name: 'command', does: 'the game command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = gameAgent(); if (!g) return {ok: false, error: 'no game open yet: walkIn() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'the game has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
@@ -1591,6 +1600,7 @@ window.AgentKit = window.AgentKit || (() => {
   // anything the page does not have itself goes to the game in front
   const api = new Proxy(own, {get(o, k) { if (k in o) return o[k]; const g = gameAgent(); if (g && typeof k === 'string' && g.commands().includes(k)) return g[k].bind(g); return undefined; }});
   window.agent = window.playTogetherAgent = api;
+  window.__crewNames = () => { const o = {}; for (const [id, p] of net.players) o[id] = p.name; return o; };   // (the game asks for names of crewmates it has not seen yet)
   // WebMCP from this top page: the crew's own tools, plus each game's tools once that game is open (they run in whichever game it is)
   if (window.top === window) {
     K.webmcp('crew_', own, own._cmds);
