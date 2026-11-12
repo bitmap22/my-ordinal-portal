@@ -29,13 +29,16 @@ async def main():
         exe = os.environ.get('CHROME'); kw = {'executable_path': exe} if exe else {}
         b = await p.chromium.launch(args=['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'], **kw)
         ctx = await b.new_context(viewport={'width': W, 'height': H}); await ctx.route('**/*', route); await ctx.add_init_script(VT)
+        if SC.endswith('3'):   # (no live feed while filming: frames take seconds each, so live blocks would arrive far too fast; the page shows the newest block as recorded)
+            async def wsclose(ws): await ws.close()
+            await ctx.route_web_socket(re.compile(r'wss?://.*'), wsclose)
         pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)[:200]))
         await pg.goto(HOST + '?game=' + GAME, wait_until='domcontentloaded', timeout=180000)
         while len(pg.frames) < 2: await pg.wait_for_timeout(300)
         g = pg.frames[1]
         await g.wait_for_function('window.agent', timeout=180000); await pg.wait_for_timeout(20000)
         A = lambda js: g.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 400); } catch (e) { return 'ERR ' + e; } }")
-        OFF = {'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
+        OFF = {'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
         await g.evaluate(f"__vtStart({D['t0'] * 1000 + OFF.get(SC, 0)})")
         tstep = [0, time.time()]
         async def step(n=1):
@@ -56,9 +59,9 @@ async def main():
         BH = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)   # (the block with pictures, from the recording)
         await run("agent.feed({on: false})")
         st = {}
-        if SC in ('cube2', 'layers2'):   # (the cube turned by one long, slow drag from a spot off the cube, let go at the end)
+        if SC in ('cube2', 'layers2', 'cube3', 'layers3'):   # (the cube turned by one long, slow drag from a spot off the cube, let go at the end)
             await step(30)
-            if SC == 'layers2': await run("agent.view({name: 'fees'})"); await step(60)
+            if SC in ('layers2', 'layers3'): await run("agent.view({name: 'fees'})"); await step(60)
             N = 240; X0, Y0 = int(W * .82), int(H * .78)
             PE = "([t, x, y, b]) => { const c = document.getElementById('c'); c.dispatchEvent(new PointerEvent(t, {clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: b, button: 0, bubbles: true, cancelable: true})); }"
             st['drag'] = PE
@@ -110,7 +113,7 @@ async def main():
                     await g.evaluate(st['drag'], ['pointerdown', X0, Y0, 1])
                 elif f == N - 1: await g.evaluate(st['drag'], ['pointerup', x, Y0, 0]); await g.evaluate(st['drag'], ['pointerout', x, Y0, 0]); await g.evaluate(st['drag'], ['pointerleave', x, Y0, 0])
                 else: await g.evaluate(st['drag'], ['pointermove', x, Y0, 1])
-                if SC == 'layers2' and f == 45: await g.evaluate("js => { (async () => { try { await eval(js); } catch (e) {} })(); }", "agent.layers({open: true})")
+                if SC in ('layers2', 'layers3') and f == 45: await g.evaluate("js => { (async () => { try { await eval(js); } catch (e) {} })(); }", "agent.layers({open: true})")
             js = act(f)
             if js: await g.evaluate("js => { (async () => { try { await eval(js); } catch (e) { console.error(e); } })(); }", js)
             if 'states' in st and f % 6 == 0:
