@@ -368,7 +368,7 @@ const later = ms => new Promise(r => setTimeout(r, ms));
 let swapNext = null;
 async function swapTo(g) {
   if (swapping) { swapNext = g; return; }   // (asked again mid-swap: done right after)
-  if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive', stay: 1 }); return; }   // (already there: never left dark)
+  if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive', stay: 1 }); try { (inPaint ? pframe : frame).contentWindow.focus(); } catch (e) {} return; }   // (already there: never left dark)
   swapping = true;
   const fade = $('gfade'); fade.classList.add('on');
   (g === 'paint' ? toCube : toPaint)({ type: 'leave' });   // (the game you are leaving: dark and quiet)
@@ -377,14 +377,14 @@ async function swapTo(g) {
     if (!pframe.getAttribute('src')) { paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; fade.classList.add('wait'); }
     else toPaint({ type: 'arrive' });
     for (let i = 0; i < 300 && !paintReady; i++) await later(100);
-    inPaint = true; pframe.hidden = false; frame.hidden = true;
+    inPaint = true; pframe.hidden = false; frame.hidden = true; try { pframe.focus(); pframe.contentWindow.focus(); } catch (e) {}
     if (net.on && net.sail && paintReady) paintStart();
     if (PHONE) { frame.dataset.closed = 1; gameReady = false; gameQueue = []; frame.src = 'about:blank'; }
   } else {
     if (frame.dataset.closed) { delete frame.dataset.closed; gameReady = false; gameQueue = []; frame.src = GAME + '#from-paint'; fade.classList.add('wait'); }
     else toCube({ type: 'arrive' });
     for (let i = 0; i < 300 && !gameReady; i++) await later(100);
-    inPaint = false; frame.hidden = false; pframe.hidden = true;
+    inPaint = false; frame.hidden = false; pframe.hidden = true; try { frame.focus(); frame.contentWindow.focus(); } catch (e) {}
     if (PHONE) { pframe.removeAttribute('src'); paintReady = false; paintQueue = []; try { pframe.contentWindow.location.replace('about:blank'); } catch (e) {} }
   }
   fade.classList.remove('on', 'wait'); swapping = false;
@@ -947,7 +947,7 @@ function startGame() {
   if (net.on) { net.sail = true; const me = net.players.get(ME); if (me && !me.sail) { me.sail = 1; if (net.host) handle(ME, { t: 'me', sail: 1 }); else send(net.hostLink && net.hostLink.ch, { t: 'me', sail: 1 }); } }
   if (!gameReady) return;
   toGame({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode }); toGame({ type: 'look', id: 'me', look: picked });
-  try { frame.focus(); frame.contentWindow.focus(); } catch (e) {}
+  try { const f = inPaint ? pframe : frame; f.focus(); f.contentWindow.focus(); } catch (e) {}
   updateHud(); drawCrew();
 }
 net.fromGame = m => {
@@ -972,7 +972,7 @@ function logLine(who, text) { const p = document.createElement('p'); if (who) { 
   if (!who && net.on) { net.chat.push({ id: '', name: '', text }); if (net.chat.length > 60) net.chat.shift(); drawChat(); } }
 function openSay() { if (!net.on || !$('lobby').hidden) return; $('say').hidden = false; $('msg').focus(); }
 function say(t) { t = String(t || '').trim().slice(0, 200); if (!t || !net.on) return; const ai = window.__agentSay ? 1 : 0, nm = myName() + (ai ? ' · AI' : ''); share({ t: 'chat', text: t, ai }); chatLine(ME, nm, t); logLine(nm, t); toGame({ type: 'say', id: ME, name: myName(), text: t }); }
-function sayIt() { const t = $('msg').value.trim(); $('msg').value = ''; $('say').hidden = true; try { frame.contentWindow.focus(); } catch (e) {} say(t); }
+function sayIt() { const t = $('msg').value.trim(); $('msg').value = ''; $('say').hidden = true; try { (inPaint ? pframe : frame).contentWindow.focus(); } catch (e) {} say(t); }
 $('send').onclick = sayIt; $('chat').onclick = () => $('say').hidden ? openSay() : sayIt();
 $('msg').addEventListener('keydown', e => { if (e.key === 'Enter') sayIt(); if (e.key === 'Escape') { $('msg').value = ''; sayIt(); } e.stopPropagation(); });
 const rsay = () => { say($('rmsg').value); $('rmsg').value = ''; $('rmsg').focus(); };
