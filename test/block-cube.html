@@ -149,6 +149,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 #cp iframe{display:block;width:100%;height:clamp(120px,24vh,230px);border:0;border-radius:8px;background:#000;margin-top:10px}
 #cp .pv2{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#a08b72}
 #cp .pv2 button{background:none;border:1px solid rgba(247,147,26,.3);color:#ffb04a;border-radius:10px;padding:3px 9px;font:inherit;cursor:pointer}
+#cp .pv2 a.pvo{color:#ffb04a;text-decoration:none;border:1px solid rgba(247,147,26,.3);border-radius:10px;padding:3px 9px;margin:0 6px;white-space:nowrap}#cp .pv2 a.pvo:hover{background:rgba(247,147,26,.16)}
 #cp .pv0{margin-top:8px;font-size:10.5px;color:#a08b72}
 .ktab{margin-left:8px;padding:2px 7px;border-radius:9px;border:1px solid rgba(247,147,26,.25);background:rgba(18,11,5,.5);color:#a08b72;font:inherit;letter-spacing:1px;cursor:pointer}
 .ktab.on{color:#ffb04a;border-color:rgba(247,147,26,.7);background:rgba(247,147,26,.12)}.ktab.none:not(.on){opacity:.45}
@@ -2360,14 +2361,14 @@ function preview(t) {
       for (const [k, v] of Object.entries(o).slice(0, 14)) { const row = document.createElement('div'), a = document.createElement('i'), b = document.createElement('b'); a.textContent = k; b.textContent = typeof v === 'object' ? JSON.stringify(v).slice(0, 200) : String(v).slice(0, 200); row.append(a, b); body.append(row); }
     } else { body.classList.add('pl'); body.textContent = t.txt.slice(0, 1500); body.style.fontSize = t.txt.length < 40 ? Math.max(15, Math.min(30, Math.floor((Math.min(innerWidth, 560) - 116) / (.62 * Math.max(1, ...t.txt.split(/\s+/).map(w => w.length)))))) + 'px' : t.txt.length < 160 ? '22px' : t.txt.length < 500 ? '17px' : '15px'; }
     box.append(body); $cp.append(box);
-    if (ids && ids.length > 1) { const p = document.createElement('div'); p.className = 'pv2'; p.innerHTML = `<span>inscription 1 of ${fmt(ids.length)}</span><button>next ›</button>`; p.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = 1; preview(t); }; $cp.append(p); }
+    if (ids && ids.length) $cp.append(pvRow(ids, 0, t));
     return;
   }
   if (room && t.art && /^image\//.test(t.art.ct || '') && (t.gal || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
     $cp.style.display = 'block'; $cp.innerHTML = '';
     if (preview.url) URL.revokeObjectURL(preview.url); preview.url = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct}));
     const im = document.createElement('img'); im.className = 'pa'; im.alt = ''; im.src = preview.url; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $cp.append(im);
-    if (ids && ids.length > 1) { const p = document.createElement('div'); p.className = 'pv2'; p.innerHTML = `<span>inscription 1 of ${fmt(ids.length)}</span><button>next ›</button>`; p.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = 1; preview(t); }; $cp.append(p); }
+    if (ids && ids.length) $cp.append(pvRow(ids, 0, t));
     return;
   }
   if (!ids || !ids.length) {
@@ -2376,9 +2377,17 @@ function preview(t) {
   }
   const k = (t._pi || 0) % ids.length, base = cur && cur.ordBase != null ? cur.ordBase : 'https://ordinals.com';
   $cp.style.display = 'block';
-  $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>` +
-    (ids.length > 1 ? `<div class="pv2"><span>inscription ${k + 1} of ${fmt(ids.length)}</span><button>next ›</button></div>` : '');
-  if (ids.length > 1) $cp.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = k + 1; preview(t); };
+  $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>`;
+  $cp.append(pvRow(ids, k, t));
+}
+// under an inscription's preview: which one of how many, its preview on ordinals.com (a new tab), and the next one
+function pvRow(ids, k, t) {
+  const p = document.createElement('div'); p.className = 'pv2';
+  p.innerHTML = (ids.length > 1 ? `<span>inscription ${k + 1} of ${fmt(ids.length)}</span>` : '<span></span>') +
+    `<a class="pvo" href="${esc('https://ordinals.com/preview/' + ids[k])}" target="_blank" rel="noopener noreferrer" title="open this inscription's preview on ordinals.com">preview on ordinals.com ↗</a>` + (ids.length > 1 ? '<button>next ›</button>' : '<span></span>');
+  p.querySelector('a').onclick = e => e.stopPropagation();
+  if (ids.length > 1) p.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = k + 1; preview(t); };
+  return p;
 }
 let foc = null;   // a parcel found by its transaction ID: it stays solid and everything else turns to glass
 function select(t) {
