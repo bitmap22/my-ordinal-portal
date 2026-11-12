@@ -2246,7 +2246,7 @@ function pwBlobS(t, c, r, col, seg, ring) {   // an egg shape, shaded the same w
     for (const k of [0, 1, 2, 0, 2, 3]) { const [P, N] = q[k], sh = .6 + .3 * (.5 + .5 * N[1]) + .1 * Math.abs(N[0]); t.v(P, N, [col[0] * sh, col[1] * sh, col[2] * sh], 4); } }
 }
 // one person: at = where they sit (the seat under their hips) or stand (the floor under them), fw = the way they face (level)
-function pwRider(t, at, fw, sit, k, R) {
+function pwRider(t, at, fw, sit, k, R, hold) {
   const SEG = PW.lite ? 5 : 7, RING = PW.lite ? 4 : 5, lf = [fw[2], 0, -fw[0]];
   const P = (f, u, s) => [at[0] + fw[0] * f + lf[0] * s, at[1] + u, at[2] + fw[2] * f + lf[2] * s];
   const box = (c, r) => [Math.abs(fw[0]) * r[0] + Math.abs(lf[0]) * r[2], r[1], Math.abs(fw[2]) * r[0] + Math.abs(lf[2]) * r[2]];   // (radii turned the way they face)
@@ -2277,9 +2277,9 @@ function pwRider(t, at, fw, sit, k, R) {
   blob(hc, [.098, .114, .08], sk);                                                    // head
   blob(P(lean + .015 + look * 1.2, b0 + .815 + look * .4, 0), [.103, .098, .087], cap ? pick(TOP, 61) : hair);   // hair (or a cap) over the top and back
   if (cap) part(P(lean + .06 + look, b0 + .79, 0), P(lean + .16 + look, b0 + .785, 0), .05, .03, pick(TOP, 61));   // its peak
-  if (longHair) part(P(lean - .06 + look, b0 + .8, 0), P(lean - .08, b0 + .55, 0), .085, .1, hair);   // long hair down the back
-  // arms: from the shoulders; sitting, the hands rest on the lap or hold a phone; standing, one hangs and one holds the rail
-  const up = lf[0] * Math.sign(at[0] || 1) > 0 ? 1 : -1;   // (standing, the hand on the rail's side goes up to it)
+  if (longHair) part(P(lean - .06 + look, b0 + .8, 0), P(lean - .075, b0 + .57, 0), .072, .082, hair);   // long hair down the back
+  // arms: from the shoulders; sitting, the hands rest on the lap or hold a phone; standing, one hangs and one holds the pole
+  const up = hold ? ((hold[0] - at[0]) * lf[0] + (hold[2] - at[2]) * lf[2] > 0 ? 1 : -1) : 0;   // (standing, the hand on the pole's side holds it)
   for (const sd of [-1, 1]) {
     const sh = P(lean - .02, b0 + .53, sd * .2), arm = sleeves ? top : sk;
     if (sit) {
@@ -2288,8 +2288,8 @@ function pwRider(t, at, fw, sit, k, R) {
     } else if (sd !== up) {
       const el = P(0, b0 + .27, sd * .24), hand = P(.04, b0 + .03, sd * .21);
       part(sh, el, .052, .045, top); part(el, hand, .045, .036, arm); blob(hand, [.04, .045, .035], sk);
-    } else {   // up to the rail over them (2.43 m from the floor, .28 out to the side)
-      const el = P(-.02, b0 + .86, sd * .27), hand = P(0, 2.43, sd * .28);
+    } else {   // holding the pole by them, a little above the shoulder: the elbow bent out and down between
+      const hand = hold, m = [(sh[0] + hand[0]) / 2, (sh[1] + hand[1]) / 2 - .1, (sh[2] + hand[2]) / 2], el = [m[0] + lf[0] * sd * .06, m[1], m[2] + lf[2] * sd * .06];
       part(sh, el, .052, .045, top); part(el, hand, .045, .036, arm); blob(hand, [.04, .045, .04], sk);
     }
   }
@@ -2326,9 +2326,10 @@ function pwCarriage() {
     const z = n - .95 + j * .63 + (R(k + 50) - .5) * .12;
     pwRider(t, [e * 1.19, 1.4, z], [-e, 0, 0], true, k, R);
   }
-  for (let j = 0; j < 9; j++) { if (PW.lite || R(j + 200) < .5) continue;                                                         // and a few standing, holding the rail
-    const z = -7.5 + j * 1.86 + (R(j + 230) - .5) * .5, e = R(j + 240) < .5 ? -1 : 1;
-    pwRider(t, [e * .5, .95, z], [0, 0, R(j + 250) < .5 ? 1 : -1], false, j + 400, R);
+  let q = 0;
+  for (const n of DOORS) for (const d of [-.9, .9]) for (const sx of [-1, 1]) { q++; if (PW.lite || R(q + 200) < .6) continue;   // and a few standing by the doors, a hand on the pole
+    const z = n + d + (R(q + 230) - .5) * .16, fz = R(q + 250) < .5 ? 1 : -1;
+    pwRider(t, [sx * .3, .95, z], [0, 0, fz], false, q + 400, R, [0, 2.3 + (R(q + 260) - .5) * .12, n + d]);
   }
   // outside
   t.box([-1.05, .44, -8.6], [1.05, .74, 8.6], [.1, .1, .11]);                                                        // the frame under the floor
