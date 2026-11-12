@@ -3,7 +3,7 @@
 import asyncio, json, os, hashlib, time
 from playwright.async_api import async_playwright
 OUT = 'demo-out'; os.makedirs(OUT + '/c', exist_ok=True)
-idx = {}; log = []; t0 = 0
+idx = {}; log = []; t0 = 0; H = [None]
 SITE = 'https://bitmap22.github.io/my-ordinal-portal/'
 STEPS = json.load(open('.github/demo/steps.json'))
 def key(u): return hashlib.sha1(u.encode()).hexdigest()[:24]
@@ -34,7 +34,9 @@ async def main():
                 try: await pg.screenshot(path=f'{OUT}/shot_{name}.jpg', type='jpeg', quality=70, timeout=120000)
                 except Exception as e: log.append(['shotfail', name, str(e)[:100]])
             json.dump({'t0': t0, 'idx': idx, 'log': log}, open(OUT + '/index.json', 'w'), indent=0)
+        try: H[0] = await pg.evaluate('window.__demoH || null')
+        except Exception: pass
         await b.close()
-    json.dump({'t0': t0, 'idx': idx, 'log': log}, open(OUT + '/index.json', 'w'), indent=0)
+    json.dump({'t0': t0, 'h': H[0], 'idx': idx, 'log': log}, open(OUT + '/index.json', 'w'), indent=0)
     print(len(idx), 'replies saved')
 asyncio.run(main())
