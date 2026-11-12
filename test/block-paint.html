@@ -2224,6 +2224,77 @@ function pwRunGear(t, bz) {   // one set of wheels: two axles, four wheels, the 
     t.box([e * 1.12 - .1, .1, bz - .3], [e * 1.12 + .1, .16, bz + .3], [.2, .16, .1]); t.box([e * 1.0 - .02, .16, bz - .04], [e * 1.12, .3, bz + .04], dk); }   // the shoe that takes power from the third rail
   t.box([-.5, .14, bz - .62], [.5, .62, bz + .62], [.09, .09, .1]); t.box([-.9, .5, bz - .12], [.9, .7, bz + .12], dk);
 }
+// ---- the people in the trains: rounded, shaded parts joined up properly (a neck, shoulders, arms, legs and shoes), seated
+// on the benches or standing with a hand up on the rail. They used to be four flat blobs each, the head floating over the
+// body. Inside a lit carriage everything is drawn at its own colour (kind 4), so the shading is put into the colours:
+// lighter on top, darker underneath and round the sides.
+function pwPart(t, a, b, r0, r1, col, seg, ring) {   // a rounded part from a to b, r0 thick at a, r1 at b
+  const ax = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(ax[0], ax[1], ax[2]) || 1e-6, u = [ax[0] / L, ax[1] / L, ax[2] / L];
+  const ref = Math.abs(u[1]) < .9 ? [0, 1, 0] : [1, 0, 0], v0 = [u[1] * ref[2] - u[2] * ref[1], u[2] * ref[0] - u[0] * ref[2], u[0] * ref[1] - u[1] * ref[0]], vl = Math.hypot(v0[0], v0[1], v0[2]), v = [v0[0] / vl, v0[1] / vl, v0[2] / vl];
+  const w = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], h = L / 2 + .6 * Math.max(r0, r1);
+  const pt = (i, j) => { const th = i / seg * 6.2832, ph = j / ring * Math.PI - Math.PI / 2, s = Math.sin(ph), c = Math.cos(ph), rr = r0 + (r1 - r0) * (s + 1) / 2, ct = Math.cos(th), st = Math.sin(th);
+    const q = [0, 1, 2].map(k => m[k] + u[k] * h * s + (v[k] * ct + w[k] * st) * rr * c), nn = [0, 1, 2].map(k => u[k] * s / h + (v[k] * ct + w[k] * st) * c / rr), nl = Math.hypot(nn[0], nn[1], nn[2]) || 1;
+    return [q, [nn[0] / nl, nn[1] / nl, nn[2] / nl]]; };
+  for (let i = 0; i < seg; i++) for (let j = 0; j < ring; j++) { const q = [pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1)];
+    for (const k of [0, 1, 2, 0, 2, 3]) { const [P, N] = q[k], sh = .6 + .3 * (.5 + .5 * N[1]) + .1 * Math.abs(N[0]); t.v(P, N, [col[0] * sh, col[1] * sh, col[2] * sh], 4); } }
+}
+function pwBlobS(t, c, r, col, seg, ring) {   // an egg shape, shaded the same way
+  for (let i = 0; i < seg; i++) for (let j = 0; j < ring; j++) {
+    const pt = (i, j) => { const a = i / seg * 6.2832, b = j / ring * Math.PI - Math.PI / 2, d = [Math.cos(b) * Math.sin(a), Math.sin(b), Math.cos(b) * Math.cos(a)], nn = [d[0] / r[0], d[1] / r[1], d[2] / r[2]], l = Math.hypot(nn[0], nn[1], nn[2]);
+      return [[c[0] + d[0] * r[0], c[1] + d[1] * r[1], c[2] + d[2] * r[2]], [nn[0] / l, nn[1] / l, nn[2] / l]]; };
+    const q = [pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1)];
+    for (const k of [0, 1, 2, 0, 2, 3]) { const [P, N] = q[k], sh = .6 + .3 * (.5 + .5 * N[1]) + .1 * Math.abs(N[0]); t.v(P, N, [col[0] * sh, col[1] * sh, col[2] * sh], 4); } }
+}
+// one person: at = where they sit (the seat under their hips) or stand (the floor under them), fw = the way they face (level)
+function pwRider(t, at, fw, sit, k, R) {
+  const SEG = PW.lite ? 5 : 7, RING = PW.lite ? 4 : 5, lf = [fw[2], 0, -fw[0]];
+  const P = (f, u, s) => [at[0] + fw[0] * f + lf[0] * s, at[1] + u, at[2] + fw[2] * f + lf[2] * s];
+  const box = (c, r) => [Math.abs(fw[0]) * r[0] + Math.abs(lf[0]) * r[2], r[1], Math.abs(fw[2]) * r[0] + Math.abs(lf[2]) * r[2]];   // (radii turned the way they face)
+  const pick = (L, o) => L[Math.floor(R(k + o) * L.length) % L.length];
+  const SKIN = [[.21, .155, .12], [.13, .09, .065], [.19, .13, .095], [.16, .11, .08], [.23, .17, .135]];
+  const TOP = [[.07, .08, .1], [.14, .06, .05], [.05, .1, .08], [.11, .1, .05], [.05, .06, .11], [.13, .12, .12], [.2, .19, .17], [.09, .05, .1]];
+  const LEG = [[.05, .06, .09], [.04, .04, .045], [.1, .09, .07], [.06, .065, .07], [.08, .05, .04]], HAIR = [[.035, .025, .02], [.08, .05, .03], [.02, .02, .022], [.15, .13, .1], [.13, .09, .045]];
+  const sk = pick(SKIN, 17), top = pick(TOP, 9), leg = pick(LEG, 23), hair = pick(HAIR, 31), shoe = R(k + 37) < .3 ? [.2, .2, .2] : [.03, .03, .035];
+  const longHair = R(k + 41) < .35, sleeves = R(k + 43) < .7, phone = sit && R(k + 47) < .4, cap = !longHair && R(k + 53) < .15;
+  const part = (a, b, r0, r1, c) => pwPart(t, a, b, r0, r1, c, SEG, RING), blob = (c, r, col) => pwBlobS(t, c, box(c, r), col, SEG, RING);
+  // heights from the floor (standing) or the seat (sitting): hips, waist, shoulders, neck, head
+  const hy = sit ? .1 : .92, look = phone ? -.05 : 0;
+  if (sit) for (const sd of [-1, 1]) {   // thighs along the seat, shins down to the floor, shoes
+    part(P(-.02, hy, sd * .09), P(.38, hy + .02, sd * .1), .085, .065, leg);
+    part(P(.4, hy + .02, sd * .1), P(.45, -.36, sd * .1), .058, .045, leg);
+    part(P(.4, -.41, sd * .1), P(.57, -.41, sd * .1), .046, .04, shoe);
+  } else for (const sd of [-1, 1]) {
+    part(P(0, hy, sd * .1), P(.02, .5, sd * .1), .08, .062, leg);
+    part(P(.02, .5, sd * .1), P(0, .1, sd * .1), .058, .046, leg);
+    part(P(-.04, .045, sd * .1), P(.14, .045, sd * .1), .048, .042, shoe);
+  }
+  const b0 = sit ? 0 : .82, lean = sit ? -.04 : 0;   // (the body above the hips, sitting or standing)
+  blob(P(lean, b0 + .14, 0), [.12, .1, .17], leg);                                    // hips
+  blob(P(lean - .01, b0 + .37, 0), [.115, .24, .17], top);                            // body
+  blob(P(lean - .02, b0 + .55, 0), [.1, .065, .205], top);                            // shoulders
+  part(P(lean - .015, b0 + .56, 0), P(lean + .01 + look * .4, b0 + .67, 0), .052, .047, sk);   // neck
+  const hc = P(lean + .03 + look * 1.2, b0 + .78 + look * .4, 0);
+  blob(hc, [.098, .114, .08], sk);                                                    // head
+  blob(P(lean + .015 + look * 1.2, b0 + .815 + look * .4, 0), [.103, .098, .087], cap ? pick(TOP, 61) : hair);   // hair (or a cap) over the top and back
+  if (cap) part(P(lean + .06 + look, b0 + .79, 0), P(lean + .16 + look, b0 + .785, 0), .05, .03, pick(TOP, 61));   // its peak
+  if (longHair) part(P(lean - .06 + look, b0 + .8, 0), P(lean - .08, b0 + .55, 0), .085, .1, hair);   // long hair down the back
+  // arms: from the shoulders; sitting, the hands rest on the lap or hold a phone; standing, one hangs and one holds the rail
+  const up = lf[0] * Math.sign(at[0] || 1) > 0 ? 1 : -1;   // (standing, the hand on the rail's side goes up to it)
+  for (const sd of [-1, 1]) {
+    const sh = P(lean - .02, b0 + .53, sd * .2), arm = sleeves ? top : sk;
+    if (sit) {
+      const el = P(.05, .27, sd * .23), hand = phone ? P(.3, .34, sd * .05) : P(.3, .2, sd * .13);
+      part(sh, el, .052, .045, top); part(el, hand, .045, .036, arm); blob(hand, [.045, .035, .04], sk);
+    } else if (sd !== up) {
+      const el = P(0, b0 + .27, sd * .24), hand = P(.04, b0 + .03, sd * .21);
+      part(sh, el, .052, .045, top); part(el, hand, .045, .036, arm); blob(hand, [.04, .045, .035], sk);
+    } else {   // up to the rail over them (2.43 m from the floor, .28 out to the side)
+      const el = P(-.02, b0 + .86, sd * .27), hand = P(0, 2.43, sd * .28);
+      part(sh, el, .052, .045, top); part(el, hand, .045, .036, arm); blob(hand, [.04, .045, .04], sk);
+    }
+  }
+  if (phone) part(P(.3, .37, -.03), P(.3, .37, .03), .012, .012, [.02, .02, .025]);   // the phone
+}
 function pwCarriage() {
   const t = ao(), W = [1, 1, 1], DOORS = [-4.55, 4.6], WINS = [-7.6, -1.5, 1.55, 7.65], LED = [[.9, .2, .6], [.15, .75, .9], [.9, .6, .15], [.5, .3, .9]], CY = [.25, 1.1, 1.5], PK = [1.4, .25, .9], GL = [.34, .38, .37], l = 1.495;
   const P = [[1.34, .72], [1.428, .95], [1.44, .98], [1.49, 1.5], [1.49, 2.0], [1.49, 2.5], [1.4725, 2.85], [1.46, 3.1], [1.448, 3.15], [1.34, 3.6], [1.08, 3.94], [.62, 4.12], [0, 4.17]];
@@ -2252,11 +2323,13 @@ function pwCarriage() {
   const HR = [[.04, .03, .025], [.09, .06, .035], [.02, .02, .022], [.16, .15, .14], [.14, .1, .05]], CL = [[.07, .08, .1], [.12, .07, .06], [.06, .1, .08], [.1, .09, .05], [.05, .06, .09], [.11, .1, .1]], SK = [[.21, .155, .12], [.13, .09, .065], [.19, .13, .095], [.16, .11, .08]];
   let k = 0;
   for (const n of WINS) for (const e of [-1, 1]) for (let j = 0; j < 4; j++) { k++; if (R(k) < (PW.lite ? .72 : .42)) continue;      // people sitting with their backs to the windows
-    const z = n - .95 + j * .63 + (R(k + 50) - .5) * .12, c = CL[Math.floor(R(k + 9) * CL.length)], sk = SK[Math.floor(R(k + 17) * SK.length)], x = e * 1.2;
-    t.ell([x, 1.82, z], [.16, .32, .21], c, 4, 6, 4); t.ell([x - e * .02, 2.3, z], [.105, .125, .1], sk, 4, 7, 5); t.ell([x + e * .012, 2.335, z], [.108, .112, .106], HR[Math.floor(R(k + 31) * HR.length)], 4, 7, 5); t.ell([x - e * .24, 1.47, z], [.24, .1, .17], c, 4, 6, 3); }
-  for (let j = 0; j < 9; j++) { if (PW.lite || R(j + 200) < .5) continue;                                                         // and a few standing
-    const z = -7.5 + j * 1.86 + (R(j + 230) - .5) * .5, x = (R(j + 260) - .5) * .7, c = CL[Math.floor(R(j + 290) * CL.length)], sk = SK[Math.floor(R(j + 300) * SK.length)];
-    t.ell([x, 2.05, z], [.17, .42, .15], c, 4, 6, 4); t.ell([x, 2.62, z], [.1, .12, .1], sk, 4, 7, 5); t.ell([x, 2.66, z + (j % 2 ? .014 : -.014)], [.104, .1, .1], HR[Math.floor(R(j + 310) * HR.length)], 4, 7, 5); t.ell([x, 1.3, z], [.13, .38, .12], [.05, .05, .06], 4, 6, 3); }
+    const z = n - .95 + j * .63 + (R(k + 50) - .5) * .12;
+    pwRider(t, [e * 1.19, 1.4, z], [-e, 0, 0], true, k, R);
+  }
+  for (let j = 0; j < 9; j++) { if (PW.lite || R(j + 200) < .5) continue;                                                         // and a few standing, holding the rail
+    const z = -7.5 + j * 1.86 + (R(j + 230) - .5) * .5, e = R(j + 240) < .5 ? -1 : 1;
+    pwRider(t, [e * .5, .95, z], [0, 0, R(j + 250) < .5 ? 1 : -1], false, j + 400, R);
+  }
   // outside
   t.box([-1.05, .44, -8.6], [1.05, .74, 8.6], [.1, .1, .11]);                                                        // the frame under the floor
   for (const e of [-1, 1]) { for (const [z0, z1, y0] of [[-3.5, -1.3, .22], [-.7, 1.3, .3], [1.9, 3.6, .2]]) t.box([Math.min(e * .7, e * 1.3), y0, z0], [Math.max(e * .7, e * 1.3), .74, z1], [.12, .12, .13]);   // boxes of gear
