@@ -405,7 +405,7 @@ function dxTake(c, pri) {
   if (pri) { dxPri++; return go().finally(() => { dxPri--; }); }
   const p = dxQ.then(go); dxQ = p.catch(() => {}); return p;
 }
-const PACE = {'https://api.blockchair.com': 6000, 'https://api.blockcypher.com': 1500, 'https://api.bitcore.io': 500, 'https://sandbox-api.3xpl.com': 20000, 'https://cdn.doggy.market': 60};   // (by site: the start of each address)
+const PACE = {'https://api.blockchair.com': 6000, 'https://api.blockcypher.com': 1500, 'https://api.bitcore.io': 150, 'https://sandbox-api.3xpl.com': 20000, 'https://cdn.doggy.market': 60};   // (by site: the start of each address)
 const paceAt = {}, restUntil = {}, askLog = {};
 const askedHour = h => { const L = askLog[h] || [], t = Date.now(); while (L.length && t - L[0] > 3600000) L.shift(); return L.length; };
 const hostOf = u => (/^https?:\/\/[^/]+/.exec(u) || [''])[0];
@@ -3748,22 +3748,24 @@ function heatCol(h) {
 }
 const blockHeat = new Map();
 /* halls of several blocks: while Dogecoin is quiet a hall holds 20, 10, 5 or 2 blocks side by side, so its shelves fill up the
-   way a busy hall's do; in busy times, one. Picked as you walk in, from the last 100 blocks: the most blocks that keep a hall to
+   way a busy hall's do; in busy times, one. Picked as you walk in, from the 100 blocks around where you go: the most blocks that keep a hall to
    about 500 parcels. Halls line up on round numbers (6,453,500 to 6,453,519); block 0 always stands alone. (The main screen
    always shows one block.) */
 const HALL_STEPS = [20, 10, 5, 2, 1];
 let HALL_N = 1;
-function hallSize() {
-  const L = []; for (let h = tipH; h > tipH - 100 && h > 0; h--) { const b = blockAt(h); if (b) L.push(b.tx_count); }
-  if (L.length < 20) return HALL_N;   // (not enough known yet: keep what it was)
+function hallSize(at) {   // from the 100 blocks around where you're going (the newest 100 if nowhere in particular)
+  const top = at > 0 && tipH > 0 ? Math.min(tipH, at + 50) : tipH;
+  const L = []; for (let h = top; h > top - 100 && h > 0; h--) { const b = blockAt(h); if (b) L.push(b.tx_count); }
+  if (L.length < 20) return 1;   // (not known: a hall of one block, which is never too big)
   const avg = L.reduce((a, b) => a + b, 0) / L.length;
   return HALL_STEPS.find(n => n * avg <= 500) || 1;
 }
-// the last 100 blocks' sizes (known already from the block weather band, else one ask)
-async function hallKnow() {
-  let n = 0; for (let h = tipH; h > tipH - 100 && h > 0; h--) if (blockAt(h)) n++;
+// the sizes of those 100 blocks (known already from the block weather band, else one ask)
+async function hallKnow(at) {
+  const top = at > 0 && tipH > 0 ? Math.min(tipH, at + 50) : tipH;
+  let n = 0; for (let h = top; h > top - 100 && h > 0; h--) if (blockAt(h)) n++;
   if (n >= 50 || !(tipH > 0)) return;
-  try { const j = await dj(DX + '/v1/blocks?limit=100', 12000); for (const b of (j.blocks || []).map(dxBlk)) olderCache.set(b.height, b); } catch (e) {}
+  try { const j = await dj(DX + '/v1/blocks?limit=100&before=' + (top + 1), 12000); for (const b of (j.blocks || []).map(dxBlk)) olderCache.set(b.height, b); } catch (e) {}
 }
 const hallOf = h => h <= 0 || HALL_N === 1 ? h : Math.max(1, Math.floor(h / HALL_N) * HALL_N);   // the hall a block is in: its first block
 const hallTop = s => s <= 0 || HALL_N === 1 ? s : Math.min(tipH, Math.floor(s / HALL_N) * HALL_N + HALL_N - 1);   // the last block of the hall that starts at s
@@ -7740,14 +7742,14 @@ async function roomEnter(h, spot, opt) {
   cmPrewarm();
   if (h !== COMMON && (!(h >= 0) || h > tipH)) h = mode === 'block' && want >= 0 ? want : tipH;
   if (h !== COMMON && !(h >= 0)) return;
-  if (h !== COMMON && !fol) await hallKnow();
+  if (h !== COMMON && !fol) await hallKnow(h);
   if (flipping) setFlip(false);
   select(null);
   await rmFade(true);
   if (room) for (const R of room.rooms) rmFree(R);
   room = {rooms: [null, null, null], p: {x: 0, z: -1.1, yaw: 0, pitch: -.04, vx: 0, vz: 0, ph: 0, bob: 0}, dirty: true, fixDirty: true, nPar: 0, nFix: 0, nDoor: 0, hov: ''};
   document.body.classList.add('room'); document.body.classList.remove('gal', 'galok', 'shw', 'showcp'); $th.classList.add('on');
-  if (h !== COMMON) { room.from = h; HALL_N = fol ? 1 : hallSize(); h = hallOf(h); }
+  if (h !== COMMON) { room.from = h; HALL_N = fol ? 1 : hallSize(h); h = hallOf(h); }
   const C = rmMake(h, null, null); room.rooms[1] = C; room.at = C;
   head(h === COMMON ? 'walking into the common room…' : 'walking into ' + hallName(h, C.h1).toLowerCase() + '…');
   const t = performance.now();
