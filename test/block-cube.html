@@ -152,7 +152,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 #cp .pv0{margin-top:8px;font-size:10.5px;color:#a08b72}
 .ktab{margin-left:8px;padding:2px 7px;border-radius:9px;border:1px solid rgba(247,147,26,.25);background:rgba(18,11,5,.5);color:#a08b72;font:inherit;letter-spacing:1px;cursor:pointer}
 .ktab.on{color:#ffb04a;border-color:rgba(247,147,26,.7);background:rgba(247,147,26,.12)}.ktab.none:not(.on){opacity:.45}
-#kn{font-style:normal;font-size:10px;color:#a08b72;padding:7px 2px}
+#kn{font-style:normal;font-size:10px;color:#a08b72;padding:7px 2px;flex:none;white-space:nowrap}
 @media (max-width:1100px){#kh span{display:none}}
 @media (max-width:640px){.ktab{margin-left:5px;padding:2px 5px;letter-spacing:.5px}}
 #mn{margin-top:3px;font-size:11px;line-height:1.5;color:#e0c49a;max-width:calc(100vw - 40px)}#mn:empty{display:none}
@@ -2720,15 +2720,19 @@ function snap() {
   const W = cv.width, H = cv.height, d = W / innerWidth, c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d'), mono = 'ui-monospace,"SF Mono",Menlo,Consolas,monospace';
   x.fillStyle = '#000'; x.fillRect(0, 0, W, H); x.drawImage(cv, 0, 0);
-  const g = x.createLinearGradient(0, H - 130 * d, 0, H); g.addColorStop(0, 'rgba(5,4,6,0)'); g.addColorStop(1, 'rgba(5,4,6,.9)');
-  x.fillStyle = g; x.fillRect(0, H - 130 * d, W, 130 * d);
-  x.fillStyle = '#ffb04a'; x.font = `600 ${12 * d}px ${mono}`; x.fillText(($tgt.textContent || '').toUpperCase(), 26 * d, H - 74 * d);
-  x.fillStyle = '#f7efe3'; x.font = `600 ${32 * d}px ${mono}`; x.fillText($h.value || '', 26 * d, H - 42 * d);
-  x.fillStyle = '#cdbca3'; x.font = `${12 * d}px ${mono}`; x.fillText(($st.textContent || '').slice(0, 150), 26 * d, H - 20 * d);
+  x.font = `${12 * d}px ${mono}`; const lines = [], wide = W - 52 * d;
+  for (const w of ($st.textContent || '').slice(0, 150).split(' · ')) { const t = lines.length ? lines[lines.length - 1] + ' · ' + w : w; if (lines.length && x.measureText(t).width <= wide) lines[lines.length - 1] = t; else lines.push(w); }
+  const up = (lines.length - 1) * 16 * d;
+  const g = x.createLinearGradient(0, H - 130 * d - up, 0, H); g.addColorStop(0, 'rgba(5,4,6,0)'); g.addColorStop(1, 'rgba(5,4,6,.9)');
+  x.fillStyle = g; x.fillRect(0, H - 130 * d - up, W, 130 * d + up);
+  x.fillStyle = '#ffb04a'; x.font = `600 ${12 * d}px ${mono}`; x.fillText(($tgt.textContent || '').toUpperCase(), 26 * d, H - 74 * d - up);
+  x.fillStyle = '#f7efe3'; x.font = `600 ${32 * d}px ${mono}`; x.fillText($h.value || '', 26 * d, H - 42 * d - up);
+  x.fillStyle = '#cdbca3';
+  lines.forEach((t, i) => { x.font = `${12 * d}px ${mono}`; const tw = x.measureText(t).width; if (tw > wide) x.font = `${12 * d * wide / tw}px ${mono}`; x.fillText(t, 26 * d, H - 20 * d - (lines.length - 1 - i) * 16 * d); });
   x.textAlign = 'right'; x.fillStyle = '#a08b72'; x.font = `${11 * d}px ${mono}`;
   const stamp = 'AI AGENT BITCOIN BLOCK EXPLORER · ' + new Date().toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}), sw = x.measureText(stamp).width, room = W - 52 * d;
   if (sw > room) x.font = `${11 * d * room / sw}px ${mono}`;
-  x.shadowColor = 'rgba(0,0,0,.85)'; x.shadowBlur = 4 * d; x.fillText(stamp, W - 26 * d, H - 102 * d); x.shadowBlur = 0;
+  x.shadowColor = 'rgba(0,0,0,.85)'; x.shadowBlur = 4 * d; x.fillText(stamp, W - 26 * d, H - 102 * d - up); x.shadowBlur = 0;
   c.toBlob(b => {
     if (!b) return;
     const a = document.createElement('a'); a.href = URL.createObjectURL(b);
