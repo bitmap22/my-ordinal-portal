@@ -1816,6 +1816,23 @@ Te.pwdirt = function (c, rnd, W, H, o) {
   for (let i = 0; i < 5; i++) { const x = rnd() * W, y = H * (.25 + .7 * rnd()), r = 4 + rnd() * 9, q = c.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, 'rgba(110,52,22,' + .42 * k + ')'); q.addColorStop(1, 'rgba(110,52,22,0)'); c.fillStyle = q; c.fillRect(x - r, y - r, 2 * r, 2 * r); }
 };
 
+// ---- small signs: an exit sign (running figure, door, arrow) and a red sign with white words
+ye.pwexit = [256, 128];
+Te.pwexit = function (c, rnd, W, H, o) {
+  c.fillStyle = '#0d8a3c'; c.fillRect(0, 0, W, H); c.fillStyle = '#f4fff6'; c.strokeStyle = '#f4fff6'; c.lineCap = 'round'; c.lineJoin = 'round';
+  c.fillRect(W * .62, H * .16, W * .2, H * .68); c.fillStyle = '#0d8a3c'; c.fillRect(W * .645, H * .21, W * .15, H * .63); c.fillStyle = '#f4fff6';
+  c.beginPath(); c.arc(W * .4, H * .22, H * .085, 0, 6.3); c.fill();
+  c.lineWidth = H * .085; c.beginPath(); c.moveTo(W * .385, H * .34); c.lineTo(W * .35, H * .58); c.lineTo(W * .43, H * .7); c.lineTo(W * .41, H * .86); c.moveTo(W * .35, H * .58); c.lineTo(W * .27, H * .7); c.lineTo(W * .2, H * .68);
+  c.moveTo(W * .385, H * .36); c.lineTo(W * .46, H * .48); c.lineTo(W * .53, H * .44); c.moveTo(W * .385, H * .36); c.lineTo(W * .31, H * .45); c.lineTo(W * .26, H * .54); c.stroke();
+  c.beginPath(); c.moveTo(W * .05, H * .5); c.lineTo(W * .14, H * .36); c.lineTo(W * .14, H * .45); c.lineTo(W * .2, H * .45); c.lineTo(W * .2, H * .55); c.lineTo(W * .14, H * .55); c.lineTo(W * .14, H * .64); c.closePath(); c.fill();
+};
+ye.pwsign = [256, 128];
+Te.pwsign = function (c, rnd, W, H, o) {
+  c.fillStyle = o.bg || '#c4161c'; c.fillRect(0, 0, W, H); c.fillStyle = o.fg || '#ffffff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  const L = o.lines || ['FIRE'], sz = H * .8 / L.length;
+  L.forEach((t, i) => { c.font = '800 ' + Math.round(sz * .78) + 'px Arial,sans-serif'; c.fillText(t, W / 2, H * .1 + sz * (i + .5), W * .92); });
+};
+
 // ---- track: stones up to the sleepers' tops, a rail with a foot, a web and a bright head, a plate under the rail on each sleeper
 function pwSt(t, e, o, n, a) {
   a = a || 0;
@@ -2079,6 +2096,51 @@ function pwPlace(t) {
       // the hoops' nets are chain: links zig-zag between the strands
       for (const h of t.hoops || []) { const [a, , f] = h, N = 10, lv = [0, .33, .66, 1], pt = (i, u) => { const o = i / N * 6.283, r = .23 - .1 * u; return [a + r * Math.cos(o), 3.05 - .43 * u, f + r * Math.sin(o)]; };
         for (let i = 0; i < N; i++) for (let k = 0; k < 3; k++) { Dt(t, pt(i, lv[k]), pt(i + 1, lv[k + 1]), .004, nt.steel, [.62, .62, .66], 3, {nohit: !0}); Dt(t, pt(i + 1, lv[k]), pt(i, lv[k + 1]), .004, nt.steel, [.62, .62, .66], 3, {nohit: !0}); } }
+    }
+    if (id === 'warehouse') {
+      const R = pwRnd(31);
+      // a pallet rack in the front-right corner, loaded with pallets and boxes (it is solid: you can not walk through it)
+      const BL = [.12, .28, .62], OR = [.9, .42, .06], PAL = [.62, .5, .36], CB = [.62, .47, .3], x0 = 13.98, x1 = 14.92;
+      for (const z of [6.25, 7.9, 9.55]) { for (const x of [x0, x1 - .08]) pwBox(t, [x, 0, z - .04], [x + .08, 3.6, z + .04], nt.steel, BL);
+        for (let y = .3; y < 3.5; y += .6) pwCyl(t, [x0 + .08, y, z], [x1 - .08, y + .45, z], .012, nt.steel, BL, 5, {caps: !1});
+        pwBox(t, [x0 - .1, 0, z - .09], [x0 + .02, .45, z + .09], nt.steel, [.95, .75, .1]); }
+      for (const y of [.12, 1.35, 2.55]) for (const [za, zb] of [[6.29, 7.86], [7.94, 9.51]]) { for (const x of [x0, x1 - .06]) pwBox(t, [x, y, za], [x + .06, y + .12, zb], nt.steel, OR);
+        const yb = y + .12, zc = (za + zb) / 2;
+        for (const zz of [za + .05, zb - .75]) { if (R() < .15) continue;
+          pwBox(t, [x0 + .02, yb, zz], [x1 - .02, yb + .14, zz + .7], nt.wood, PAL);
+          let hy = yb + .14; const n = 1 + Math.floor(R() * 3);
+          for (let k = 0; k < n && hy < y + 1.1; k++) { const h = .25 + R() * .25, inset = .02 + R() * .06, wrap = R() < .3;
+            pwBox(t, [x0 + .04 + inset, hy, zz + inset], [x1 - .04 - inset, hy + h, zz + .7 - inset], wrap ? nt.gloss : nt.flat, wrap ? [.7, .68, .62] : pwMul(CB, .9 + .2 * R()));
+            if (!wrap) pwBox(t, [x0 + .03 + inset, hy + h * .45, zz + inset - .002], [x1 - .03 - inset, hy + h * .5, zz + .7 - inset + .002], nt.flat, [.75, .68, .5]);   // the tape round it
+            hy += h; } } }
+      t.solids.push({lo: [13.95, 0, 6.2], hi: [14.95, 3.6, 9.6]});
+      // exit signs over the doors to the skate park and to Block Cube
+      Fe(t, pwBox(t, [1.6, 4.05, 9.84], [2.3, 4.33, 9.995], nt.flat, [.1, .45, .2]).n, 'pwexit', 0, 0, .7, .28, {glow: .7});
+      Fe(t, pwBox(t, [14.84, 3.0, -2.9], [14.995, 3.28, -2.3], nt.flat, [.1, .45, .2]).w, 'pwexit', 0, 0, .6, .28, {glow: .7});
+      // fire extinguishers on brackets, each with a red sign over it
+      for (const [x, z, sx, sz] of [[-14.82, 1.2, 1, 0], [-3.2, 9.82, 0, -1]]) {
+        pwCyl(t, [x, .55, z], [x, 1.05, z], .085, nt.gloss, [.72, .06, .05], 14); pwCyl(t, [x, 1.05, z], [x, 1.13, z], .03, nt.steel, [.2, .2, .2], 8);
+        pwBox(t, [x - .04, 1.12, z - .04], [x + .04 + .1 * sz * 0, 1.14, z + .04], nt.steel, [.15, .15, .15]);
+        pwCyl(t, [x + .04 * sz, 1.1, z + .04 * sx], [x + .08 * sz, .85, z + .1 * sx], .012, nt.rubber, [1, 1, 1], 5); pwCyl(t, [x + .08 * sz, .85, z + .1 * sx], [x + .07 * sz, .66, z + .09 * sx], .012, nt.rubber, [1, 1, 1], 5);
+        const wb = sx ? [x - .17, .8, z - .05] : [x - .05, .8, z + .09], we = sx ? [x - .08, .86, z + .05] : [x + .05, .86, z + .17]; pwBox(t, wb, we, nt.steel, [.3, .3, .32]);
+        const f = sx ? pwBox(t, [-14.995, 1.45, z - .15], [-14.985, 1.75, z + .15], nt.flat, [.7, .1, .1]).e : pwBox(t, [x - .15, 1.45, 9.985], [x + .15, 1.75, 9.995], nt.flat, [.7, .1, .1]).n;
+        Fe(t, f, 'pwsign', 0, 0, .3, .3, {lines: ['FIRE', 'POINT']}); }
+      // power cables from the two stage lights down a leg, across the floor, to sockets on the back wall
+      for (const [e, o, n, wx] of [[-4.5, -6.5, .6, -3.3], [5, -6, -.7, 6.0]]) {
+        const fx = e + .6 * Math.cos(n), fz = o + .6 * Math.sin(n), C = [.08, .08, .09];
+        pwCyl(t, [e + .03, 1.7, o + .02], [fx + .03, .03, fz], .01, nt.rubber, [1, 1, 1], 5);
+        const pts = [[fx + .03, fz], [fx + (wx - fx) * .4 + .3, fz + (-9.9 - fz) * .45], [wx, -9.5], [wx, -9.92]];
+        for (let i = 0; i < pts.length - 1; i++) pwCyl(t, [pts[i][0], .02, pts[i][1]], [pts[i + 1][0], .02, pts[i + 1][1]], .012, nt.rubber, [1, 1, 1], 5);
+        pwCyl(t, [wx, .02, -9.92], [wx, .34, -9.92], .012, nt.rubber, [1, 1, 1], 5);
+        pwBox(t, [wx - .12, .3, -10], [wx + .12, .48, -9.94], nt.metal, [.7, .7, .68]); pwBox(t, [wx - .06, .36, -9.94], [wx + .06, .42, -9.935], nt.flat, C); }
+      // tyre marks where the forklift turns, and oil spots
+      for (let k = 0; k < 6; k++) { const cx = 2 + R() * 9, cz = 2 + R() * 6, r = 2 + R() * 3, a0 = R() * 6.283, da = (R() > .5 ? 1 : -1) * (.6 + R() * .8);
+        for (const off of [-.5, .5]) { let p = null; for (let i = 0; i <= 8; i++) { const a = a0 + da * i / 8, rr = r + off, q = [cx + Math.cos(a) * rr, cz + Math.sin(a) * rr]; if (p && Math.abs(q[0]) < 14.6 && Math.abs(q[1]) < 9.6) pwStrip(t, p, q, .0012, .12, nt.flat, [.2, .2, .21]); p = q; } } }
+      for (const [x, z, r] of [[8.2, 6.9, .38], [9.1, 5.7, .18], [-12.8, -2.2, .3], [11.6, 2.0, .22], [-1.2, 8.6, .26]]) { pwCyl(t, [x, .0008, z], [x, .0016, z], r, nt.gloss, [.06, .06, .065], 18); pwCyl(t, [x + r * .4, .0008, z - r * .3], [x + r * .4, .0017, z - r * .3], r * .45, nt.gloss, [.05, .05, .055], 12); }
+    }
+    if (id === 'roof') {   // a drain in the low corner of the roof, with a damp stain round it
+      pwCyl(t, [-9.7, .0008, -7.7], [-9.7, .0018, -7.7], .5, nt.flat, [.3, .3, .31], 18);
+      pwCyl(t, [-9.7, 0, -7.7], [-9.7, .02, -7.7], .2, nt.steel, [.3, .3, .32], 16); pwCyl(t, [-9.7, .02, -7.7], [-9.7, .028, -7.7], .15, nt.grate, [.28, .28, .3], 16);
     }
     if (id === 'subway') {
       for (let k = 0; k < 16; k++) pwBox(t, [30.2 + k * .3, (k + 1) * .27 + .005, .86], [30.25 + k * .3, (k + 1) * .27 + .009, 3.14], nt.flat, [.95, .74, .1], {skip: 'd'});   // a yellow edge on every step
