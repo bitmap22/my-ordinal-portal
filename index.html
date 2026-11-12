@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-<!-- agent-kit meta --><meta name="ai-agents" content="For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. The AI Agent Bitcoin Block Explorer, its Play Together page and Block Paint have full kits of their own once open. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk()."><!-- /agent-kit meta -->
+<!-- agent-kit meta --><meta name="ai-agents" content="For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. Agent Blockhall, its Play Together page and Block Paint have full kits of their own once open. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk()."><!-- /agent-kit meta -->
     <title>Ordinal Portal</title>
     <style>
         :root {
@@ -1069,9 +1069,10 @@
                 </div>
             </div>
 
-            <div class="card" data-category="creative" data-title="AI Agent Bitcoin Block Explorer" data-url="block-cube.html">
+            <div class="card" data-category="creative" data-title="Agent Blockhall" data-url="block-cube.html">
                 <div class="card-top"><span class="card-number">#039</span><span class="card-tag">Tool</span></div>
-                <h3>AI Agent Bitcoin Block Explorer</h3>
+                <h3>Agent Blockhall</h3>
+                <p class="card-note">3D Bitcoin block explorer world for players and agents.</p>
                 <div class="button-row">
                     <button type="button" class="open-in-portal">Open in Portal</button>
                     <a href="block-cube.html" target="_blank" rel="noopener noreferrer">Open New Tab</a>
@@ -1118,7 +1119,7 @@
         </div>
 
         <div class="footer">
-            Inscribed Portal // Bitcoin Archive // Use Escape to close the viewer
+            Inscribed Portal // Bitcoin Archive // Use Escape to close the viewer<br>© 2026 bitmap22. All rights reserved.
         </div>
 
     </div>
@@ -1482,7 +1483,7 @@
         async src="//gc.zgo.at/count.js"></script>
 
 <!-- agent-kit: start -->
-<div id="for-ai-agents" aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden">For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. The AI Agent Bitcoin Block Explorer, its Play Together page and Block Paint have full kits of their own once open. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk().</div>
+<div id="for-ai-agents" aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden">For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. Agent Blockhall, its Play Together page and Block Paint have full kits of their own once open. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk().</div>
 <script>
 /* Agent kit (shared): lets an AI agent read everything in the game and drive it.
    Each page builds window.agent from a table of commands. Every command takes one object of named
@@ -1623,10 +1624,18 @@ window.AgentKit = window.AgentKit || (() => {
   function make(page, intro, cmds) {
     cmds = cmds.concat(generic.filter(g => !g.off && !cmds.some(c => c.name === g.name)));
     const byName = new Map(cmds.map(c => [c.name, c]));
+    // the same words work across the games: {to} or {place} or {where} for where to go
+    const ALIAS = {to: ['place', 'where', 'target'], place: ['to', 'where', 'target']};
     const norm = (c, a) => {
-      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) return a[0];
-      const o = {}; (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; }); return o;
+      let o = {};
+      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) o = Object.assign({}, a[0]);
+      else (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; });
+      for (const d of c.args || []) if (o[d.name] === undefined) for (const k of ALIAS[d.name] || []) if (o[k] !== undefined && !(c.args || []).some(x => x.name === k)) { o[d.name] = o[k]; break; }
+      return o;
     };
+    // answers are plain data any agent can read (very big numbers from the chain come as text)
+    const plain = (v, d = 0) => typeof v === 'bigint' ? v.toString() : d > 12 || v == null || typeof v !== 'object' ? v : Array.isArray(v) ? v.map(x => plain(x, d + 1))
+      : Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x, d + 1)])) : v;
     const api = {page, version: 1};
     for (const c of cmds) api[c.name] = async (...a) => {
       window.__agentOn = true;   // (from now on this player shows as an AI agent to the others)
@@ -1634,7 +1643,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
-      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : r; }
+      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
@@ -1677,7 +1686,7 @@ window.AgentKit = window.AgentKit || (() => {
 })();
 
 /* Ordinal Portal (main page) agent kit: window.agent here lists everything on the portal and opens it, as a visitor would
-   (the "Open in Portal" viewer, or the page itself). AI Agent Bitcoin Block Explorer, its play-together page and Block Paint have their own kits:
+   (the "Open in Portal" viewer, or the page itself). Agent Blockhall, its play-together page and Block Paint have their own kits:
    once one is open in the viewer, game() and the cube_ / crew_ / paint_ tools run in it. */
 (() => {
   const K = window.AgentKit, {wait, until, text, shown} = K;
@@ -1689,8 +1698,9 @@ window.AgentKit = window.AgentKit || (() => {
     const note = c.querySelector('.card-note');
     return {n: text(c.querySelector('.card-number')) || undefined, title: c.getAttribute('data-title'), kind: text(c.querySelector('.card-tag')) || c.getAttribute('data-category'), section: sectionOf(c), note: note ? text(note) : undefined, page: c.getAttribute('data-url'), shown: shown(c), buttons: links};
   }
-  const find = q => { q = String(q || '').toLowerCase().trim(); const L = cards(); return L.find(c => c.getAttribute('data-title').toLowerCase() === q) || L.find(c => c.getAttribute('data-title').toLowerCase().startsWith(q)) || L.find(c => c.getAttribute('data-title').toLowerCase().includes(q)) || L.find(c => text(c.querySelector('.card-number')) === q || text(c.querySelector('.card-number')) === '#' + q.replace(/^#/, '').padStart(3, '0'))
-    || L.find(c => (c.getAttribute('data-url') || '').toLowerCase().replace(/\.html$/, '').replace(/-/g, ' ') === q.replace(/-/g, ' ').replace(/\.html$/, '')); };   // (or its page's name: "block cube" for the renamed AI Agent Bitcoin Block Explorer)
+  const OLDN = {'ai agent bitcoin block explorer': 'agent blockhall', 'block cube': 'agent blockhall'};   // (the game's earlier names)
+  const find = q => { q = String(q || '').toLowerCase().trim(); q = OLDN[q] || q; const L = cards(); return L.find(c => c.getAttribute('data-title').toLowerCase() === q) || L.find(c => c.getAttribute('data-title').toLowerCase().startsWith(q)) || L.find(c => c.getAttribute('data-title').toLowerCase().includes(q)) || L.find(c => text(c.querySelector('.card-number')) === q || text(c.querySelector('.card-number')) === '#' + q.replace(/^#/, '').padStart(3, '0'))
+    || L.find(c => (c.getAttribute('data-url') || '').toLowerCase().replace(/\.html$/, '').replace(/-/g, ' ') === q.replace(/-/g, ' ').replace(/\.html$/, '')); };   // (or its page's name: "block cube" for Agent Blockhall)
   const viewerOpen = () => $('viewer-overlay') && $('viewer-overlay').classList.contains('active');
   const frameAgent = () => { try { const w = $('viewer-frame').contentWindow; return w && w.agent ? w.agent : null; } catch (e) { return null; } };   // (only pages of this portal: other sites keep to themselves)
   function viewer() {
@@ -1707,7 +1717,7 @@ window.AgentKit = window.AgentKit || (() => {
     const sec = new Map(); for (const c of s.cards) { if (!c.shown) continue; if (!sec.has(c.section)) sec.set(c.section, []); sec.get(c.section).push(c); }
     for (const [k, C] of sec) L.push('', k.toUpperCase() + ':', ...C.map(c => '  ' + (c.n ? c.n + ' ' : '') + c.title + ' (' + c.kind + ')' + (c.note ? ' - ' + c.note : '') + ' [' + c.buttons.map(b => b.does).join(', ') + ']'));
     const v = s.viewer; if (v.open) { L.push('', 'Open in the viewer: ' + v.title + ' (' + v.page + '). ' + v.kit); const g = frameAgent(); if (g) L.push('', await g.see()); }
-    L.push('', 'Open one with open({title}). The AI Agent Bitcoin Block Explorer, its Play Together page and Block Paint have full agent kits once open.');
+    L.push('', 'Open one with open({title}). Agent Blockhall, its Play Together page and Block Paint have full agent kits once open.');
     return L.join('\n');
   }
   const cmds = [
@@ -1715,26 +1725,26 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'state', ro: true, untrusted: true, does: 'The same as data.', run: () => state()},
     {name: 'cards', ro: true, does: 'The portal\'s games and tools as data (number, title, kind, section, note, page, buttons).', args: [{name: 'section', does: 'only one section: mint, games, creative or music'}],
       run: ({section}) => cards().map(card).filter(c => !section || c.section === String(section).toLowerCase())},
-    {name: 'open', does: 'Open a game or tool by its title (or number), as a visitor does: in the portal\'s viewer ("Open in Portal"), or Play Together for AI Agent Bitcoin Block Explorer.', args: [{name: 'title', does: 'its title, e.g. "AI Agent Bitcoin Block Explorer", or its number', req: true}, {name: 'how', enum: ['portal', 'together', 'page'], does: 'portal (the viewer, default), together (AI Agent Bitcoin Block Explorer\'s Play Together), or page (go to the page itself in this tab: only the portal\'s own pages)'}],
+    {name: 'open', does: 'Open a game or tool by its title (or number), as a visitor does: in the portal\'s viewer ("Open in Portal"), or Play Together for Agent Blockhall.', args: [{name: 'title', does: 'its title, e.g. "Agent Blockhall", or its number', req: true}, {name: 'how', enum: ['portal', 'together', 'page'], does: 'portal (the viewer, default), together (Agent Blockhall\'s Play Together), or page (go to the page itself in this tab: only the portal\'s own pages)'}],
       run: async ({title, how = 'portal'}) => {
         const c = find(title); if (!c) return {ok: false, error: 'no such title: cards() lists them'};
         if (how === 'page') { const u = c.getAttribute('data-url') || ''; if (!/^[\w-]+\.html$/.test(u)) return {ok: false, error: 'that one lives on another site: open it in the viewer (how: "portal")'}; setTimeout(() => { location.href = u; }, 50); return {ok: true, going: u, then: 'the page loads; its window.agent (if it has one) takes over'}; }
-        const b = c.querySelector(how === 'together' ? '.open-together' : '.open-in-portal'); if (!b) return {ok: false, error: how === 'together' ? 'only AI Agent Bitcoin Block Explorer has Play Together' : 'this one has no "Open in Portal" button: try how: "page"'};
+        const b = c.querySelector(how === 'together' ? '.open-together' : '.open-in-portal'); if (!b) return {ok: false, error: how === 'together' ? 'only Agent Blockhall has Play Together' : 'this one has no "Open in Portal" button: try how: "page"'};
         b.click(); await until(() => viewerOpen(), 4000); await until(() => frameAgent(), 12000); return viewer(); }},
     {name: 'search', does: 'Type in the portal\'s search box (an empty text shows everything again).', args: [{name: 'text', does: 'what to search for'}], run: ({text: t}) => { const i = $('search-box'); i.value = String(t || ''); i.dispatchEvent(new Event('input', {bubbles: true})); return {showing: cards().filter(shown).map(c => c.getAttribute('data-title'))}; }},
     {name: 'filter', does: 'Show one kind only: All, Games, Creative, Mint or Music.', args: [{name: 'kind', enum: ['All', 'Games', 'Creative', 'Mint', 'Music'], does: 'which', req: true}],
       run: ({kind}) => { const b = [...document.querySelectorAll('.filter-button')].find(x => text(x).toLowerCase() === String(kind).toLowerCase()); if (!b) return {ok: false, error: 'kinds: All, Games, Creative, Mint, Music'}; b.click(); return {showing: cards().filter(shown).map(c => c.getAttribute('data-title'))}; }},
     {name: 'viewer', ro: true, does: 'What is open in the portal\'s viewer, and whether it has an agent kit.', run: () => viewer()},
     {name: 'closeViewer', does: 'Close the viewer (back to the portal).', run: async () => { if (!viewerOpen()) return {ok: true, note: 'it was not open'}; $('viewer-close').click(); await wait(300); return viewer(); }},
-    {name: 'game', always: true, untrusted: true, does: 'Run a command in what is open in the viewer, when it has an agent kit (AI Agent Bitcoin Block Explorer, Play Together, Block Paint), e.g. {command: "see"}.', args: [{name: 'command', does: 'the command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
+    {name: 'game', always: true, untrusted: true, does: 'Run a command in what is open in the viewer, when it has an agent kit (Agent Blockhall, Play Together, Block Paint), e.g. {command: "see"}.', args: [{name: 'command', does: 'the command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = frameAgent(); if (!g) return {ok: false, error: viewerOpen() ? 'what is open has no agent kit (or is still loading)' : 'nothing open: open({title}) first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'it has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
   ];
-  const intro = 'ORDINAL PORTAL agent kit. The portal lists Bitcoin games, tools and creative pieces (most are inscriptions shown from other sites). You use it as a visitor does. Start with agent.see(); open({title}) opens one. The AI Agent Bitcoin Block Explorer (once called Block\u0020Cube: open({title: "Block\u0020Cube"}) works too), its Play Together page and Block Paint have their own full kits: once open, game({command}) runs their commands.';
+  const intro = 'ORDINAL PORTAL agent kit. The portal lists Bitcoin games, tools and creative pieces (most are inscriptions shown from other sites). You use it as a visitor does. Start with agent.see(); open({title}) opens one. Agent Blockhall (a 3D Bitcoin block explorer world for players and agents; once called AI Agent Bitcoin Block Explorer, and before that Block\u0020Cube: open() with either old name works too), its Play Together page and Block Paint have their own full kits: once open, game({command}) runs their commands.';
   const api = K.make('Ordinal Portal', intro, cmds);
   window.agent = window.portalAgent = api;
   if (window.top === window) {
     K.webmcp('portal_', api, api._cmds);
-    const PRE = {'AI Agent Bitcoin Block Explorer': 'cube_', 'AI Agent Bitcoin Block Explorer · play together': 'crew_', 'Block Paint City': 'paint_'};
+    const PRE = {'Agent Blockhall': 'cube_', 'Agent Blockhall · play together': 'crew_', 'Block Paint City': 'paint_'};
     setInterval(() => { const g = frameAgent(); if (g && g._cmds && PRE[g.page]) K.webmcp(PRE[g.page], g, g._cmds, (n, a) => { const q = frameAgent(); return q && q[n] ? q[n](a) : {ok: false, error: 'that is not open in the viewer now'}; }); }, 3000);
   }
 })();
