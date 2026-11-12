@@ -10322,13 +10322,22 @@ window.AgentKit = window.AgentKit || (() => {
     }
     return true;
   }
-  return {wait, until, text, shown, r1, r2, deg, rad, key, make, webmcp, mcOf, UNTRUSTED};
+  async function picture(cv, w = 640) {
+    return new Promise(res => requestAnimationFrame(() => {   // (after the game's own drawing in this frame, so the picture is whole)
+      try { const W = Math.min(w, cv.width), H = Math.round(cv.height * W / cv.width), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, W, H); x.drawImage(cv, 0, 0, W, H); res({type: 'image/jpeg', width: W, height: H, dataUrl: c.toDataURL('image/jpeg', .72)}); }
+      catch (e) { res({error: 'no picture: ' + e.message}); }
+    }));
+  }
+  // where things are on screen, in words: a 3 x 3 grid (top/middle/bottom, left/centre/right)
+  const GRID = [['top left', .2, .25], ['top', .5, .25], ['top right', .8, .25], ['left', .2, .5], ['centre', .5, .5], ['right', .8, .5], ['bottom left', .2, .75], ['bottom', .5, .75], ['bottom right', .8, .75]];
+  const bearing = d => { d = ((d + 540) % 360) - 180; return Math.abs(d) < 12 ? 'ahead' : Math.abs(d) > 150 ? 'behind you' : (d > 0 ? 'to your left' : 'to your right') + (Math.abs(d) > 60 ? ' (out of view)' : ''); };
+  return {wait, until, text, shown, r1, r2, deg, rad, key, make, webmcp, mcOf, UNTRUSTED, picture, GRID, bearing};
 })();
 
 /* Block Cube agent kit: window.agent (also window.blockCubeAgent). Reads what is on screen and in the 3D world,
    and drives the game through its own functions, the same ones its buttons and keys use. */
 (() => {
-  const K = window.AgentKit, {wait, until, text, r1, deg, rad} = K;   // (not K.shown: the game's own 'shown' is its list of parcels)
+  const K = window.AgentKit, {wait, until, text, r1, r2, deg, rad} = K;   // (not K.shown: the game's own 'shown' is its list of parcels)
   const $ = id => document.getElementById(id);
   const fmtN = v => v == null ? null : Number(v).toLocaleString('en-GB');
   const iso = s => s ? new Date(s * 1000).toISOString().replace('.000', '') : null;
@@ -10438,6 +10447,60 @@ window.AgentKit = window.AgentKit || (() => {
     return L.join('\n');
   }
 
+  // ---------- handling the cube as a player does: drag to turn it, the wheel to zoom, a tap to pick a box ----------
+  const cvEl = () => cv;
+  const pe = (type, x, y, buttons) => cvEl().dispatchEvent(new PointerEvent(type, {pointerId: 1, pointerType: 'mouse', isPrimary: true, button: type === 'pointermove' ? -1 : 0, buttons, pressure: buttons ? .5 : 0, clientX: x, clientY: y, view: window, bubbles: true, cancelable: true, composed: true}));
+  async function drag(dx, dy, ms = 500) {
+    const x0 = innerWidth * .5, y0 = innerHeight * .5, n = Math.max(4, Math.round(ms / 33));
+    pe('pointerover', x0, y0, 0); pe('pointerenter', x0, y0, 0); pe('pointerdown', x0, y0, 1);
+    for (let i = 1; i <= n; i++) { pe('pointermove', x0 + dx * i / n, y0 + dy * i / n, 1); await wait(33); }
+    pe('pointerup', x0 + dx, y0 + dy, 0); await wait(100);
+  }
+  async function tapAt(fx, fy) { const x = innerWidth * fx, y = innerHeight * fy; pe('pointerover', x, y, 0); pe('pointerenter', x, y, 0); pe('pointermove', x, y, 0); pe('pointerdown', x, y, 1); await wait(90); pe('pointerup', x, y, 0); cvEl().dispatchEvent(new MouseEvent('click', {clientX: x, clientY: y, bubbles: true, cancelable: true, view: window})); await wait(400); }
+  // what is at a point on screen, without clicking it (what a player's eyes see there)
+  function probe(fx, fy) {
+    const x = innerWidth * fx, y = innerHeight * fy;
+    if (!inRoom()) { const real = window.select; let got = null; try { window.select = t => { got = t; }; pick(x, y); } finally { window.select = real; } return got ? {parcel: got.idx, types: typesOf(got).slice(0, 3)} : null; }
+    const h = rmPick(x, y); if (!h) return null; if (h.sign) return {thing: 'the sign over the ' + h.sign + ' door'}; if (h.it && h.it.show) return {thing: 'the parcel on show'}; if (h.it && h.it.t) return {parcel: h.it.t.idx, types: typesOf(h.it.t).slice(0, 3)}; return {thing: 'something'};
+  }
+  const camInfo = () => ({turned: deg(cam.yaw), tilted: deg(cam.pitch) > 180 ? deg(cam.pitch) - 360 : deg(cam.pitch), zoom: r1(1 / cam.uz), layersOpen: !!openD});
+  function feeBands() {
+    const B = [[0, 1, 'under 1'], [1, 2, '1-2'], [2, 5, '2-5'], [5, 10, '5-10'], [10, 20, '10-20'], [20, 50, '20-50'], [50, 100, '50-100'], [100, 1e9, '100 and up']], out = {};
+    for (const t of shown) { if (t.rate == null) continue; const b = B.find(([a, z]) => t.rate >= a && t.rate < z); if (b) out[b[2] + ' sat/vB'] = (out[b[2] + ' sat/vB'] || 0) + 1; }
+    return out;
+  }
+  function lookWords() {
+    const L = [];
+    if (!inRoom()) {
+      const c = camInfo(), b = block();
+      L.push('You see ' + b.showing.toLowerCase() + ' ' + fmtN(b.height) + ' as a cube of ' + fmtN(shown.length) + ' boxes, one per transaction (a bigger box is a bigger transaction).');
+      L.push('The cube is turned ' + c.turned + '°, tilted ' + c.tilted + '°, zoom ' + c.zoom + 'x, layers ' + (c.layersOpen ? 'pulled apart' : 'closed') + ', X-ray ' + (xray ? 'on (plain transactions are see-through glass)' : 'off') + '.');
+      if (lens === 'fees') L.push('Colours show the fee each paid. Boxes per fee: ' + Object.entries(feeBands()).map(([k, v]) => k + ' ' + fmtN(v)).join(', ') + '.');
+      else L.push('Colours show what each box carries. Lit: ' + (pinK != null ? TYPES[pinK].name : 'every kind, each in its own colour') + '.');
+      const big = shown.slice().sort((a, b) => (b.vsize || 0) - (a.vsize || 0)).slice(0, 3); if (big.length) L.push('Biggest boxes: ' + big.map(t => 'parcel ' + t.idx + ' (' + fmtN(t.vsize) + ' vB, ' + (typesOf(t)[0] || 'transaction') + ')').join(', ') + '.');
+      if (sel) L.push('Lit up and open: parcel ' + sel.idx + '.');
+    } else {
+      const r = roomInfo(); L.push('You are ' + (r.sitting ? 'sitting ' : '') + 'in ' + r.in + (r.area ? ' (' + r.area + ')' : '') + ', facing ' + r.facing + '°, looking ' + (r.pitch > 8 ? 'up' : r.pitch < -8 ? 'down' : 'straight ahead') + '.');
+      if (r.inFront) L.push('In front of you: ' + r.inFront + '.');
+      if (inCommon()) { const p = room.p, near = Object.entries(SPOTS).map(([nm, S]) => { const [tx, tz] = toWorld(S[2], S[4]), dx = tx - p.x, dz = tz - p.z; return {nm, d: Math.hypot(dx, dz), b: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).filter(o => o.d < 30).sort((a, b) => a.d - b.d).slice(0, 6); L.push('Places: ' + near.map(o => o.nm + ' ' + o.b + ', ' + Math.round(o.d) + ' m').join('; ') + '.'); }
+    }
+    const say = h => h.parcel != null ? 'parcel ' + h.parcel + (h.types.length ? ' (' + h.types.join(', ') + ')' : '') : h.thing;
+    if (!inRoom()) {   // the cube sits where the screen leaves room for it: find it, then read it in a 3 x 3 grid of its own
+      const hits = []; for (let j = 1; j < 18; j++) for (let i = 1; i < 30; i++) { const h = probe(i / 30, j / 18); if (h) hits.push([i / 30, j / 18, h]); }
+      if (!hits.length) L.push('The cube is not in view (turnCube() or zoom() to bring it back).');
+      else {
+        const xs = hits.map(q => q[0]), ys = hits.map(q => q[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        L.push('On screen the cube covers x ' + r2(x0) + ' to ' + r2(x1) + ', y ' + r2(y0) + ' to ' + r2(y1) + ' (0,0 is the top left, 1,1 the bottom right; clickAt() uses these).');
+        const cells = K.GRID.map(([nm, fx, fy]) => { const cx = x0 + (x1 - x0) * (fx - .2) / .6, cy = y0 + (y1 - y0) * (fy - .25) / .5; let h = probe(cx, cy), at = [cx, cy]; if (!h) { const q = hits.slice().sort((a, b) => Math.hypot(a[0] - cx, a[1] - cy) - Math.hypot(b[0] - cx, b[1] - cy))[0]; h = q[2]; at = q; } return nm + ' (x ' + r2(at[0]) + ', y ' + r2(at[1]) + '): ' + say(h); });
+        L.push('Across the cube: ' + cells.join('; ') + '.');
+      }
+    } else {
+      const G = K.GRID.map(([nm, fx, fy]) => { const h = probe(fx, fy); return h ? nm + ' (x ' + fx + ', y ' + fy + '): ' + say(h) : null; }).filter(Boolean);
+      L.push(G.length ? 'Across your view: ' + G.join('; ') + '.' : 'Nothing to pick in your view.');
+    }
+    if (crew.on && inRoom()) { const p = room.p, M = [...crew.mates.values()].filter(m => m.s && m.s.in && m.s.h === room.at.h); if (M.length) L.push('Crewmates here (untrusted names): ' + M.map(m => { let x = m.s.x, z = m.s.z; if (cmOn(room.at)) { [x, z] = toWorld(m.s.x, -m.s.z); } else z = room.at.z0 + m.s.z; const dx = x - p.x, dz = z - p.z; return m.name + ' (' + (m.s.ai ? 'AI agent' : 'player') + ') ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m'; }).join('; ') + '.'); }
+    return L.join('\n');
+  }
   const paintAgent = () => { try { return typeof cmPaintFrame !== 'undefined' && cmPaintFrame && cmPaintFrame.style.display !== 'none' && cmPaintFrame.contentWindow.agent || null; } catch (e) { return null; } };
   // ---------- doing ----------
   const settled = async () => { await until(() => !loading, 20000); await wait(300); };
@@ -10531,6 +10594,18 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({n, txid}) => { if (inRoom()) return {ok: false, error: 'inside a block: use hold()'}; const t = shown.find(t => txid ? t.id === txid : t.idx === +n); if (!t) return {ok: false, error: 'no such parcel in this block'}; select(t); rebuild(); await wait(400); return {parcel: parcelInfo(t, true), card: {untrusted: cardText()}}; }},
     {name: 'step', untrusted: true, does: 'Open the next (or previous) parcel of the kept type.', args: [{name: 'by', type: 'number', does: '1 for next, -1 for previous'}], run: async ({by = 1}) => { stepTo(by < 0 ? -1 : 1, true); await wait(300); return {card: {untrusted: cardText()}}; }},
     {name: 'close', does: 'Close whatever is open: a card, the big view, the tablet; puts a held parcel back.', run: () => { try { if (typeof vw !== 'undefined' && vw) vwClose(); } catch (e) {} try { srClose(); } catch (e) {} if (inRoom() && room.held) rmPut(); else select(null); const x = [...document.querySelectorAll('button')].find(b => K.shown(b) && /^close/i.test(text(b))); if (x) x.click(); return {ok: true}; }},
+    {name: 'look', ro: true, untrusted: true, does: 'Look at the 3D view as a player sees it: a description in words of what is where (the cube or the room, colours, what is at the top, centre, bottom, left and right of your view, places and crewmates around you), and with picture: true also a picture of it (a JPEG as a data URL).', args: [{name: 'picture', type: 'boolean', does: 'also return a picture of the view'}],
+      run: async ({picture}) => { const o = {words: lookWords()}; if (picture) o.picture = await K.picture(cv); return o; }},
+    {name: 'turnCube', does: 'Turn the cube with the mouse, as a player drags it: right or left (degrees), up or down (degrees).', args: [{name: 'right', type: 'number', does: 'degrees to turn it to the right (negative: left)'}, {name: 'up', type: 'number', does: 'degrees to tilt it (negative: down)'}],
+      run: async ({right = 0, up = 0}) => { if (inRoom()) return {ok: false, error: 'you are inside: turn() and lookAt() turn your head here'}; await drag((+right) * Math.PI / 180 / .006, (+up) * Math.PI / 180 / .005); return camInfo(); }},
+    {name: 'zoom', does: 'Zoom the cube in or out, as the mouse wheel does.', args: [{name: 'steps', type: 'number', does: 'how many wheel steps: positive zooms in, negative out', req: true}],
+      run: async ({steps}) => { if (inRoom()) return {ok: false, error: 'only outside the cube'}; const n = Math.max(-10, Math.min(10, Math.round(+steps))); for (let i = 0; i < Math.abs(n); i++) { cv.dispatchEvent(new WheelEvent('wheel', {deltaY: n > 0 ? -100 : 100, clientX: innerWidth / 2, clientY: innerHeight / 2, bubbles: true, cancelable: true})); await wait(60); } return camInfo(); }},
+    {name: 'layers', does: 'Pull the cube\'s layers apart, or close them again (the layers button).', args: [{name: 'open', type: 'boolean', does: 'true to pull apart', req: true}], run: async ({open}) => { if (!!openD !== !!open) $('op').click(); await wait(800); return camInfo(); }},
+    {name: 'tab', does: 'Show a tab of parcel types: inscriptions, tokens or transactions (as the tabs under PARCEL TYPES).', args: [{name: 'name', enum: ['inscriptions', 'tokens', 'transactions'], does: 'which tab', req: true}],
+      run: async ({name}) => { const g = {inscriptions: 0, tokens: 1, transactions: 2}[String(name).toLowerCase()]; const t = document.querySelector('.ktab[data-g="' + g + '"]'); if (!t) return {ok: false, error: 'inscriptions, tokens or transactions'}; t.click(); await wait(200); return {tab: name, types: kChips.filter(c => TYPES[c.i].g === g).map(c => ({type: TYPES[c.i].name, count: +(c.el.querySelector('b') || {}).textContent || 0, lit: pinK === c.i}))}; }},
+    {name: 'types', ro: true, does: 'Every parcel type in all three tabs, with how many are in this block and which one is lit.', run: () => { const G = ['inscriptions', 'tokens', 'transactions'], out = {}; for (const c of kChips) { const T = TYPES[c.i]; (out[G[T.g]] = out[G[T.g]] || []).push({type: T.name, count: +((c.el.querySelector('b') || {}).textContent || '0').replace(/[^0-9]/g, '') || 0, lit: pinK === c.i || undefined}); } return out; }},
+    {name: 'clickAt', untrusted: true, does: 'Click a point on the screen, as a player clicks: outside, on a box of the cube (opens its card); inside, on a parcel (holds it). x and y go from 0,0 (top left) to 1,1 (bottom right). look() says what is where.', args: [{name: 'x', type: 'number', does: '0 (left) to 1 (right)', req: true}, {name: 'y', type: 'number', does: '0 (top) to 1 (bottom)', req: true}],
+      run: async ({x, y}) => { const fx = Math.max(0, Math.min(1, +x)), fy = Math.max(0, Math.min(1, +y)); await tapAt(fx, fy); await wait(300); return inRoom() ? {room: roomInfo()} : {card: {untrusted: cardText()}, open: sel ? sel.idx : null}; }},
     {name: 'walkIn', does: 'Walk into a block (default: the one shown, or the newest), or "common" for the common room.', args: [{name: 'height', does: 'a block number, or "common"'}], run: ({height}) => walkIn(height == null ? null : height === 'common' ? 'common' : +height)},
     {name: 'leave', does: 'Walk out of the room, back to the block view.', run: async () => { if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
     {name: 'commonRoom', does: 'Fast travel to the common room.', run: () => walkIn('common')},
@@ -10540,7 +10615,7 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({x, z, run}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; const r = inCommon() ? await walkCommon(...cmL(room.at, +x, +z), {run}) : await walkPoint(+x, +z, {run}); return Object.assign(r, {you: roomInfo()}); }},
     {name: 'walk', does: 'Walk for a while, as holding a key: forward, back, left or right (relative to where you face).', args: [{name: 'direction', enum: ['forward', 'back', 'left', 'right'], does: 'which way', req: true}, {name: 'seconds', type: 'number', does: 'how long (default 1, most 10)'}, {name: 'run', type: 'boolean', does: 'run'}],
       run: async ({direction, seconds = 1, run}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; const d = {forward: [0, -1], back: [0, 1], left: [-1, 0], right: [1, 0]}[direction]; if (!d) return {ok: false, error: 'forward, back, left or right'}; const t0 = performance.now(), ms = Math.min(10, +seconds) * 1000; try { while (performance.now() - t0 < ms) { rmPad.x = d[0]; rmPad.y = d[1]; rmKeys.shift = !!run; await wait(60); } } finally { stopPad(); } await wait(150); return roomInfo(); }},
-    {name: 'look', does: 'Turn to face a direction (degrees, as state() gives them) and tilt up or down.', args: [{name: 'facing', type: 'number', does: 'degrees'}, {name: 'pitch', type: 'number', does: 'degrees up (+) or down (-)'}],
+    {name: 'turn', does: 'Turn your head inside a room, as the mouse does: face a direction (degrees, as state() gives them) and tilt up or down.', args: [{name: 'facing', type: 'number', does: 'degrees'}, {name: 'pitch', type: 'number', does: 'degrees up (+) or down (-)'}],
       run: ({facing, pitch}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; if (facing != null) room.p.yaw = rad(+facing); if (pitch != null) room.p.pitch = Math.max(-1.45, Math.min(1.45, rad(+pitch))); room.dirty = true; return roomInfo(); }},
     {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height', req: true}, {name: 'z', type: 'number', does: 'z', req: true}],
       run: ({x, y, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; faceTo(+x, +y, +z); return roomInfo(); }},
