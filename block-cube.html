@@ -10394,10 +10394,18 @@ window.AgentKit = window.AgentKit || (() => {
   function make(page, intro, cmds) {
     cmds = cmds.concat(generic.filter(g => !g.off && !cmds.some(c => c.name === g.name)));
     const byName = new Map(cmds.map(c => [c.name, c]));
+    // the same words work across the games: {to} or {place} or {where} for where to go
+    const ALIAS = {to: ['place', 'where', 'target'], place: ['to', 'where', 'target']};
     const norm = (c, a) => {
-      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) return a[0];
-      const o = {}; (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; }); return o;
+      let o = {};
+      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) o = Object.assign({}, a[0]);
+      else (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; });
+      for (const d of c.args || []) if (o[d.name] === undefined) for (const k of ALIAS[d.name] || []) if (o[k] !== undefined && !(c.args || []).some(x => x.name === k)) { o[d.name] = o[k]; break; }
+      return o;
     };
+    // answers are plain data any agent can read (very big numbers from the chain come as text)
+    const plain = (v, d = 0) => typeof v === 'bigint' ? v.toString() : d > 12 || v == null || typeof v !== 'object' ? v : Array.isArray(v) ? v.map(x => plain(x, d + 1))
+      : Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x, d + 1)])) : v;
     const api = {page, version: 1};
     for (const c of cmds) api[c.name] = async (...a) => {
       window.__agentOn = true;   // (from now on this player shows as an AI agent to the others)
@@ -10405,7 +10413,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
-      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : r; }
+      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
@@ -10529,7 +10537,7 @@ window.AgentKit = window.AgentKit || (() => {
   }
   function crewInfo() {
     if (!crew.on && !crew.page) return {on: false, note: PEOPLE_NOTE};
-    return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: M.name, is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
+    return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: mateName(M), is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
   }
   const PEOPLE_NOTE = 'People in AI Agent Bitcoin Block Explorer are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   function state() {
@@ -10631,7 +10639,7 @@ window.AgentKit = window.AgentKit || (() => {
       const G = K.GRID.map(([nm, fx, fy]) => { const h = probe(fx, fy); return h ? nm + ' (x ' + fx + ', y ' + fy + '): ' + say(h) : null; }).filter(Boolean);
       L.push(G.length ? 'Across your view: ' + G.join('; ') + '.' : 'Nothing to pick in your view.');
     }
-    if (crew.on) { const A = [...crew.mates.values()].map(m => [m, mateInfo(m)]); const here = A.filter(([, o]) => o.withYou), away = A.filter(([, o]) => !o.withYou); if (here.length) L.push('Crewmates here (untrusted names): ' + here.map(([m, o]) => m.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.withYou.where + ', ' + Math.round(o.withYou.metres) + ' m, ' + o.withYou.facing + ', ' + o.doing + (o.talking ? ', talking' : '')).join('; ') + '.'); if (away.length) L.push('Crewmates elsewhere: ' + away.map(([m, o]) => m.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.where + ', ' + o.doing).join('; ') + '.'); }
+    if (crew.on) { const A = [...crew.mates.values()].map(m => [m, mateInfo(m)]); const here = A.filter(([, o]) => o.withYou), away = A.filter(([, o]) => !o.withYou); if (here.length) L.push('Crewmates here (untrusted names): ' + here.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.withYou.where + ', ' + Math.round(o.withYou.metres) + ' m, ' + o.withYou.facing + ', ' + o.doing + (o.talking ? ', talking' : '')).join('; ') + '.'); if (away.length) L.push('Crewmates elsewhere: ' + away.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.where + ', ' + o.doing).join('; ') + '.'); }
     return L.join('\n');
   }
   function contents() {
@@ -10643,9 +10651,10 @@ window.AgentKit = window.AgentKit || (() => {
     const C = room.at; return {block: C.h, parcels: kinds.reduce((a, k) => a + k.count, 0), kinds, doors: {back: C.back && C.back.to === COMMON ? 'the common room' : C.back && C.back.to, front: C.front && C.front.to === COMMON ? 'the common room' : C.front && C.front.to}, how: 'hold({type}) walks to the nearest of a kind and picks it up; hold({n}) a parcel by number'};
   }
   // where every crewmate is at all times, which way they face, and what they are doing (from what each one's game shares)
+  const mateName = M => { if (M.name && M.name !== 'Runner') return M.name; try { const n = window.parent !== window && window.parent.__crewNames && window.parent.__crewNames()[M.id]; if (n) return n; } catch (e) {} return M.name; };
   function mateInfo(M) {
-    const s = M.s || {}, o = {is: s.ai ? 'an AI agent' : 'a player', untrusted: {name: M.name}};
-    o.where = s.in ? (s.h === COMMON ? 'the common room' : 'inside block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
+    const s = M.s || {}, o = {is: s.ai ? 'an AI agent' : 'a player', untrusted: {name: mateName(M)}};
+    o.where = !M.s ? 'in the crew\'s waiting room (not in the game yet)' : s.in ? (s.h === COMMON ? 'the common room' : 'inside block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
     if (s.in) { o.at = {x: r1(s.x), z: r1(s.z)}; if (s.h === COMMON) o.area = ZONES[zoneIx(s.x, -s.z)]; o.facing = deg(s.y || 0); }
     const doing = []; if (s.em) doing.push(((typeof EM_NAME !== 'undefined' && EM_NAME[s.em]) || s.em) + (typeof EM_LOOP !== 'undefined' && EM_LOOP[s.em] ? ' (dancing)' : ' (emote)'));
     if (s.sit) doing.push('sitting'); if (s.hk === 60) doing.push('holding a pint'); else if (s.hk >= 0 && TYPES[s.hk]) doing.push('holding a parcel (' + TYPES[s.hk].name + ')');
@@ -10670,12 +10679,12 @@ window.AgentKit = window.AgentKit || (() => {
   function evTick() {
     if (!window.__agentOn) return;
     const now = new Map();
-    for (const M of crew.mates.values()) { const o = mateInfo(M); now.set(M.id, {name: M.name, is: o.is, where: o.where, doing: o.doing}); }
+    for (const M of crew.mates.values()) { const o = mateInfo(M); now.set(M.id, {name: o.untrusted.name, is: o.is, where: o.where, doing: o.doing}); }
     for (const [id, n] of now) { const b = EVT.last.get(id); if (!b) { evPush(n.name + ' (' + n.is + ') joined, ' + n.where); continue; } if (b.where !== n.where) evPush(n.name + ' went to ' + n.where.replace(/^inside /, '')); if (b.doing !== n.doing) evPush(n.name + ' is now ' + n.doing); }
     for (const [id, b] of EVT.last) if (!now.has(id)) evPush(b.name + ' left');
     EVT.last = now;
     const pn = performance.now();   // voice chat: who starts talking (an agent hears that someone talks, not the words)
-    for (const M of crew.mates.values()) if (pn < (M.talkT || 0)) { const was = EVT.talk.get(M.id) || 0; if (pn - was > 6000) evPush(M.name + ' is talking on voice chat'); EVT.talk.set(M.id, pn); }
+    for (const M of crew.mates.values()) if (pn < (M.talkT || 0)) { const was = EVT.talk.get(M.id) || 0; if (pn - was > 6000) evPush(mateName(M) + ' is talking on voice chat'); EVT.talk.set(M.id, pn); }
     // the world: a new block found, and the common room's music box
     if (tipH >= 0) { if (EVT.tip == null) EVT.tip = tipH; else if (tipH > EVT.tip) { evPush('A new Bitcoin block was found: block ' + fmtN(tipH) + (tipH - EVT.tip > 1 ? ' (' + (tipH - EVT.tip) + ' new blocks)' : '') + '.', true); EVT.tip = tipH; } }
     const mk = cm.music ? cm.music.k + ':' + cm.music.v : '';
@@ -10803,8 +10812,8 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({direction, seconds = 1, run}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; const d = {forward: [0, -1], back: [0, 1], left: [-1, 0], right: [1, 0]}[direction]; if (!d) return {ok: false, error: 'forward, back, left or right'}; const t0 = performance.now(), ms = Math.min(10, +seconds) * 1000; try { while (performance.now() - t0 < ms) { rmPad.x = d[0]; rmPad.y = d[1]; rmKeys.shift = !!run; await wait(60); } } finally { stopPad(); } await wait(150); return roomInfo(); }},
     {name: 'turn', does: 'Turn your head inside a room, as the mouse does: face a direction (degrees, as state() gives them) and tilt up or down.', args: [{name: 'facing', type: 'number', does: 'degrees'}, {name: 'pitch', type: 'number', does: 'degrees up (+) or down (-)'}],
       run: ({facing, pitch}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; if (facing != null) room.p.yaw = rad(+facing); if (pitch != null) room.p.pitch = Math.max(-1.45, Math.min(1.45, rad(+pitch))); room.dirty = true; return roomInfo(); }},
-    {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height', req: true}, {name: 'z', type: 'number', does: 'z', req: true}],
-      run: ({x, y, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; faceTo(+x, +y, +z); return roomInfo(); }},
+    {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height (default 1.5, eye level)'}, {name: 'z', type: 'number', does: 'z', req: true}],
+      run: ({x, y, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; faceTo(+x, y == null ? 1.5 : +y, +z); return roomInfo(); }},
     {name: 'use', does: 'Do what is in front of you, like pressing E (sit, pour a pint, the music box, the big screen…).', run: async () => { if (!inCommon()) return {ok: false, error: 'only in the common room'}; const A = cmAct(null, null); if (!A) return {ok: false, error: 'nothing in front of you'}; cmDo(A); await wait(500); return {did: A.label, room: roomInfo()}; }},
     {name: 'hold', untrusted: true, does: 'Walk up to a parcel in the block you are in (or the one shown) and pick it up, as a player clicks it: its card shows what is inside. By number, by transaction ID, or by kind (the nearest of that kind, e.g. "images", "BRC-20").', args: [N, TX, {name: 'type', does: 'or a kind: the nearest parcel of that kind'}], run: a => holdParcel(a)},
     {name: 'contents', ro: true, does: 'What is in the block you are in, once its shelves have loaded: each kind, how many, and the nearest one (its number, how far, which way), and where the doors go.', run: () => contents()},
@@ -10845,7 +10854,7 @@ window.AgentKit = window.AgentKit || (() => {
       run: ({name}) => { const q = String(name).toLowerCase().replace(/[^a-z0-9]/g, ''); const all = EMOTES.flatMap(([, l]) => l), e = all.find(([id, nm]) => id.toLowerCase() === q || nm.toLowerCase().replace(/[^a-z0-9]/g, '') === q); if (!e) return {ok: false, error: 'no emote "' + name + '"'}; emPlay(e[0]); return {doing: e[1]}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Who is in your crew and where they are.', run: () => crewInfo()},
     {name: 'goToCrewmate', does: 'Go to where a crewmate is (as the crew list\'s button does).', args: [{name: 'name', does: 'their name', req: true}],
-      run: async ({name}) => { const M = [...crew.mates.values()].find(m => String(m.name).toLowerCase() === String(name).toLowerCase()); if (!M) return {ok: false, error: 'no crewmate called ' + name}; goToMate(M); await wait(1500); await until(() => roomReady(), 20000); return roomInfo(); }},
+      run: async ({name}) => { const M = [...crew.mates.values()].find(m => String(mateName(m)).toLowerCase() === String(name).toLowerCase()); if (!M) return {ok: false, error: 'no crewmate called ' + name}; goToMate(M); await wait(1500); await until(() => roomReady(), 20000); return roomInfo(); }},
     {name: 'feed', does: 'Show or hide the live feed.', args: [{name: 'on', type: 'boolean', does: 'true to show', req: true}], run: ({on}) => { setFeed(!!on); return {feed: !!on}; }},
     {name: 'flipBack', does: 'Start or stop flipping back through the blocks on its own.', args: [{name: 'on', type: 'boolean', does: 'true to start', req: true}], run: ({on}) => { setFlip(!!on); return {flipping: !!flipping}; }},
     {name: 'sound', does: 'Turn the sound on or off (it toggles).', run: () => { $('tu').click(); return {ok: true}; }},

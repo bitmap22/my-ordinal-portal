@@ -2414,10 +2414,18 @@ window.AgentKit = window.AgentKit || (() => {
   function make(page, intro, cmds) {
     cmds = cmds.concat(generic.filter(g => !g.off && !cmds.some(c => c.name === g.name)));
     const byName = new Map(cmds.map(c => [c.name, c]));
+    // the same words work across the games: {to} or {place} or {where} for where to go
+    const ALIAS = {to: ['place', 'where', 'target'], place: ['to', 'where', 'target']};
     const norm = (c, a) => {
-      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) return a[0];
-      const o = {}; (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; }); return o;
+      let o = {};
+      if (a.length === 1 && a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) o = Object.assign({}, a[0]);
+      else (c.args || []).forEach((d, i) => { if (a[i] !== undefined) o[d.name] = a[i]; });
+      for (const d of c.args || []) if (o[d.name] === undefined) for (const k of ALIAS[d.name] || []) if (o[k] !== undefined && !(c.args || []).some(x => x.name === k)) { o[d.name] = o[k]; break; }
+      return o;
     };
+    // answers are plain data any agent can read (very big numbers from the chain come as text)
+    const plain = (v, d = 0) => typeof v === 'bigint' ? v.toString() : d > 12 || v == null || typeof v !== 'object' ? v : Array.isArray(v) ? v.map(x => plain(x, d + 1))
+      : Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x, d + 1)])) : v;
     const api = {page, version: 1};
     for (const c of cmds) api[c.name] = async (...a) => {
       window.__agentOn = true;   // (from now on this player shows as an AI agent to the others)
@@ -2425,7 +2433,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
-      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : r; }
+      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
@@ -2760,8 +2768,8 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: other painters arrived, left, went to another place, started spraying or said something; a new Bitcoin block; trains pulling in or passing; fireworks; and what the person at your screen typed to you.', args: [{name: 'all', type: 'boolean', does: 'every event kept (the last 80), not only new ones'}], run: ({all}) => { evTick(); const L = all ? EVT.list : EVT.list.slice(EVT.read); EVT.read = EVT.list.length; return {events: L, note: L.length ? undefined : 'nothing new'}; }},
     {name: 'turn', does: 'Turn your head, as the mouse does: face a direction (degrees, as state() gives them) and tilt up or down.', args: [{name: 'facing', type: 'number', does: 'degrees'}, {name: 'pitch', type: 'number', does: 'degrees up (+) or down (-)'}],
       run: async ({facing, pitch}) => { const c = B().BP.cam; B().look(facing != null ? rad(+facing) : c.yaw, pitch != null ? Math.max(-1.45, Math.min(1.45, rad(+pitch))) : c.pitch); await wait(100); return you(); }},
-    {name: 'lookAt', does: 'Face a point in this place.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height', req: true}, {name: 'z', type: 'number', does: 'z', req: true}],
-      run: async ({x, y, z}) => { const e = B().eye, dx = x - e[0], dy = y - e[1], dz = z - e[2]; B().look(Math.atan2(-dx, -dz), Math.max(-1.45, Math.min(1.45, Math.atan2(dy, Math.hypot(dx, dz))))); await wait(100); return you(); }},
+    {name: 'lookAt', does: 'Face a point in this place.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height (default: your eye level)'}, {name: 'z', type: 'number', does: 'z', req: true}],
+      run: async ({x, y, z}) => { if (y == null) y = B().eye[1]; const e = B().eye, dx = x - e[0], dy = y - e[1], dz = z - e[2]; B().look(Math.atan2(-dx, -dz), Math.max(-1.45, Math.min(1.45, Math.atan2(dy, Math.hypot(dx, dz))))); await wait(100); return you(); }},
     {name: 'tool', does: 'Pick a paint tool: Spray can, Masking tape, Stencil, Projector, Roller, or Pick a colour from the wall. More show at the Medium and Advanced levels.', args: [{name: 'name', does: 'the tool', req: true}],
       run: async ({name}) => { const L = [...$('rail').querySelectorAll('button')], b = pick(L, name); if (!b) return {ok: false, error: 'tools: ' + L.map(x => x.getAttribute('aria-label') || text(x)).join(', ')}; b.click(); await wait(300); return tools(); }},
     {name: 'level', does: 'How many tools to show: Easy, Medium or Advanced.', args: [{name: 'name', enum: ['Easy', 'Medium', 'Advanced'], does: 'the level', req: true}],
