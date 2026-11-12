@@ -29,6 +29,14 @@ async def main():
         exe = os.environ.get('CHROME'); kw = {'executable_path': exe} if exe else {}
         b = await p.chromium.launch(args=['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'], **kw)
         ctx = await b.new_context(viewport={'width': W, 'height': H}); await ctx.route('**/*', route); await ctx.add_init_script(VT)
+        WSOK = [True]
+        if SC.endswith('4'):   # (the live feed loads the room, then is held still while filming: frames take seconds, so live blocks would come far too fast)
+            async def wshold(ws):
+                server = ws.connect_to_server()
+                def down(m):
+                    if WSOK[0]: ws.send(m)
+                server.on_message(down); ws.on_message(lambda m: server.send(m))
+            await ctx.route_web_socket(re.compile(r'wss?://.*'), wshold)
         if SC.endswith('3'):   # (no live feed while filming: frames take seconds each, so live blocks would arrive far too fast; the page shows the newest block as recorded)
             async def wsclose(ws): await ws.close()
             await ctx.route_web_socket(re.compile(r'wss?://.*'), wsclose)
@@ -38,7 +46,7 @@ async def main():
         g = pg.frames[1]
         await g.wait_for_function('window.agent', timeout=180000); await pg.wait_for_timeout(20000)
         A = lambda js: g.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 400); } catch (e) { return 'ERR ' + e; } }")
-        R3 = SC in ('hall3', 'hold3', 'common3', 'crew3')
+        SC0 = SC; SC = {'common4': 'common3', 'crew4': 'crew3'}.get(SC, SC); R3 = SC in ('hall3', 'hold3', 'common3', 'crew3')
         BH0 = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)
         if R3:
             print('real', await A("agent.feed({on: false})"), flush=True)
@@ -49,6 +57,7 @@ async def main():
                 print('real', await A("agent.commonRoom()"), flush=True); await pg.wait_for_timeout(45000)
         OFF = {'hall3': 70e3, 'hold3': 100e3, 'common3': 140e3, 'crew3': 170e3, 'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
         await g.evaluate(f"__vtStart({D['t0'] * 1000 + OFF.get(SC, 0)})")
+        if SC0.endswith('4'): WSOK[0] = False
         tstep = [0, time.time()]
         async def step(n=1):
             for i in range(n):
