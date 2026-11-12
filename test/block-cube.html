@@ -10364,6 +10364,12 @@ window.AgentKit = window.AgentKit || (() => {
     'mempool bar': [-38.7, 35, -41, 2.8, 35], 'rare sats board': [-30.5, 31.95, -24.17, 4.0, 31.95], 'jukebox': [-37.6, 24.6, -37.6, 2.6, 22.55],
     'koi garden': [28, 30, 33, 1.6, 33]};
   const SEATS = {'sofa': 1, 'armchair': 3, 'bar stool': 12, 'garden bench': 22, 'balcony': 36};
+  const MARKS = [   // [what, x, y, d] in the common room's own frame (from the room's own layout)
+    ['the big screen (live from the blockchain)', 0, 6.9, 47.79], ['the Forum, the sunken floor', 0, 0, 33], ['the Chain Keeper robot on the ring over the Forum', 0, 12, 33],
+    ['the map of the rooms (YOU ARE HERE)', 4.4, 1.6, 19.3], ['the door back to the blocks', 0, 1.2, 0],
+    ['the bar, its tap and the robot bartender', -40.6, 1.6, 35], ['the jukebox (BLOCK BEATS)', -37.6, 1.4, 22.55], ['the rare sats board', -24.17, 4, 31.95], ['the ticker over the bar', -33, 7.2, 22.17],
+    ['THE MEMPOOL sign over the arch', -15.8, 9.7, 36.5], ['KOI GARDEN sign over the arch', 15.8, 9.7, 36.5], ['the koi tank', 33, 1.5, 33]];
+  const zoneName = (x, d) => { const i = CM_ZONES.findIndex(([x0, x1, d0, d1]) => x >= x0 && x <= x1 && d >= d0 && d <= d1); return i; };
 
   // ---------- reading ----------
   function chain() {
@@ -10491,7 +10497,20 @@ window.AgentKit = window.AgentKit || (() => {
     } else {
       const r = roomInfo(); L.push('You are ' + (r.sitting ? 'sitting ' : '') + 'in ' + r.in + (r.area ? ' (' + r.area + ')' : '') + ', facing ' + r.facing + '°, looking ' + (r.pitch > 8 ? 'up' : r.pitch < -8 ? 'down' : 'straight ahead') + '.');
       if (r.inFront) L.push('In front of you: ' + r.inFront + '.');
-      if (inCommon()) { const p = room.p, near = Object.entries(SPOTS).map(([nm, S]) => { const [tx, tz] = toWorld(S[2], S[4]), dx = tx - p.x, dz = tz - p.z; return {nm, d: Math.hypot(dx, dz), b: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).filter(o => o.d < 30).sort((a, b) => a.d - b.d).slice(0, 6); L.push('Places: ' + near.map(o => o.nm + ' ' + o.b + ', ' + Math.round(o.d) + ' m').join('; ') + '.'); }
+      if (inCommon()) {
+        const p = room.p, [mx, md] = cmL(room.at, p.x, p.z), myZ = zoneIx(mx, md), big = new Set([0, 1, 2]);
+        const M = MARKS.map(([what, x, y, d], k) => { const [tx, tz] = toWorld(x, d), dx = tx - p.x, dz = tz - p.z, off = ((deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + 540) % 360 - 180, z = zoneIx(x, d), same = z === myZ || (big.has(k) && myZ === 3) || (k === 7 && (myZ === 4 || myZ === 5)); return {what, d: Math.hypot(dx, dz), off, same}; }).filter(o => o.same).sort((a, b) => a.d - b.d);
+        if (M.length) L.push('In this room: ' + M.map(o => o.what + ' ' + K.bearing(o.off) + ', ' + Math.round(o.d) + ' m').join('; ') + '.');
+        const ways = DOORS.filter(([u, v]) => u === myZ || v === myZ).map(([u, v, a, b]) => { const other = u === myZ ? v : u, pt = u === myZ ? a : b, [tx, tz] = toWorld(pt[0], pt[1]), dx = tx - p.x, dz = tz - p.z; return 'the way to ' + ZONES[other] + ' ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m'; });
+        if (ways.length) L.push('Doorways: ' + ways.join('; ') + '.');
+      } else if (curRoom()) {   // a block room: what the signs on the shelves say, and where the doors go
+        const p = room.p, R = curRoom(), groups = new Map();
+        for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {n: 0, x: 0, z: 0, best: 1e9}; g.n++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.x = it.w[0]; g.z = it.w[2]; } groups.set(it.k, g); }   // (each kind: how many, and the nearest of them)
+        const sec = [...groups.entries()].map(([k, g]) => { const x = g.x, z = g.z, dx = x - p.x, dz = z - p.z; return {nm: (TYPES[k] ? TYPES[k].name : 'parcels') + ' (' + fmtN(g.n) + ')', d: Math.hypot(dx, dz), b: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.d - b.d);
+        L.push('Shelf signs (how many, and the nearest one): ' + sec.slice(0, 8).map(o => o.nm + ' ' + o.b + ', ' + Math.round(o.d) + ' m').join('; ') + (sec.length > 8 ? '; and ' + (sec.length - 8) + ' more further on' : '') + '.');
+        const C = room.at, door = (zz, to) => { const dz = zz - p.z; return 'the door to ' + (to === COMMON ? 'the common room' : to >= 0 ? 'block ' + fmtN(to) : 'nowhere yet') + ' ' + K.bearing(deg(Math.atan2(0, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.abs(dz)) + ' m'; };
+        if (C.back && C.front) L.push('Doors: ' + door(C.z0, C.back.to) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '.');
+      }
     }
     const say = h => h.parcel != null ? 'parcel ' + h.parcel + (h.types.length ? ' (' + h.types.join(', ') + ')' : '') : h.thing;
     if (!inRoom()) {   // the cube sits where the screen leaves room for it: find it, then read it in a 3 x 3 grid of its own
