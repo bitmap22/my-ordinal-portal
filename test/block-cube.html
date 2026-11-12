@@ -10438,7 +10438,7 @@ window.AgentKit = window.AgentKit || (() => {
   const settled = async () => { await until(() => !loading, 20000); await wait(300); };
   async function walkIn(h) {
     if (h != null && h !== 'common' && !(h >= 0)) return {ok: false, error: 'height must be a block number'};
-    if (h === 'common') { if (inRoom()) await srTravel(COMMON); else await roomEnter(COMMON); await until(() => inCommon() && room.at.ready, 25000); return {ok: inCommon(), where: roomInfo() && roomInfo().in}; }
+    if (h === 'common') { if (inRoom()) await srTravel(COMMON); else await roomEnter(COMMON); await until(() => inCommon() && room.at.ready, 60000); return {ok: inCommon() && !!room.at.ready, where: roomInfo() && roomInfo().in}; }
     const want0 = h != null ? +h : null;
     await roomEnter(want0 != null ? want0 : undefined);
     await until(() => roomReady() && !cmOn(room.at) && (want0 == null || room.at.h === want0), 25000);
@@ -10482,7 +10482,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'open', untrusted: true, does: 'Open the card of one parcel in the block view.', args: [N, TX],
       run: async ({n, txid}) => { if (inRoom()) return {ok: false, error: 'inside a block: use hold()'}; const t = shown.find(t => txid ? t.id === txid : t.idx === +n); if (!t) return {ok: false, error: 'no such parcel in this block'}; select(t); rebuild(); await wait(400); return {parcel: parcelInfo(t, true), card: {untrusted: cardText()}}; }},
     {name: 'step', untrusted: true, does: 'Open the next (or previous) parcel of the kept type.', args: [{name: 'by', type: 'number', does: '1 for next, -1 for previous'}], run: async ({by = 1}) => { stepTo(by < 0 ? -1 : 1, true); await wait(300); return {card: {untrusted: cardText()}}; }},
-    {name: 'close', does: 'Close whatever is open: a card, the big view, the tablet; puts a held parcel back.', run: () => { try { if (typeof vw !== 'undefined' && vw) vwClose(); } catch (e) {} try { srClose(); } catch (e) {} if (inRoom() && room.held) rmPut(); else select(null); return {ok: true}; }},
+    {name: 'close', does: 'Close whatever is open: a card, the big view, the tablet; puts a held parcel back.', run: () => { try { if (typeof vw !== 'undefined' && vw) vwClose(); } catch (e) {} try { srClose(); } catch (e) {} if (inRoom() && room.held) rmPut(); else select(null); const x = [...document.querySelectorAll('button')].find(b => K.shown(b) && /^close/i.test(text(b))); if (x) x.click(); return {ok: true}; }},
     {name: 'walkIn', does: 'Walk into a block (default: the one shown, or the newest), or "common" for the common room.', args: [{name: 'height', does: 'a block number, or "common"'}], run: ({height}) => walkIn(height == null ? null : height === 'common' ? 'common' : +height)},
     {name: 'leave', does: 'Walk out of the room, back to the block view.', run: async () => { if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
     {name: 'commonRoom', does: 'Fast travel to the common room.', run: () => walkIn('common')},
@@ -10508,7 +10508,7 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /go/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO'}; const from = room.at; b.click(); await until(() => room.at !== from || text($('sra')), 25000); await until(() => roomReady(), 25000); await until(() => text($('sra')), 6000); return {where: roomInfo(), arrow: text($('sra'))}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
-      run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await until(() => roomReady(), 25000); return roomInfo(); }},
+      run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
     {name: 'bigScreen', ro: true, does: 'Read the Forum\'s big screen (live from the blockchain), and open it up close if you are in the common room.', args: [{name: 'open', type: 'boolean', does: 'also open it up close on screen'}],
       run: ({open}) => { if (open && inCommon()) cmBigOpen(); return bigScreen(); }},
     {name: 'rareSats', ro: true, does: 'Read the rare sats board: each kind, how many exist, price for one sat.', run: () => rareSats()},
