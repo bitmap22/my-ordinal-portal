@@ -10014,13 +10014,11 @@ async function ppPortraits(m) {
 /* ---------- Emotes: the menu (Q, or the smile button in a room), played for the crew to see ---------- */
 // Your crewmates see you do it (you see theirs). A gesture plays once and can go on while you walk (arms and face only);
 // a dance keeps going until you move or pick something else.
-const EMOTES = [
-  ['Useful', [['wave', 'Wave'], ['point', 'Point'], ['thumbsUp', 'Thumbs up'], ['thumbsDown', 'Thumbs down'], ['followMe', 'Follow me'], ['waitHere', 'Wait here'], ['showTablet', 'Show tablet'], ['cheers', 'Cheers']]],
-  ['Bitcoin', [['gm', 'GM'], ['hodl', 'HODL'], ['laserEyes', 'Laser eyes'], ['stackSats', 'Stack sats'], ['mining', 'Mining'], ['toTheMoon', 'To the moon'], ['rekt', 'Rekt'], ['waitingForBlock', 'Waiting for block']]],
-  ['Fun', [['heartHands', 'Heart hands'], ['clap', 'Clap'], ['laugh', 'Laugh'], ['bigHug', 'Big hug'], ['bow', 'Bow'], ['shrug', 'Shrug'], ['facepalm', 'Facepalm'], ['mindBlown', 'Mind blown'], ['airGuitar', 'Air guitar']]],
-  ['Dances', [['robot', 'Robot'], ['runningMan', 'Running man'], ['griddy', 'Griddy'], ['woah', 'The Woah'], ['btc', 'B-T-C']]]
+const EMOTES = [   // (12 Nov 2026: five simple emotes and five dances you know at a glance, from real people: newmoves.py)
+  ['Emotes', [['wave', 'Wave'], ['thumbsUp', 'Thumbs up'], ['bow', 'Bow'], ['shrug', 'Shrug'], ['laugh', 'Laugh']]],
+  ['Dances', [['macarena', 'Macarena'], ['chicken', 'Chicken dance'], ['twist', 'The Twist'], ['moonwalk', 'Moonwalk'], ['charleston', 'Charleston']]]
 ];
-const EM_NAME = Object.fromEntries(EMOTES.flatMap(([, l]) => l)), EM_LOOP = {robot: 1, runningMan: 1, griddy: 1, woah: 1, btc: 1, airGuitar: 1};
+const EM_NAME = Object.fromEntries(EMOTES.flatMap(([, l]) => l)), EM_LOOP = {macarena: 1, chicken: 1, twist: 1, moonwalk: 1, charleston: 1};
 const em = {cur: '', n: 0, t0: 0, tab: 0};
 const emSt = document.createElement('style');
 emSt.textContent = `#emb{display:none}body.room.crewon #emb{display:flex}
@@ -10870,7 +10868,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'stand', does: 'Stand up.', run: () => { if (inRoom()) { room.p.sit = false; room.dirty = true; } return roomInfo(); }},
     {name: 'pint', does: 'Walk to the tap at the Mempool bar and pour a pint (or sip the one you hold).', run: async () => { if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'}; if (cm.pint) { cmSip(); return {sipped: true}; } const canPour = () => { const A = cmAct(null, null); return A && A.a === 'pour'; }; const r = await walkCommon(CM.TAP[0] + .9, CM.TAP[1], {run: true, within: .35, stopWhen: canPour}); if (!r.ok && !canPour()) return r; const [tx, tz] = toWorld(CM.TAP[0] - 1, CM.TAP[1]); faceTo(tx, 2.8, tz); await wait(200); const A = cmAct(null, null); if (!A || A.a !== 'pour') return {ok: false, error: 'not at the tap', inFront: A && A.label}; cmDo(A); await until(() => cm.pint, 8000); return {holdingPint: !!cm.pint}; }},
     {name: 'emotes', ro: true, does: 'List the emotes and dances by group.', run: () => EMOTES.map(([g, l]) => ({group: g, emotes: l.map(([id, nm]) => id + ' (' + nm + ')')}))},
-    {name: 'emote', does: 'Do an emote or dance (others in your crew see it). A dance picked again stops it.', args: [{name: 'name', does: 'its id or name from emotes(), e.g. "wave", "GM", "robot"', req: true}],
+    {name: 'emote', does: 'Do an emote or dance (others in your crew see it). A dance picked again stops it.', args: [{name: 'name', does: 'its id or name from emotes(), e.g. "wave", "Macarena", "moonwalk"', req: true}],
       run: ({name}) => { const q = String(name).toLowerCase().replace(/[^a-z0-9]/g, ''); const all = EMOTES.flatMap(([, l]) => l), e = all.find(([id, nm]) => id.toLowerCase() === q || nm.toLowerCase().replace(/[^a-z0-9]/g, '') === q); if (!e) return {ok: false, error: 'no emote "' + name + '"'}; emPlay(e[0]); return {doing: e[1]}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Who is in your crew and where they are.', run: () => crewInfo()},
     {name: 'goToCrewmate', does: 'Go to where a crewmate is (as the crew list\'s button does).', args: [{name: 'name', does: 'their name', req: true}],
