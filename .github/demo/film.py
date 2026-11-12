@@ -24,6 +24,7 @@ async def route(rt):
 NAMES = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia']; TONES = [0, 3, 1, 1, 0, 0, 4, 1, 1, 1]
 
 async def main():
+    global SC
     os.makedirs(OUT, exist_ok=True)
     async with async_playwright() as p:
         exe = os.environ.get('CHROME'); kw = {'executable_path': exe} if exe else {}
