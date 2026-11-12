@@ -35,7 +35,7 @@ async def main():
         g = pg.frames[1]
         await g.wait_for_function('window.agent', timeout=180000); await pg.wait_for_timeout(20000)
         A = lambda js: g.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 400); } catch (e) { return 'ERR ' + e; } }")
-        OFF = {'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
+        OFF = {'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
         await g.evaluate(f"__vtStart({D['t0'] * 1000 + OFF.get(SC, 0)})")
         tstep = [0, time.time()]
         async def step(n=1):
@@ -56,7 +56,15 @@ async def main():
         BH = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)   # (the block with pictures, from the recording)
         await run("agent.feed({on: false})")
         st = {}
-        if SC == 'cube': N = 240; act = lambda f: "agent.turnCube({right: .35})"
+        if SC in ('cube2', 'layers2'):   # (the cube turned by one long, slow drag from a spot off the cube, let go at the end)
+            await step(30)
+            if SC == 'layers2': await run("agent.view({name: 'fees'})"); await step(60)
+            N = 240; X0, Y0 = int(W * .82), int(H * .78)
+            PE = "([t, x, y, b]) => { const c = document.getElementById('c'); c.dispatchEvent(new PointerEvent(t, {clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: b, button: 0, bubbles: true, cancelable: true})); }"
+            st['drag'] = PE
+            def act(f):
+                return None
+        elif SC == 'cube': N = 240; act = lambda f: "agent.turnCube({right: .35})"
         elif SC == 'layers':
             await run("agent.view({name: 'fees'})"); await step(60); N = 240
             act = lambda f: "agent.layers({open: true})" if f == 45 else "agent.turnCube({right: .3})"
@@ -95,6 +103,14 @@ async def main():
         tt = time.time()
         if LIMIT: N = min(N, LIMIT)
         for f in range(N):
+            if 'drag' in st:
+                x = X0 - f * 1.3
+                if f == 0:
+                    for t in ('pointerover', 'pointerenter'): await g.evaluate(st['drag'], [t, X0, Y0, 0])
+                    await g.evaluate(st['drag'], ['pointerdown', X0, Y0, 1])
+                elif f == N - 1: await g.evaluate(st['drag'], ['pointerup', x, Y0, 0]); await g.evaluate(st['drag'], ['pointerout', x, Y0, 0]); await g.evaluate(st['drag'], ['pointerleave', x, Y0, 0])
+                else: await g.evaluate(st['drag'], ['pointermove', x, Y0, 1])
+                if SC == 'layers2' and f == 45: await g.evaluate("js => { (async () => { try { await eval(js); } catch (e) {} })(); }", "agent.layers({open: true})")
             js = act(f)
             if js: await g.evaluate("js => { (async () => { try { await eval(js); } catch (e) { console.error(e); } })(); }", js)
             if 'states' in st and f % 6 == 0:
