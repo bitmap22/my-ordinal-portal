@@ -5510,7 +5510,6 @@ function cmPropsMore(R, put, rnd, F, H, VC) {
   for (const dd of [4.6, 11.4]) put('cmChand', 0, 6.55, dd, 0, 1, 0);
   for (const s of [-1, 1]) [['gdLegs', 0], ['gdTorso', 1], ['gdHead', 2], ['gdArm', 3]].forEach(([m, k]) => put(m, s * 5.3, cmH(s * 5.3, 17.4, 0), 17.4, F(0, 1), 1.12, s + 1, k, 0));   // the door guards, either side of the arcade's mouth
   { const A = [25.52, 29.3], Bt = [28.18, 31.9], a = cmW(R, A[0], A[1]), bb = cmW(R, Bt[0], Bt[1]), o0 = cmW(R, 0, 0), x1 = cmW(R, 1, 0), tw = Math.atan2(x1[0] - o0[0], x1[1] - o0[1]) - Math.atan2(bb[0] - a[0], bb[1] - a[1]), sx = cmW(R, 1, 0)[0], sz = cmW(R, 0, 1)[1] - cmW(R, 0, 0)[1];   // the gardener (bonsai to tank), the hoover (the lounge's open floor)
-    [['gbBody', 0], ['gbLegL', 1], ['gbLegR', 2], ['gbNeck', 3], ['gbHead', 4], ['gbFood', 5]].forEach(([m, k]) => put(m, A[0], -.9, A[1], 0, 1, 0, k, tw, [bb[0] - a[0], 0, bb[1] - a[1]]));
     [['hvBody', 0], ['hvTop', 1], ['hvBrush', 2], ['hvBrush', 3]].forEach(([m, k]) => put(m, -7.7, cmH(-7.7, 6.6, 0), 6.6, 0, 1.25, 0, k, 0, [sx, 0, sz])); }
   for (const s of [-1, 1]) { put('cmUrn', s * 7.6, 0, 18.1, 0, .75, 0, 0, 0, VC.black); put('cmPalm', s * 7.6, .7, 18.1, rnd() * 6, .95, rnd() * 9); }
   // the chess game, half played
@@ -6131,6 +6130,7 @@ function cmRayQ(ray, q) {
   return a >= 0 && a <= 1 && b >= 0 && b <= 1 ? t : -1;
 }
 // what there is to do: what you are looking at first (the screen, a cabinet, a frame, the taps, the music box), then where you stand
+function cmAhead(C, s, p, ray, e) { if (!ray || e < .5) return true; const w = cmW(C, s[0], s[1]), dx = w[0] - p.x, dz = C.z0 + w[1] - p.z, h = Math.hypot(ray.d[0], ray.d[2]) || 1, l = Math.hypot(dx, dz) || 1; return (dx * ray.d[0] + dz * ray.d[2]) / (h * l) > .5; }
 function cmAct(sx, sy) {
   const H = cmHere(); if (!H) return null;
   const p = room.p, ray = rmRay(sx, sy), C = H.C;
@@ -6148,7 +6148,7 @@ function cmAct(sx, sy) {
   if (!cm.pint && !H.lv && Math.hypot(H.x - (CM.TAP[0] + 1.6), H.d - CM.TAP[1]) < 1.4) return {a: 'pour', label: 'pour a pint'};
   if (!H.lv && Math.hypot(H.x - CM.JB[0], H.d - (CM.JB[1] + 1.25)) < 1.3) return {a: 'music', label: 'choose the music'};
   let seat = null, sd = 9;
-  for (const s of CM_SEATS) { const e = Math.hypot(H.x - s[0], H.d - s[1]); if (e < (s[8] || 1.25) && e < sd && Math.abs((p.y || 0) - s[2]) < .5) { sd = e; seat = s; } }
+  for (const s of CM_SEATS) { const e = Math.hypot(H.x - s[0], H.d - s[1]); if (e < (s[8] || 1.25) && e < sd && Math.abs((p.y || 0) - s[2]) < .5 && cmAhead(C, s, p, ray, e)) { sd = e; seat = s; } }
   if (seat) return {a: 'seat', s: seat, label: 'sit down'};
   if (!H.lv && H.step >= 1 && H.step <= 3 && !(p.pitch > .35)) return {a: 'sit', label: 'sit on the step'};
   const B = cmScrAct(H, ray); if (B) return B;
@@ -9088,6 +9088,25 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
       SOLE_TIPS.forEach(([tz, tx], i) => put(f[0] + 'e' + i, y + z * tz + x * tx, b, d));
     }
   }
+  // A shoe is firm: below the ankle it goes with the foot (and its front with the toes), never with the shin. The shoes came
+  // with almost half of the sole tied to the shin, so whenever the foot turned at the ankle (every step, every dance) the sole
+  // bent in the middle and the front curled up like an elf's. Below the ankle the shin's share is given to the foot; over the
+  // next 6 cm up (the shoe's collar, a boot's shaft) the shin takes it back a little at a time.
+  function shoeFirm(person, pos, j, w, n) {
+    const bi = BASE.boneIdx, r = person.rest, j2 = new Uint8Array(j), w2 = new Uint8Array(w), sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    for (let v = 0; v < n; v++) {
+      const sd = pos[v * 3] > 0 ? 'Left' : 'Right', leg = bi[sd + 'Leg'], foot = bi[sd + 'Foot'];
+      if (leg === undefined || foot === undefined) continue;
+      const t = sm(r[foot].h[1] + .075, r[foot].h[1] + .015, pos[v * 3 + 1]); if (t <= 0) continue;
+      let moved = 0, fq = -1;
+      for (let k = 0; k < 4; k++) { const q = v * 4 + k; if (j[q] === foot && w[q] > 0) fq = q; else if (j[q] === leg && w[q] > 0) { const d = Math.round(w[q] * t); w2[q] -= d; moved += d; } }
+      if (!moved) continue;
+      if (fq < 0) for (let k = 0; k < 4 && fq < 0; k++) { const q = v * 4 + k; if (w2[q] === 0) { fq = q; j2[q] = foot; } }   // (a free place for the foot)
+      if (fq < 0) for (let k = 0; k < 4 && fq < 0; k++) { const q = v * 4 + k; if (j[q] === leg) { fq = q; j2[q] = foot; moved += w2[q]; w2[q] = 0; } }   // (else the shin's own place, all of it)
+      if (fq >= 0) w2[fq] = Math.min(255, w2[fq] + moved);
+    }
+    return [j2, w2];
+  }
   // A skirt hangs from the hips: its cloth follows a leg less the further out from the leg it stands (a full skirt's hem
   // hardly at all, cloth that lies on the thigh fully), so a raised leg pushes a skirt out a little instead of carrying
   // the whole side of it up into the air. What a point lets go of its legs is given to the skirt place of its main leg
@@ -9277,10 +9296,11 @@ o0=vec4(FOG(c,vR),a2);o1=vec4(0.,0.,0.,a2);}`;
     if (m.kind === 'hair' && ctx && ctx.hat) idx = hatHair(person, pos, n, idx, ctx.hat);
     if (fit && fit.cut.some(x => x)) { const keep = []; for (let i = 0; i < idx.length; i += 3) if (!(fit.cut[idx[i]] && fit.cut[idx[i + 1]] && fit.cut[idx[i + 2]])) keep.push(idx[i], idx[i + 1], idx[i + 2]); idx = new idx.constructor(keep); }
     const nor = normals(pos, idx, n);
-    const [sj, sw] = m.fab && m.fab.skirt ? skirtHang(person, pos, A.j, A.w, n) : [A.j, A.w];
+    const shoe = m.kind === 'clothes' && (/^shoes/.test(m.id || '') || (m.fab && m.fab.slot === 'shoes'));
+    const [sj, sw] = m.fab && m.fab.skirt ? skirtHang(person, pos, A.j, A.w, n) : shoe ? shoeFirm(person, pos, A.j, A.w, n) : [A.j, A.w];
     let extra = null; if (m.fab && m.fab.skirt) extra = skirtSit(person, pos, sj, sw, n); else if (A.sit && m.sitScale) { extra = new Float32Array(n * 3); for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) extra[v * 3 + k] = A.sit[v * 3 + k] / 32767 * m.sitScale * (s[k] || 1); }
     const mor = faceMorphs(m.kind + ':' + m.id + (extra ? ':' + person.meta.id : ''), A.refs, refw, n, extra);
-    if (m.kind === 'clothes') soleNote(person, pos, A.j, A.w, n);
+    if (m.kind === 'clothes') soleNote(person, pos, sj, sw, n);   // (with the shoe's firm weights: its heel counts as the foot's)
     const g = upload(pos, nor, A.uv, sj, sw, idx, mor, m.fab ? A.z : null);
     g.kind = m.fab ? 8 : {hair: 1, eyes: 2, eyebrows: 3, eyelashes: 3, teeth: 5, tongue: 5}[m.kind] ?? 4;
     if (m.kind === 'teeth') { const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let v = 0; v < n; v++) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[v * 3 + k]); hi[k] = Math.max(hi[k], pos[v * 3 + k]); } person.teeth = {lo, hi}; }
