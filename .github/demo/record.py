@@ -3,7 +3,7 @@
 import asyncio, json, os, hashlib, time
 from playwright.async_api import async_playwright
 OUT = 'demo-out'; os.makedirs(OUT + '/c', exist_ok=True)
-idx = {}; log = []
+idx = {}; log = []; t0 = 0
 SITE = 'https://bitmap22.github.io/my-ordinal-portal/'
 STEPS = json.load(open('.github/demo/steps.json'))
 def key(u): return hashlib.sha1(u.encode()).hexdigest()[:24]
@@ -23,13 +23,17 @@ async def main():
         b = await p.chromium.launch(args=['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'])
         ctx = await b.new_context(viewport={'width': 1920, 'height': 1080}); await ctx.route('**/*', route)
         pg = await ctx.new_page(); pg.on('pageerror', lambda e: log.append(['pageerror', str(e)[:200]]))
+        global t0
         t0 = time.time(); await pg.goto(SITE + 'block-cube.html', wait_until='domcontentloaded', timeout=120000)
         await pg.wait_for_function('window.agent', timeout=120000); await pg.wait_for_timeout(25000)
         for js, w, name in STEPS:
             try: r = await pg.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 2000); } catch (e) { return 'ERR ' + e; } }")
             except Exception as e: r = 'EVAL ' + str(e)[:200]
             log.append(['step', name, js, r]); await pg.wait_for_timeout(w)
-            if name: await pg.screenshot(path=f'{OUT}/shot_{name}.jpg', type='jpeg', quality=70)
+            if name:
+                try: await pg.screenshot(path=f'{OUT}/shot_{name}.jpg', type='jpeg', quality=70, timeout=120000)
+                except Exception as e: log.append(['shotfail', name, str(e)[:100]])
+            json.dump({'t0': t0, 'idx': idx, 'log': log}, open(OUT + '/index.json', 'w'), indent=0)
         await b.close()
     json.dump({'t0': t0, 'idx': idx, 'log': log}, open(OUT + '/index.json', 'w'), indent=0)
     print(len(idx), 'replies saved')
