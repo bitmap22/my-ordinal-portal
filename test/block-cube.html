@@ -10133,7 +10133,7 @@ function crewSend(tn) {
   if (room && cmOn(room.at) && room.at.ready) { const p = room.p, [x, d] = cmL(room.at, p.x, p.z), y = p.yaw - cmYaw(room.at); s = {in: 1, h: COMMON, x: +x.toFixed(2), z: +(-d).toFixed(2), y: +Math.atan2(Math.sin(y), Math.cos(y)).toFixed(3), p: +p.pitch.toFixed(2), hk: cm.pint ? 60 : -1, lv: p.lv ? 1 : 0, sit: p.sit ? 1 : 0}; }
   else if (room && room.at && room.at.ready && !room.at.gal) { const p = room.p, H = room.held; s = {in: 1, h: room.at.h, x: +p.x.toFixed(2), z: +(p.z - room.at.z0).toFixed(2), y: +Math.atan2(Math.sin(p.yaw), Math.cos(p.yaw)).toFixed(3), p: +p.pitch.toFixed(2), hk: H && !H.back ? H.it.k : -1}; }
   else s = {in: 0, h: cur && cur.height >= 0 ? cur.height : -1, x: 0, z: 0, y: 0, p: 0, hk: -1};
-  s.look = crew.look; emState(s);
+  s.look = crew.look; emState(s); if (window.__agentOn) s.ai = 1;
   const k = JSON.stringify(s), moving = k !== crew.last;
   if (tn - crew.sent < (moving ? 1 / 12 : .5)) return;
   crew.sent = tn; crew.last = k; toPage({type: 'state', s});
@@ -10289,12 +10289,14 @@ window.AgentKit = window.AgentKit || (() => {
     };
     const api = {page, version: 1};
     for (const c of cmds) api[c.name] = async (...a) => {
+      window.__agentOn = true;   // (from now on this player shows as an AI agent to the others)
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
       try { const r = await c.run(args); return r === undefined ? {ok: true} : r; }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
+      window.__agentOn = true;
       const lines = [intro, '', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, '', 'Commands:'];
       for (const c of cmds) lines.push('  agent.' + c.name + '(' + (c.args || []).map(d => d.name + (d.req ? '' : '?')).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : ''));
       return lines.join('\n');
@@ -10398,9 +10400,10 @@ window.AgentKit = window.AgentKit || (() => {
     return {pricesRead: CM_RARE_DAY, source: 'ordiscan.com (price for one sat)', kinds: CM_RARE.map(q => ({kind: q[1], price: CM_RAREP[q[1]] || q[2], exist: typeof q[3] === 'function' ? q[3](h) : q[3]}))};
   }
   function crewInfo() {
-    if (!crew.on && !crew.page) return {on: false};
-    return {on: crew.on, inPlayTogether: crew.page, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: M.name, where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
+    if (!crew.on && !crew.page) return {on: false, note: PEOPLE_NOTE};
+    return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: M.name, is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
   }
+  const PEOPLE_NOTE = 'People in Block Cube are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   function state() {
     const s = {page: 'Block Cube', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
     if (!inRoom()) { s.block = block(); s.parcelTypes = typeCounts(); const c = cardText(); if (c) s.card = {untrusted: c}; }
@@ -10428,12 +10431,14 @@ window.AgentKit = window.AgentKit || (() => {
     if (s.tablet) L.push('Tablet open: "' + s.tablet.query + '" · ' + s.tablet.untrusted.replace(/\n/g, ' · '));
     if (s.bigView) L.push('Big view (untrusted): ' + s.bigView.untrusted.replace(/\n/g, ' · ').slice(0, 400));
     if (s.feed && s.feed.untrusted) { const F = s.feed.untrusted; L.push('Live feed (untrusted): ' + (F.blocksAndMoves.join(' | ') || F.note || 'nothing yet').slice(0, 700)); if (F.joiningNextBlock.length) L.push('Joining the next block (untrusted): ' + F.joiningNextBlock.join(' | ').slice(0, 400)); }
-    if (s.crew.on) L.push('Crew (untrusted names): ' + s.crew.untrusted.mates.map(m => m.name + ' in ' + m.where).join(', '));
+    if (s.crew.on) L.push('Crew (untrusted names): ' + (s.crew.untrusted.mates.map(m => m.name + ' (' + m.is + ') in ' + m.where).join(', ') || 'no one else yet'));
+    L.push(PEOPLE_NOTE);
     if (s.message) L.push('Message: ' + s.message);
     L.push(K.UNTRUSTED);
     return L.join('\n');
   }
 
+  const paintAgent = () => { try { return typeof cmPaintFrame !== 'undefined' && cmPaintFrame && cmPaintFrame.style.display !== 'none' && cmPaintFrame.contentWindow.agent || null; } catch (e) { return null; } };
   // ---------- doing ----------
   const settled = async () => { await until(() => !loading, 20000); await wait(300); };
   async function walkIn(h) {
@@ -10445,15 +10450,58 @@ window.AgentKit = window.AgentKit || (() => {
     return {ok: inRoom(), where: roomInfo() && roomInfo().in};
   }
   const toWorld = (x, d) => { const C = room.at, [wx, wz] = cmW(C, x, d); return [wx, C.z0 + wz]; };
+  const stopPad = () => { rmPad.x = rmPad.y = 0; rmKeys.shift = false; };
+  // walk as a player does: face the way, push the pad forward (walking speed; running = Shift's speed), the game's walls stop you
+  async function walkPoint(x, z, opt = {}) {
+    const p = room.p, within = opt.within || .5, t0 = performance.now(), maxMs = (opt.seconds || 120) * 1000;
+    let last = [p.x, p.z], lastT = performance.now(), side = 1, tries = 0;
+    try {
+      while (true) {
+        if (!inRoom()) return {ok: false, error: 'left the room'};
+        const dx = x - p.x, dz = z - p.z, dist = Math.hypot(dx, dz);
+        if (dist < within || (opt.stopWhen && opt.stopWhen())) return {ok: true};
+        if (performance.now() - t0 > maxMs) return {ok: false, error: 'took too long', left: r1(dist)};
+        p.yaw = Math.atan2(-dx, -dz); room.dirty = true;
+        rmPad.x = 0; rmPad.y = -Math.min(1, .35 + dist / 1.2); rmKeys.shift = !!opt.run && dist > 2;
+        await wait(60);
+        if (performance.now() - lastT > 1500) {
+          if (Math.hypot(p.x - last[0], p.z - last[1]) < .05) {   // stuck on something: a sidestep, as a player would, then on again
+            if (++tries > 6) return {ok: false, error: 'blocked', at: {x: r1(p.x), z: r1(p.z)}, left: r1(dist)};
+            rmPad.y = .3; rmPad.x = side; await wait(350); rmPad.y = -1; rmPad.x = side * .6; await wait(450); side = -side;
+          } else tries = Math.max(0, tries - 1);
+          last = [p.x, p.z]; lastT = performance.now();
+        }
+      }
+    } finally { stopPad(); await wait(150); }
+  }
+  // the common room's rooms and the doorways between them (its own frame: x across, d deep), to walk from one to another
+  const DOORS = [[0, 1, [-3, 8], [-5.5, 8]], [0, 2, [3, 8], [5.5, 8]], [0, 3, [0, 15], [0, 17.5]], [3, 4, [-14.5, 36.5], [-17.5, 36.5]], [4, 5, [-22.5, 36.5], [-25.5, 36.5]], [3, 6, [14.5, 36.5], [17.5, 36.5]], [6, 7, [22.5, 36.5], [25.5, 36.5]]];
+  const zoneIx = (x, d) => { let i = CM_ZONES.findIndex(([x0, x1, d0, d1]) => x >= x0 && x <= x1 && d >= d0 && d <= d1); if (i >= 0) return i; let b = 1e9; CM_ZONES.forEach(([x0, x1, d0, d1], k) => { const e = Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(d0 - d, 0, d - d1)); if (e < b) { b = e; i = k; } }); return i; };
+  function route(a, b) {   // rooms to pass through, as doorway points
+    const prev = {[a]: null}, Q = [a];
+    while (Q.length) { const z = Q.shift(); if (z === b) break; for (const [u, v] of DOORS) for (const [f, t] of [[u, v], [v, u]]) if (f === z && !(t in prev)) { prev[t] = z; Q.push(t); } }
+    const zs = []; for (let z = b; z != null; z = prev[z]) zs.unshift(z);
+    const pts = []; for (let i = 1; i < zs.length; i++) { const D = DOORS.find(([u, v]) => (u === zs[i - 1] && v === zs[i]) || (v === zs[i - 1] && u === zs[i])); pts.push(...(D[0] === zs[i - 1] ? [D[2], D[3]] : [D[3], D[2]])); }
+    return pts;
+  }
+  async function walkCommon(tx, td, opt = {}) {
+    const C = room.at, [x0, d0] = cmL(C, room.p.x, room.p.z), pts = route(zoneIx(x0, d0), zoneIx(tx, td)).concat([[tx, td]]);
+    for (let i = 0; i < pts.length; i++) { const [wx, wz] = toWorld(pts[i][0], pts[i][1]); const last = i === pts.length - 1, r = await walkPoint(wx, wz, Object.assign({}, opt, {within: last ? opt.within || .5 : .9, stopWhen: last ? opt.stopWhen : null})); if (!r.ok) return Object.assign(r, {stoppedAt: roomInfo()}); }
+    return {ok: true};
+  }
   function faceTo(tx, ty, tz) { const p = room.p, dx = tx - p.x, dz = tz - p.z, eye = (p.y || 0) + 1.62; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.atan2(ty - eye, Math.hypot(dx, dz)); room.dirty = true; }
-  function place(x, z) { const p = room.p; p.sit = false; p.vx = p.vz = 0; p.x = x; p.z = z; if (inCommon()) { const [lx, d] = cmL(room.at, x, z); p.lv = 0; p.y = cmH(lx, d, 0); } room.dirty = true; }
   async function holdParcel({n, txid}) {
     if (!inRoom() || cmOn(room.at) || room.at.gal) { const r = await walkIn(); if (!r.ok) return r; }
     const R = curRoom(); if (!R) return {ok: false, error: 'the block room is not ready yet'};
     const it = R.plan.items.find(i => i.t && !i.cp && (txid ? i.t.id === txid : i.t.idx === +n));
     if (!it) return {ok: false, error: 'no parcel ' + (txid || n) + ' in block ' + room.at.h + ' (parcels() lists them)'};
     if (room.held) { rmPut(); await wait(900); }
-    const sd = it.w[0] > 0 ? -1 : 1; place(it.w[0] + sd * 1.4, it.w[2]); faceTo(it.w[0], it.w[1], it.w[2]);
+    const sd = it.w[0] > 0 ? -1 : 1, w = await walkPoint(it.w[0] + sd * 1.4, it.w[2], {run: true, within: .35});
+    if (!w.ok) return Object.assign(w, {error: 'could not get to it: ' + w.error});
+    faceTo(it.w[0], it.w[1], it.w[2]); await wait(200);
+    const h = rmPick(null, null);   // a click in the middle of the view, as a player clicks
+    if (!h || !h.it) return {ok: false, error: 'nothing to pick in the middle of the view'};
+    if (h.it !== it) return {ok: false, error: 'something else is in the way', inTheWay: h.it.t ? parcelInfo(h.it.t) : 'a sign or door'};
     rmHold(it); await until(() => room.held && room.held.it === it, 4000); await wait(700);
     return {ok: !!room.held, holding: parcelInfo(it.t, true), card: {untrusted: cardText()}};
   }
@@ -10486,10 +10534,12 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'walkIn', does: 'Walk into a block (default: the one shown, or the newest), or "common" for the common room.', args: [{name: 'height', does: 'a block number, or "common"'}], run: ({height}) => walkIn(height == null ? null : height === 'common' ? 'common' : +height)},
     {name: 'leave', does: 'Walk out of the room, back to the block view.', run: async () => { if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
     {name: 'commonRoom', does: 'Fast travel to the common room.', run: () => walkIn('common')},
-    {name: 'goTo', does: 'Go to a place in the common room and face what is there.', args: [{name: 'place', enum: Object.keys(SPOTS), does: 'one of: ' + Object.keys(SPOTS).join(', '), req: true}],
-      run: async ({place: pl}) => { const S = SPOTS[String(pl).toLowerCase()]; if (!S) return {ok: false, error: 'places: ' + Object.keys(SPOTS).join(', ')}; if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; } const [x, z] = toWorld(S[0], S[1]), [tx, tz] = toWorld(S[2], S[4]); place(x, z); faceTo(tx, S[3], tz); await wait(400); return roomInfo(); }},
-    {name: 'moveTo', does: 'Stand at a spot in the room (x and z as state() gives them).', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'z', type: 'number', does: 'z', req: true}],
-      run: ({x, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; place(+x, +z); return roomInfo(); }},
+    {name: 'goTo', does: 'Walk to a place in the common room (through its doorways, at a player\'s speed) and face what is there.', args: [{name: 'place', enum: Object.keys(SPOTS), does: 'one of: ' + Object.keys(SPOTS).join(', '), req: true}],
+      run: async ({place: pl}) => { const S = SPOTS[String(pl).toLowerCase()]; if (!S) return {ok: false, error: 'places: ' + Object.keys(SPOTS).join(', ')}; if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'}; const r = await walkCommon(S[0], S[1], {run: true}); if (!r.ok) return r; const [tx, tz] = toWorld(S[2], S[4]); faceTo(tx, S[3], tz); await wait(300); return roomInfo(); }},
+    {name: 'walkTo', does: 'Walk to a spot in the room (x and z as state() gives them), as a player walks: at walking (or running) speed, and walls and things stop you.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'z', type: 'number', does: 'z', req: true}, {name: 'run', type: 'boolean', does: 'run (as with Shift)'}],
+      run: async ({x, z, run}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; const r = inCommon() ? await walkCommon(...cmL(room.at, +x, +z), {run}) : await walkPoint(+x, +z, {run}); return Object.assign(r, {you: roomInfo()}); }},
+    {name: 'walk', does: 'Walk for a while, as holding a key: forward, back, left or right (relative to where you face).', args: [{name: 'direction', enum: ['forward', 'back', 'left', 'right'], does: 'which way', req: true}, {name: 'seconds', type: 'number', does: 'how long (default 1, most 10)'}, {name: 'run', type: 'boolean', does: 'run'}],
+      run: async ({direction, seconds = 1, run}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; const d = {forward: [0, -1], back: [0, 1], left: [-1, 0], right: [1, 0]}[direction]; if (!d) return {ok: false, error: 'forward, back, left or right'}; const t0 = performance.now(), ms = Math.min(10, +seconds) * 1000; try { while (performance.now() - t0 < ms) { rmPad.x = d[0]; rmPad.y = d[1]; rmKeys.shift = !!run; await wait(60); } } finally { stopPad(); } await wait(150); return roomInfo(); }},
     {name: 'look', does: 'Turn to face a direction (degrees, as state() gives them) and tilt up or down.', args: [{name: 'facing', type: 'number', does: 'degrees'}, {name: 'pitch', type: 'number', does: 'degrees up (+) or down (-)'}],
       run: ({facing, pitch}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; if (facing != null) room.p.yaw = rad(+facing); if (pitch != null) room.p.pitch = rad(+pitch); room.dirty = true; return roomInfo(); }},
     {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height', req: true}, {name: 'z', type: 'number', does: 'z', req: true}],
@@ -10510,28 +10560,44 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
       run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
     {name: 'bigScreen', ro: true, does: 'Read the Forum\'s big screen (live from the blockchain), and open it up close if you are in the common room.', args: [{name: 'open', type: 'boolean', does: 'also open it up close on screen'}],
-      run: ({open}) => { if (open && inCommon()) cmBigOpen(); return bigScreen(); }},
-    {name: 'rareSats', ro: true, does: 'Read the rare sats board: each kind, how many exist, price for one sat.', run: () => rareSats()},
+      run: ({open}) => { if (!inCommon()) return {ok: false, error: 'the big screen is in the common room: go there to read it'}; if (open) cmBigOpen(); return bigScreen(); }},
+    {name: 'rareSats', ro: true, does: 'Read the rare sats board in The Mempool (the neon bar): each kind, how many exist, price for one sat.', run: () => inCommon() ? rareSats() : {ok: false, error: 'the board is in the common room: go there to read it'}},
     {name: 'sit', does: 'Sit down in the common room: "sofa", "armchair", "bar stool", "garden bench", "balcony", "forum step", or a seat number 0-' + (CM_SEATS.length - 1 || 39) + '.', args: [{name: 'seat', does: 'which seat', req: true}],
-      run: async ({seat}) => { if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; } if (/step/i.test(seat)) { const [x, z] = toWorld(2.5, 28.1); place(x, z); cmDo({a: 'sit'}); return roomInfo(); } const i = /^\d+$/.test(String(seat)) ? +seat : SEATS[String(seat).toLowerCase()]; const s = CM_SEATS[i]; if (!s) return {ok: false, error: 'seats: ' + Object.keys(SEATS).join(', ') + ', forum step, or 0-' + (CM_SEATS.length - 1)}; const [x, z] = toWorld(s[0] + s[3] * .5, s[1] + s[4] * .5); place(x, z); room.p.y = s[2]; cmDo({a: 'seat', s}); await wait(300); return roomInfo(); }},
+      run: async ({seat}) => {
+        if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'};
+        let tx, td, look = null;
+        if (/step/i.test(seat)) { tx = 2.5; td = 28.1; look = [0, 1, 40]; }
+        else { const i = /^\d+$/.test(String(seat)) ? +seat : SEATS[String(seat).toLowerCase()], s = CM_SEATS[i]; if (!s) return {ok: false, error: 'seats: ' + Object.keys(SEATS).join(', ') + ', forum step, or 0-' + (CM_SEATS.length - 1)}; tx = s[0]; td = s[1]; look = [s[0], .6, s[1]]; }
+        const canSit = () => { const A = cmAct(null, null); return A && (A.a === 'seat' || A.a === 'sit'); };   // (close enough to sit, as E would)
+        const r = await walkCommon(tx, td, {run: true, within: .4, stopWhen: canSit}); if (!r.ok && !canSit()) return r;
+        const [lx, lz] = toWorld(look[0], look[2]); faceTo(lx, look[1], lz); room.p.pitch = Math.min(room.p.pitch, .1); await wait(200);
+        const A = cmAct(null, null); if (!A || (A.a !== 'seat' && A.a !== 'sit')) return {ok: false, error: 'no seat to sit on here', inFront: A && A.label};
+        cmDo(A); await wait(300); return roomInfo();
+      }},
     {name: 'stand', does: 'Stand up.', run: () => { if (inRoom()) { room.p.sit = false; room.dirty = true; } return roomInfo(); }},
-    {name: 'pint', does: 'Pour a pint at the Mempool bar (or sip the one you hold).', run: async () => { if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; } if (cm.pint) { cmSip(); return {sipped: true}; } const [x, z] = toWorld(CM.TAP[0] + .9, CM.TAP[1]); place(x, z); const [tx, tz] = toWorld(CM.TAP[0] - 1, CM.TAP[1]); faceTo(tx, 2.8, tz); cmDo({a: 'pour'}); await until(() => cm.pint, 8000); return {holdingPint: !!cm.pint}; }},
+    {name: 'pint', does: 'Walk to the tap at the Mempool bar and pour a pint (or sip the one you hold).', run: async () => { if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'}; if (cm.pint) { cmSip(); return {sipped: true}; } const canPour = () => { const A = cmAct(null, null); return A && A.a === 'pour'; }; const r = await walkCommon(CM.TAP[0] + .9, CM.TAP[1], {run: true, within: .35, stopWhen: canPour}); if (!r.ok && !canPour()) return r; const [tx, tz] = toWorld(CM.TAP[0] - 1, CM.TAP[1]); faceTo(tx, 2.8, tz); await wait(200); const A = cmAct(null, null); if (!A || A.a !== 'pour') return {ok: false, error: 'not at the tap', inFront: A && A.label}; cmDo(A); await until(() => cm.pint, 8000); return {holdingPint: !!cm.pint}; }},
     {name: 'emotes', ro: true, does: 'List the emotes and dances by group.', run: () => EMOTES.map(([g, l]) => ({group: g, emotes: l.map(([id, nm]) => id + ' (' + nm + ')')}))},
     {name: 'emote', does: 'Do an emote or dance (others in your crew see it). A dance picked again stops it.', args: [{name: 'name', does: 'its id or name from emotes(), e.g. "wave", "GM", "robot"', req: true}],
       run: ({name}) => { const q = String(name).toLowerCase().replace(/[^a-z0-9]/g, ''); const all = EMOTES.flatMap(([, l]) => l), e = all.find(([id, nm]) => id.toLowerCase() === q || nm.toLowerCase().replace(/[^a-z0-9]/g, '') === q); if (!e) return {ok: false, error: 'no emote "' + name + '"'}; emPlay(e[0]); return {doing: e[1]}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Who is in your crew and where they are.', run: () => crewInfo()},
-    {name: 'goToCrewmate', does: 'Go to where a crewmate is.', args: [{name: 'name', does: 'their name', req: true}],
+    {name: 'goToCrewmate', does: 'Go to where a crewmate is (as the crew list\'s button does).', args: [{name: 'name', does: 'their name', req: true}],
       run: async ({name}) => { const M = [...crew.mates.values()].find(m => String(m.name).toLowerCase() === String(name).toLowerCase()); if (!M) return {ok: false, error: 'no crewmate called ' + name}; goToMate(M); await wait(1500); await until(() => roomReady(), 20000); return roomInfo(); }},
     {name: 'feed', does: 'Show or hide the live feed.', args: [{name: 'on', type: 'boolean', does: 'true to show', req: true}], run: ({on}) => { setFeed(!!on); return {feed: !!on}; }},
     {name: 'flipBack', does: 'Start or stop flipping back through the blocks on its own.', args: [{name: 'on', type: 'boolean', does: 'true to start', req: true}], run: ({on}) => { setFlip(!!on); return {flipping: !!flipping}; }},
     {name: 'sound', does: 'Turn the sound on or off (it toggles).', run: () => { $('tu').click(); return {ok: true}; }},
     {name: 'savePicture', does: 'Save a picture of the screen (downloads a file, as the camera button does).', run: () => { $('ts').click(); return {ok: true}; }},
+    {name: 'paint', untrusted: true, does: 'Run a Block Paint command once you are through the warehouse door, e.g. {command: "see"}. Block Paint\'s help() lists them.', args: [{name: 'command', does: 'the Block Paint command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
+      run: async ({command, args}) => { const g = paintAgent(); if (!g) return {ok: false, error: 'Block Paint is not open: toBlockPaint() first'}; if (typeof g[command] !== 'function' || /^_/.test(command)) return {ok: false, error: 'Block Paint has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
     {name: 'toBlockPaint', does: 'Go through the warehouse door to Block Paint City.', run: async () => { if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; } cmToPaint(); return {ok: true}; }},
   ];
-  const intro = 'BLOCK CUBE agent kit. Block Cube is a 3D Bitcoin block explorer: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives.';
+  const intro = 'BLOCK CUBE agent kit. Block Cube is a 3D Bitcoin block explorer: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room. You play by the same rules as a player: you walk at a player\'s speed, walls stop you, you pick what is in the middle of your view, and you see what a player would. Once you use this kit, your crewmates see you marked as an AI agent. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives.';
   const api = K.make('Block Cube', intro, cmds);
   window.agent = window.blockCubeAgent = api;
-  if (window.top === window) { const reg = () => K.webmcp('cube_', api, api._cmds); if (!reg()) setTimeout(reg, 3000); }
+  if (window.top === window) {
+    const reg = () => K.webmcp('cube_', api, api._cmds); if (!reg()) setTimeout(reg, 3000);
+    // Block Paint, when it opens over the cube (standalone Block Cube): its tools too, run in it while it is in front
+    setInterval(() => { const g = paintAgent(); if (g && g._cmds) K.webmcp('paint_', g, g._cmds, (n, a) => { const q = paintAgent(); return q ? q[n](a) : {ok: false, error: 'Block Paint is not in front'}; }); }, 3000);
+  }
 })();
 
 </script>

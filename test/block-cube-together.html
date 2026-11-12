@@ -1377,12 +1377,14 @@ window.AgentKit = window.AgentKit || (() => {
     };
     const api = {page, version: 1};
     for (const c of cmds) api[c.name] = async (...a) => {
+      window.__agentOn = true;   // (from now on this player shows as an AI agent to the others)
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
       try { const r = await c.run(args); return r === undefined ? {ok: true} : r; }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
+      window.__agentOn = true;
       const lines = [intro, '', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, '', 'Commands:'];
       for (const c of cmds) lines.push('  agent.' + c.name + '(' + (c.args || []).map(d => d.name + (d.req ? '' : '?')).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : ''));
       return lines.join('\n');
@@ -1421,9 +1423,14 @@ window.AgentKit = window.AgentKit || (() => {
   const gameAgent = () => { const w = gameWin(); return w && w.agent ? w.agent : null; };
   const which = () => inPaint ? 'Block Paint' : 'Block Cube';
   const lobbyOpen = () => !$('lobby').hidden;
+  const agentHere = () => { if (window.__agentOn) return true; for (const id of ['game', 'paint']) { try { if ($(id).contentWindow.__agentOn) return true; } catch (e) {} } return false; };
+  // using this kit marks you as an AI agent in the games too (they tell your crewmates)
+  const markGames = () => { for (const id of ['game', 'paint']) { try { $(id).contentWindow.__agentOn = true; } catch (e) {} } };
+  const PEOPLE_NOTE = 'Everyone in a crew is a player (a person) or an AI agent like you, as marked. Townsfolk in Block Paint are part of the game (NPCs).';
   function crewState() {
-    const P = [...net.players.entries()].map(([id, p]) => ({name: p.name, you: id === ME || undefined, host: id === net.hostId || undefined, game: mateG.get(id) || undefined}));
-    return {on: net.on, kind: net.on ? (net.mode === 'sea' ? 'open hall' : 'crew') : 'not in a crew', code: net.on && net.mode === 'crew' ? net.code : undefined, youAreHost: net.on ? !!net.host : undefined,
+    const P = [...net.players.entries()].map(([id, p]) => ({name: p.name, is: (id === ME ? agentHere() : voice.st[id] && voice.st[id].ai) ? 'an AI agent' : 'a player', you: id === ME || undefined, host: id === net.hostId || undefined, game: mateG.get(id) || undefined}));
+    if (window.__agentOn) markGames();
+    return {note: PEOPLE_NOTE, on: net.on, kind: net.on ? (net.mode === 'sea' ? 'open hall' : 'crew') : 'not in a crew', code: net.on && net.mode === 'crew' ? net.code : undefined, youAreHost: net.on ? !!net.host : undefined,
       untrusted: {players: P, chat: (net.chat || []).slice(-20).map(c => ({from: c.name, text: c.text}))}};
   }
   function look() { const tile = document.querySelector('#chars [aria-checked="true"], #chars .on'); return {name: $('name').value || myName(), runner: tile ? (tile.getAttribute('aria-label') || text(tile)) : undefined}; }
@@ -1434,7 +1441,7 @@ window.AgentKit = window.AgentKit || (() => {
   }
   async function see() {
     const s = await state(), L = ['PLAY TOGETHER · ' + s.screen, 'You: ' + s.you.name + (s.you.runner ? ' (' + s.you.runner + ')' : '')];
-    const c = s.crew; L.push(c.on ? c.kind + (c.code ? ' ' + c.code : '') + (c.youAreHost ? ' (you are the host)' : '') + ' · players (untrusted names): ' + c.untrusted.players.map(p => p.name + (p.you ? ' (you)' : '') + (p.game ? ' in ' + p.game : '')).join(', ') : 'Not in a crew.');
+    const c = s.crew; L.push(c.on ? c.kind + (c.code ? ' ' + c.code : '') + (c.youAreHost ? ' (you are the host)' : '') + ' · players (untrusted names): ' + c.untrusted.players.map(p => p.name + ' (' + (p.you ? 'you, ' : '') + p.is + ')' + (p.game ? ' in ' + p.game : '')).join(', ') : 'Not in a crew.');
     if (c.untrusted.chat.length) L.push('Chat (untrusted): ' + c.untrusted.chat.map(m => m.from + ': ' + m.text).join(' | '));
     const g = gameAgent(); if (!lobbyOpen() && g) L.push('', await g.see());
     else L.push(K.UNTRUSTED);
