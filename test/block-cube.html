@@ -10489,7 +10489,7 @@ window.AgentKit = window.AgentKit || (() => {
     for (let i = 0; i < pts.length; i++) { const [wx, wz] = toWorld(pts[i][0], pts[i][1]); const last = i === pts.length - 1, r = await walkPoint(wx, wz, Object.assign({}, opt, {within: last ? opt.within || .5 : .9, stopWhen: last ? opt.stopWhen : null})); if (!r.ok) return Object.assign(r, {stoppedAt: roomInfo()}); }
     return {ok: true};
   }
-  function faceTo(tx, ty, tz) { const p = room.p, dx = tx - p.x, dz = tz - p.z, eye = (p.y || 0) + 1.62; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.atan2(ty - eye, Math.hypot(dx, dz)); room.dirty = true; }
+  function faceTo(tx, ty, tz) { const p = room.p, dx = tx - p.x, dz = tz - p.z, eye = (p.y || 0) + 1.62; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.max(-1.45, Math.min(1.45, Math.atan2(ty - eye, Math.hypot(dx, dz)))); room.dirty = true; }
   async function holdParcel({n, txid}) {
     if (!inRoom() || cmOn(room.at) || room.at.gal) { const r = await walkIn(); if (!r.ok) return r; }
     const R = curRoom(); if (!R) return {ok: false, error: 'the block room is not ready yet'};
@@ -10541,7 +10541,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'walk', does: 'Walk for a while, as holding a key: forward, back, left or right (relative to where you face).', args: [{name: 'direction', enum: ['forward', 'back', 'left', 'right'], does: 'which way', req: true}, {name: 'seconds', type: 'number', does: 'how long (default 1, most 10)'}, {name: 'run', type: 'boolean', does: 'run'}],
       run: async ({direction, seconds = 1, run}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; const d = {forward: [0, -1], back: [0, 1], left: [-1, 0], right: [1, 0]}[direction]; if (!d) return {ok: false, error: 'forward, back, left or right'}; const t0 = performance.now(), ms = Math.min(10, +seconds) * 1000; try { while (performance.now() - t0 < ms) { rmPad.x = d[0]; rmPad.y = d[1]; rmKeys.shift = !!run; await wait(60); } } finally { stopPad(); } await wait(150); return roomInfo(); }},
     {name: 'look', does: 'Turn to face a direction (degrees, as state() gives them) and tilt up or down.', args: [{name: 'facing', type: 'number', does: 'degrees'}, {name: 'pitch', type: 'number', does: 'degrees up (+) or down (-)'}],
-      run: ({facing, pitch}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; if (facing != null) room.p.yaw = rad(+facing); if (pitch != null) room.p.pitch = rad(+pitch); room.dirty = true; return roomInfo(); }},
+      run: ({facing, pitch}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; if (facing != null) room.p.yaw = rad(+facing); if (pitch != null) room.p.pitch = Math.max(-1.45, Math.min(1.45, rad(+pitch))); room.dirty = true; return roomInfo(); }},
     {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height', req: true}, {name: 'z', type: 'number', does: 'z', req: true}],
       run: ({x, y, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; faceTo(+x, +y, +z); return roomInfo(); }},
     {name: 'use', does: 'Do what is in front of you, like pressing E (sit, pour a pint, the music box, the big screen…).', run: async () => { if (!inCommon()) return {ok: false, error: 'only in the common room'}; const A = cmAct(null, null); if (!A) return {ok: false, error: 'nothing in front of you'}; cmDo(A); await wait(500); return {did: A.label, room: roomInfo()}; }},
