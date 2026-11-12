@@ -119,7 +119,9 @@ async def main():
             if 'states' in st and f % 6 == 0:
                 for m in st['states'](f / 30): await pg.evaluate("m => send(m)", m)
             await g.evaluate("__vtStep(1000 / 30)")
-            await pg.screenshot(path=f'{OUT}/f{f:04d}.jpg', type='jpeg', quality=92)
+            for k in range(4):
+                try: await pg.screenshot(path=f'{OUT}/f{f:04d}.jpg', type='jpeg', quality=92, timeout=180000); break
+                except Exception as e: print('screenshot retry', f, str(e)[:80], flush=True)
             if f % 30 == 0: print(SC, f, round(time.time() - tt), 's', flush=True)
         await b.close()
     json.dump({'miss': miss, 'errs': errs}, open(f'{OUT}/log.json', 'w'), indent=0)
