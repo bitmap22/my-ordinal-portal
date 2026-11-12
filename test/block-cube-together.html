@@ -350,7 +350,7 @@ addEventListener('message', e => {
 addEventListener('message', e => {
   if (!pframe.contentWindow || e.source !== pframe.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockpaint') return;
   if (m.type === 'page?') { pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
-  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, '*'); if (net.on && net.sail) paintStart(); return; }
+  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, '*'); if (!inPaint && !swapping) pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'leave' }, '*'); if (net.on && net.sail) paintStart(); return; }
   if (m.type === 'go' && m.to === 'cube') { swapTo('cube'); return; }   // walked into Block Paint's AI Agent Bitcoin Block Explorer door
   if (m.type === 'chat-open') { openSay(); return; }
   if (!inPaint || !net.on) return;   // (Block Paint, waiting hidden: nothing of it goes to the crew)
@@ -368,7 +368,7 @@ const later = ms => new Promise(r => setTimeout(r, ms));
 let swapNext = null;
 async function swapTo(g) {
   if (swapping) { swapNext = g; return; }   // (asked again mid-swap: done right after)
-  if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive', stay: 1 }); try { (inPaint ? pframe : frame).contentWindow.focus(); } catch (e) {} return; }   // (already there: never left dark)
+  if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive', stay: 1 }); return; }   // (already there: never left dark)
   swapping = true;
   const fade = $('gfade'); fade.classList.add('on');
   (g === 'paint' ? toCube : toPaint)({ type: 'leave' });   // (the game you are leaving: dark and quiet)

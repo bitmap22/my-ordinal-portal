@@ -3462,10 +3462,10 @@ function lifeDust(VP, tn, LW, H) {
 }
 
 /* ---------- draw ---------- */
-let paused = false;
+let paused = false, crewAway = false;
 document.addEventListener('visibilitychange', () => { if (!document.hidden && paused) { paused = false; lastFT = 0; requestAnimationFrame(frame); } });
 function frame() {
-  if (document.hidden || cmPaintShown) { paused = true; return; }   // (hidden, or resting while you are in Block Paint)
+  if (document.hidden || cmPaintShown || crewAway) { paused = true; return; }   // (hidden, or resting while you are in Block Paint)
   const dpr = Math.min(devicePixelRatio || 1, 3), W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
   if (cv.width !== W || cv.height !== H || !RT) { cv.width = W; cv.height = H; targets(W, H); }
   if (room) roomFrame(W, H, now(), dpr); else {
@@ -10111,8 +10111,8 @@ addEventListener('message', e => {
   if (m.type === 'off') { crew.on = false; crew.inYet = false; document.body.classList.remove('crewon'); emShow(false); em.cur = ''; for (const id of [...crew.mates.keys()]) mateGone(id); return; }
   if (m.type === 'say') { if (m.id === crew.me) return; const M = crew.mates.get(m.id); if (M) { M.say = cleanS(m.text, 120); M.sayT = performance.now() + 7000; } return; }
   if (m.type === 'talk') { const M = crew.mates.get(m.id); if (M) M.talkT = performance.now() + 450; return; }
-  if (m.type === 'arrive') { if (m.stay) rmFade(false); else cmFromPaint(); return; }   // back from Block Paint (the page kept the cube open)
-  if (m.type === 'leave') { rmLetGo(); rmFade(true); if (au && au.state === 'running') au.suspend(); return; }   // (the page is taking you to Block Paint)
+  if (m.type === 'arrive') { crewAway = false; if (paused && !document.hidden) { paused = false; lastFT = 0; requestAnimationFrame(frame); } if (m.stay) rmFade(false); else cmFromPaint(); return; }   // back from Block Paint (the page kept the cube open)
+  if (m.type === 'leave') { crewAway = true; rmLetGo(); rmFade(true); if (au && au.state === 'running') au.suspend(); return; }   // (the page is taking you to Block Paint)
   if (m.type === 'go') { const M = crew.mates.get(m.id); if (M && M.s) goToMate(M); return; }
   if (m.type === 'portraits') { ppPortraits(m); return; }   // pictures of the people, for the page's picker
 });
