@@ -2327,23 +2327,68 @@ window.AgentKit = window.AgentKit || (() => {
     if (!B.log.length) { const p = d.createElement('p'); p.style.cssText = 'margin:5px 0;opacity:.7'; p.textContent = 'An AI agent is playing on this screen. Type here to talk to it; it answers here. Only this screen sees this box.'; log.append(p); }
     log.scrollTop = log.scrollHeight;
     r.querySelector('[data-body]').style.display = B.open ? '' : 'none';
+    r.style.width = B.open ? 'min(320px, calc(100vw - 16px))' : 'auto';   // (closed, it is a small tab: easier to keep clear of the screen's words)
     r.querySelector('[data-n]').textContent = !B.open && B.unread ? B.unread + ' new' : '';
     r.querySelector('[data-min]').textContent = B.open ? 'Hide' : 'Talk';
+  }
+  // where the box sits: the first spot from the top where it covers no words, buttons or pictures on screen (the game's own
+  // frames on this page included); if none is free, the spot where it covers least. Looked at again when it opens or closes,
+  // when the window changes size, and every few seconds (only moved if its spot is no longer clear, and never while typing).
+  function obstacles(doc, ox, oy, TW, TH, out, soft, depth) {   // words, buttons and pictures (out), and panels and boxes (soft)
+    const win = doc.defaultView, VA = TW * TH; if (!win || !doc.body) return;
+    for (const el of doc.body.querySelectorAll('*')) {
+      const tag = el.tagName.toUpperCase();
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'CANVAS' || el.hasAttribute('data-agentbox') || el.closest('[data-agentbox]')) continue;
+      if (tag === 'IFRAME') { if (depth < 1) try { const r = el.getBoundingClientRect(), d = el.contentDocument; if (d && r.width > 0 && r.height > 0) obstacles(d, ox + r.left, oy + r.top, TW, TH, out, soft, depth + 1); } catch (e) {} continue; }
+      let mark = /^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|IMG|VIDEO|SVG|LABEL)$/.test(tag) || el.getAttribute('role') === 'button';
+      if (!mark) for (const n of el.childNodes) if (n.nodeType === 3 && n.nodeValue.trim()) { mark = true; break; }
+      if (!mark && !soft) continue;
+      const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1 || r.width * r.height > .35 * VA || (!mark && r.width * r.height < 1500)) continue;
+      const x0 = r.left + ox, y0 = r.top + oy; if (x0 >= TW || y0 >= TH || x0 + r.width <= 0 || y0 + r.height <= 0) continue;
+      const cs = win.getComputedStyle(el); if (cs.visibility === 'hidden' || +cs.opacity < .05) continue;
+      if (mark) { out.push([x0 - 4, y0 - 4, x0 + r.width + 4, y0 + r.height + 4]); continue; }
+      const bg = /rgba?\(([^)]+)\)/.exec(cs.backgroundColor), a = bg ? (bg[1].split(',')[3] === undefined ? 1 : +bg[1].split(',')[3]) : 0;
+      if (a > .15 || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0) soft.push([x0, y0, x0 + r.width, y0 + r.height]);
+    }
+  }
+  function boxPlace(must) {   // returns true when the box covers no words or buttons
+    const B = BOX(), r = B.el; if (!r || !r.isConnected) return false;
+    const w = topWin(), d = r.ownerDocument, TW = w.innerWidth, TH = w.innerHeight, bw = r.offsetWidth, bh = r.offsetHeight;
+    const area = (L, x, y) => { let a = 0; for (const o of L) { const ix = Math.min(x + bw, o[2]) - Math.max(x, o[0]), iy = Math.min(y + bh, o[3]) - Math.max(y, o[1]); if (ix > 0 && iy > 0) a += ix * iy; } return a; };
+    const cx = parseFloat(r.style.left), cy = parseFloat(r.style.top), inside = isFinite(cx) && isFinite(cy) && cx >= 0 && cy >= 0 && cx + bw <= TW && cy + bh <= TH;
+    if (!must) {   // (the quick look every few seconds: it stays while its spot still covers no words or buttons, and never moves while someone types in it)
+      const H = []; obstacles(d, 0, 0, TW, TH, H, null, 0);
+      if (inside && !area(H, cx, cy)) return true;
+      if (d.activeElement && r.contains(d.activeElement)) return false;
+    }
+    const H = [], S = []; obstacles(d, 0, 0, TW, TH, H, S, 0);
+    // the best spot: covers no words or buttons if it can, then as little of any panel as it can, then the sides before the middle, then higher up
+    let best = null; const xs = [TW - bw - 8, 8, (TW - bw) / 2].map(Math.round);
+    xs.forEach((x, k) => { for (let y = 8; y <= TH - bh - 8; y += 12) { const c = area(H, x, y) * 1000 + area(S, x, y), q = c + k * .5 + y / 1e4; if (!best || q < best.q) best = {x, y, q, hard: area(H, x, y)}; } });
+    if (!best) best = {x: Math.max(0, xs[2]), y: 8, hard: 1};
+    r.style.left = best.x + 'px'; r.style.top = best.y + 'px';
+    return !best.hard;
   }
   function boxUI() {
     const B = BOX(); if (B.el && B.el.isConnected) return B;
     const d = topWin().document; if (!d || !d.body) return B;
     const r = d.createElement('div'); r.setAttribute('data-agentbox', ''); r.setAttribute('role', 'region'); r.setAttribute('aria-label', 'Talk to the AI agent');
-    r.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:108px;z-index:2147483000;width:min(320px,calc(100vw - 24px));background:rgba(14,11,22,.94);color:#eee;border:1px solid #f7931a;border-radius:10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text;touch-action:auto';
+    r.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483000;width:auto;max-width:calc(100vw - 16px);box-sizing:border-box;background:rgba(14,11,22,.94);color:#eee;border:1px solid #f7931a;border-radius:10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text;touch-action:auto';
     r.innerHTML = '<div data-h style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><b style="flex:1;color:#f7931a;font-size:13px">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
       + '<div data-body><div data-log style="max-height:150px;overflow-y:auto;padding:0 10px"></div><form data-f style="display:flex;gap:6px;padding:6px 8px 8px"><input data-i maxlength="300" placeholder="Talk to the agent" autocomplete="off" aria-label="Talk to the agent" style="flex:1;min-width:0;background:#000;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 8px;font:14px system-ui,sans-serif"><button type="submit" style="' + BTN + '">Send</button></form></div>';
     const stop = e => e.stopPropagation();   // (typing and tapping here never reach the game: W is a letter here, not a step)
     for (const t of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'touchmove', 'wheel', 'contextmenu']) r.addEventListener(t, stop);
-    r.querySelector('[data-h]').addEventListener('click', () => { B.open = !B.open; if (B.open) B.unread = 0; boxDraw(); if (B.open) r.querySelector('[data-i]').focus(); });
+    r.querySelector('[data-h]').addEventListener('click', () => { B.open = !B.open; if (B.open) B.unread = 0; boxDraw(); boxPlace(true); if (B.open) r.querySelector('[data-i]').focus(); });
     r.querySelector('[data-f]').addEventListener('submit', e => { e.preventDefault(); const i = r.querySelector('[data-i]'), t = i.value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 300); if (!t) return; i.value = ''; boxPush('you', t); });
-    d.body.append(r); B.el = r; boxDraw(); return B;
+    d.body.append(r); B.el = r; boxDraw(); boxPlace(true);
+    if (!B.watch) { B.watch = 1; const w = topWin(); w.addEventListener('resize', () => boxPlace()); w.setInterval(() => { try { boxPlace(); } catch (e) {} }, 2500); }
+    return B;
   }
-  function boxPush(from, t) { const B = BOX(); B.log.push({id: ++B.seq, from, text: t, at: new Date().toISOString().slice(11, 19)}); if (B.log.length > 100) B.log.shift(); if (from === 'agent') { B.open = true; B.unread = 0; } boxDraw(); }
+  function boxPush(from, t) {
+    const B = BOX(); B.log.push({id: ++B.seq, from, text: t, at: new Date().toISOString().slice(11, 19)}); if (B.log.length > 100) B.log.shift();
+    if (from === 'agent' && !B.open) { B.open = true; boxDraw(); if (boxPlace(true)) B.unread = 0; else { B.open = false; B.unread++; boxDraw(); boxPlace(true); } }   // (it opens to show the agent's words only where it covers nothing; else "1 new" on the tab)
+    else { boxDraw(); boxPlace(); }
+  }
   const boxNew = all => { const B = BOX(), L = B.log.filter(m => m.from === 'you' && (all || m.id > B.read)); B.read = B.seq; return L.map(m => ({at: m.at, untrusted: 'The person at your screen typed to you: ' + m.text})); };
   // tips: the maker's bitcoin address (the same as the Tips button on the Ordinal Portal), for agents only.
   // Switched off for now (12 Nov 2026): to bring back agent.tip() and the line in help(), set TIPS_ON to true and put the
