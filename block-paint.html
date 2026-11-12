@@ -2380,7 +2380,7 @@ window.AgentKit = window.AgentKit || (() => {
     const rail = [...$('rail').querySelectorAll('button')].filter(shown);
     return {app: text($('appv')), tool: (rail.find(b => b.classList.contains('on')) || {}).getAttribute ? (rail.find(b => b.classList.contains('on')).getAttribute('aria-label') || text(rail.find(b => b.classList.contains('on')))) : null,
       tools: rail.map(b => b.getAttribute('aria-label') || text(b)).filter(t => !/step|again|how many/i.test(t)), level: text([...$('tier').querySelectorAll('button')].find(b => b.classList.contains('on'))),
-      panel: text($('side')).split('\n').slice(0, 3).join(' · ')};
+      panel: text($('side')).split('\n').slice(0, 3).map(l => l.slice(0, 60)).join(' · ').slice(0, 160)};
   }
   function chain() { const q = B().chain(); return {newestBlock: q.h || null, blockTime: q.t ? new Date(q.t * 1000).toISOString().replace('.000', '') : null, nextHalving: q.h ? {atBlock: 210000 * (Math.floor(q.h / 210000) + 1), blocksToGo: 210000 * (Math.floor(q.h / 210000) + 1) - q.h} : null, source: 'mempool.space (backup sites if it is down)'}; }
   function city() {
@@ -2404,7 +2404,7 @@ window.AgentKit = window.AgentKit || (() => {
     L.push('You: x ' + y.x + ', y ' + y.y + ', z ' + y.z + ', facing ' + y.facing + '°, pitch ' + y.pitch + '°' + (y.torch ? ', torch on' : ''));
     L.push('Painting with ' + p.app + ': ' + p.tool + ' (' + p.level + ') · ' + p.panel);
     L.push('Townsfolk here: ' + c.townsfolk + (c.trains.length ? ' · trains: ' + c.trains.map(t => t.kind + ' ' + t.now + (t.blockTrain ? ' (block train)' : '')).join(', ') : ''));
-    const P = people(); if (P.painters.length) L.push('Other painters (untrusted names): ' + P.painters.map(p => p.untrusted.name + ' (' + p.is + ', ' + p.metresAway + ' m)').join(', '));
+    const P = people(); if (P.painters.length) L.push('Other painters (untrusted names): ' + P.painters.map(p => p.untrusted.name + ' (' + p.is + ') in ' + p.place + (p.withYou ? ', ' + p.withYou.metres + ' m ' + p.withYou.where : '') + ', ' + p.doing).join('; '));
     L.push(PEOPLE_NOTE);
     if (s.hint) L.push('Hint: ' + s.hint); if (s.message) L.push('Message: ' + s.message); if (s.open) L.push('Open: ' + s.open.join(', '));
     L.push(K.UNTRUSTED);
@@ -2413,12 +2413,31 @@ window.AgentKit = window.AgentKit || (() => {
 
   // who is who: painters are players or AI agents (their kit says so); townsfolk are the game's own (NPCs)
   const PEOPLE_NOTE = 'Other painters are players (people) or AI agents like you, as marked. Townsfolk (skaters, ball players, the busker, the gardener, people on benches, people waiting) are part of the game: NPCs.';
-  function people() {
-    const e = B().eye, far = p => p ? r1(Math.hypot(p[0] - e[0], p[2] - e[2])) : null, L = B().level, v = L && L.live ? L.live : {};
-    let O = []; try { O = B().others() || []; } catch (x) {}
-    const npc = (v.npcs || []).map(n => { const p = n.p || n.pos || n.q; return {is: 'townsfolk (NPC)', kind: typeof n.kit === 'string' ? n.kit : undefined, doing: n.act || undefined, metresAway: Array.isArray(p) ? far(p) : undefined}; });
-    return {note: PEOPLE_NOTE, painters: O.map(o => ({is: o.ai ? 'an AI agent' : 'a player', metresAway: far(o.p), untrusted: {name: o.name || 'Painter', saying: o.say || undefined}})), townsfolk: npc};
+  // every other painter at all times (in any place), which way they face and what they do; townsfolk here too
+  function painterInfo(e) {
+    const a = e.av || {}, me = e.me || {}, here = lvl() && a.pl === lvl().def.id, o = {is: me.ai ? 'an AI agent' : 'a player', place: PLACE_NAME[a.pl] || a.pl || 'not in a place yet', untrusted: {name: e.name || 'Painter'}};
+    if (Array.isArray(a.p)) { o.at = {x: r1(a.p[0]), z: r1(a.p[2])}; o.facing = deg(a.yaw || 0); }
+    const doing = []; if (a.aim) doing.push('spraying or aiming the can'); if (e.say && e.say.text) o.untrusted.saying = e.say.text; o.doing = doing.join(', ') || 'walking or standing';
+    if (here && Array.isArray(a.p)) { const E = eyeP(), dx = a.p[0] - E[0], dz = a.p[2] - E[2], rel = ((deg(Math.atan2(-dx, -dz) + Math.PI) - deg(a.yaw || 0)) + 540) % 360 - 180; o.withYou = {metres: r1(Math.hypot(dx, dz)), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(B().BP.cam.yaw)), facing: Math.abs(rel) < 35 ? 'facing you' : Math.abs(rel) > 145 ? 'facing away from you' : 'side on to you'}; }
+    return o;
   }
+  const peers = () => { try { return [...B().net.peers.values()].filter(e => e && e.av); } catch (x) { return []; } };
+  function people() {
+    const e = B().eye, yaw = B().BP.cam.yaw, L = B().level, v = L && L.live ? L.live : {}, far = p => r1(Math.hypot(p[0] - e[0], p[2] - e[2])), way = q => K.bearing(deg(Math.atan2(-(q[0] - e[0]), -(q[2] - e[2]))) - deg(yaw));
+    const npc = (v.npcs || []).map(n => { const p = n.p || n.pos || n.q; if (!Array.isArray(p)) return null; return {is: 'townsfolk (NPC)', kind: typeof n.kit === 'string' ? n.kit : undefined, doing: n.act || undefined, metresAway: far(p), where: way(p), facing: deg(n.yaw || 0)}; }).filter(Boolean).sort((a, b) => a.metresAway - b.metresAway);
+    return {note: PEOPLE_NOTE, place: city().place, painters: peers().map(painterInfo), townsfolk: npc};
+  }
+  // what other painters do, as it happens (kept once you use the kit), read with events()
+  const EVT = {list: [], read: 0, last: new Map()};
+  const evPush = t => { EVT.list.push({at: new Date().toISOString().slice(11, 19), untrusted: t}); if (EVT.list.length > 80) { EVT.list.shift(); EVT.read = Math.max(0, EVT.read - 1); } };
+  function evTick() {
+    if (!window.__agentOn) return;
+    const now = new Map(); for (const e of peers()) { const o = painterInfo(e); now.set(e.id, {name: e.name || 'Painter', is: o.is, place: o.place, doing: o.doing, say: o.untrusted.saying || ''}); }
+    for (const [id, n] of now) { const b = EVT.last.get(id); if (!b) { evPush(n.name + ' (' + n.is + ') is painting in ' + n.place); continue; } if (b.place !== n.place) evPush(n.name + ' went to ' + n.place); if (b.doing !== n.doing) evPush(n.name + ' is now ' + n.doing); if (n.say && n.say !== b.say) evPush(n.name + ' said: ' + n.say); }
+    for (const [id, b] of EVT.last) if (!now.has(id)) evPush(b.name + ' left');
+    EVT.last = now;
+  }
+  setInterval(evTick, 500);
   // walking as a player: hold W (with Shift to run), face the way with the mouse; the city's walls and edges stop you
   const hold = (k, down, run) => { const o = {key: run && down ? k.toUpperCase() : k, code: 'Key' + k.toUpperCase(), shiftKey: !!run && down, bubbles: true, cancelable: true}; window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', o)); };
   async function walkPoint(x, z, opt = {}) {
@@ -2441,20 +2460,98 @@ window.AgentKit = window.AgentKit || (() => {
       }
     } finally { hold('w', false); hold('a', false); hold('d', false); await wait(150); }
   }
+  // ---------- the place itself: what is on its walls, its ways out, its walls (for agents only: nothing is drawn) ----------
+  const DECAL = {lore: 'a Bitcoin history poster', board: 'a block number screen', piece: 'a graffiti piece', tag: 'a graffiti tag', throw: 'a throw-up (graffiti)', buff: 'a painted-over patch', ghost: 'faded old graffiti', sticker: 'stickers', poster: 'a poster', plaque: 'a plaque', sign: 'a sign', mosaic: 'a tile mosaic', map: 'a map', ad: 'an advert', exit: 'an exit sign', dial: 'a clock', dep: 'the departures board', score: 'the halving scoreboard', pwexit: 'an exit sign', pwsign: 'a sign'};
+  const PLACE_NAME = {roof: 'the Rooftop', yard: 'the Train yard', subway: 'the Subway station', alley: 'the Back alley', skate: 'the Skate park', warehouse: 'the Neon warehouse', cube: 'Block Cube (the common room)'};
+  const lvl = () => B().level;
+  const wallName = s => String(s.name || 'wall').replace(/-[nsew]$/, '').replace(/^u$|-u$/, ' floor').trim();
+  function painted(id) { try { const W = B().apps[0].dbg().walls, w = W && W.get(id); return !!(w && w.ch && w.ch.size); } catch (e) { return false; } }
+  function things() {   // the place's own things a player can see, with where they are
+    const L = lvl(), out = [];
+    for (const d of L.decals || []) { const nm = DECAL[d.k]; if (!nm || !d.f) continue; const f = d.f, cx = d.x + d.w / 2, cy = d.y + d.h / 2; out.push({what: nm, p: [0, 1, 2].map(i => f.o[i] + f.u[i] * cx + f.v[i] * cy), n: f.n}); }
+    for (const e of L.def.exits || []) out.push({what: 'the way to ' + (PLACE_NAME[e.to] || e.to), p: [e.p[0], (e.p[1] || 0) + 1.2, e.p[2]], exit: e.to});
+    return out;
+  }
+  const eyeP = () => B().eye;
+  function seen(p) {   // in the view and not behind a wall (the game's own ray, from your eyes)
+    const e = eyeP(), d = [p[0] - e[0], p[1] - e[1], p[2] - e[2]], len = Math.hypot(...d), yaw = B().BP.cam.yaw;
+    const off = ((deg(Math.atan2(-d[0], -d[2])) - deg(yaw)) + 540) % 360 - 180; if (Math.abs(off) > 55 || len > 40) return null;
+    let h = null; try { h = B().BP.cast(e, d.map(v => v / len), len + 1); } catch (x) {}
+    if (h && h.t < len - .35) return null;
+    return {off, len};
+  }
   // what a player's eyes see: walls (paintable or not) across the view, and people around
-  function hitAt(fx, fy) { const c = cv(), r = c.getBoundingClientRect(); let h = null; try { h = B().BP.hit(r.left + fx * r.width, r.top + fy * r.height); } catch (e) {} if (!h) return null; const e = B().eye; let d = h.t != null ? h.t : null; if (d == null && h.s && h.s.o && h.s.u && h.s.v && h.x != null) { const P = [0, 1, 2].map(i => h.s.o[i] + h.s.u[i] * h.x + h.s.v[i] * h.y); d = Math.hypot(P[0] - e[0], P[1] - e[1], P[2] - e[2]); } return {wall: !!h.s, metres: r1(d)}; }
+  function hitAt(fx, fy) { const c = cv(), r = c.getBoundingClientRect(); let h = null; try { h = B().BP.hit(r.left + fx * r.width, r.top + fy * r.height); } catch (e) {} if (!h) return null; return {wall: !!h.s, name: h.s ? wallName(h.s) : null, paint: h.s ? painted(h.s.id) : false, metres: h.t != null ? r1(h.t) : null}; }
   function lookWords() {
     const c = city(), y = you(), L = ['You are in ' + c.place + ' (' + c.time + '), facing ' + y.facing + '°, looking ' + (y.pitch > 8 ? 'up' : y.pitch < -8 ? 'down' : 'straight ahead') + '.'];
-    const G = K.GRID.map(([nm, fx, fy]) => { const h = hitAt(fx, fy); return h ? nm + ': ' + (h.wall ? 'a paintable surface' : 'something') + (h.metres != null ? ' ' + h.metres + ' m away' : '') : null; }).filter(Boolean);
+    const G = K.GRID.map(([nm, fx, fy]) => { const h = hitAt(fx, fy); return h ? nm + ': ' + (h.wall ? (h.name || 'a wall') + (h.paint ? ' (has paint on it)' : '') : 'something') + (h.metres != null ? ', ' + h.metres + ' m away' : '') : null; }).filter(Boolean);
     L.push(G.length ? 'Across your view: ' + G.join('; ') + '.' : 'No paintable surface in your view.');
-    const mid = hitAt(.5, .5); if (mid && mid.wall) L.push(mid.metres != null && mid.metres < 1.6 ? 'The wall in the middle is close enough to spray.' : 'Walk closer to the wall in the middle to spray it.');
+    const mid = hitAt(.5, .5); if (mid && mid.wall) L.push(mid.metres != null && mid.metres < 1.6 ? 'The ' + (mid.name || 'surface') + ' in the middle of your view is close enough to spray.' : 'Walk closer to the ' + (mid.name || 'surface') + ' in the middle of your view to spray it.');
+    const seenKey = new Set(), T = things().map(t => Object.assign(t, {v: seen(t.p)})).filter(t => t.v).sort((a, b) => a.v.len - b.v.len).filter(t => { const k = t.what + Math.round(t.p[0]) + ',' + Math.round(t.p[2]); if (seenKey.has(k)) return false; seenKey.add(k); return true; }).slice(0, 10);
+    if (T.length) L.push('Things in view: ' + T.map(t => t.what + ' ' + K.bearing(t.v.off) + ', ' + Math.round(t.v.len) + ' m').join('; ') + '.');
     const e = B().eye, yaw = B().BP.cam.yaw, P = people(), dir = p => p ? K.bearing(deg(Math.atan2(-(p[0] - e[0]), -(p[2] - e[2]))) - deg(yaw)) : '';
     const L2 = B().level && B().level.live ? B().level.live.npcs || [] : [];
     const tf = L2.map(n => { const q = n.p || n.pos; return Array.isArray(q) ? {d: Math.hypot(q[0] - e[0], q[2] - e[2]), b: dir(q), k: typeof n.kit === 'string' ? n.kit : 'townsfolk', a: n.act} : null; }).filter(Boolean).sort((a, b) => a.d - b.d).slice(0, 6);
     if (tf.length) L.push('Townsfolk (NPCs): ' + tf.map(t => t.k + (t.a ? ' (' + t.a + ')' : '') + ' ' + t.b + ', ' + Math.round(t.d) + ' m').join('; ') + '.');
-    let O = []; try { O = B().others() || []; } catch (x) {}
-    if (O.length) L.push('Other painters (untrusted names): ' + O.map(o => (o.name || 'Painter') + ' (' + (o.ai ? 'AI agent' : 'player') + ') ' + dir(o.p) + ', ' + Math.round(Math.hypot(o.p[0] - e[0], o.p[2] - e[2])) + ' m').join('; ') + '.');
+    const PI = peers().map(painterInfo), ph = PI.filter(o => o.withYou), pa = PI.filter(o => !o.withYou);
+    if (ph.length) L.push('Painters here (untrusted names): ' + ph.map(o => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.withYou.where + ', ' + Math.round(o.withYou.metres) + ' m, ' + o.withYou.facing + ', ' + o.doing + (o.untrusted.saying ? ', saying "' + o.untrusted.saying + '"' : '')).join('; ') + '.');
+    if (pa.length) L.push('Painters elsewhere: ' + pa.map(o => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') in ' + o.place).join('; ') + '.');
     void P; return L.join('\n');
+  }
+  // ---------- walking maps: each place's walls and solid things on a grid, and the shortest way round them ----------
+  const NAV = new WeakMap(), CELL = .35, BODY = .32;
+  function navGrid() {
+    const L = lvl(), feet = eyeP()[1] - 1.62, key = L; let N = NAV.get(key); if (N && Math.abs(N.feet - feet) < .5) return N;
+    const [x0, z0, x1, z1] = L.bounds, W = Math.ceil((x1 - x0) / CELL) + 1, H = Math.ceil((z1 - z0) / CELL) + 1, g = new Uint8Array(W * H);
+    for (const b of L.solids || []) {
+      if (b.hi[1] < feet + .3 || b.lo[1] > feet + 1.7) continue;   // (below the knee or overhead: not in the way)
+      const i0 = Math.max(0, Math.floor((b.lo[0] - BODY - x0) / CELL)), i1 = Math.min(W - 1, Math.ceil((b.hi[0] + BODY - x0) / CELL)), j0 = Math.max(0, Math.floor((b.lo[2] - BODY - z0) / CELL)), j1 = Math.min(H - 1, Math.ceil((b.hi[2] + BODY - z0) / CELL));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) g[j * W + i] = 1;
+    }
+    for (let i = 0; i < W; i++) { g[i] = g[(H - 1) * W + i] = 1; } for (let j = 0; j < H; j++) { g[j * W] = g[j * W + W - 1] = 1; }
+    N = {x0, z0, W, H, g, feet}; NAV.set(key, N); return N;
+  }
+  const cellOf = (N, x, z) => [Math.max(0, Math.min(N.W - 1, Math.round((x - N.x0) / CELL))), Math.max(0, Math.min(N.H - 1, Math.round((z - N.z0) / CELL)))];
+  const free = (N, i, j) => i >= 0 && j >= 0 && i < N.W && j < N.H && !N.g[j * N.W + i];
+  function nearestFree(N, i, j) { if (free(N, i, j)) return [i, j]; for (let r = 1; r < 12; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) if (Math.max(Math.abs(di), Math.abs(dj)) === r && free(N, i + di, j + dj)) return [i + di, j + dj]; return null; }
+  function clear(N, a, b) { const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 2) + 1; for (let k = 0; k <= n; k++) { const i = Math.round(a[0] + (b[0] - a[0]) * k / n), j = Math.round(a[1] + (b[1] - a[1]) * k / n); if (!free(N, i, j)) return false; } return true; }
+  function findPath(x, z) {   // A* over the grid, then cut to the corners you have to turn at
+    const N = navGrid(), e = eyeP(), s = nearestFree(N, ...cellOf(N, e[0], e[2])), t = nearestFree(N, ...cellOf(N, x, z)); if (!s || !t) return null;
+    const W = N.W, idx = (i, j) => j * W + i, G = new Float32Array(W * N.H).fill(Infinity), from = new Int32Array(W * N.H).fill(-1), open = [[0, s[0], s[1]]], done = new Uint8Array(W * N.H);
+    G[idx(...s)] = 0; const hh = (i, j) => Math.hypot(i - t[0], j - t[1]);
+    while (open.length) {
+      let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
+      const [, i, j] = open.splice(bi, 1)[0], c = idx(i, j); if (done[c]) continue; done[c] = 1;
+      if (i === t[0] && j === t[1]) break;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const ni = i + di, nj = j + dj; if (!free(N, ni, nj) || (di && dj && (!free(N, i + di, j) || !free(N, i, j + dj)))) continue;
+        const n = idx(ni, nj), g2 = G[c] + Math.hypot(di, dj); if (g2 < G[n]) { G[n] = g2; from[n] = c; open.push([g2 + hh(ni, nj), ni, nj]); }
+      }
+      if (open.length > 60000) break;
+    }
+    if (!done[idx(...t)]) return null;
+    const cells = []; for (let c = idx(...t); c >= 0; c = from[c]) cells.unshift([c % W, Math.floor(c / W)]);
+    const pts = [cells[0]]; for (let k = 1; k < cells.length; k++) if (!clear(N, pts[pts.length - 1], cells[k])) pts.push(cells[k - 1]); pts.push(cells[cells.length - 1]);
+    return pts.slice(1).map(([i, j]) => [N.x0 + i * CELL, N.z0 + j * CELL]);
+  }
+  async function walkRoute(x, z, opt = {}) {
+    const P = findPath(x, z); if (!P) return Object.assign(await walkPoint(x, z, opt), {note: 'no way round found: walked straight'});
+    const place0 = lvl();
+    for (let k = 0; k < P.length; k++) { const last = k === P.length - 1, r = await walkPoint(last ? x : P[k][0], last ? z : P[k][1], Object.assign({}, opt, {within: last ? opt.within || .5 : .45})); if (lvl() !== place0) return {ok: true, note: 'went through to another place'}; if (!r.ok) return r; }
+    return {ok: true};
+  }
+  // somewhere to go by name: a way out, a thing on a wall, or a wall
+  function target(q) {
+    q = String(q).toLowerCase().replace(/^the /, '');
+    const T = things(), e = eyeP(), d = p => Math.hypot(p[0] - e[0], p[2] - e[2]);
+    const ex = T.filter(t => t.exit && (t.exit.includes(q) || (PLACE_NAME[t.exit] || '').toLowerCase().includes(q) || q.includes(t.exit)));
+    if (ex.length) { const t = ex.sort((a, b) => d(a.p) - d(b.p))[0]; return {name: t.what, stand: [t.p[0], t.p[2]], face: t.p, exit: true}; }
+    const dc = T.filter(t => !t.exit && t.what.replace(/^(a|an|the) /, '').toLowerCase().includes(q.replace(/^(a|an) /, '')));
+    if (dc.length) { const t = dc.sort((a, b) => d(a.p) - d(b.p))[0]; return {name: t.what, stand: [t.p[0] + t.n[0] * 1.4, t.p[2] + t.n[2] * 1.4], face: t.p}; }
+    const S = (lvl().surfaces || []).filter(s => Math.abs(s.n[1]) < .5 && (q === 'wall' || q === 'nearest wall' || wallName(s).toLowerCase().includes(q)));
+    let best = null; for (const s of S) { const rel = [0, 1, 2].map(i => e[i] - s.o[i]), cu = Math.max(0, Math.min(s.w, rel[0] * s.u[0] + rel[1] * s.u[1] + rel[2] * s.u[2])), cv2 = Math.max(0, Math.min(s.h, 1.6)), P = [0, 1, 2].map(i => s.o[i] + s.u[i] * cu + s.v[i] * cv2), dd = d(P); if (!best || dd < best.dd) best = {dd, P, s}; }
+    if (best) return {name: wallName(best.s) + (painted(best.s.id) ? ' (has paint on it)' : ''), stand: [best.P[0] + best.s.n[0] * .9, best.P[2] + best.s.n[2] * .9], face: best.P};
+    return null;
   }
   // ---------- doing ----------
   async function stroke(path, ms) {   // a left-button drag over the canvas, as a player sprays
@@ -2479,10 +2576,13 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'setTime', does: 'Set the time of day (e.g. Day, Night, Golden hour, Neon dusk, Neon rain).', args: [{name: 'time', does: 'its name', req: true}],
       run: async ({time: q}) => { const b = pick(menu('timemenu'), q); if (!b) return {ok: false, error: 'times: ' + menu('timemenu').map(text).join(', ')}; b.click(); await wait(400); return city(); }},
     {name: 'walkTo', does: 'Walk to a spot in this place (x and z as state() gives them), as a player walks: at walking (or running) speed, and walls and things stop you.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'z', type: 'number', does: 'z', req: true}, {name: 'run', type: 'boolean', does: 'run (as with Shift)'}],
-      run: async ({x, z, run}) => Object.assign(await walkPoint(+x, +z, {run}), {you: you()})},
+      run: async ({x, z, run}) => Object.assign(await walkRoute(+x, +z, {run}), {you: you()})},
+    {name: 'goTo', does: 'Walk (round walls and things, at a player\'s speed) to something in this place by name and face it: a way out (e.g. "alley", "subway", "Block Cube"), a thing on a wall (e.g. "departures board", "halving scoreboard", "block number screen", "poster", "graffiti piece") or a wall (e.g. "big wall", "billboard", or "nearest wall"). Walking into a way out takes you to that place.', args: [{name: 'to', does: 'what to go to', req: true}, {name: 'run', type: 'boolean', does: 'run'}],
+      run: async ({to, run}) => { const t = target(to); if (!t) return {ok: false, error: 'nothing called "' + to + '" here: look() names what is in view'}; const r = await walkRoute(t.stand[0], t.stand[1], {run, within: t.exit ? .3 : .5}); if (!t.exit && r.ok) { const e = eyeP(), dx = t.face[0] - e[0], dy = t.face[1] - e[1], dz = t.face[2] - e[2]; B().look(Math.atan2(-dx, -dz), Math.max(-1.45, Math.min(1.45, Math.atan2(dy, Math.hypot(dx, dz))))); await wait(150); } return Object.assign(r, {to: t.name, place: city().place, you: you()}); }},
     {name: 'walk', does: 'Walk for a while, as holding W, S, A or D: forward, back, left or right.', args: [{name: 'direction', enum: ['forward', 'back', 'left', 'right'], does: 'which way', req: true}, {name: 'seconds', type: 'number', does: 'how long (default 1, most 10)'}, {name: 'run', type: 'boolean', does: 'run'}],
       run: async ({direction, seconds = 1, run}) => { const k = {forward: 'w', back: 's', left: 'a', right: 'd'}[direction]; if (!k) return {ok: false, error: 'forward, back, left or right'}; const t0 = performance.now(), ms = Math.min(10, +seconds) * 1000; try { while (performance.now() - t0 < ms) { hold(k, true, run); await wait(150); } } finally { hold(k, false); } await wait(150); return you(); }},
-    {name: 'people', ro: true, untrusted: true, does: 'Who is around you: other painters (each a player or an AI agent) and the townsfolk (part of the game, NPCs), with what they are doing and how far away.', run: () => people()},
+    {name: 'people', ro: true, untrusted: true, does: 'Every other painter at all times (each a player or an AI agent): which place, where, which way they face, what they are doing and saying, and which way, how far and whether they face you when they are with you. Also the townsfolk here (NPCs) with what they are doing.', run: () => people()},
+    {name: 'events', ro: true, untrusted: true, does: 'What other painters have done since you last asked: arrived, left, went to another place, started spraying, said something.', args: [{name: 'all', type: 'boolean', does: 'every event kept (the last 80), not only new ones'}], run: ({all}) => { evTick(); const L = all ? EVT.list : EVT.list.slice(EVT.read); EVT.read = EVT.list.length; return {events: L, note: L.length ? undefined : 'nothing new'}; }},
     {name: 'turn', does: 'Turn your head, as the mouse does: face a direction (degrees, as state() gives them) and tilt up or down.', args: [{name: 'facing', type: 'number', does: 'degrees'}, {name: 'pitch', type: 'number', does: 'degrees up (+) or down (-)'}],
       run: async ({facing, pitch}) => { const c = B().BP.cam; B().look(facing != null ? rad(+facing) : c.yaw, pitch != null ? Math.max(-1.45, Math.min(1.45, rad(+pitch))) : c.pitch); await wait(100); return you(); }},
     {name: 'lookAt', does: 'Face a point in this place.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height', req: true}, {name: 'z', type: 'number', does: 'z', req: true}],
