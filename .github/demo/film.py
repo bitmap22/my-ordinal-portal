@@ -38,7 +38,16 @@ async def main():
         g = pg.frames[1]
         await g.wait_for_function('window.agent', timeout=180000); await pg.wait_for_timeout(20000)
         A = lambda js: g.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 400); } catch (e) { return 'ERR ' + e; } }")
-        OFF = {'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
+        R3 = SC in ('hall3', 'hold3', 'common3', 'crew3')
+        BH0 = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)
+        if R3:
+            print('real', await A("agent.feed({on: false})"), flush=True)
+            if SC in ('hall3', 'hold3'):
+                print('real', await A(f"agent.block({{height: {BH0}}})"), flush=True); await pg.wait_for_timeout(8000)
+                print('real', await A(f"agent.walkIn({{height: {BH0}}})"), flush=True); await pg.wait_for_timeout(45000)
+            else:
+                print('real', await A("agent.commonRoom()"), flush=True); await pg.wait_for_timeout(45000)
+        OFF = {'hall3': 70e3, 'hold3': 100e3, 'common3': 140e3, 'crew3': 170e3, 'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
         await g.evaluate(f"__vtStart({D['t0'] * 1000 + OFF.get(SC, 0)})")
         tstep = [0, time.time()]
         async def step(n=1):
@@ -57,9 +66,36 @@ async def main():
                 if r: print('   ready after', i, flush=True); return True
             print('   NOT ready', flush=True); return False
         BH = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)   # (the block with pictures, from the recording)
-        await run("agent.feed({on: false})")
+        if not R3: await run("agent.feed({on: false})")
         st = {}
-        if SC in ('cube2', 'layers2', 'cube3', 'layers3'):   # (the cube turned by one long, slow drag from a spot off the cube, let go at the end)
+        if R3:
+            await step(20)
+            if SC == 'hall3': N = 240; act = lambda f: "agent.walk({direction: 'forward', seconds: 7})" if f == 15 else None
+            elif SC == 'hold3':
+                for ty in ('images', 'inscriptions', 'text', None):
+                    r = await run("agent.hold(" + ("{type: '" + ty + "'}" if ty else "{}") + ")", 900)
+                    if r and '"ok":false' not in r and 'ERR' not in r: break
+                await step(45); N = 300
+                act = lambda f: "agent.viewBig()" if f == 120 else None
+            elif SC == 'common3':
+                await run("agent.goTo({place: 'grand hall'})", 600); await step(20); N = 240
+                act = lambda f: "agent.turn({facing: (agent.state().room || {}).facing + .25})"
+            else:
+                await run("agent.goTo({place: 'forum steps'})", 600); await step(20)
+                await pg.evaluate("send({type: 'page'})"); await step(5)
+                await pg.evaluate("send({type: 'ready', me: {id: 'me'}})"); await step(20)
+                me = await pg.evaluate("(() => { const s = __got.filter(m => m.type === 'state').pop(); return s ? s.s : null; })()")
+                print('me', me, flush=True); N = 360
+                MATES = [('n', 9, 'macarena', -1.7, 34.0), ('m', 3, 'chicken', 0.0, 34.6), ('y', 7, 'twist', 1.7, 34.0)]
+                for mid, i, em, x, d in MATES: await pg.evaluate("m => send(m)", {'type': 'look', 'id': mid, 'look': [i, 0, TONES[i]]})
+                yaw = ((me or {}).get('y', 0) or 0) + math.pi
+                def states(t):
+                    return [{'type': 'state', 'id': mid, 'name': NAMES[i], 's': {'in': 1, 'h': -2, 'x': x, 'z': -d, 'y': yaw, 'p': 0, 'hk': -1, 'lv': 0, 'sit': 0, 'em': em, 'en': 1, 'ea': round(t, 2), 'ai': 1}} for mid, i, em, x, d in MATES]
+                for k in range(12):   # (their people load: real seconds, a little film time)
+                    for m in states(k * .2): await pg.evaluate("m => send(m)", m)
+                    await step(6); await pg.wait_for_timeout(2500)
+                st['states'] = lambda t: states(2.4 + t); act = lambda f: None
+        elif SC in ('cube2', 'layers2', 'cube3', 'layers3'):   # (the cube turned by one long, slow drag from a spot off the cube, let go at the end)
             await step(30)
             if SC in ('layers2', 'layers3'): await run("agent.view({name: 'fees'})"); await step(60)
             N = 240; X0, Y0 = int(W * .82), int(H * .78)
