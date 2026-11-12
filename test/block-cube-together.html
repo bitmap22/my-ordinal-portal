@@ -1410,7 +1410,16 @@ window.AgentKit = window.AgentKit || (() => {
     }
     return true;
   }
-  return {wait, until, text, shown, r1, r2, deg, rad, key, make, webmcp, mcOf, UNTRUSTED};
+  async function picture(cv, w = 640) {
+    return new Promise(res => requestAnimationFrame(() => {   // (after the game's own drawing in this frame, so the picture is whole)
+      try { const W = Math.min(w, cv.width), H = Math.round(cv.height * W / cv.width), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, W, H); x.drawImage(cv, 0, 0, W, H); res({type: 'image/jpeg', width: W, height: H, dataUrl: c.toDataURL('image/jpeg', .72)}); }
+      catch (e) { res({error: 'no picture: ' + e.message}); }
+    }));
+  }
+  // where things are on screen, in words: a 3 x 3 grid (top/middle/bottom, left/centre/right)
+  const GRID = [['top left', .2, .25], ['top', .5, .25], ['top right', .8, .25], ['left', .2, .5], ['centre', .5, .5], ['right', .8, .5], ['bottom left', .2, .75], ['bottom', .5, .75], ['bottom right', .8, .75]];
+  const bearing = d => { d = ((d + 540) % 360) - 180; return Math.abs(d) < 12 ? 'ahead' : Math.abs(d) > 150 ? 'behind you' : (d > 0 ? 'to your left' : 'to your right') + (Math.abs(d) > 60 ? ' (out of view)' : ''); };
+  return {wait, until, text, shown, r1, r2, deg, rad, key, make, webmcp, mcOf, UNTRUSTED, picture, GRID, bearing};
 })();
 
 /* Play-together page agent kit: window.agent here runs the crew (start, join, chat, who is in it) and passes every
