@@ -8250,7 +8250,7 @@ async function goToMate(M) {
     roomEnter(COMMON, {cm: [s.x + (s.x > 0 ? -.8 : .8), -s.z, s.lv]}); return;
   }
   if (room && room.at && room.at.h === s.h && room.at.ready) { const p = room.p; p.x = Math.max(-1.6, Math.min(1.6, s.x + 1)); p.z = room.at.z0 + s.z + .8; p.vx = p.vz = 0; return; }
-  if (room) { const C = room.rooms.find(R => R && R.ready && R.h === s.h); if (C) { room.p.x = s.x; room.p.z = C.z0 + s.z + .8; return; } }
+  if (room) { const i = room.rooms.findIndex(R => R && R.ready && R.h === s.h); if (i === 0 || i === 2) { rmCross(i === 2 ? 1 : -1); const p = room.p; p.x = Math.max(-1.6, Math.min(1.6, s.x + 1)); p.z = room.at.z0 + s.z + .8; p.vx = p.vz = 0; return; } }   // (in the hall next door: into that hall, as going through its door does, then to their side)
   roomEnter(s.h, {x: s.x + (s.x > 0 ? -1 : 1), z: s.z + .9});
 }
 // where you are, for the crew: often while you move, now and then while you stand
@@ -8780,7 +8780,11 @@ window.AgentKit = window.AgentKit || (() => {
     let pa = 0; try { pa = window.parent !== window && window.parent.__crewAi ? window.parent.__crewAi()[M.id] : 0; } catch (e) {}   // (the crew page knows from the waiting room on)
     const s = M.s || {}, o = {is: s.ai || pa ? 'an AI agent' : 'a player', untrusted: {name: mateName(M)}};
     o.where = !M.s ? 'in the crew\'s waiting room (not in the game yet)' : s.in ? (s.h === COMMON ? 'the common room' : 'inside the hall that starts at block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
-    if (s.in) { o.at = {x: r1(s.x), z: r1(s.z)}; if (s.h === COMMON) o.area = ZONES[zoneIx(s.x, -s.z)]; o.facing = deg(s.y || 0); }
+    if (s.in) {   // their spot in your own numbers (as state() gives yours, and walkTo() takes) when their hall is one you have around you
+      const R = inRoom() && room.rooms.find(R => R && R.ready && (s.h === COMMON ? cmOn(R) : !cmOn(R) && !R.gal && R.h === s.h));
+      if (R) { if (s.h === COMMON) { const [wx, wz] = cmW(R, s.x, -s.z); o.at = {x: r1(wx), z: r1(R.z0 + wz)}; } else o.at = {x: r1(s.x), z: r1(R.z0 + s.z)}; }
+      else o.inTheirHall = {x: r1(s.x), z: r1(s.z), note: 'counted from where their hall starts, not in your numbers: goToCrewmate() takes you there'};
+      if (s.h === COMMON) o.area = ZONES[zoneIx(s.x, -s.z)]; o.facing = deg(s.y || 0); }
     const doing = []; if (s.em) doing.push(((typeof EM_NAME !== 'undefined' && EM_NAME[s.em]) || s.em) + (typeof EM_LOOP !== 'undefined' && EM_LOOP[s.em] ? ' (dancing)' : ' (emote)'));
     if (s.sit) doing.push('sitting'); if (s.hk === 60) doing.push('holding a pint'); else if (s.hk >= 0 && TYPES[s.hk]) doing.push('holding a parcel (' + TYPES[s.hk].name + ')');
     o.doing = doing.length ? doing.join(', ') : (s.in ? 'standing or walking' : 'looking at the cube');
@@ -8799,13 +8803,14 @@ window.AgentKit = window.AgentKit || (() => {
   }
   // what crewmates do, as it happens: kept once you use the kit, read with events()
   const EVT = {list: [], read: 0, last: new Map(), timer: 0, talk: new Map(), tip: null, mus: null};
+  const wentTo = w => /^inside /.test(w) ? 'went into ' + w.replace(/^inside /, '') : /^on the start page/.test(w) ? 'went back to the start page' : /^outside, looking at /.test(w) ? 'went outside to look at ' + w.replace(/^outside, looking at /, '') : /^in the crew's waiting room/.test(w) ? 'went back to the crew\'s waiting room' : 'went to ' + w;
   function evPush(t, world) { EVT.list.push(Object.assign({at: new Date().toISOString().slice(11, 19)}, world ? {happened: t} : {untrusted: t})); if (EVT.list.length > 80) { EVT.list.shift(); EVT.read = Math.max(0, EVT.read - 1); } }
   const tuneName = m => !m || m.k === 'off' ? 'nothing (the music box stopped)' : m.k === 'tune' ? (CM_TUNES[m.v] ? CM_TUNES[m.v].n : 'a tune') : 'a song inscribed on Dogecoin';
   function evTick() {
     if (!window.__agentOn) return;
     const now = new Map();
     for (const M of crew.mates.values()) { const o = mateInfo(M); now.set(M.id, {name: o.untrusted.name, is: o.is, where: o.where, doing: o.doing}); }
-    for (const [id, n] of now) { const b = EVT.last.get(id); if (!b) { evPush(n.name + ' (' + n.is + ') joined, ' + n.where); continue; } if (b.where !== n.where) evPush(n.name + ' went to ' + n.where.replace(/^inside /, '')); if (b.doing !== n.doing) evPush(n.name + ' is now ' + n.doing); }
+    for (const [id, n] of now) { const b = EVT.last.get(id); if (!b) { evPush(n.name + ' (' + n.is + ') joined, ' + n.where); continue; } if (b.where !== n.where) evPush(n.name + ' ' + wentTo(n.where)); if (b.doing !== n.doing) evPush(n.name + ' is now ' + n.doing); }
     for (const [id, b] of EVT.last) if (!now.has(id)) evPush(b.name + ' left');
     EVT.last = now;
     const pn = performance.now();   // voice chat: who starts talking (an agent hears that someone talks, not the words)

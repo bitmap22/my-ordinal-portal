@@ -164,6 +164,7 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
 #ptop{position:fixed;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:3;width:max-content;max-width:calc(100vw - 240px)}
 #ptop .pl{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;width:clamp(96px,13vw,168px);box-sizing:border-box;padding:5px 10px 5px 9px;border-radius:10px;border:1px solid rgba(247,147,26,.28);border-left:3px solid var(--g,#f7931a);background:rgba(14,9,5,.74);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#f7efe3;text-align:left;text-transform:none;letter-spacing:0;font:600 12px/1.15 system-ui,-apple-system,'Segoe UI',sans-serif;cursor:default;transition:box-shadow .2s}
 #ptop .pl .n{display:flex;gap:5px;align-items:baseline;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#ptop .pl .n b{font:800 10px/1 ui-monospace,Menlo,Consolas,monospace;color:var(--g,#f7931a);letter-spacing:.06em}
+#ptop .pl .n i.ai{font:800 9px/1 ui-monospace,Menlo,Consolas,monospace;font-style:normal;letter-spacing:.06em;color:#140d06;background:#93d36c;border-radius:3px;padding:2px 3px;flex:0 0 auto}
 #ptop .pl .w{font:600 11px/1.1 ui-monospace,Menlo,Consolas,monospace;color:#b8a593;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #ptop .pl.here .w{color:#93d36c}#ptop .pl.me{background:rgba(40,24,10,.82)}#ptop .pl.go{cursor:pointer}#ptop .pl.go:hover{background:rgba(40,24,10,.9)}
 #ptop .pl.talk{box-shadow:0 0 0 2px #93d36c,0 0 14px rgba(147,211,108,.6)}#ptop .pl.empty{opacity:.42;border-left-color:rgba(247,147,26,.28)}
@@ -975,7 +976,8 @@ function chatIn(m) { if (isMuted(m.id)) return; const name = clean(m.name) || 'R
 function logLine(who, text) { const p = document.createElement('p'); if (who) { const b = document.createElement('b'); b.textContent = who; p.append(b); } p.append(document.createTextNode(text)); const L = $('log'); L.append(p); while (L.children.length > 5) L.firstChild.remove(); setTimeout(() => { p.style.opacity = 0; setTimeout(() => p.remove(), 1300); }, 12000);
   if (!who && net.on) { net.chat.push({ id: '', name: '', text }); if (net.chat.length > 60) net.chat.shift(); drawChat(); } }
 function openSay() { if (!net.on || !$('lobby').hidden) return; $('say').hidden = false; $('msg').focus(); }
-function say(t) { t = String(t || '').trim().slice(0, 200); if (!t || !net.on) return; const ai = window.__agentSay ? 1 : 0, nm = myName() + (ai ? ' · AI' : ''); share({ t: 'chat', text: t, ai }); chatLine(ME, nm, t); logLine(nm, t); toGame({ type: 'say', id: ME, name: myName(), text: t }); }
+const agentSaying = () => { if (window.__agentSay) return true; try { return !!window.top.__agentSay; } catch (e) { return false; } };   // (inside the Ordinal Portal, the agent kit marks the portal's window while it sends)
+function say(t) { t = String(t || '').trim().slice(0, 200); if (!t || !net.on) return; const ai = agentSaying() ? 1 : 0, nm = myName() + (ai ? ' · AI' : ''); share({ t: 'chat', text: t, ai }); chatLine(ME, nm, t); logLine(nm, t); toGame({ type: 'say', id: ME, name: myName(), text: t }); }
 function sayIt() { const t = $('msg').value.trim(); $('msg').value = ''; $('say').hidden = true; try { (inPaint ? pframe : frame).contentWindow.focus(); } catch (e) {} say(t); }
 $('send').onclick = sayIt; $('chat').onclick = () => $('say').hidden ? openSay() : sayIt();
 $('msg').addEventListener('keydown', e => { if (e.key === 'Enter') sayIt(); if (e.key === 'Escape') { $('msg').value = ''; sayIt(); } e.stopPropagation(); });
@@ -1222,7 +1224,7 @@ function drawTop() {
     const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
     const here = !mine && st && mst && (inPaintSt(st) ? inPaintSt(mst) : st.in && mst.in && !inPaintSt(mst) && st.h === mst.h), go = !mine && st && (st.in || inPaintSt(st)) && !here;
     const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + (GLOWS[lk[0]] || GLOWS[lk[0] % GLOWS.length])[lk[1] % 3], title: go ? 'go to ' + (p.name || 'them') : '' },
-      el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
+      el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('i', { class: 'ai', text: 'AI', title: 'an AI agent' }) : null, (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
     if (one) { b.classList.remove('go'); b.title = ''; b.append(el('span', { class: 'nx', text: (k + 1) + '/' + ids.length + ' \u203a' })); b.onclick = () => { topAt++; drawTop(); }; }
     else if (go) b.onclick = () => toGame({ type: 'go', id });
     box.append(b);
