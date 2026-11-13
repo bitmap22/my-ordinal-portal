@@ -11060,7 +11060,7 @@ function gdBuild() {
     B.quad = mk([-1, 0, 1, 0, 1, 1, -1, 0, 1, 1, -1, 1]).vao; B.quad2 = mk([-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1]).vao;
     const bl = []; const ys = [0, .3, .58, .82]; for (let i = 0; i < 3; i++) bl.push(-1, ys[i], 1, ys[i], 1, ys[i + 1], -1, ys[i], 1, ys[i + 1], -1, ys[i + 1]); bl.push(-1, ys[3], 1, ys[3], 0, 1); B.blade = mk(bl); }
   // where no grass grows: the paths (as segments) and the plaza with its flowerbed
-  B.seg = new Float32Array(40).fill(999); GD_PATHS.forEach(([a, b], i) => B.seg.set([a[0], a[1], b[0], b[1]], i * 4));
+  B.seg = new Float32Array(40).fill(999); GD_PATHS.forEach(([a, b], i) => B.seg.set([a[0], a[1], b[0], b[1]], i * 4)); GD_CH.forEach((c, k) => B.seg.set([c.x, c.z - .6, c.x, c.z + .6], (GD_PATHS.length + k) * 4));   // (no grass through the cornhole boards)
   B.cir = new Float32Array(24); B.cir.set([0, -50, 10.05, 0], 0); B.cir.set([2.62, -.8, .8, 0, -2.62, -.8, .8, 0], 4); B.cir.set([GD_POND.x, GD_POND.z, GD_POND.a + 1.4, (GD_POND.a + 1.4) / (GD_POND.b + 1.7)], 12); B.cir.set([GD_POND.x, GD_POND.z - GD_POND.b - 2.2, 4.6, 0], 16); B.cir.set([GD_FIRE.x, GD_FIRE.z, 1.45, 0], 20);
   B.rec = new Float32Array(16); B.rec.set([10.2, -57.8, 40.8, -40.2], 0);
   gdWaterBuild(B); B.water = gdWaterProg(); gdPropsBuild(B); gdChessBuild(B); B.fx = gdFxProg();
@@ -11318,7 +11318,7 @@ const GD_PP = {x: 28.5, z: -12.5, hl: 1.37, hw: .7625, y: .762};
 gd.pp = null; gd.ball = null; gd.psc = [0, 0]; gd.pgOut = null;
 const gdPPName = s => s < 0 ? 'red' : 'black';
 function gdPPTaken(side) { for (const M of crew.mates.values()) if (M.shown && M.s && M.s.in && M.s.h === GARDEN && M.s.pb === side) return M; return null; }
-function gdBatAt(p) { return [p.x - Math.sin(p.yaw) * .45 + Math.cos(p.yaw) * .2, 1.0, p.z - Math.cos(p.yaw) * .45 - Math.sin(p.yaw) * .2]; }
+function gdBatAt(p) { return [p.x - Math.sin(p.yaw) * .55 + Math.cos(p.yaw) * .25, 1.17, p.z - Math.cos(p.yaw) * .55 - Math.sin(p.yaw) * .25]; }   // (out in front, low on your right, where you can see it)
 function gdTock(v, low) { if (!sndOn) return; const a = audio(); if (!a) return; const t = a.currentTime, o = a.createOscillator(), G = a.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(low ? 900 : 1500, t); o.frequency.exponentialRampToValueAtTime(low ? 500 : 700, t + .05); G.gain.setValueAtTime(.09 * v, t); G.gain.exponentialRampToValueAtTime(.0001, t + .07); o.connect(G); G.connect(a.destination); o.start(t); o.stop(t + .08); }
 function gdPPSend() { const B = gd.ball, r = v => Math.round(v * 1000) / 1000; gd.pgOut = B ? [B.n, r(B.p[0]), r(B.p[1]), r(B.p[2]), r(B.v[0]), r(B.v[1]), r(B.v[2]), B.by, B.live ? 1 : 0, gd.psc[0], gd.psc[1]] : null; crew.last = ''; }
 function gdPPAim() { const ray = rmRay(null, null), T = GD_PP; if (ray && ray.d[1] < -.01) { const t = (T.y - ray.e[1]) / ray.d[1], z = ray.e[2] + ray.d[2] * t; if (t > 0 && t < 8) return z; } return T.z + (Math.random() - .5) * 1.1; }
@@ -11368,7 +11368,7 @@ function gdMatePP(M, R, s) { R.pb = s.pb || 0; const g = s.pg; if (!g || g[0] ==
 // the bats (on the table, or in a hand) and the ball, this moment
 function gdPPInst(G) {
   if (!G.pong) { const {C, lathe, box, TR} = GDM, wd = C(0x9c6b3f), mk = (col, flat) => { const v = []; if (flat) { lathe(v, [[0, 0], [.08, 0], [.08, .012], [0, .012]], 14, () => col, 0, 0); box(v, 0, .005, .13, .03, .01, .1, wd); } else { lathe(v, [[0, -.006], [.08, -.006], [.08, .006], [0, .006]], 14, () => col, 0, 0, TR([1, 1, 1], [Math.PI / 2, 0, 0], [0, 0, 0])); box(v, 0, -.12, 0, .028, .1, .02, wd); } return gdVAOdyn(v, 1); };
-    const bl = []; lathe(bl, [[0, -.02], [.014, -.014], [.02, 0], [.014, .014], [0, .02]], 10, () => C(0xff9a3c), 0, 0); G.pong = [mk(C(0xd62828), false), mk(C(0x1a1a1a), false), mk(C(0xd62828), true), mk(C(0x1a1a1a), true), gdVAOdyn(bl, 1)]; }
+    const bl = []; lathe(bl, [[0, -.032], [.022, -.023], [.032, 0], [.022, .023], [0, .032]], 12, () => C(0xffb050), 0, 0); G.pong = [mk(C(0xd62828), false), mk(C(0x1a1a1a), false), mk(C(0xd62828), true), mk(C(0x1a1a1a), true), gdVAOdyn(bl, 1)]; }
   const [hR, hB, fR, fB, ball] = G.pong, T = GD_PP, set = (o, v) => { if (v) { o.data.set(v); o.ni = 1; gdDyn(o); } else o.ni = 0; };
   for (const s of [-1, 1]) { let held = null; if (gd.pp && gd.pp.side === s) { const b = gdBatAt(room.p); held = [b[0], b[1], b[2], room.p.yaw, 1, 1, 1, 1]; } else { const M = gdPPTaken(s); if (M) { const R = M.R, Y = R.yaw; held = [R.p[0] + Math.sin(Y) * .42 - Math.cos(Y) * .2, R.p[1] + 1.0, R.p[2] + Math.cos(Y) * .42 + Math.sin(Y) * .2, Y, 1, 1, 1, 1]; } }
     set(s < 0 ? hR : hB, held); set(s < 0 ? fR : fB, held ? null : [T.x + s * .7, .76, T.z + .3, 0, 1, 1, 1, 1]); }
@@ -11401,7 +11401,7 @@ function gdChDo(A) {
   const L = gdBagList().map(b => Object.assign({}, b)), p = room.p;
   if (A.a === 'bagup') { if (L[A.i].st === 'x') return; L[A.i].st = 'x'; gd.hb = A.i; gdBagSet(L); return; }
   if (A.a === 'throw' && gd.hb >= 0) { const i = gd.hb, f = [-Math.sin(p.yaw), -Math.cos(p.yaw)], p0 = [p.x + f[0] * .4, 1.15 + (p.y || 0), p.z + f[1] * .4];
-    let dx = A.to[0] - p.x, dz = A.to[1] - p.z; const dist = Math.max(1.5, Math.min(12, Math.hypot(dx, dz))), k = dist / (Math.hypot(dx, dz) || 1), sc = .05 + dist * .03;
+    let dx = A.to[0] - p.x, dz = A.to[1] - p.z; const dist = Math.max(1.5, Math.min(12, Math.hypot(dx, dz))), k = dist / (Math.hypot(dx, dz) || 1), sc = .03 + dist * .018;
     const x1 = p.x + dx * k + (Math.random() - .5) * 2 * sc, z1 = p.z + dz * k + (Math.random() - .5) * 2 * sc, q = gdBoardAt(x1, z1), st = q ? (q.hole ? 'h' : 'b') : 'g';
     const land = {x: q && q.hole ? q.B.x : x1, z: q && q.hole ? q.B.z + .33 * q.B.f : z1, st}, tf = .45 + dist * .07;
     gd.hb = -1; gd.fly.push({i, p0, land, t0: performance.now(), tf, mine: true}); gd.bt = [Date.now(), i, +p0[0].toFixed(2), +p0[1].toFixed(2), +p0[2].toFixed(2), +land.x.toFixed(2), +land.z.toFixed(2), 'gbh'.indexOf(st), +tf.toFixed(2)]; crew.last = ''; }
