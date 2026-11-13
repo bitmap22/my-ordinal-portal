@@ -3,7 +3,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-<!-- agent-kit meta --><meta name="ai-agents" content="For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. Agent Blockhall, Block Paint, Doge Cube and their Play Together pages have full kits of their own once open. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk()."><!-- /agent-kit meta -->
+<link rel="alternate" type="text/plain" href="llms.txt" title="A plain guide to this portal for AI agents">
+<!-- agent-kit meta --><meta name="ai-agents" content="For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. Agent Blockhall, Block Paint, Doge Cube and their Play Together pages have full kits of their own once open; the portal's own tools and Vizzy Tunes get its page kit once open (tools named page_*). A plain guide is at llms.txt. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk()."><!-- /agent-kit meta -->
     <title>Ordinal Portal</title>
 <meta name="description" content="The Ordinal Portal by bitmap22: Bitcoin ordinal games, tools and creative pieces to use in your browser, including Agent Blockhall, a 3D Bitcoin block explorer world for players and agents.">
     <style>
@@ -677,9 +678,9 @@
             <div class="badge-row">
                 <span class="safe-badge">Ordinal Portal Online</span>
                 <span class="stat-badge blue">15 Games</span>
-                <span class="stat-badge blue">21 Creative</span>
+                <span class="stat-badge blue">23 Creative</span>
                 <span class="stat-badge blue">1 Music</span>
-                <span class="stat-badge">37 Total</span>
+                <span class="stat-badge">40 Total</span>
             </div>
 
             <div class="controls">
@@ -1445,6 +1446,15 @@
         document.getElementById("random-button").addEventListener("click", launchRandomVisibleProject);
 
         applyFilters();
+
+        // the counts at the top come from the cards themselves, so they stay right when cards are added
+        document.querySelectorAll(".badge-row .stat-badge").forEach(function (badge) {
+            const m = /^(\d+)\s+(.+)$/.exec(badge.textContent.trim());
+            if (!m) return;
+            const word = m[2].toLowerCase();
+            const n = word === "total" ? document.querySelectorAll(".card[data-title]").length : document.querySelectorAll('.card[data-category="' + word + '"]').length;
+            if (n) badge.textContent = n + " " + m[2];
+        });
     </script>
 
     <script>
@@ -1484,8 +1494,8 @@
         async src="//gc.zgo.at/count.js"></script>
 
 <!-- agent-kit: start -->
-<div id="for-ai-agents" aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden">For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. Agent Blockhall, Block Paint, Doge Cube and their Play Together pages have full kits of their own once open. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk().</div>
-<script>
+<div id="for-ai-agents" aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden">For AI agents: this portal has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named portal_*. Agent Blockhall, Block Paint, Doge Cube and their Play Together pages have full kits of their own once open; the portal's own tools and Vizzy Tunes get its page kit once open (tools named page_*). A plain guide is at llms.txt. You use the portal as a visitor does, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk().</div>
+<script id="agentkit">
 /* Agent kit (shared): lets an AI agent read everything in the game and drive it.
    Each page builds window.agent from a table of commands. Every command takes one object of named
    arguments (or the same arguments in order) and returns a promise of plain data.
@@ -1685,10 +1695,139 @@ window.AgentKit = window.AgentKit || (() => {
   const bearing = d => { d = ((d + 540) % 360) - 180; return Math.abs(d) < 12 ? 'ahead' : Math.abs(d) > 150 ? 'behind you' : (d > 0 ? 'to your left' : 'to your right') + (Math.abs(d) > 60 ? ' (out of view)' : ''); };
   return {wait, until, text, shown, r1, r2, deg, rad, key, make, webmcp, mcOf, UNTRUSTED, picture, GRID, bearing, chatWait, chatSent, asAgent, banned, BANNED, boxUI, TALK_NOTE, TIP};
 })();
-
+</script>
+<script type="text/plain" id="agent-page-kit">
+/* Page kit: for the Ordinal Portal's own plain pages (the tools, Vizzy Tunes, the Minitors mint page) that have no game kit.
+   An agent reads the page and uses it as a visitor does: the same buttons and boxes, nothing more.
+   Agents never wipe, clear or delete anything, and never connect a wallet, sign, mint or pay.
+   The portal hands it to its own pages once an agent opens one in the viewer; the mint page carries its own copy. */
+(() => {
+  const K = window.AgentKit; if (!K || window.agent) return;
+  const {wait, until, text, shown} = K;
+  const me = window.__agentPage || {};
+  const file = me.file || decodeURIComponent(location.pathname.split('/').pop() || 'index.html');
+  const title = me.title || (document.title || '').trim() || file;
+  // what each page asks of agents, beyond the rules for every page
+  const PAGES = [
+    {is: () => file === 'minitors-mint.html', no: /\b(connect|unisat|wallet|mint|sign|pay|approve|send|buy|refund|finish)\b|sats back/i,
+      why: 'agents never connect a wallet, sign, mint or pay: only a person does that, with their own wallet',
+      note: 'Here you may read the page, check a Minitor by its inscription ID, and, once the person at your screen has connected their own wallet, pick a bitmap to check it and read the cost. Agents never connect a wallet, sign, mint or pay: only a person does that, with their own wallet.'},
+    {is: () => /^Blockipelago · Play together/i.test(document.title), look: true,
+      note: 'Blockipelago Multiplayer cannot mark players as AI agents yet, so agents only look here: no joining, playing or chat.'},
+    {is: () => file === 'vizzy-tunes.html', note: 'Listen to this computer and Use microphone make the browser ask the person at your screen first: only they can allow it.'},
+  ];
+  const rule = PAGES.find(p => { try { return p.is(); } catch (e) { return false; } }) || {};
+  const LOOK = {ok: false, error: rule.note || 'agents only look on this page'};
+  // never for agents, on any page: anything that wipes, clears, deletes or removes (a person must press those)
+  const NO = /\b(wipe|delete|remove|erase|forget|clear|discard|trash|bin)\b|\u{1F5D1}/iu, NO_ID = /clear|delete|remove|wipe|trash|^bin/i;
+  const PICK = 'button,[role=button],a[href],input,select,textarea,summary';
+  const isBox = el => /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
+  const label = el => {
+    const P = [], add = v => { const w = String(v || '').replace(/\s+/g, ' ').trim(); if (w && !P.some(q => q.toLowerCase().includes(w.toLowerCase()))) P.push(w); };
+    add(el.getAttribute('aria-label')); if (el.labels) for (const l of el.labels) add(text(l));
+    if (!isBox(el)) add(text(el)); add(el.title); add(el.placeholder);
+    if (!P.length && el.id) P.push('#' + el.id);
+    return P.join(' · ');
+  };
+  const forbidden = el => {
+    if (el.closest('[data-agentbox]')) return 'that is the box for talking with the person at your screen: use talk()';
+    if (rule.no && (rule.no.test(label(el)) || rule.no.test(el.id || ''))) return rule.why;
+    if (NO.test(label(el)) || NO_ID.test(el.id || '')) return 'agents may not press this: it wipes, clears or deletes something. A person has to.';
+    return '';
+  };
+  const visible = () => [...document.querySelectorAll(PICK)].filter(el => shown(el) && !el.closest('[data-agentbox]'));
+  const kind = el => el.tagName.toLowerCase() + (el.tagName === 'INPUT' ? ':' + (el.type || 'text') : '');
+  const typable = el => (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|reset|image|range|color|hidden)$/.test(el.type))) && !el.readOnly;
+  const valueOf = el => el.tagName === 'SELECT' ? (el.selectedOptions[0] ? text(el.selectedOptions[0]) : '') : /^(checkbox|radio)$/.test(el.type) ? (el.checked ? 'on' : 'off') : el.type === 'file' ? '' : String(el.value).slice(0, 200);
+  const screen = () => { let t = text(document.body); for (const b of document.querySelectorAll('[data-agentbox], #for-ai-agents')) { const x = text(b); if (x) t = t.split(x).join(''); } return t.trim(); };   // (not the talk box, nor the hidden note for agents)
+  const PART = 4000;
+  const parts = () => { const t = screen(), L = []; for (let i = 0; i < t.length; i += PART) L.push(t.slice(i, i + PART)); return L.length ? L : ['']; };
+  const boxList = () => visible().map((el, n) => ({el, n})).filter(o => isBox(o.el)).map(({el, n}) => ({n, kind: kind(el), label: label(el).slice(0, 90), value: valueOf(el), options: el.tagName === 'SELECT' ? [...el.options].map(o => text(o)).slice(0, 30) : undefined, off: el.disabled || undefined, readOnly: el.readOnly || undefined, onlyAPerson: el.type === 'file' ? 'picking a file is for the person at your screen' : undefined, notForAgents: forbidden(el) || undefined}));
+  const buttonList = () => visible().map((el, n) => ({el, n})).filter(o => !isBox(o.el)).map(({el, n}) => ({n, kind: kind(el), label: label(el).slice(0, 90), off: el.disabled || undefined, link: el.tagName === 'A' ? el.getAttribute('href') : undefined, notForAgents: forbidden(el) || undefined}));
+  const find = (L, q) => { q = String(q).toLowerCase().replace(/\s+/g, ' ').trim(); return L.find(e => label(e).toLowerCase() === q || (e.id || '').toLowerCase() === q.replace(/^#/, '')) || L.find(e => label(e).toLowerCase().startsWith(q)) || L.find(e => label(e).toLowerCase().includes(q)); };
+  const fire = (el, t) => el.dispatchEvent(new Event(t, {bubbles: true}));
+  const RULES = 'Agents never wipe, clear or delete anything here.';
+  async function see() {
+    const P = parts(), B = boxList(), N = buttonList();
+    const L = [title.toUpperCase() + ' · one of the Ordinal Portal\'s own pages', RULES + (rule.note ? ' ' + rule.note : '')];
+    L.push('', 'ON SCREEN' + (P.length > 1 ? ' (part 1 of ' + P.length + ': read({part: 2}) for more)' : '') + ':', P[0]);
+    if (B.length) L.push('', 'BOXES (type into them, choose from lists, or press a tick box):', ...B.map(b => '  [' + b.n + '] ' + b.label + ' = ' + (b.value === '' ? '(empty)' : b.value) + (b.off ? ' (switched off)' : '') + (b.onlyAPerson ? ' (' + b.onlyAPerson + ')' : '') + (b.notForAgents ? ' (not for agents)' : '')));
+    if (N.length) L.push('', 'BUTTONS AND LINKS:', ...N.slice(0, 60).map(b => '  [' + b.n + '] ' + (b.label || '(no words)') + (b.off ? ' (switched off)' : '') + (b.notForAgents ? ' (not for agents)' : '')), ...(N.length > 60 ? ['  ... and ' + (N.length - 60) + ' more: buttons()'] : []));
+    L.push('', rule.look ? 'Look only here: see(), read(), boxes(), buttons(), wait(), and talk() to the person at your screen.' : 'press({text}) presses a button, type({into, text}) types, choose({into, option}) picks from a list, wait({words}) waits for words to appear.');
+    return L.join('\n');
+  }
+  const cmds = [
+    {name: 'see', ro: true, untrusted: true, does: 'Everything on the page now in words: its text, every box with what is in it, and every button and link (with its number).', run: () => see()},
+    {name: 'read', ro: true, untrusted: true, does: 'The page\'s words, a part at a time (4000 letters each), for long pages.', args: [{name: 'part', type: 'number', does: 'which part, from 1 (default 1)'}],
+      run: ({part = 1}) => { const P = parts(), i = Math.max(1, Math.min(P.length, Math.round(+part) || 1)); return {part: i, parts: P.length, text: P[i - 1]}; }},
+    {name: 'boxes', ro: true, untrusted: true, does: 'Every box on the page as data: its number, label, what is in it, and the choices of a list.', run: () => boxList()},
+    {name: 'buttons', ro: true, untrusted: true, does: 'Every button and link on the page as data, with its number. Ones agents may not press are marked.', run: () => buttonList()},
+    {name: 'press', does: 'Press a button or link by its words (or its number from buttons()). Pressing a tick box ticks or unticks it.', args: [{name: 'text', does: 'words on the button (not case-sensitive); the closest match is pressed'}, {name: 'n', type: 'number', does: 'its number from see() or buttons(), instead of text'}],
+      run: async ({text: t, n}) => {
+        if (rule.look) return LOOK;
+        const L = visible(); let el = n != null ? L[n] : null; if (!el && t != null) el = find(L.filter(e => !typable(e) && e.tagName !== 'SELECT'), t);
+        if (!el) return {ok: false, error: 'no such button on the page: buttons() lists them'};
+        const no = forbidden(el); if (no) return {ok: false, error: no};
+        if (el.disabled) return {ok: false, error: 'that is switched off right now (greyed out)'};
+        if (el.type === 'file') return {ok: false, error: 'picking a file is for the person at your screen'};
+        if (typable(el) || el.tagName === 'SELECT') return {ok: false, error: 'that is a box: use type() or choose()'};
+        el.click(); await wait(400);
+        return {ok: true, pressed: label(el).slice(0, 90), now: /^(checkbox|radio)$/.test(el.type) ? valueOf(el) : undefined, then: 'see() shows what changed'};
+      }},
+    {name: 'type', does: 'Type into a box (found by its label or grey hint, or its number). The page answers as it does for a person typing.', args: [{name: 'into', does: 'the box\'s label or grey hint'}, {name: 'n', type: 'number', does: 'its number from see() or boxes(), instead of into'}, {name: 'text', does: 'what to type (it replaces what is there)', req: true}, {name: 'enter', type: 'boolean', does: 'press Enter after (sends the box\'s form, if it has one)'}],
+      run: async ({into, n, text: t, enter}) => {
+        if (rule.look) return LOOK;
+        const L = visible(), T = L.filter(typable); let el = n != null ? L[n] : null; if (!el && into != null) el = find(T, into); if (!el && into == null && n == null && T.length === 1) el = T[0];
+        if (!el) return {ok: false, error: 'no such box on the page: boxes() lists them', boxes: T.map(e => label(e).slice(0, 60))};
+        if (!typable(el)) return {ok: false, error: el.tagName === 'SELECT' ? 'that is a list: use choose()' : 'that is not a box to type in'};
+        const no = forbidden(el); if (no) return {ok: false, error: no};
+        if (el.disabled) return {ok: false, error: 'that box is switched off right now (greyed out)'};
+        el.focus(); el.value = String(t); fire(el, 'input'); fire(el, 'change');
+        if (enter) {
+          const o = {key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true}, go = el.dispatchEvent(new KeyboardEvent('keydown', o)); el.dispatchEvent(new KeyboardEvent('keyup', o));
+          const f = el.form, sub = f && [...f.elements].find(e => /^(submit|image)$/.test(e.type) || (e.tagName === 'BUTTON' && !e.getAttribute('type')));
+          if (go && f && el.tagName === 'INPUT') { if (sub && forbidden(sub)) return {ok: false, typed: true, error: 'typed, but not sent: ' + forbidden(sub)}; if (!sub || !sub.disabled) f.requestSubmit(sub || undefined); }
+        }
+        await wait(300);
+        return {ok: true, into: label(el).slice(0, 90), now: valueOf(el)};
+      }},
+    {name: 'choose', does: 'Pick a choice from a list on the page (found by its label, or its number).', args: [{name: 'into', does: 'the list\'s label'}, {name: 'n', type: 'number', does: 'its number from see() or boxes(), instead of into'}, {name: 'option', does: 'the words of the choice', req: true}],
+      run: async ({into, n, option}) => {
+        if (rule.look) return LOOK;
+        const L = visible(), S = L.filter(e => e.tagName === 'SELECT'); let el = n != null ? L[n] : null; if (!el && into != null) el = find(S, into); if (!el && into == null && n == null && S.length === 1) el = S[0];
+        if (!el || el.tagName !== 'SELECT') return {ok: false, error: 'no such list on the page: boxes() lists them', lists: S.map(e => label(e).slice(0, 60))};
+        const no = forbidden(el); if (no) return {ok: false, error: no};
+        if (el.disabled) return {ok: false, error: 'that list is switched off right now (greyed out)'};
+        const q = String(option).toLowerCase().trim(), O = [...el.options].filter(o => !o.disabled);
+        const o = O.find(x => text(x).toLowerCase() === q || x.value.toLowerCase() === q) || O.find(x => text(x).toLowerCase().startsWith(q)) || O.find(x => text(x).toLowerCase().includes(q));
+        if (!o) return {ok: false, error: 'no such choice', choices: O.map(x => text(x))};
+        if (rule.no && rule.no.test(text(o))) return {ok: false, error: rule.why};
+        el.value = o.value; fire(el, 'input'); fire(el, 'change'); await wait(300);
+        return {ok: true, list: label(el).slice(0, 90), chose: text(o)};
+      }},
+    {name: 'wait', ro: true, untrusted: true, does: 'Wait for words to appear on the page (up to 60 seconds), for answers that take a moment. With no words, just waits.', args: [{name: 'words', does: 'the words to wait for (not case-sensitive)'}, {name: 'seconds', type: 'number', does: 'longest wait (default 15, at most 60)'}],
+      run: async ({words, seconds = 15}) => {
+        const ms = Math.max(.2, Math.min(60, +seconds || 15)) * 1000;
+        if (words == null || words === '') { await wait(ms); return {ok: true, waited: ms / 1000}; }
+        const q = String(words).toLowerCase(), hit = await until(() => screen().toLowerCase().includes(q), ms, 250);
+        if (!hit) return {ok: false, error: '"' + words + '" did not appear in ' + ms / 1000 + ' s'};
+        const t = screen(), i = t.toLowerCase().indexOf(q);
+        return {ok: true, found: t.slice(Math.max(0, i - 200), i + q.length + 300)};
+      }},
+  ];
+  if (rule.look) cmds.push({name: 'key', does: 'Not here: agents only look on this page.', args: [{name: 'key', does: 'the key'}], run: () => LOOK});
+  const intro = title + ': one of the Ordinal Portal\'s own pages. This is the portal\'s page kit: you read the page and use it as a visitor does, with the same buttons and boxes and nothing more. Start with see(). ' + RULES + (rule.note ? ' ' + rule.note : '');
+  const api = K.make(title, intro, cmds);
+  api.plain = true; api.look = !!rule.look;
+  window.agent = api;
+  if (window.top === window) K.webmcp('page_', api, api._cmds);
+})();
+</script>
+<script>
 /* Ordinal Portal (main page) agent kit: window.agent here lists everything on the portal and opens it, as a visitor would
    (the "Open in Portal" viewer, or the page itself). Agent Blockhall, Block Paint, Doge Cube and the play-together pages have their own kits:
-   once one is open in the viewer, game() and the cube_ / crew_ / paint_ / doge_ tools run in it. */
+   once one is open in the viewer, game() and the cube_ / crew_ / paint_ / doge_ tools run in it. The portal's own plain pages (its tools
+   and Vizzy Tunes) get the page kit above once an agent opens one in the viewer: game() and the page_ tools run in it. */
 (() => {
   const K = window.AgentKit, {wait, until, text, shown} = K;
   const $ = id => document.getElementById(id);
@@ -1703,11 +1842,25 @@ window.AgentKit = window.AgentKit || (() => {
   const find = q => { q = String(q || '').toLowerCase().trim(); q = OLDN[q] || q; const L = cards(); return L.find(c => c.getAttribute('data-title').toLowerCase() === q) || L.find(c => c.getAttribute('data-title').toLowerCase().startsWith(q)) || L.find(c => c.getAttribute('data-title').toLowerCase().includes(q)) || L.find(c => text(c.querySelector('.card-number')) === q || text(c.querySelector('.card-number')) === '#' + q.replace(/^#/, '').padStart(3, '0'))
     || L.find(c => (c.getAttribute('data-url') || '').toLowerCase().replace(/\.html$/, '').replace(/-/g, ' ') === q.replace(/-/g, ' ').replace(/\.html$/, '')); };   // (or its page's name: "block cube" for Agent Blockhall)
   const viewerOpen = () => $('viewer-overlay') && $('viewer-overlay').classList.contains('active');
-  const frameAgent = () => { try { const w = $('viewer-frame').contentWindow; return w && w.agent ? w.agent : null; } catch (e) { return null; } };   // (only pages of this portal: other sites keep to themselves)
+  // the portal's own pages in the viewer: the games' own kits, or for its plain pages the page kit, handed to them once an agent is here
+  const KITS = new Set(['block-cube.html', 'block-cube-together.html', 'doge-cube.html', 'doge-cube-together.html', 'block-paint.html', 'minitors-mint.html']);   // (pages with a kit of their own)
+  const HOME = location.pathname.replace(/[^/]*$/, '');
+  const frameWin = () => { try { const w = $('viewer-frame').contentWindow; return w && w.document ? w : null; } catch (e) { return null; } };   // (only pages of this portal: other sites keep to themselves)
+  const ownPage = w => { try { const L = w.location; return L.href !== 'about:blank' && L.origin === location.origin && (L.protocol === 'blob:' || L.pathname.startsWith(HOME)); } catch (e) { return false; } };
+  function pageKit(w) {
+    if (!window.__agentOn || w.agent || w.__agentPageTried || !viewerOpen() || !ownPage(w) || KITS.has(w.location.pathname.split('/').pop())) return;
+    const d = w.document; if (!d.body || d.readyState === 'loading') return; w.__agentPageTried = 1;
+    const s = d.createElement('script'), blob = w.location.protocol === 'blob:';
+    s.textContent = $('agentkit').textContent + '\n;window.__agentPage = ' + JSON.stringify({title: text($('viewer-title')), file: blob ? 'kept inside the portal' : decodeURIComponent(w.location.pathname.split('/').pop())}) + ';\n' + $('agent-page-kit').textContent;
+    (d.head || d.documentElement).append(s); s.remove();
+  }
+  const frameAgent = () => { const w = frameWin(); if (!w) return null; if (!w.agent) try { pageKit(w); } catch (e) {} return w.agent || null; };
   function viewer() {
     if (!viewerOpen()) return {open: false};
     const g = frameAgent();
-    return {open: true, title: text($('viewer-title')), page: $('viewer-frame').getAttribute('src'), zoom: text($('zoom-readout')), kit: g ? g.page + ' has its own agent kit: use game({command, args}) (its help() lists them)' : 'no agent kit inside (a page on another site, or not loaded yet)'};
+    return {open: true, title: text($('viewer-title')), page: $('viewer-frame').getAttribute('src'), zoom: text($('zoom-readout')), kit: g && g.plain ? 'one of the portal\'s own pages: the portal\'s page kit ' + (g.look ? 'lets you look at it (agents only look here)' : 'reads it and uses it as a visitor does') + ': game({command: "see"}), and game({command: "help"}) lists the rest'
+      : g ? g.page + ' has its own agent kit: use game({command, args}) (game({command: "help"}) lists them)'
+      : frameWin() ? 'still loading: ask again in a moment' : 'an inscription shown from another site: the portal cannot read or use what is inside it, only show it'};
   }
   function state() {
     const f = document.querySelector('.filter-button.active');
@@ -1718,7 +1871,7 @@ window.AgentKit = window.AgentKit || (() => {
     const sec = new Map(); for (const c of s.cards) { if (!c.shown) continue; if (!sec.has(c.section)) sec.set(c.section, []); sec.get(c.section).push(c); }
     for (const [k, C] of sec) L.push('', k.toUpperCase() + ':', ...C.map(c => '  ' + (c.n ? c.n + ' ' : '') + c.title + ' (' + c.kind + ')' + (c.note ? ' - ' + c.note : '') + ' [' + c.buttons.map(b => b.does).join(', ') + ']'));
     const v = s.viewer; if (v.open) { L.push('', 'Open in the viewer: ' + v.title + ' (' + v.page + '). ' + v.kit); const g = frameAgent(); if (g) L.push('', await g.see()); }
-    L.push('', 'Open one with open({title}). Agent Blockhall, Block Paint, Doge Cube and their Play Together pages have full agent kits once open.');
+    L.push('', 'Open one with open({title}). Agent Blockhall, Block Paint, Doge Cube and their Play Together pages have full agent kits once open. The portal\'s own tools (Inscription Cost Calculator, Sentinel ID Viewer, Ordinal View Tester) and Vizzy Tunes get its page kit once open. Inscriptions from other sites can be shown, but not read inside.');
     return L.join('\n');
   }
   const cmds = [
@@ -1726,27 +1879,30 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'state', ro: true, untrusted: true, does: 'The same as data.', run: () => state()},
     {name: 'cards', ro: true, does: 'The portal\'s games and tools as data (number, title, kind, section, note, page, buttons).', args: [{name: 'section', does: 'only one section: mint, games, creative or music'}],
       run: ({section}) => cards().map(card).filter(c => !section || c.section === String(section).toLowerCase())},
-    {name: 'open', does: 'Open a game or tool by its title (or number), as a visitor does: in the portal\'s viewer ("Open in Portal"), or Play Together (Agent Blockhall and Doge Cube have it).', args: [{name: 'title', does: 'its title, e.g. "Agent Blockhall", or its number', req: true}, {name: 'how', enum: ['portal', 'together', 'page'], does: 'portal (the viewer, default), together (Play Together: Agent Blockhall and Doge Cube), or page (go to the page itself in this tab: only the portal\'s own pages)'}],
+    {name: 'open', does: 'Open a game or tool by its title (or number), as a visitor does: in the portal\'s viewer ("Open in Portal"), or Play Together (Agent Blockhall and Doge Cube have it; Blockipelago has Multiplayer).', args: [{name: 'title', does: 'its title, e.g. "Agent Blockhall", or its number', req: true}, {name: 'how', enum: ['portal', 'together', 'page'], does: 'portal (the viewer, default), together (Play Together: Agent Blockhall and Doge Cube; Multiplayer: Blockipelago), or page (go to the page itself in this tab: only the portal\'s own pages)'}],
       run: async ({title, how = 'portal'}) => {
         const c = find(title); if (!c) return {ok: false, error: 'no such title: cards() lists them'};
-        if (how === 'page') { const u = c.getAttribute('data-url') || ''; if (!/^[\w-]+\.html$/.test(u)) return {ok: false, error: 'that one lives on another site: open it in the viewer (how: "portal")'}; setTimeout(() => { location.href = u; }, 50); return {ok: true, going: u, then: 'the page loads; its window.agent (if it has one) takes over'}; }
-        const b = c.querySelector(how === 'together' ? '.open-together' : '.open-in-portal'); if (!b) return {ok: false, error: how === 'together' ? 'only Agent Blockhall and Doge Cube have Play Together' : 'this one has no "Open in Portal" button: try how: "page"'};
-        b.click(); await until(() => viewerOpen(), 4000); await until(() => frameAgent(), 12000); return viewer(); }},
+        if (how === 'page') { const u = c.getAttribute('data-url') || ''; if (!/^[\w-]+\.html$/.test(u)) return {ok: false, error: 'that one lives on another site: open it in the viewer (how: "portal")'}; setTimeout(() => { location.href = u; }, 50); return {ok: true, going: u, then: KITS.has(u) ? 'the page loads; its own window.agent takes over (call agent.help())' : 'the page loads, with no agent kit of its own: to use it with the portal\'s page kit, open it in the viewer instead (how: "portal")'}; }
+        const b = c.querySelector(how === 'together' ? '.open-together, .open-multiplayer' : '.open-in-portal'); if (!b) return {ok: false, error: how === 'together' ? 'only Agent Blockhall and Doge Cube have Play Together (and Blockipelago its Multiplayer)' : 'this one has no "Open in Portal" button: try how: "page"'};
+        const was = frameWin() && frameWin().document;   // (the page open before: wait for the new one, not that)
+        b.click(); await until(() => viewerOpen(), 4000);
+        if (/^blob:|^[\w-]+\.html$/.test($('viewer-frame').getAttribute('src') || '')) await until(() => { const w = frameWin(); return w && w.document !== was && w.document.readyState !== 'loading' && frameAgent(); }, 12000); else await wait(1500);
+        return viewer(); }},
     {name: 'search', does: 'Type in the portal\'s search box (an empty text shows everything again).', args: [{name: 'text', does: 'what to search for'}], run: ({text: t}) => { const i = $('search-box'); i.value = String(t || ''); i.dispatchEvent(new Event('input', {bubbles: true})); return {showing: cards().filter(shown).map(c => c.getAttribute('data-title'))}; }},
     {name: 'filter', does: 'Show one kind only: All, Games, Creative, Mint or Music.', args: [{name: 'kind', enum: ['All', 'Games', 'Creative', 'Mint', 'Music'], does: 'which', req: true}],
       run: ({kind}) => { const b = [...document.querySelectorAll('.filter-button')].find(x => text(x).toLowerCase() === String(kind).toLowerCase()); if (!b) return {ok: false, error: 'kinds: All, Games, Creative, Mint, Music'}; b.click(); return {showing: cards().filter(shown).map(c => c.getAttribute('data-title'))}; }},
     {name: 'viewer', ro: true, does: 'What is open in the portal\'s viewer, and whether it has an agent kit.', run: () => viewer()},
     {name: 'closeViewer', does: 'Close the viewer (back to the portal).', run: async () => { if (!viewerOpen()) return {ok: true, note: 'it was not open'}; $('viewer-close').click(); await wait(300); return viewer(); }},
-    {name: 'game', always: true, untrusted: true, does: 'Run a command in what is open in the viewer, when it has an agent kit (Agent Blockhall, Block Paint, Doge Cube, or a Play Together page), e.g. {command: "see"}.', args: [{name: 'command', does: 'the command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
-      run: async ({command, args}) => { const g = frameAgent(); if (!g) return {ok: false, error: viewerOpen() ? 'what is open has no agent kit (or is still loading)' : 'nothing open: open({title}) first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'it has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
+    {name: 'game', always: true, untrusted: true, does: 'Run a command in what is open in the viewer: a game\'s own kit (Agent Blockhall, Block Paint, Doge Cube, a Play Together page), or the page kit on the portal\'s own tools and Vizzy Tunes (see, read, boxes, buttons, press, type, choose, wait), e.g. {command: "see"}.', args: [{name: 'command', does: 'the command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
+      run: async ({command, args}) => { const g = frameAgent(); if (!g) return {ok: false, error: !viewerOpen() ? 'nothing open: open({title}) first' : frameWin() ? 'what is open is still loading: try again in a moment' : 'what is open is an inscription from another site: the portal cannot reach inside it'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'it has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
   ];
-  const intro = 'ORDINAL PORTAL agent kit. The portal lists Bitcoin games, tools and creative pieces (most are inscriptions shown from other sites). You use it as a visitor does. Start with agent.see(); open({title}) opens one. Agent Blockhall (a 3D Bitcoin block explorer world for players and agents; once called AI Agent Bitcoin Block Explorer, and before that Block\u0020Cube: open() with either old name works too), Block Paint, Doge Cube (the same explorer for Dogecoin) and their Play Together pages have their own full kits: once open, game({command}) runs their commands.';
+  const intro = 'ORDINAL PORTAL agent kit. The portal lists Bitcoin games, tools and creative pieces (most are inscriptions shown from other sites). You use it as a visitor does. Start with agent.see(); open({title}) opens one. Agent Blockhall (a 3D Bitcoin block explorer world for players and agents; once called AI Agent Bitcoin Block Explorer, and before that Block\u0020Cube: open() with either old name works too), Block Paint, Doge Cube (the same explorer for Dogecoin) and their Play Together pages have their own full kits: once open, game({command}) runs their commands. The portal\'s own tools (Inscription Cost Calculator, Sentinel ID Viewer, Ordinal View Tester) and Vizzy Tunes get the portal\'s page kit once open in the viewer: game({command: "see"}) reads one. The Minitors mint page has the same page kit (open it with how: "page"): agents there never connect a wallet, sign, mint or pay. Inscriptions from other sites can be shown, but not read inside. You can never wipe, clear or delete anything.';
   const api = K.make('Ordinal Portal', intro, cmds);
   window.agent = window.portalAgent = api;
   if (window.top === window) {
     K.webmcp('portal_', api, api._cmds);
     const PRE = {'Agent Blockhall': 'cube_', 'Agent Blockhall · play together': 'crew_', 'Block Paint City': 'paint_', 'Doge Cube': 'doge_', 'Doge Cube · play together': 'crew_'};
-    setInterval(() => { const g = frameAgent(); if (g && g._cmds && PRE[g.page]) K.webmcp(PRE[g.page], g, g._cmds, (n, a) => { const q = frameAgent(); return q && q[n] ? q[n](a) : {ok: false, error: 'that is not open in the viewer now'}; }); }, 3000);
+    setInterval(() => { const g = frameAgent(), pre = g && g._cmds && (PRE[g.page] || (g.plain && 'page_')); if (pre) K.webmcp(pre, g, g._cmds, (n, a) => { const q = frameAgent(); return q && q[n] ? q[n](a) : {ok: false, error: 'that is not open in the viewer now'}; }); }, 3000);
   }
 })();
 
