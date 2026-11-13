@@ -1,0 +1,50 @@
+# Publishes the free Agent Blockhall MCP tool: checks it on live data, packs it as an MCP bundle, puts the bundle in a
+# GitHub release, and lists it in the official MCP Registry (signed in with GitHub's own OIDC: no secrets, nothing to pay).
+# Runs only when a tag like agent-blockhall-mcp-v1.0.0 is pushed. The tag's version must match manifest.json.
+name: Publish Agent Blockhall MCP tool
+
+on:
+  push:
+    tags: ['agent-blockhall-mcp-v*']
+
+permissions:
+  contents: write    # to make the release
+  id-token: write    # to sign in to the MCP Registry as this GitHub account
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check the tool on live data, the way an agent uses it
+        run: node agent-blockhall-mcp/test/live.js
+      - name: Pack the bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME#agent-blockhall-mcp-v}"
+          test "$(node -p "require('./agent-blockhall-mcp/manifest.json').version")" = "$VERSION"
+          npx -y @anthropic-ai/mcpb@2.1.2 pack agent-blockhall-mcp agent-blockhall.mcpb
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SHA=$(sha256sum agent-blockhall.mcpb | cut -d' ' -f1)" >> "$GITHUB_ENV"
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" agent-blockhall.mcpb --title "Agent Blockhall MCP tool $VERSION" \
+            --notes "The free Agent Blockhall MCP tool for AI agents. Download agent-blockhall.mcpb and open it in an app that takes MCP bundles, or see https://bitmap22.github.io/my-ordinal-portal/agent-blockhall-mcp/README.md"
+      - name: Write server.json for this release
+        run: |
+          jq --arg v "$VERSION" --arg sha "$SHA" \
+             --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/agent-blockhall.mcpb" \
+             '.version = $v | .packages[0].identifier = $url | .packages[0].fileSha256 = $sha' \
+             agent-blockhall-mcp/server.json > server.json
+          cat server.json
+      - name: Install mcp-publisher
+        run: curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+      - name: List it in the MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
