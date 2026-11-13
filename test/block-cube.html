@@ -10717,6 +10717,7 @@ window.AgentKit = window.AgentKit || (() => {
         const p = room.p, [mx, md] = cmL(room.at, p.x, p.z), myZ = zoneIx(mx, md), big = new Set([0, 1, 2]);
         const M = MARKS.map(([what, x, y, d], k) => { const [tx, tz] = toWorld(x, d), dx = tx - p.x, dz = tz - p.z, off = ((deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + 540) % 360 - 180, z = zoneIx(x, d), same = z === myZ || (big.has(k) && myZ === 3) || (k === 7 && (myZ === 4 || myZ === 5)); return {what, d: Math.hypot(dx, dz), off, same}; }).filter(o => o.same).sort((a, b) => a.d - b.d);
         if (M.length) L.push('In this room: ' + M.map(o => o.what + ' ' + K.bearing(o.off) + ', ' + Math.round(o.d) + ' m').join('; ') + '.');
+        try { const sh = JSON.parse(localStorage.getItem('bc.show') || 'null'); if (sh && sh.h != null) L.push('On show over the Forum: parcel ' + sh.idx + ' of block ' + fmtN(sh.h) + ' (state().onShowInForum has its transaction ID).'); } catch (e) {}
         const ways = DOORS.filter(([u, v]) => u === myZ || v === myZ).map(([u, v, a, b]) => { const other = u === myZ ? v : u, pt = u === myZ ? a : b, [tx, tz] = toWorld(pt[0], pt[1]), dx = tx - p.x, dz = tz - p.z; return 'the way to ' + ZONES[other] + ' ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m'; });
         if (ways.length) L.push('Doorways: ' + ways.join('; ') + '.');
       } else if (curRoom()) {   // a block room: what the signs on the shelves say, and where the doors go
@@ -10958,7 +10959,10 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({x, y, n}) => {
         if (n != null && (x == null || y == null)) { const want = +n; let at = null; for (let j = 1; j < 24 && !at; j++) for (let i = 1; i < 40 && !at; i++) { const h = probe(i / 40, j / 24); if (h && h.parcel === want) at = [i / 40, j / 24]; } if (!at) return {ok: false, error: 'parcel ' + want + ' is not in sight right now (it may be hidden behind others: turnCube(), layers() or xray() can help)'}; x = at[0]; y = at[1]; }
         if (x == null || y == null) return {ok: false, error: 'give x and y, or n'};
-        const fx = Math.max(0, Math.min(1, +x)), fy = Math.max(0, Math.min(1, +y)); await tapAt(fx, fy); await wait(300); return inRoom() ? {room: roomInfo()} : {card: {untrusted: cardText()}, open: sel ? sel.idx : null}; }},
+        if (!isFinite(+x) || !isFinite(+y)) return {ok: false, error: 'x and y are numbers from 0 to 1 (look() says where things are)'};
+        const fx = Math.max(0, Math.min(1, +x)), fy = Math.max(0, Math.min(1, +y)); await tapAt(fx, fy); await wait(300);
+        if (inRoom()) return {room: roomInfo()};
+        const c = cardText(); return c ? {card: {untrusted: c}, open: sel ? sel.idx : null} : {ok: false, error: 'nothing there: no box at that point (look() says where the cube is on screen)'}; }},
     {name: 'walkIn', does: 'Walk into a block (default: the one shown, or the newest), or "common" for the common room.', args: [{name: 'height', does: 'a block number, or "common"'}], run: ({height}) => walkIn(height == null ? null : height === 'common' ? 'common' : +height)},
     {name: 'leave', does: 'Walk out of the room, back to the block view.', run: async () => { if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
     {name: 'commonRoom', does: 'Fast travel to the common room.', run: () => walkIn('common')},
@@ -11030,7 +11034,8 @@ window.AgentKit = window.AgentKit || (() => {
   const keepTick = () => {
     if (!keepN) return;
     try {
-      if (room && !cmPaintShown && !crewAway) {
+      if (!room && !cmPaintShown && !crewAway && now() - lastDrawn > .15) drawFrame();   // (outside the cube: where the camera is, so look() and clickAt() see what a player sees)
+      else if (room && !cmPaintShown && !crewAway) {
         const tn = now(), gap = tn - (rmLast || 0);   // (no frame yet at all: rmLast is still 0)
         if (gap > .15) {
           let left = Math.min(1, gap) - .05; while (left > 1e-3) { const d = Math.min(.05, left); rmStep(d); left -= d; }   // (a long gap, as a background tab's slow timers give: small steps, so walls still stop you)
