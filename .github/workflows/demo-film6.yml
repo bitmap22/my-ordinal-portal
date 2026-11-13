@@ -1,0 +1,37 @@
+name: demo-film6 (temporary)
+on:
+  push:
+    branches: [demo-data]
+    paths: ['.github/demo/c6.txt', '.github/workflows/demo-film6.yml']
+permissions:
+  contents: write
+concurrency: {group: demo-film6, cancel-in-progress: false}
+jobs:
+  film:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        scene: [common6]
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: demo-data}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install playwright && python -m playwright install --with-deps chromium && sudo apt-get install -y -q ffmpeg
+      - run: |
+          (cd .github/demo && python -m http.server 8000 --bind 127.0.0.1 > /dev/null 2>&1 &)
+          sleep 2
+          python -u .github/demo/film.py ${{ matrix.scene }} frames
+        continue-on-error: true
+      - if: always()
+        run: |
+          mkdir -p demo-film
+          ffmpeg -y -loglevel error -framerate 30 -i frames/f%04d.jpg -c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p demo-film/${{ matrix.scene }}.mp4 || true
+          cp frames/log.json demo-film/${{ matrix.scene }}-log.json || true
+          for f in 0000 0060 0120 0180 0239 0299 0359; do [ -f frames/f$f.jpg ] && cp frames/f$f.jpg demo-film/${{ matrix.scene }}-f$f.jpg; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -A demo-film && git commit -q -m "Temporary: demo scene ${{ matrix.scene }}" || exit 0
+          for i in 1 2 3 4 5 6 7 8; do git pull -q --rebase && git push && break; sleep $((RANDOM % 20 + 5)); done
