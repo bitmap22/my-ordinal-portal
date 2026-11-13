@@ -150,6 +150,16 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .check{display:flex;align-items:center;gap:9px;margin:12px 0 0;cursor:pointer;color:var(--m-text)}
 .check input{width:auto;margin:0;accent-color:var(--m-hi)}
+/* your wallet, read only: the status line, its buttons and the switch for your crew */
+.wal .wst{margin:0;font-size:14px;line-height:1.35;color:var(--m-dim)}
+.wal .wst b{color:var(--m-text);font-weight:600;overflow-wrap:anywhere}
+.wal .wst .ok{color:var(--m-go)}
+.wal .btns{margin-top:10px}
+.wal .check{margin-top:10px}
+.wal .check input:disabled+span{opacity:.45}
+.wal .wnote{min-height:0;margin:8px 0 0;font-size:13px;color:var(--m-dim)}
+.wal .wnote:empty{display:none}
+#pbody .wal{margin-top:14px;padding-top:12px;border-top:1px solid var(--m-line)}
 #pbody .voice .sub{margin:0}
 /* little notes at the top: a friend is online, an invite */
 #toasts{position:fixed;top:calc(50px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:9;display:flex;flex-direction:column;gap:6px;width:min(400px,calc(100% - 24px));pointer-events:none}
@@ -250,6 +260,8 @@ body.inpaint.peek #hud,body.inpaint.peek #ptop:not([hidden])~#hud{left:auto;righ
         <label>Wardrobe</label>
         <div id="wardrobe"></div>
         <p style="margin:12px 0 0;font-size:13px"><a style="color:var(--m-hi)" href="https://bitmap22.github.io/my-ordinal-portal/block-cube-people-blog.html" target="_blank" rel="noopener noreferrer">About the people, the wardrobe and the emotes</a></p>
+        <label>Wallet &middot; read only</label>
+        <div class="wal" id="wal"></div>
       </div>
       <div class="box" id="paste" hidden><label for="inv">Invite code</label><textarea id="inv" spellcheck="false" placeholder="Paste the invite code"></textarea><div class="row"><button class="main" id="use">Use the code</button></div>
         <div id="out" hidden><label for="rep">Your reply</label><textarea id="rep" readonly></textarea><div class="row"><button id="cp1">Copy</button></div></div></div>
@@ -296,14 +308,171 @@ window.NB = (() => { const T = (()=>{const e=[];for(let t=2;e.length<64;t++)e.ev
 })();
 </script>
 <script>
+// a wallet's signed message, checked here with no outside help: who signed it (the public key, worked back out of the
+// signature), and is that key behind the address they gave? Bitcoin's "signed message" (the one UniSat makes by default):
+// a 65-byte signature, its first byte saying how to find the key. Every kind of address a wallet can have: legacy (1...),
+// nested segwit (3...), native segwit (bc1q...) and taproot (bc1p...). And the newer BIP-322 kind (further down).
+const WV = (() => {
+  const P = 2n ** 256n - 2n ** 32n - 977n, N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+  const G = [0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n, 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n];
+  const md = (a, m = P) => { const r = a % m; return r >= 0n ? r : r + m; };
+  const pw = (b, e, m = P) => { let r = 1n; b = md(b, m); for (; e > 0n; e >>= 1n) { if (e & 1n) r = r * b % m; b = b * b % m; } return r; };
+  const inv = (a, m = P) => pw(a, m - 2n, m);
+  // points in Jacobian form (x, y, z), so adding them needs no division until the end
+  const J = p => p ? [p[0], p[1], 1n] : null;
+  const dbl = A => { if (!A || !A[1]) return null; const [x, y, z] = A, y2 = y * y % P, s = 4n * x * y2 % P, m = 3n * x * x % P, x3 = md(m * m - 2n * s), y3 = md(m * (s - x3) - 8n * y2 * y2), z3 = 2n * y * z % P; return [x3, y3, z3]; };
+  const add = (A, B) => {
+    if (!A) return B; if (!B) return A;
+    const z1 = A[2] * A[2] % P, z2 = B[2] * B[2] % P, u1 = A[0] * z2 % P, u2 = B[0] * z1 % P, s1 = A[1] * z2 % P * B[2] % P, s2 = B[1] * z1 % P * A[2] % P;
+    if (u1 === u2) return s1 === s2 ? dbl(A) : null;
+    const h = md(u2 - u1), r = md(s2 - s1), h2 = h * h % P, h3 = h2 * h % P, x3 = md(r * r - h3 - 2n * u1 * h2), y3 = md(r * (u1 * h2 - x3) - s1 * h3), z3 = h * A[2] % P * B[2] % P;
+    return [x3, y3, z3];
+  };
+  const mulJ = (k, Pt) => { let R = null, A = J(Pt); for (k = md(k, N); k > 0n; k >>= 1n) { if (k & 1n) R = add(R, A); A = dbl(A); } return R; };
+  const aff = A => { if (!A) return null; const zi = inv(A[2]), z2 = zi * zi % P; return [A[0] * z2 % P, A[1] * z2 % P * zi % P]; };
+  const lift = (x, odd) => { if (x >= P) return null; const c = md(x * x % P * x + 7n), y = pw(c, (P + 1n) / 4n); if (y * y % P !== c) return null; return [x, (y & 1n) === BigInt(odd ? 1 : 0) ? y : P - y]; };
+  // bytes and numbers
+  const B = n => { const o = new Uint8Array(32); for (let i = 31; i >= 0; i--) { o[i] = Number(n & 255n); n >>= 8n; } return o; };
+  const I = b => { let n = 0n; for (const v of b) n = (n << 8n) | BigInt(v); return n; };
+  const cat = (...a) => { const o = new Uint8Array(a.reduce((s, x) => s + x.length, 0)); let k = 0; for (const x of a) { o.set(x, k); k += x.length; } return o; };
+  const utf8 = s => new TextEncoder().encode(s);
+  // SHA-256
+  const K = new Uint32Array([0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2]);
+  function sha(m) {
+    const l = m.length, n = ((l + 9 + 63) >> 6) << 6, b = new Uint8Array(n); b.set(m); b[l] = 0x80; const dv = new DataView(b.buffer); dv.setUint32(n - 4, l * 8 >>> 0); dv.setUint32(n - 8, Math.floor(l / 0x20000000));
+    const H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]), w = new Uint32Array(64), r = (x, k) => (x >>> k) | (x << (32 - k));
+    for (let o = 0; o < n; o += 64) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+      for (let i = 16; i < 64; i++) w[i] = (r(w[i - 15], 7) ^ r(w[i - 15], 18) ^ (w[i - 15] >>> 3)) + w[i - 7] + (r(w[i - 2], 17) ^ r(w[i - 2], 19) ^ (w[i - 2] >>> 10)) + w[i - 16];
+      let [a, b2, c, d, e, f, g, h] = H;
+      for (let i = 0; i < 64; i++) { const t1 = h + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i], t2 = (r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & b2) ^ (a & c) ^ (b2 & c)); h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b2; b2 = a; a = (t1 + t2) >>> 0; }
+      H[0] += a; H[1] += b2; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
+    }
+    const out = new Uint8Array(32), ov = new DataView(out.buffer); for (let i = 0; i < 8; i++) ov.setUint32(i * 4, H[i]); return out;
+  }
+  // RIPEMD-160 (for the 20-byte hash in 1..., 3... and bc1q... addresses)
+  function rmd(m) {
+    const l = m.length, n = ((l + 9 + 63) >> 6) << 6, b = new Uint8Array(n); b.set(m); b[l] = 0x80; const dv = new DataView(b.buffer); dv.setUint32(n - 8, l * 8 >>> 0, true); dv.setUint32(n - 4, Math.floor(l / 0x20000000), true);
+    const RL = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 7, 4, 13, 1, 10, 6, 15, 3, 12, 0, 9, 5, 2, 14, 11, 8, 3, 10, 14, 4, 9, 15, 8, 1, 2, 7, 0, 6, 13, 11, 5, 12, 1, 9, 11, 10, 0, 8, 12, 4, 13, 3, 7, 15, 14, 5, 6, 2, 4, 0, 5, 9, 7, 12, 2, 10, 14, 1, 3, 8, 11, 6, 15, 13];
+    const RR = [5, 14, 7, 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12, 6, 11, 3, 7, 0, 13, 5, 10, 14, 15, 8, 12, 4, 9, 1, 2, 15, 5, 1, 3, 7, 14, 6, 9, 11, 8, 12, 2, 10, 0, 4, 13, 8, 6, 4, 1, 3, 11, 15, 0, 5, 12, 2, 13, 9, 7, 10, 14, 12, 15, 10, 4, 1, 5, 8, 7, 6, 2, 13, 14, 0, 3, 9, 11];
+    const SL = [11, 14, 15, 12, 5, 8, 7, 9, 11, 13, 14, 15, 6, 7, 9, 8, 7, 6, 8, 13, 11, 9, 7, 15, 7, 12, 15, 9, 11, 7, 13, 12, 11, 13, 6, 7, 14, 9, 13, 15, 14, 8, 13, 6, 5, 12, 7, 5, 11, 12, 14, 15, 14, 15, 9, 8, 9, 14, 5, 6, 8, 6, 5, 12, 9, 15, 5, 11, 6, 8, 13, 12, 5, 12, 13, 14, 11, 8, 5, 6];
+    const SR = [8, 9, 9, 11, 13, 15, 15, 5, 7, 7, 8, 11, 14, 14, 12, 6, 9, 13, 15, 7, 12, 8, 9, 11, 7, 7, 12, 7, 6, 15, 13, 11, 9, 7, 15, 11, 8, 6, 6, 14, 12, 13, 5, 14, 13, 13, 7, 5, 15, 5, 8, 11, 14, 14, 6, 14, 6, 9, 12, 9, 12, 5, 15, 8, 8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11];
+    const KL = [0, 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xa953fd4e], KR = [0x50a28be6, 0x5c4dd124, 0x6d703ef3, 0x7a6d76e9, 0];
+    const f = (j, x, y, z) => j < 16 ? x ^ y ^ z : j < 32 ? (x & y) | (~x & z) : j < 48 ? (x | ~y) ^ z : j < 64 ? (x & z) | (y & ~z) : x ^ (y | ~z);
+    const rl = (x, k) => (x << k) | (x >>> (32 - k)), h = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
+    for (let o = 0; o < n; o += 64) {
+      const X = []; for (let i = 0; i < 16; i++) X.push(dv.getUint32(o + i * 4, true));
+      let [al, bl, cl, dl, el] = h, [ar, br, cr, dr, er] = h;
+      for (let j = 0; j < 80; j++) {
+        let t = (rl((al + f(j, bl, cl, dl) + X[RL[j]] + KL[j >> 4]) | 0, SL[j]) + el) | 0; al = el; el = dl; dl = rl(cl, 10); cl = bl; bl = t;
+        t = (rl((ar + f(79 - j, br, cr, dr) + X[RR[j]] + KR[j >> 4]) | 0, SR[j]) + er) | 0; ar = er; er = dr; dr = rl(cr, 10); cr = br; br = t;
+      }
+      const t = (h[1] + cl + dr) | 0; h[1] = (h[2] + dl + er) | 0; h[2] = (h[3] + el + ar) | 0; h[3] = (h[4] + al + br) | 0; h[4] = (h[0] + bl + cr) | 0; h[0] = t;
+    }
+    const out = new Uint8Array(20), ov = new DataView(out.buffer); for (let i = 0; i < 5; i++) ov.setUint32(i * 4, h[i] >>> 0, true); return out;
+  }
+  const h160 = b => rmd(sha(b)), sha2 = b => sha(sha(b));
+  const tagged = (tag, m) => { const t = sha(utf8(tag)); return sha(cat(t, t, m)); };
+  // address spellings: base58 (1..., 3...) and bech32 / bech32m (bc1...)
+  const A58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const b58 = (v, p) => { const d = cat(new Uint8Array([v]), p), x = cat(d, sha2(d).slice(0, 4)); let n = I(x), s = ''; while (n > 0n) { s = A58[Number(n % 58n)] + s; n /= 58n; } for (const c of x) { if (c) break; s = '1' + s; } return s; };
+  const CH = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+  const poly = v => { const g = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]; let c = 1; for (const x of v) { const b = c >> 25; c = ((c & 0x1ffffff) << 5) ^ x; for (let i = 0; i < 5; i++) if ((b >> i) & 1) c ^= g[i]; } return c; };
+  const seg = (ver, prog) => {
+    const d = [ver]; let acc = 0, bits = 0; for (const v of prog) { acc = (acc << 8) | v; bits += 8; while (bits >= 5) { bits -= 5; d.push((acc >> bits) & 31); } } if (bits) d.push((acc << (5 - bits)) & 31);
+    const hrp = 'bc', hx = [...hrp].map(c => c.charCodeAt(0) >> 5).concat([0], [...hrp].map(c => c.charCodeAt(0) & 31)), mod = poly(hx.concat(d, [0, 0, 0, 0, 0, 0])) ^ (ver ? 0x2bc830a3 : 1);
+    return hrp + '1' + d.concat([0, 1, 2, 3, 4, 5].map(i => (mod >> 5 * (5 - i)) & 31)).map(x => CH[x]).join('');
+  };
+  const ser = (Q, comp) => comp ? cat(new Uint8Array([Q[1] & 1n ? 3 : 2]), B(Q[0])) : cat(new Uint8Array([4]), B(Q[0]), B(Q[1]));
+  // every address this key can stand behind
+  function addrsOf(Q, comp) {
+    const pub = ser(Q, comp), hk = h160(pub), out = [b58(0, hk)];
+    if (comp) {
+      out.push(b58(5, h160(cat(new Uint8Array([0, 20]), hk))), seg(0, hk), seg(1, B(Q[0])));   // nested, native segwit, and taproot keyed straight to it
+      const Pe = lift(Q[0], 0), t = I(tagged('TapTweak', B(Q[0])));   // taproot the usual way (BIP-86: the key tweaked by its own hash, no scripts)
+      if (Pe && t < N) { const O = aff(add(J(Pe), mulJ(t, G))); if (O) out.push(seg(1, B(O[0]))); }
+    }
+    return out;
+  }
+  // the hash a wallet signs for a "signed message"
+  const vstr = b => cat(b.length < 253 ? new Uint8Array([b.length]) : new Uint8Array([253, b.length & 255, b.length >> 8]), b);
+  const msgHash = msg => sha2(cat(vstr(utf8('Bitcoin Signed Message:\n')), vstr(utf8(msg))));
+  const unb64 = s => { try { const t = atob(String(s).trim()); return Uint8Array.from(t, c => c.charCodeAt(0)); } catch (e) { return null; } };
+  // the newer way (BIP-322, "simple"): the signature is what the wallet would put in a made-up transaction spending from the
+  // address, so a taproot (bc1p...) or segwit wallet signs just as it spends. Checked here the way a node would check it.
+  const z = k => new Uint8Array(k), u8 = (...a) => new Uint8Array(a), le4 = n => u8(n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255);
+  const eqb = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+  function unseg(a) {   // bc1... back to its witness version and program (null if the spelling or its checksum is wrong)
+    a = a.toLowerCase(); const i = a.lastIndexOf('1'); if (a.slice(0, i) !== 'bc' || a.length < 14 || a.length > 90) return null;
+    const d = [...a.slice(i + 1)].map(c => CH.indexOf(c)); if (d.length < 8 || d.some(x => x < 0)) return null;
+    const hx = [...'bc'].map(c => c.charCodeAt(0) >> 5).concat([0], [...'bc'].map(c => c.charCodeAt(0) & 31)), ver = d[0];
+    if (poly(hx.concat(d)) !== (ver ? 0x2bc830a3 : 1)) return null;
+    let acc = 0, bits = 0; const prog = []; for (const v of d.slice(1, -6)) { acc = ((acc << 5) | v) & 0xfff; bits += 5; if (bits >= 8) { bits -= 8; prog.push((acc >> bits) & 255); } }
+    if (bits >= 5 || (acc & ((1 << bits) - 1))) return null;
+    return {ver, prog: new Uint8Array(prog)};
+  }
+  function wstack(b) {   // the witness items, as the base64 carries them
+    let k = 0; const vi = () => { const c = b[k++]; if (c < 253) return c; if (c === 253) { const v = b[k] | (b[k + 1] << 8); k += 2; return v; } return -1; };
+    const n = vi(), out = []; if (!(n >= 1 && n <= 8)) return null;
+    for (let i = 0; i < n; i++) { const l = vi(); if (!(l >= 0) || k + l > b.length) return null; out.push(b.slice(k, k + l)); k += l; }
+    return k === b.length ? out : null;
+  }
+  const toSpend = (msg, spk) => sha2(cat(z(4), u8(1), z(32), u8(255, 255, 255, 255, 34, 0, 32), tagged('BIP0322-signed-message', utf8(msg)), z(4), u8(1), z(8), vstr(spk), z(4)));
+  const OUTS = cat(z(8), u8(1, 0x6a));   // the made-up spend's one output: nothing, to OP_RETURN
+  const seg0Hash = (tid, h20, ht) => sha2(cat(z(4), sha2(cat(tid, z(4))), sha2(z(4)), tid, z(4), u8(0x19, 0x76, 0xa9, 0x14), h20, u8(0x88, 0xac), z(8), z(4), sha2(OUTS), z(4), le4(ht)));
+  const trHash = (tid, spk, ht) => tagged('TapSighash', cat(u8(0, ht), z(4), z(4), sha(cat(tid, z(4))), sha(z(8)), sha(vstr(spk)), sha(z(4)), sha(OUTS), u8(0), z(4)));
+  function der(b) { if (b[0] !== 0x30 || b[1] !== b.length - 2) return null; let k = 2; const rd = () => { if (b[k++] !== 2) return null; const l = b[k++], v = I(b.slice(k, k + l)); k += l; return v; }; const r = rd(), s = r === null ? null : rd(); return r !== null && s !== null && k === b.length ? [r, s] : null; }
+  function ecdsa(e, r, s, Q) { if (!r || !s || r >= N || s >= N) return false; const w = inv(s, N), X = aff(add(mulJ(md(e * w, N), G), mulJ(md(r * w, N), Q))); return !!X && md(X[0], N) === r; }
+  function schnorr(sg, m, px) {
+    const r = I(sg.slice(0, 32)), s = I(sg.slice(32, 64)), Pk = lift(I(px), 0); if (!Pk || r >= P || s >= N) return false;
+    const e = md(I(tagged('BIP0340/challenge', cat(sg.slice(0, 32), px, m))), N), R = aff(add(mulJ(s, G), mulJ(md(-e, N), Pk)));
+    return !!R && (R[1] & 1n) === 0n && R[0] === r;
+  }
+  function check322(addr, msg, b) {
+    const W = wstack(b); if (!W) return false;
+    if (/^bc1p/i.test(addr)) {   // taproot: one Schnorr signature by the key in the address
+      const d = unseg(addr); if (!d || d.ver !== 1 || d.prog.length !== 32 || W.length !== 1 || (W[0].length !== 64 && W[0].length !== 65)) return false;
+      const ht = W[0].length === 65 ? W[0][64] : 0; if (W[0].length === 65 && ht !== 1) return false;
+      const spk = cat(u8(0x51, 32), d.prog); return schnorr(W[0].slice(0, 64), trHash(toSpend(msg, spk), spk, ht), d.prog);
+    }
+    if (W.length !== 2 || W[1].length !== 33 || (W[1][0] !== 2 && W[1][0] !== 3)) return false;   // segwit: a signature and the key
+    const h20 = h160(W[1]); let spk;
+    if (/^bc1q/i.test(addr)) { const d = unseg(addr); if (!d || d.ver !== 0 || !eqb(d.prog, h20)) return false; spk = cat(u8(0, 20), h20); }
+    else if (/^3/.test(addr)) { const rh = h160(cat(u8(0, 20), h20)); if (b58(5, rh) !== addr) return false; spk = cat(u8(0xa9, 20), rh, u8(0x87)); }
+    else return false;
+    const Q = lift(I(W[1].slice(1)), W[1][0] === 3), sg = W[0], ht = sg[sg.length - 1], rs = der(sg.slice(0, -1)); if (!Q || !rs || ht !== 1) return false;
+    return ecdsa(I(seg0Hash(toSpend(msg, spk), h20, ht)), rs[0], rs[1], Q);
+  }
+  // is sig (base64) this address's signature of msg? true / false. Either kind: the older "signed message" (65 bytes) or BIP-322
+  function check(addr, msg, sig) {
+    try {
+      const b = unb64(sig); if (!b || typeof addr !== 'string' || typeof msg !== 'string') return false;
+      if (b.length !== 65) return check322(addr.trim(), msg, b);
+      const hd = b[0]; if (hd < 27 || hd > 42) return false;
+      const rec = (hd - 27) & 3, comp = hd >= 31, r = I(b.slice(1, 33)), s = I(b.slice(33, 65));
+      if (!r || !s || r >= N || s >= N) return false;
+      const x = r + BigInt(rec >> 1) * N, R = lift(x, rec & 1); if (!R) return false;
+      const e = I(msgHash(msg)), ri = inv(r, N), Q = aff(add(mulJ(md(s * ri, N), R), mulJ(md(-e * ri, N), G)));
+      if (!Q) return false;
+      const want = /^(bc1|BC1)/.test(addr) ? addr.toLowerCase() : addr;
+      return addrsOf(Q, comp).includes(want);
+    } catch (e) { return false; }
+  }
+  return {check, sha, hex: b => [...b].map(x => x.toString(16).padStart(2, '0')).join('')};
+})();
+window.WV = WV;
+</script>
+<script>
 'use strict';
 // ---------------- settings ----------------
 // GAME: the cube (the same folder as this page; open this page with ?game=<address> to use another copy)
 const Q = new URLSearchParams(location.search);
 const GAME = Q.get('game') || 'block-cube.html';
 // (13 Nov 2026: tested by starting a crew in one tab and joining it by code in another, on each relay alone. nos.lol,
-//  relay.damus.io and nostr-pub.wellorder.net failed that test, so they were swapped for the three after primal)
-const RELAYS = Q.get('relay') ? Q.get('relay').split(',') : ['wss://relay.primal.net', 'wss://nostr.oxtr.dev', 'wss://offchain.pub', 'wss://nostr-01.yakihonne.com'];
+//  relay.damus.io and nostr-pub.wellorder.net failed that test, so they were swapped for the three after primal. A second
+//  test the same night, sending each kind of note the crew uses from a new player's key and listening on another link,
+//  passed these four and relay.snort.social and relay.nostr.net too, added as spares)
+const RELAYS = Q.get('relay') ? Q.get('relay').split(',') : ['wss://relay.primal.net', 'wss://nostr.oxtr.dev', 'wss://offchain.pub', 'wss://nostr-01.yakihonne.com', 'wss://relay.snort.social', 'wss://relay.nostr.net'];
 // how two players find a way to each other. STUN tells each player its own public address, which is all most homes and phones need.
 // A TURN server passes the messages along when nothing else gets through (some offices, schools and mobile networks). None is set
 // up yet. To add one later, put it in TURN, e.g.
@@ -361,7 +530,7 @@ const toGame = m => {
 addEventListener('message', e => {
   if (e.source !== frame.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockcube') return;
   if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
-  if (m.type === 'hello') { gameReady = true; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, '*'); portraits(); if (net.on && net.sail) startGame(); return; }
+  if (m.type === 'hello') { gameReady = true; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, '*'); portraits(); walSend(); for (const [id, a] of walMates) toCube({ type: 'mwal', id, addr: a }); pnLast = ''; pnSend(); if (net.on && net.sail) startGame(); return; }
   if (m.type === 'portraits') { gotPortraits(m); return; }
   if (m.type === 'hear') { voice.hear(m.d); return; }   // how far away each crewmate is in the rooms (for their voices)
   if (m.type === 'chat-open') { openSay(); return; }
@@ -572,14 +741,14 @@ function wire(pc, ch, onMsg, onOpen, onClose, onLost) {
 // rid: the crew's own name on the relays, the same whoever hosts it. gen: how many times the host has changed.
 const net = { on: false, host: false, mode: '', code: '', rid: '', gen: 0, open: false, sail: false, back: false, peers: new Map(), pending: new Map(), hostLink: null, hostId: '', history: [], players: new Map(), unsub: [], line: [], pks: {}, chat: [], regroup: null, leaving: false, started: 0, fast: 0, nextBeat: 0, prev: '' };
 // the host's checks on what a guest sends: the right shape and size, and not too often (KENOBI: 30 a second for where you are, 10 for events, 5 for chat)
-const LIM = { state: 30, event: 10, pev: 60, chat: 5, sdp: 4, hello: 2, me: 2, bye: 1, look: 2 };
+const LIM = { state: 30, event: 10, pev: 60, chat: 5, sdp: 4, hello: 2, me: 2, bye: 1, look: 2, wal: 2, own: 4 };
 function allow(peer, t) { const r = LIM[t] || 2, s = performance.now() / 1000, b = peer.bk || (peer.bk = {}), q = b[t] || (b[t] = { v: r, at: s }); q.v = Math.min(r, q.v + (s - q.at) * r); q.at = s; if (q.v < 1) return false; q.v--; return true; }
 // (numbers up to a time in milliseconds: a lantern says when it was let go, and the other games work out from that how high it has risen)
 const small = (v, d) => v === null || typeof v === 'boolean' || (typeof v === 'number' && isFinite(v) && Math.abs(v) < 1e13) || (typeof v === 'string' && v.length <= 80) ||
   (d < 3 && Array.isArray(v) && v.length <= 16 && v.every(x => small(x, d + 1))) || (d < 3 && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length <= 40 && Object.values(v).every(x => small(x, d + 1)));
 // where someone is in the cube: which block's room (h), where in it (x, z, in metres), which way they face (y) and look (p), what they hold (hk: its kind)
 const num = (v, a) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= a;
-const place = s => Number.isInteger(s.h) && s.h >= -2 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
+const place = s => Number.isInteger(s.h) && s.h >= -4 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
 // someone in Block Paint: where they stand and how they look, small
 const paintOk = s => { try { return JSON.stringify(s).length <= 3000 && Array.isArray(s.q) && s.q.length === 3 && s.q.every(Number.isFinite); } catch (e) { return false; } };
 function check(m) {
@@ -593,6 +762,8 @@ function check(m) {
   if (m.t === 'look') { const l = lookOk(m.look); return l ? { t: 'look', look: l } : null; }
   if (m.t === 'me') return { t: 'me', sail: !!m.sail, ai: !!m.ai };
   if (m.t === 'bye') return { t: 'bye' };
+  if (m.t === 'wal') return !m.sh ? { t: 'wal', sh: 0 } : typeof m.a === 'string' && /^(1|3|bc1)[0-9A-Za-z]{20,90}$/.test(m.a) && typeof m.s === 'string' && m.s.length <= 200 && HEXK.test(m.f || '') && /^[0-9a-f]{128}$/.test(m.ps || '') ? { t: 'wal', sh: 1, a: m.a, s: m.s, f: m.f, ps: m.ps } : null;   // (a wallet card: see "your wallet")
+  if (m.t === 'own') return Number.isInteger(m.h) && m.h >= -4 && m.h < 1e8 && Array.isArray(m.ids) && m.ids.length <= 400 && m.ids.every(x => typeof x === 'string' && HEX.test(x) && x.length <= 75) ? { t: 'own', h: m.h, ids: m.ids } : null;
   return null;
 }
 const RUNNERS = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia'];
@@ -616,6 +787,8 @@ function handle(from, m) {
   else if (m.t === 'chat') { const out = { t: 'chat', ...meta, text: String(m.text || '').slice(0, 200), ai: m.ai ? 1 : 0 }; toAll(out, from); if (from !== ME) chatIn(out); }
   else if (m.t === 'me') { const q = net.players.get(from); if (q) { q.sail = m.sail ? 1 : 0; q.ai = m.ai ? 1 : 0; } toAll({ t: 'me', id: from, sail: m.sail ? 1 : 0, ai: m.ai ? 1 : 0 }, from); drawCrew(); }
   else if (m.t === 'look') { const q = net.players.get(from); if (q) { q.look = m.look; toAll({ t: 'joined', ...pub(from, q), back: 1 }, from); if (from !== ME) toGame({ type: 'look', id: from, look: m.look }); } }
+  else if (m.t === 'wal') { const out = Object.assign({}, m, { id: from }); toAll(out, from); if (from !== ME) walIn(from, out); }
+  else if (m.t === 'own') { const out = { t: 'own', id: from, h: m.h, ids: m.ids }; toAll(out, from); if (from !== ME) toCube({ type: 'mown', id: from, h: m.h, ids: m.ids }); }
 }
 // what reaches this player (host included)
 function gameState(m) {
@@ -636,7 +809,7 @@ function upsert(id, pl) {
 // a crewmate gone for good (now), or soon unless they turn up again
 function goneNow(id) {
   const pl = net.players.get(id); if (!pl || id === ME) return; clearTimeout(pl.goneT);
-  net.players.delete(id); voice.gone(id); toGame({ type: 'left', id }); if (net.host) { toAll({ t: 'left', id }); net.line = net.line.filter(x => x !== id); sendLine(); beatSoon(); }
+  net.players.delete(id); voice.gone(id); walMates.delete(id); toGame({ type: 'left', id }); if (net.host) { toAll({ t: 'left', id }); net.line = net.line.filter(x => x !== id); sendLine(); beatSoon(); }
   logLine('', pl.name + ' left'); updateHud(); drawCrew(); presenceSoon();
 }
 function laterGone(id, ms) { const pl = net.players.get(id); if (!pl || id === ME) return; clearTimeout(pl.goneT); pl.lost = Date.now(); pl.goneT = setTimeout(() => { if (net.players.get(id) === pl && pl.lost) goneNow(id); }, ms); }
@@ -667,13 +840,15 @@ function guestIn(m) {
   else if (m.t === 'chat') chatIn(m);
   else if (m.t === 'sdp') voice.sdp(L, m.d);
   else if (m.t === 'vmap') voice.map(m.sid, m.id);
-  else if (m.t === 'joined') { if (typeof m.id !== 'string' || m.id === ME) return; const known = net.players.has(m.id); upsert(m.id, m); if (!known && !m.back) logLine('', clean(m.name) + ' joined'); updateHud(); drawCrew(); presenceSoon(); }
+  else if (m.t === 'joined') { if (typeof m.id !== 'string' || m.id === ME) return; const known = net.players.has(m.id); upsert(m.id, m); if (!known) { setTimeout(walShare, 1500); ownSoon(); } if (!known && !m.back) logLine('', clean(m.name) + ' joined'); updateHud(); drawCrew(); presenceSoon(); }
   else if (m.t === 'left') goneNow(m.id);
   else if (m.t === 'line') setLine(m.line, m.pks);
   else if (m.t === 'me') { const p = net.players.get(m.id); if (p) { p.sail = m.sail ? 1 : 0; p.ai = m.ai ? 1 : 0; drawCrew(); } }
   else if (m.t === 'room') { net.open = !!m.open; net.agents = m.agents === 0 ? 0 : 1; window.__crewAgents = net.agents; drawCrew(); }
   else if (m.t === 'bye') lostHost('bye', typeof m.next === 'string' ? m.next : '');
   else if (m.t === 'move') moveTo(m.to);
+  else if (m.t === 'wal') walIn(m.id, m);
+  else if (m.t === 'own') { if (typeof m.id === 'string' && m.id !== ME) toCube({ type: 'mown', id: m.id, h: m.h, ids: m.ids }); }
 }
 
 // ---------------- rooms on the relays ----------------
@@ -736,6 +911,7 @@ function welcome(peer, m) {
   send(peer.ch, init); toAll({ t: 'joined', ...pub(gid, pl), back: back ? 1 : 0 }, gid); sendLine();
   toGame({ type: 'look', id: gid, look: pl.look });
   if (!back) logLine('', pl.name + ' joined');
+  setTimeout(walShare, 1500); ownSoon();   // (your wallet card, if you let the crew see, and what you hold where you are, for the newcomer)
   updateHud(); drawCrew(); beatSoon(); presenceSoon();
 }
 // a guest's link has gone: said goodbye (gone now), or dropped (they get a little while to come back before the crew is told)
@@ -985,13 +1161,14 @@ function startGame() {
   hideLobby();
   if (net.on) { net.sail = true; const me = net.players.get(ME); if (me && !me.sail) { me.sail = 1; const ai = iAmAgent() ? 1 : 0; me.ai = ai; if (net.host) handle(ME, { t: 'me', sail: 1, ai }); else send(net.hostLink && net.hostLink.ch, { t: 'me', sail: 1, ai }); } }
   if (!gameReady) return;
-  toGame({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode }); toGame({ type: 'look', id: 'me', look: picked });
+  toGame({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode }); toGame({ type: 'look', id: 'me', look: picked }); walShare(); ownSoon(); pnSend();
   try { const f = inPaint ? pframe : frame; f.focus(); f.contentWindow.focus(); } catch (e) {}
   updateHud(); drawCrew();
 }
 net.fromGame = m => {
   if (m.type === 'state') { const c = check({ t: 'state', s: m.s }); if (!c) return; const was = voice.st[ME]; voice.st[ME] = c.s; share(c); if (!was || was.h !== c.s.h || was.in !== c.s.in || was.g !== c.s.g) { whereAt = 0; crewWhere(); } }
   else if (m.type === 'event') share({ t: 'event', ev: m.ev });
+  else if (m.type === 'own') ownOut(m);
 };
 function updateHud() {
   const inGame = $('lobby').hidden;
@@ -1223,7 +1400,7 @@ function playerRows(ul) {
     const p = net.players.get(id), mine = id === ME, host = id === net.hostId, mu = isMuted(id), nm = p.name || 'Runner', st = voice.st[id];
     const li = el('li', { class: [mine && 'me', host && 'host', p.sail && 'on', mu && 'muted'].filter(Boolean).join(' ') || null, data: { id } });
     li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), host ? el('span', { class: 'tag', text: 'Host' }) : null, (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('span', { class: 'tag', text: 'AI', title: 'an AI agent' }) : null),
-      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
+      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : st.h === -4 ? 'Bitmap garden' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
     // (a crewmate in another block's room: go to them)
     const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && (inPaintSt(st) ? !inPaintSt(mst) : st.in && !(mst && mst.in && !inPaintSt(mst) && mst.h === st.h))) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
     if (!mine && p.fpk && p.fpk !== fpk) li.append(isFriend(p.fpk) ? el('span', { class: 'st frt', text: 'Friend' }) : el('button', { class: 'fr', text: 'Add friend', onclick: () => { addFriend({ pk: p.fpk, name: p.name }, true); toast('Added ' + nm + ' as a friend.', [], 4000); } }));
@@ -1245,7 +1422,7 @@ let topAt = 0;
 function atCubeUi() { const m = voice.st[ME], at = matchMedia('(max-width:760px)').matches && $('lobby').hidden && (net.on || soloOn) && !(m && (m.in || inPaintSt(m))); document.body.classList.toggle('atcube', at); if (!at && !inPaint) document.body.classList.remove('peek'); $('peekb').setAttribute('aria-pressed', String(document.body.classList.contains('peek'))); }
 $('peekb').onclick = () => { document.body.classList.toggle('peek'); atCubeUi(); };
 function drawTop() {
-  atCubeUi();
+  atCubeUi(); pnSend();
   const box = $('ptop'), show = $('lobby').hidden && net.on; box.hidden = !show; if (!show) return;
   const ids = net.line.filter(id => net.players.has(id)); for (const id of net.players.keys()) if (!ids.includes(id)) ids.push(id);
   const mst = voice.st[ME]; box.textContent = '';
@@ -1255,7 +1432,7 @@ function drawTop() {
     const id = ids[k];
     if (!id) { box.append(el('div', { class: 'pl empty' }, el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), 'open'), el('span', { class: 'w', text: net.mode === 'sea' ? 'anyone can join' : 'invite someone' }))); continue; }
     const p = net.players.get(id), st = voice.st[id], mine = id === ME, lk = lookOk(p.look) || [0, 0, 1];
-    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
+    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : st.h === -4 ? 'bitmap garden' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
     const here = !mine && st && mst && (inPaintSt(st) ? inPaintSt(mst) : st.in && mst.in && !inPaintSt(mst) && st.h === mst.h), go = !mine && st && (st.in || inPaintSt(st)) && !here;
     const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + (GLOWS[lk[0]] || GLOWS[lk[0] % GLOWS.length])[lk[1] % 3], title: go ? 'Tap to go to ' + (p.name || 'them') : '' },
       el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('i', { class: 'ai', text: 'AI', title: 'an AI agent' }) : null, (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
@@ -1340,8 +1517,8 @@ function crewPanel(first) {
   const lv = el('button', { text: 'Leave crew' }); lv.onclick = () => { closePanel(); leaveCrew(); };
   if (net.mode === 'crew' && net.code) { const cp = el('button', { class: 'mini', text: 'Copy code' }); cp.onclick = () => copyText(net.code, cp, 'Copy code'); body.append(el('div', { class: 'top', style: 'margin-top:2px' }, el('p', { class: 'sub', id: 'csub', style: 'margin:0', text: sub }), cp)); }
   else body.append(el('p', { class: 'sub', id: 'csub', text: sub }));
-  body.append(el('ul', { class: 'plist', id: 'pplist' }), el('div', { class: 'voice' }, el('span', { class: 'sub', style: 'margin:0', text: 'Talk:' }), seg), ow, el('div', { class: 'btns' }, inv, byc, lv));
-  playerRows($('pplist')); voice.ui();
+  body.append(el('ul', { class: 'plist', id: 'pplist' }), el('div', { class: 'voice' }, el('span', { class: 'sub', style: 'margin:0', text: 'Talk:' }), seg), ow, el('div', { class: 'btns' }, inv, byc, lv), el('div', { class: 'wal', id: 'cwal' }));
+  playerRows($('pplist')); voice.ui(); walBox($('cwal'));
 }
 function setOpen(on) { if (!net.host) return; net.open = !!on; toAll({ t: 'room', open: net.open ? 1 : 0, agents: net.agents === 0 ? 0 : 1 }); beatSoon(); presenceSoon(); drawCrew(); }
 function setAgents(on) { if (!net.host) return; net.agents = on ? 1 : 0; window.__crewAgents = net.agents; toAll({ t: 'room', open: net.open ? 1 : 0, agents: net.agents }); drawCrew(); }   // (read by the agent kit: with it off, agents can only look)
@@ -1353,6 +1530,131 @@ function toast(text, actions = [], ms = 8000, key) {
   setTimeout(() => t.remove(), ms); return t;
 }
 
+// ---------------- your wallet, read only ----------------
+// Connect UniSat, as the Minitors mint page does, then sign one short message: it proves the address is yours, and it sends,
+// spends and approves nothing. The game puts a marker (your P number, in your colour) over every inscription in the wallet that
+// it shows you. You always see your own. Your crew sees them only once you switch "Let my crew see what I hold" on (off to
+// start); their pages check your signature, and that each inscription really sits in your address, before they show a marker.
+// An AI agent can prove a wallet of its own the same way (it signs the same message with its own key, a standard Bitcoin
+// signed message, and the page checks it the same way); its holdings are then read from public sites. An agent never touches a
+// wallet a person connected here, nor its switch: only that person does.
+const walMsg = f => 'Agent Blockhall\nRead-only wallet check for player key ' + f + '\nSigning this sends, spends and approves nothing.';
+const wal = { addr: '', sig: '', share: false, ids: [], at: 0, busy: false, note: '', by: 'person' };
+(() => { const w = jget('wallet', null); if (!w || typeof w.addr !== 'string' || typeof w.sig !== 'string' || !WV.check(w.addr, walMsg(fpk), w.sig)) return;
+  wal.addr = w.addr; wal.sig = w.sig; wal.share = !!w.share; wal.at = +w.at || 0; wal.by = w.by === 'agent' ? 'agent' : 'person'; const ids = jget('walletIds', []); wal.ids = Array.isArray(ids) ? ids.filter(x => typeof x === 'string' && HEX.test(x)) : []; })();
+const uni = () => window.unisat || null;
+const walSave = () => { if (!wal.addr) { store.set('wallet', ''); store.set('walletIds', ''); return; } jset('wallet', { addr: wal.addr, sig: wal.sig, share: wal.share ? 1 : 0, at: wal.at, by: wal.by }); try { jset('walletIds', wal.ids); } catch (e) {} };
+const walShort = a => a.length > 18 ? a.slice(0, 8) + '…' + a.slice(-6) : a;
+const walNote = t => { wal.note = t || ''; walDraw(); };
+// the inscriptions in the wallet, 100 at a time (read only: the wallet just lists them)
+async function walList() {
+  const U = uni(); if (!U || !U.getInscriptions) return null;
+  const out = []; let total = 1;
+  for (let c = 0; c < total && c < 50000; c += 100) { const r = await U.getInscriptions(c, 100), L = (r && r.list) || []; total = +(r && r.total) || 0; for (const x of L) if (x && HEX.test(x.inscriptionId || '')) out.push(x.inscriptionId); if (!L.length) break; }
+  return out;
+}
+// what an address holds, from public sites (for an agent's own wallet: there is no UniSat to ask): ordinals.com's page for the
+// address; failing that, the address's outputs (mempool.space or a copy) and what sits on each (ordinals.com), a few at a time
+const nap = ms => new Promise(r => setTimeout(r, ms));
+async function walListPublic(a) {
+  try { const r = await fetch('https://ordinals.com/address/' + encodeURIComponent(a)); if (r.ok) { const t = await r.text(); return [...new Set([...t.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)].map(m => m[1]))]; } } catch (e) {}
+  for (const base of ['https://mempool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.bitaroo.net']) {
+    let U = null; try { const r = await fetch(base + '/api/address/' + encodeURIComponent(a) + '/utxo'); if (r.ok) U = await r.json(); } catch (e) {}
+    if (!Array.isArray(U)) continue;
+    const out = [], L = U.slice(0, 300);
+    for (let i = 0; i < L.length; i += 3) { await Promise.all(L.slice(i, i + 3).map(async u => { for (const ob of ['https://ordinals.com', 'https://ord.xverse.app', 'https://static.unisat.io']) { try { const r = await fetch(ob + '/r/utxo/' + u.txid + ':' + u.vout); if (r.ok) { const j = await r.json(); for (const id of j.inscriptions || []) if (HEX.test(id)) out.push(id); break; } } catch (e) {} } })); await nap(150); }   // (each from the first of three ord sites that answers)
+    return [...new Set(out)];
+  }
+  return null;
+}
+// read the wallet again (no pop-up: only if UniSat already lets this page see the account; an agent's from the public sites)
+async function walRefresh(loud) {
+  if (wal.addr && wal.by === 'agent') { if (loud) walNote('Reading the inscriptions…'); const ids = await walListPublic(wal.addr); if (!ids) { if (loud) walNote('Could not read the address just now. The markers use the last list.'); return; } wal.ids = ids; wal.at = Date.now(); walSave(); walNote(''); walSend(); ownSoon(); return; }
+  const U = uni(); if (!wal.addr || !U) return;
+  try {
+    const acc = await U.getAccounts(); if (!acc || !acc.length) return;   // (not let in on this visit yet: the last list stands)
+    if (acc[0] !== wal.addr) { walOff('Your UniSat account changed, so read status is off. Connect again to use the new one.'); return; }
+    if (loud) walNote('Reading your inscriptions…');
+    const ids = await walList(); if (!ids) return;
+    wal.ids = ids; wal.at = Date.now(); walSave(); walNote(''); walSend(); ownSoon();
+  } catch (e) { if (loud) walNote('Could not read the wallet just now. The markers use the last list.'); }
+}
+async function walConnect() {
+  if (wal.busy) return; const U = uni();
+  if (!U) { walNote(PHONE ? 'On a phone, open this page in the UniSat app’s own browser, then connect.' : 'No UniSat wallet in this browser. Add the UniSat extension, then connect.'); return; }
+  wal.busy = true; walNote('Pick your account in UniSat.');
+  try {
+    const acc = await U.requestAccounts(), a = acc && acc[0]; if (!a) throw new Error('no account');
+    walNote('Sign the message in UniSat. It proves the address is yours and sends nothing.');
+    const sig = await U.signMessage(walMsg(fpk), 'ecdsa');
+    if (!WV.check(a, walMsg(fpk), sig)) { wal.busy = false; walNote('That signature didn’t match the address, so nothing changed. Use a Bitcoin mainnet account.'); return; }
+    wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.by = 'person'; walSave(); wal.busy = false;
+    await walRefresh(true); walShare();
+  } catch (e) { wal.busy = false; walNote(e && (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) ? 'Cancelled. Nothing was connected.' : 'Could not connect just now. Try again.'); }
+}
+function walOff(why) { wal.addr = wal.sig = ''; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'person'; walSave(); walShare(); walSend(); wal.note = why || ''; walDraw(); }
+function walSetShare(on) { if (!wal.addr) on = false; wal.share = !!on; walSave(); walShare(); walSend(); walDraw(); }
+// the game: your address, the inscriptions in it, and whether the crew may see
+const walSend = () => toCube({ type: 'wallet', addr: wal.addr, ids: wal.ids, share: wal.share ? 1 : 0 });
+// the crew: your card (address, the wallet's signature, and your friend key signing this session's key, so no one else can
+// pass your card off as theirs), or "nothing to see" when the switch is off
+function walCard() {
+  if (!wal.addr || !wal.share) return { t: 'wal', sh: 0 };
+  return { t: 'wal', sh: 1, a: wal.addr, s: wal.sig, f: fpk, ps: bytesToHex(schnorr.sign(sha256(enc.encode('blockhall-wallet|' + pk + '|' + wal.addr)), fsk)) };
+}
+let walSent = 0;
+function walShare() { if (!net.on) return; walSent = Date.now(); share(walCard()); }
+setInterval(() => { if (net.on && wal.share && Date.now() - walSent > 30000) walShare(); }, 5000);   // (now and then, for anyone who came in since)
+// a crewmate's card: checked here before the game hears of it
+const walMates = new Map();
+function walIn(id, m) {
+  if (typeof id !== 'string' || id === ME) return;
+  if (!m.sh) { if (walMates.delete(id)) toCube({ type: 'mwal', id, addr: '' }); return; }
+  const k = net.pks[id]; if (!k) return;   // (their session key isn't known yet: their next card will do)
+  let ok = false; try { ok = schnorr.verify(hexToBytes(m.ps), sha256(enc.encode('blockhall-wallet|' + k + '|' + m.a)), hexToBytes(m.f)) && WV.check(m.a, walMsg(m.f), m.s); } catch (e) { ok = false; }
+  const was = walMates.get(id);
+  if (!ok) { if (was) { walMates.delete(id); toCube({ type: 'mwal', id, addr: '' }); } return; }
+  if (was !== m.a) { walMates.set(id, m.a); toCube({ type: 'mwal', id, addr: m.a }); }
+}
+// what the game says you hold in the room you are in (only sent with the switch on): passed to the crew as it is
+let ownLast = '';
+const ownSoon = () => { ownLast = ''; toCube({ type: 'own?' }); };
+function ownOut(m) { if (!net.on || !wal.share || !wal.addr) return; const c = check({ t: 'own', h: m.h, ids: m.ids }); if (!c) return; const k = c.h + ':' + c.ids.join(','); if (k === ownLast) return; ownLast = k; share(c); }
+// each player's number (P1 to P6, in the order of the strip across the top) and colour, for the markers
+let pnLast = '';
+function pnSend() {
+  const ids = net.on ? net.line.filter(id => net.players.has(id)) : []; if (net.on) for (const id of net.players.keys()) if (!ids.includes(id)) ids.push(id);
+  const col = id => { const p = net.players.get(id), lk = (p && lookOk(p.look)) || (id === ME ? picked : [0, 0, 1]); return (GLOWS[lk[0]] || GLOWS[lk[0] % GLOWS.length])[lk[1] % 3]; };
+  const o = { me: { p: 'P' + (Math.max(0, ids.indexOf(ME)) + 1), c: net.on ? col(ME) : (GLOWS[picked[0] % GLOWS.length])[picked[1] % 3] }, mates: {} };
+  ids.forEach((id, k) => { if (id !== ME && k < MAX) o.mates[id] = { p: 'P' + (k + 1), c: col(id) }; });
+  const j = JSON.stringify(o); if (j === pnLast) return; pnLast = j; toCube(Object.assign({ type: 'pnums' }, o));
+}
+// the wallet box, in your player card and in the crew panel
+function walBox(box) {
+  if (!box) return; box.textContent = '';
+  const st = el('p', { class: 'wst' }), on = !!wal.addr;
+  if (on) st.append(el('span', { class: 'ok', text: 'Read status on' }), ' · ', el('b', { text: walShort(wal.addr) }), ' · ' + wal.ids.length.toLocaleString('en-US') + (wal.ids.length === 1 ? ' inscription' : ' inscriptions'), wal.by === 'agent' ? ' · proved by the AI agent playing here' : '');
+  else st.append('Not connected. Connect UniSat to see a marker over every inscription you hold. Read only: nothing is ever sent or spent.');
+  const btns = el('div', { class: 'btns' });
+  if (!on) btns.append(el('button', { class: 'main', 'data-wal': '1', text: wal.busy ? 'Connecting…' : 'Connect UniSat', disabled: wal.busy ? '' : null, onclick: walConnect }));
+  else btns.append(el('button', { class: 'mini', 'data-wal': '1', text: 'Read again', onclick: () => walRefresh(true) }), el('button', { class: 'mini', 'data-wal': '1', text: 'Disconnect', onclick: () => walOff('') }));
+  const cb = el('input', { type: 'checkbox', 'data-wal': '1', disabled: on ? null : '' }); cb.checked = on && wal.share; cb.onchange = () => walSetShare(cb.checked);
+  box.append(st, btns, el('label', { class: 'check', 'data-wal': '1' }, cb, el('span', { text: 'Let my crew see what I hold' })), el('p', { class: 'wnote', role: 'status', text: wal.note }));
+}
+function walDraw() { walBox($('wal')); if (P.kind === 'crew') walBox($('cwal')); }
+walDraw();
+if (uni() && uni().on) try { uni().on('accountsChanged', a => { if (wal.addr && (!a || a[0] !== wal.addr)) walOff('Your UniSat account changed, so read status is off. Connect again to use the new one.'); }); } catch (e) {}
+setTimeout(() => walRefresh(false), 1500);
+setInterval(() => { if (wal.addr && wal.by === 'agent' && Date.now() - wal.at > 600000) walRefresh(false); }, 60000);   // (an agent's holdings: read again every ten minutes)
+// an agent proving its own wallet (the agent kit's walletProve): the same message, the same check
+async function walAgentProve(a, sig) {
+  a = String(a || '').trim(); sig = String(sig || '').trim();
+  if (wal.addr && wal.by !== 'agent') return { ok: false, error: 'a person\u2019s wallet is connected on this page: only they can change it' };
+  if (!WV.check(a, walMsg(fpk), sig)) return { ok: false, error: 'that signature does not match the address and this page\u2019s message (wallet() gives the exact words; a Bitcoin mainnet address; base64: a BIP-322 simple signature, or a standard signed message)' };
+  wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'agent'; walSave(); walDraw();
+  await walRefresh(true); walShare(); return { ok: true };
+}
+const walStatus = () => wal.addr ? { connected: true, address: wal.addr, by: wal.by === 'agent' ? 'you (an AI agent), with your own signed message' : 'the person at this screen (UniSat)', inscriptions: wal.ids.length, read: wal.at ? new Date(wal.at).toISOString() : null, crewCanSee: !!wal.share, note: wal.note || undefined } : { connected: false };
 // ---------------- the start screen ----------------
 $('name').value = store.get('name'); drawPicker();
 let nameT = 0; $('name').addEventListener('input', () => { store.set('name', $('name').value.trim()); clearTimeout(nameT); nameT = setTimeout(() => presence(), 3000); });
@@ -1408,7 +1710,7 @@ window.AgentKit = window.AgentKit || (() => {
   // never for agents: anything that wipes, deletes or removes, and the "Are you sure?" answer (a person must press those)
   const NO_AGENT = /\b(wipe|delete|remove|erase|forget|clear all|this wall|this place|everything)\b/i;
   const NO_AGENT_IDS = new Set(['asky', 'd_clear', 'ragents']);   // (ragents: the crew host's "Let AI agents play" switch is the host's own)
-  const forbidden = el => NO_AGENT_IDS.has(el.id) || !!(el.closest && el.closest('#ask, .wipe, [data-w], [data-agentbox], #ragentsw')) || el.hasAttribute('data-w') || NO_AGENT.test(label(el)) || NO_AGENT.test(el.title || '');
+  const forbidden = el => NO_AGENT_IDS.has(el.id) || !!(el.closest && el.closest('#ask, .wipe, [data-w], [data-agentbox], #ragentsw, [data-wal]')) || el.hasAttribute('data-w') || NO_AGENT.test(label(el)) || NO_AGENT.test(el.title || '');
   // crew chat: an agent may send one message every 5 seconds (shared by every frame of the page)
   const CHAT_GAP = 5000, CHAT_SEND = new Set(['send', 'cwsend']), CHAT_BOX = new Set(['msg', 'cwmsg']);
   const chatTop = () => { try { return window.top.__agentChat || (window.top.__agentChat = {at: 0}); } catch (e) { return window.__agentChat || (window.__agentChat = {at: 0}); } };
@@ -1499,6 +1801,11 @@ window.AgentKit = window.AgentKit || (() => {
     if (from === 'agent' && !B.open) { B.open = true; boxDraw(); if (boxPlace(true)) B.unread = 0; else { B.open = false; B.unread++; boxDraw(); boxPlace(true); } }   // (it opens to show the agent's words only where it covers nothing; else "1 new" on the tab)
     else { boxDraw(); boxPlace(); }
   }
+  // system health for the crew: when no relay is connected (crewmates cannot find each other), and when they are back
+  const RH = {n: -1, since: 0, told: null, news: [], read: 0};
+  setInterval(() => { const n = relays.filter(r => r.open).length; if (n !== RH.n) { RH.n = n; RH.since = Date.now(); } const st = n ? 'up' : 'down';
+    if (RH.told !== st && Date.now() - RH.since > 15000) { if (RH.told !== null || st === 'down') RH.news.push({at: new Date().toISOString().slice(11, 19), happened: st === 'down' ? 'System health: no crew relay is connected, so crewmates cannot find each other (the page keeps trying all ' + relays.length + ')' : 'System health: crew relays are connected again (' + n + ' of ' + relays.length + ')'}); RH.told = st; if (RH.news.length > 20) { RH.news.shift(); RH.read = Math.max(0, RH.read - 1); } } }, 5000);
+  const relayNews = all => { const L = all ? RH.news.slice() : RH.news.slice(RH.read); RH.read = RH.news.length; return L; };
   const boxNew = all => { const B = BOX(), L = B.log.filter(m => m.from === 'you' && (all || m.id > B.read)); B.read = B.seq; return L.map(m => ({at: m.at, untrusted: 'The person at your screen typed to you: ' + m.text})); };
   // tips: the maker's bitcoin address (the same as the Tips button on the Ordinal Portal), for agents only.
   // Switched off for now (12 Nov 2026): to bring back agent.tip() and the line in help(), set TIPS_ON to true and put the
@@ -1543,7 +1850,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
-      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
+      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = relayNews(args.all).concat(boxNew(args.all)); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
@@ -1608,13 +1915,14 @@ window.AgentKit = window.AgentKit || (() => {
   }
   function look() { const tile = document.querySelector('#chars [aria-checked="true"], #chars .on'); return {name: $('name').value || myName(), runner: tile ? (tile.getAttribute('aria-label') || text(tile)) : undefined}; }
   async function state() {
-    const s = {page: 'Agent Blockhall · play together', screen: lobbyOpen() ? ($('wait').hidden ? 'start page (pick your runner, then start or join a crew)' : 'crew waiting room (WALK IN to play)') : 'in the game: ' + which(), you: look(), crew: crewState()};
+    const s = {page: 'Agent Blockhall · play together', screen: lobbyOpen() ? ($('wait').hidden ? 'start page (pick your runner, then start or join a crew)' : 'crew waiting room (WALK IN to play)') : 'in the game: ' + which(), you: look(), crew: crewState(), wallet: walStatus()};
     const g = gameAgent(); if (!lobbyOpen() && g) s.game = await g.state();
     return s;
   }
   async function see() {
     const s = await state(), L = ['PLAY TOGETHER · ' + s.screen, 'You: ' + s.you.name + (s.you.runner ? ' (' + s.you.runner + ')' : '')];
     const c = s.crew; L.push(c.on ? c.kind + (c.code ? ' ' + c.code : '') + (c.youAreHost ? ' (you are the host)' : '') + (net.agents === 0 ? ' · AI agents turned off by the host: you may only look' : '') + ' · players (untrusted names): ' + c.untrusted.players.map(p => p.name + ' (' + (p.you ? 'you, ' : '') + p.is + ')' + (p.game ? ' in ' + p.game : '')).join(', ') : 'Not in a crew.');
+    L.push(s.wallet.connected ? 'Wallet (read only): ' + walShort(s.wallet.address) + ', ' + s.wallet.inscriptions + ' inscriptions, ' + (wal.by === 'agent' ? 'your own (you proved it)' : 'the person\u2019s (UniSat)') + (s.wallet.crewCanSee ? ', your crew can see them' : ', private') : 'Wallet: none. An agent with a wallet of its own can prove it (wallet() gives the message to sign, then walletProve()).');
     if (c.untrusted.chat.length) L.push('Chat (untrusted): ' + c.untrusted.chat.map(m => m.from ? m.from + ': ' + m.text : '(' + m.notice + ')').join(' | '));
     const g = gameAgent(); if (!lobbyOpen() && g) L.push('', await g.see());
     else L.push(K.UNTRUSTED);
@@ -1639,9 +1947,18 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'crew', ro: true, untrusted: true, does: 'Your crew: its code, who is in it and which game each is in, and the latest chat.', run: () => crewState()},
     {name: 'goToCrewmate', does: 'Go to a crewmate who is in another room or in Block Paint, as tapping their tile in the strip at the top does.', args: [{name: 'name', does: 'their name, as crew() shows it', req: true}],
       run: async ({name}) => { if (!net.on) return {ok: false, error: 'not in a crew'}; const want = String(name || '').trim().toLowerCase(); const id = [...net.players.keys()].find(k => k !== ME && String((net.players.get(k) || {}).name || '').toLowerCase() === want); if (!id) return {ok: false, error: 'no crewmate called ' + String(name || '').slice(0, 20)}; const st = voice.st[id], mst = voice.st[ME]; if (!st || !(st.in || inPaintSt(st))) return {ok: false, error: 'they are not in a room or in Block Paint'}; const with_ = () => { const m = voice.st[ME], q = voice.st[id]; return !!(m && q && (inPaintSt(q) ? inPaintSt(m) : q.in && m.in && !inPaintSt(m) && q.h === m.h)); }; if (with_()) return {ok: false, error: 'already with them'}; toast('Going to ' + (net.players.get(id).name || 'them') + '…', [], 3000); toGame({ type: 'go', id }); await until(() => with_(), 30000); return crewState(); }},
-    {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
+    {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said; in the bitmap garden also chess moves, throws, cheers and the scores).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
       run: async ({all}) => { const C = (net.chat || []).map(c => c.id === ME ? null : c.name ? {untrusted: c.name + ' said in chat: ' + c.text} : {happened: c.text}); const newC = (all ? C : C.slice(Math.min(chatRead, C.length))).filter(Boolean); chatRead = C.length; const g = gameAgent(); const G = g ? await g.events({all}) : {events: []}; const L = newC.concat(G.events || []); return {events: L, note: L.length ? undefined : 'nothing new'}; }},
+    {name: 'wallet', ro: true, does: 'Your wallet\'s read status: whose it is, how many inscriptions it holds, whether your crew can see them; and, when none is connected, the exact message to sign to prove a wallet of your own (walletProve).', run: () => Object.assign(walStatus(), wal.addr ? {} : { message: walMsg(fpk), how: 'Sign this exact message with your own Bitcoin key, mainnet, either way: a BIP-322 "simple" signature (what taproot and segwit wallets make, or bip322-js; for taproot bc1p..., native SegWit bc1q... and nested SegWit 3... addresses), or the older standard signed message (65 bytes, as signmessage or bitcoinjs-message make; legacy 1... too). Base64 either way. Then walletProve({address, signature}). Read only: it sends, spends and approves nothing.' })},
+    {name: 'walletProve', does: 'Prove a wallet of your own (as a person connects UniSat): your address and your signature of the message wallet() gives. Then every inscription it holds gets your marker, and if one is your bitmap you can go into the bitmap garden. Never a person\'s wallet: you sign with your own key.', args: [{name: 'address', does: 'your Bitcoin mainnet address', req: true}, {name: 'signature', does: 'your signature of the message, base64: BIP-322 simple (taproot, segwit) or a standard signed message', req: true}],
+      run: async ({address, signature}) => { const r = await walAgentProve(address, signature); return r.ok ? walStatus() : r; }},
+    {name: 'walletShare', does: 'Let your crew see what your own wallet holds (markers over your inscriptions in their view), or stop. Only for a wallet you proved yourself.', args: [{name: 'on', type: 'boolean', does: 'true to let them see', req: true}],
+      run: ({on}) => { if (!wal.addr) return { ok: false, error: 'no wallet: walletProve() first' }; if (wal.by !== 'agent') return { ok: false, error: 'this is the person\u2019s wallet: only they choose who sees it' }; walSetShare(!!on); return walStatus(); }},
+    {name: 'walletRead', does: 'Read your own wallet again (after you got or sent inscriptions).', run: async () => { if (!wal.addr || wal.by !== 'agent') return { ok: false, error: wal.addr ? 'this is the person\u2019s wallet' : 'no wallet: walletProve() first' }; await walRefresh(true); return walStatus(); }},
+    {name: 'walletOff', does: 'Stop read status for your own wallet (the markers go).', run: () => { if (!wal.addr) return { ok: false, error: 'no wallet connected' }; if (wal.by !== 'agent') return { ok: false, error: 'this is the person\u2019s wallet: only they can disconnect it' }; walOff(''); return walStatus(); }},
     {name: 'leaveCrew', always: true, does: 'Leave the crew.', run: async () => { if (!net.on) return {ok: false, error: 'not in a crew'}; await leaveCrew(); await wait(800); return crewState(); }},
+    {name: 'health', ro: true, does: 'System health: the crew relays (how players find each other: each one connected or not) and, with a game open, every outside source it reads, whether it answers, from which site, and what is not shown while one does not (the game\'s health()). events() tells you when a source stops or starts answering.',
+      run: async () => { const o = {crewRelays: {connected: relays.filter(r => r.open).map(r => r.url.replace('wss://', '')), notConnected: relays.filter(r => !r.open).map(r => r.url.replace('wss://', '')), note: 'a crew needs one relay that passes notes on: the rest are spares'}}; const g = gameAgent(); if (g && g.commands().includes('health')) { try { o.game = await g.health({}); } catch (e) {} } else o.game = 'no game open yet: walkIn() first'; return o; }},
     {name: 'game', always: true, untrusted: true, does: 'Run a command in the game in front (Agent Blockhall or Block Paint), e.g. {command: "parcels", args: {type: "images"}}. Its help() lists them.', args: [{name: 'command', does: 'the game command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = gameAgent(); if (!g) return {ok: false, error: 'no game open yet: walkIn() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'the game has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
   ];

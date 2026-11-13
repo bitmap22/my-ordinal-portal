@@ -212,6 +212,25 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
   .plist{max-height:none}
 }
 @media (max-width:380px){.mi.join input{width:96px}}
+/* (13 Nov 2026) 1. messages from the start buttons show right under them (they were at the bottom, out of sight) */
+.menu #note{padding:12px 14px 2px 18px;font-size:14px;line-height:1.45;color:var(--m-text);min-height:0}
+.menu #note:empty{display:none}
+/* 2. the strip stays clear of the house button and the game's own buttons on the right (music, camera, sound, feed):
+   one row of narrower slots (on smaller screens a little off centre, using the room on the left) */
+@media (min-width:1200px){#ptop{left:calc(210px + env(safe-area-inset-left));right:calc(210px + env(safe-area-inset-right));transform:none;width:auto;max-width:none;justify-content:center}#ptop .pl{flex:0 1 168px;width:auto}}
+@media (min-width:761px) and (max-width:1199px){#ptop{left:calc(72px + env(safe-area-inset-left));right:calc(210px + env(safe-area-inset-right));transform:none;width:auto;max-width:none;justify-content:center}#ptop .pl{flex:0 1 168px;width:auto;padding:4px 7px}#ptop .pl .n{font-size:11px}#ptop .pl .w{font-size:10px}}
+/* 8. a crewmate in another room: the tile says you can tap to go */
+#ptop .pl.go{position:relative;padding-right:36px}#ptop .pl .gx{position:absolute;right:7px;top:50%;transform:translateY(-50%);font:800 10px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;color:#93d36c}
+/* 3. in Block Paint the strip and the crew's buttons step aside, behind the people button at the right edge, so Block Paint's own menu
+   along the top stays clear; tap the people button and they open in a column beside it */
+body.inpaint #peekb{display:flex;position:fixed;left:auto;right:calc(8px + env(safe-area-inset-right));top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:22px;z-index:4;align-items:center;justify-content:center;padding:0;background:rgba(18,11,5,.78);border:1px solid rgba(247,147,26,.4);color:#ffb04a;box-shadow:none;cursor:pointer}
+body.inpaint.peek #peekb{background:#f7931a;border-color:#f7931a;color:#160c03}
+body.inpaint:not(.peek) #ptop,body.inpaint:not(.peek) #hud{display:none}
+body.inpaint.peek #ptop{left:auto;right:calc(60px + env(safe-area-inset-right));top:auto;bottom:calc(50% + 6px);transform:none;width:min(200px,calc(100vw - 80px));max-width:none;flex-direction:column;flex-wrap:nowrap;justify-content:flex-end}
+body.inpaint.peek #ptop .pl{width:100%;flex:none}
+body.inpaint.peek #hud,body.inpaint.peek #ptop:not([hidden])~#hud{left:auto;right:calc(60px + env(safe-area-inset-right));top:calc(50% + 6px);transform:none;width:auto;flex-direction:column;align-items:flex-end;max-width:calc(100vw - 80px)}
+/* 4. the crew list on a phone: the crew's code on its own line (it was squeezed to nothing) */
+@media (max-width:760px){#clist li{flex-shrink:0;flex-wrap:nowrap}#clist .who{flex:1 1 0;min-width:0;flex-direction:column;align-items:flex-start;gap:3px}#clist .st{flex:none;padding-left:0;max-width:100%}}
 </style></head>
 <body>
 <iframe id="game" title="Agent Blockhall" allow="autoplay"></iframe>
@@ -229,6 +248,7 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
       <button class="mi" id="friendsb">Friends<span class="badge" id="fon"></span></button>
       <button class="mi" id="solo">Explore alone</button>
       <button class="mi small" id="have">Invite code</button>
+      <p id="note" role="status"></p>
     </nav>
     <section class="side">
       <div class="box pcard">
@@ -245,7 +265,6 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
       </div>
       <div class="box" id="paste" hidden><label for="inv">Invite code</label><textarea id="inv" spellcheck="false" placeholder="Paste the invite code"></textarea><div class="row"><button class="main" id="use">Use the code</button></div>
         <div id="out" hidden><label for="rep">Your reply</label><textarea id="rep" readonly></textarea><div class="row"><button id="cp1">Copy</button></div></div></div>
-      <p id="note" role="status"></p>
     </section>
   </div>
   <div id="wait" class="view" hidden>
@@ -449,8 +468,11 @@ window.WV = WV;
 // GAME: the cube (the same folder as this page; open this page with ?game=<address> to use another copy)
 const Q = new URLSearchParams(location.search);
 const GAME = Q.get('game') || 'block-cube.html';
-const RELAYS = Q.get('relay') ? Q.get('relay').split(',') : ['wss://nos.lol', 'wss://relay.damus.io', 'wss://nostr-pub.wellorder.net', 'wss://relay.primal.net',
-  'wss://offchain.pub', 'wss://relay.snort.social', 'wss://relay.nostr.net', 'wss://nostr.oxtr.dev'];   // (spares: on 13 Nov 2026 only primal of the first four passed a new player's notes on; these four did, every kind the crew sends)
+// (13 Nov 2026: tested by starting a crew in one tab and joining it by code in another, on each relay alone. nos.lol,
+//  relay.damus.io and nostr-pub.wellorder.net failed that test, so they were swapped for the three after primal. A second
+//  test the same night, sending each kind of note the crew uses from a new player's key and listening on another link,
+//  passed these four and relay.snort.social and relay.nostr.net too, added as spares)
+const RELAYS = Q.get('relay') ? Q.get('relay').split(',') : ['wss://relay.primal.net', 'wss://nostr.oxtr.dev', 'wss://offchain.pub', 'wss://nostr-01.yakihonne.com', 'wss://relay.snort.social', 'wss://relay.nostr.net'];
 // how two players find a way to each other. STUN tells each player its own public address, which is all most homes and phones need.
 // A TURN server passes the messages along when nothing else gets through (some offices, schools and mobile networks). None is set
 // up yet. To add one later, put it in TURN, e.g.
@@ -541,7 +563,7 @@ async function swapTo(g) {
   if (swapping) { swapNext = g; return; }   // (asked again mid-swap: done right after)
   if ((g === 'paint') === inPaint) { (g === 'paint' ? toPaint : toCube)({ type: 'arrive', stay: 1 }); return; }   // (already there: never left dark)
   swapping = true;
-  const fade = $('gfade'); fade.classList.add('on');
+  const fade = $('gfade'); fade.firstElementChild.textContent = g === 'paint' ? 'OPENING BLOCK PAINT…' : 'OPENING THE DOOR…'; fade.classList.add('on', 'wait');
   (g === 'paint' ? toCube : toPaint)({ type: 'leave' });   // (the game you are leaving: dark and quiet)
   await later(340);
   if (g === 'paint') {
@@ -558,7 +580,8 @@ async function swapTo(g) {
     inPaint = false; frame.hidden = false; pframe.hidden = true; try { frame.focus(); frame.contentWindow.focus(); } catch (e) {}
     if (PHONE) { pframe.removeAttribute('src'); paintReady = false; paintQueue = []; try { pframe.contentWindow.location.replace('about:blank'); } catch (e) {} }
   }
-  fade.classList.remove('on', 'wait'); swapping = false;
+  fade.classList.remove('on', 'wait'); swapping = false; setTimeout(() => { if (!fade.classList.contains('on')) fade.firstElementChild.textContent = 'OPENING THE DOOR…'; }, 450);
+  document.body.classList.toggle('inpaint', inPaint); if (!inPaint) document.body.classList.remove('peek'); drawTop();   // (3. in Block Paint the crew's buttons step aside)
   if (swapNext) { const n = swapNext; swapNext = null; setTimeout(() => swapTo(n), 0); }
   try { const f = inPaint ? pframe : frame; f.focus(); f.contentWindow.focus(); } catch (e) {}
   whereAt = 0; crewWhere();
@@ -690,14 +713,14 @@ function relayConnect() {
   for (const url of RELAYS) { const r = { url, ws: null, open: false, q: [] }; relays.push(r);
     const go = () => { try { r.ws = new WebSocket(url); } catch (e) { return; }
       r.ws.onopen = () => { r.open = true; for (const [id, s] of subs) r.ws.send(JSON.stringify(['REQ', id, ...s.filters])); for (const m of r.q.splice(0)) r.ws.send(m); };
-      r.ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m[0] !== 'EVENT') return; const s = subs.get(m[1]), ev = m[2]; if (!s || !ev || typeof ev.id !== 'string' || s.seen.has(ev.id)) return; if (!verify(ev)) return; s.seen.add(ev.id); try { s.cb(ev); } catch (x) {} };
+      r.ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m[0] === 'EOSE') { const s = subs.get(m[1]); if (s) (s.eose || (s.eose = new Set())).add(r); return; } if (m[0] !== 'EVENT') return; const s = subs.get(m[1]), ev = m[2]; if (!s || !ev || typeof ev.id !== 'string' || s.seen.has(ev.id)) return; if (!verify(ev)) return; s.seen.add(ev.id); try { s.cb(ev); } catch (x) {} };
       r.ws.onclose = () => { r.open = false; setTimeout(go, 4000); }; r.ws.onerror = () => {}; };
     go(); }
 }
 const relaySend = m => { const s = JSON.stringify(m); for (const r of relays) { if (r.open) r.ws.send(s); else if (r.q.length < 200) r.q.push(s); } };
 const publish = ev => relaySend(['EVENT', ev]);
 // (each subscription keeps its own list of what it has had, so a later search sees the same rooms again)
-function subscribe(filters, cb) { const id = 'a' + (++subN); subs.set(id, { filters, cb, seen: new Set() }); for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['REQ', id, ...filters])); return () => { if (!subs.delete(id)) return; for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['CLOSE', id])); }; }
+function subscribe(filters, cb) { const id = 'a' + (++subN), sub = { filters, cb, seen: new Set() }; subs.set(id, sub); for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['REQ', id, ...filters])); const un = () => { if (!subs.delete(id)) return; for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['CLOSE', id])); }; un.sub = sub; return un; }
 let relaysUp = false; const relaysOn = () => { if (!relaysUp) { relaysUp = true; relayConnect(); } };
 
 // ---------------- WebRTC: direct links between players (the host relays for its crew) ----------------
@@ -844,14 +867,22 @@ function awakeTimer(ms, fn) { let t = 0, last = Date.now(); const iv = setInterv
 // the rooms on the relays right now (the newest word from each; not ones that have ended, or that a newer host has taken over from).
 // It listens for ms. opt.early: done a moment after a fresh room like this turns up. opt.most: if none has by then, it keeps listening up to this long.
 // (a busy page can run its timers late: only the time the page was awake counts, and what came in meanwhile is looked at first)
+// opt.all: also wait until every connected relay has sent all it keeps (for counting the crews: a busy page can't count short), up to opt.most
 function findRooms(want, ms, opt = {}) { return new Promise(res => {
   const rooms = new Map(); let done = false, soon = 0, t = 0, last = Date.now();
   const pick = () => { const all = [...rooms.values()].filter(r => r.status !== 'ended'); const prevs = new Set(all.filter(r => r.prev).map(r => r.prev)); return all.filter(r => !prevs.has(r.pk) && r.pk !== pk && want(r)); };
   const finish = () => { if (done) return; done = true; clearInterval(iv); clearTimeout(soon); un(); res(pick()); };
   const un = subscribe([{ kinds: [30311], '#t': [TAG], since: now() - 90 }], ev => { const r = roomOf(ev); if (!r) return; const p = rooms.get(ev.pubkey); if (p && p.at > r.at) return; rooms.set(ev.pubkey, r); if (opt.early && !soon && !done && pick().some(fresh)) soon = setTimeout(finish, 700); });
-  const iv = setInterval(() => { const n = Date.now(); t += Math.min(n - last, 1100); last = n; if (t >= ms && (t >= (opt.most || ms) || pick().length)) { clearInterval(iv); setTimeout(finish, 200); } }, 250);
+  const allIn = () => relays.some(r => r.open) && relays.every(r => !r.open || (un.sub.eose && un.sub.eose.has(r)));
+  const iv = setInterval(() => { const n = Date.now(); t += Math.min(n - last, 1100); last = n; if (t >= ms && (opt.all ? allIn() || t >= (opt.most || ms) : (t >= (opt.most || ms) || pick().length))) { clearInterval(iv); setTimeout(finish, 200); } }, 250);
 }); }
 const fresh = r => now() - r.at <= 45;
+// The most crews (open halls count too) the lobby takes at once. The relays hand back at most 500 room notes per ask
+// (strfry's maxFilterLimit), and a crew that changes host or closes can have 2 or 3 notes for a minute and a half: 100 stays well clear.
+// There's no server to hold it, so each page checks before it starts a new one (two starting in the same second can make it 101).
+const MAXCREWS = 100;
+const liveCrews = rooms => { const ids = new Set(); for (const r of rooms) if (r.status === 'live' && fresh(r)) ids.add(r.rid || r.pk); return ids.size; };
+const FULL = 'The lobby is full: ' + MAXCREWS + ' crews are going. Join one with space from the Crew list, or explore alone.';
 const ranked = rooms => rooms.slice().sort((a, b) => (fresh(b) - fresh(a)) || (b.n - a.n) || (b.gen - a.gen) || (b.at - a.at));
 const pickBest = rooms => ranked(rooms)[0] || null;
 // join the best of these rooms, falling back to the others if it doesn't answer
@@ -896,6 +927,7 @@ function lostGuest(peer, why) {
 // hosting: a room on the relays; each guest that asks gets a direct link. (opt.back: taking over a crew whose host has gone)
 function host(mode, code, opt = {}) {
   const takeover = !!opt.back;
+  for (const u of net.unsub.splice(0)) u();   // (listeners left from linking to an earlier host: closed, so they don't pile up on the relays)
   Object.assign(net, { on: true, host: true, mode, code: code || '', rid: opt.rid || (mode === 'crew' ? code : newCode() + newCode()), gen: opt.gen || 0, open: !!opt.open, hostId: ME, started: now(), prev: opt.prev || '', fast: Date.now() + (takeover ? 45000 : 0), nextBeat: 0, hostLink: null, back: false });
   soloOn = false; net.line = [ME]; net.pks = { [ME]: pk };
   net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, sail: net.sail ? 1 : 0 }));
@@ -955,6 +987,7 @@ function hostSide(pc) {
 function joinRoom(room, opt = {}) {
   const back = !!opt.back;
   if (!back && net.on) leave();
+  for (const u of net.unsub.splice(0)) u();   // (listeners left from linking to an earlier host: closed, so they don't pile up on the relays)
   Object.assign(net, { on: true, host: false, mode: room.mode === 'sea' ? 'sea' : 'crew', code: room.code || '', rid: room.rid || net.rid || '', gen: room.gen | 0, open: !!room.open, back });
   soloOn = false;
   if (!back) { net.players.clear(); net.history = []; net.chat = []; net.line = []; net.pks = {}; net.hostId = ''; drawChat(); }
@@ -980,7 +1013,9 @@ function joinRoom(room, opt = {}) {
       findRooms(r => r.mode === 'crew' && r.rid === rid, 3500, { early: true, most: 8000 }).then(rooms => { if (net.on) return; const r = pickBest(rooms); if (r && r.n < r.max) { note('Joining…'); joinRoom(r, { again: true }); } else showStart('Couldn’t reach that crew.'); });
       return;
     }
-    if (net.mode === 'sea') { leave(); net.sail = true; host('sea', ''); } else { leave(); showStart('Couldn’t reach that crew.'); }
+    if (net.mode === 'sea') { leave(); showStart('Checking there’s room in the lobby…');
+      findRooms(() => true, 1500, { all: true, most: 8000 }).then(all => { if (net.on) return; if (liveCrews(all) >= MAXCREWS) { showStart(FULL); return; } note(''); net.sail = true; host('sea', ''); }); }
+    else { leave(); showStart('Couldn’t reach that crew.'); }
   };
   // (if that host's room closes before we're in, as when it joins up with another room of the crew, there's no point waiting)
   if (net.rid) net.unsub.push(subscribe([{ kinds: [30311], authors: [room.pk], '#r': [net.rid], since: now() - 5 }], ev => { const r = roomOf(ev); if (r && r.status === 'ended' && net.hostLink === L && !L.init) fail(); }));
@@ -1008,7 +1043,7 @@ function lostHost(why, next) {
   if (net.hostLink) { const L = net.hostLink; net.hostLink = null; try { if (L.pc) L.pc.close(); } catch (e) {} }
   voice.reset();
   const reg = net.regroup = { t0: Date.now(), c, k, old, oldPk, joining: '', timers: [] };
-  for (const id of [...net.players.keys()]) if (id !== ME) laterGone(id, id === old ? (why === 'bye' ? 1500 : 20000) : 30000);
+  for (const id of [...net.players.keys()]) if (id !== ME) { if (id === old && why === 'bye') goneNow(id); else laterGone(id, id === old ? 20000 : 30000); }   // (a host who said goodbye: gone now)
   // the crew's next room: whoever in the line puts it up first (or the old host, if it was only this link that dropped)
   reg.un = subscribe([{ kinds: [30311], '#r': [net.rid], since: now() - 2 }], ev => {
     if (net.regroup !== reg || ev.pubkey === pk) return;
@@ -1384,7 +1419,7 @@ let whereAt = 0; function crewWhere() { if (Date.now() - whereAt < 1000) return;
 const GLOWS = [['#27e1ff', '#ff2fb4', '#ffa21a'], ['#ff2fb4', '#7dff4a', '#ff7a18'], ['#f7931a', '#27e1ff', '#b06bff'], ['#ff2d55', '#ffd23f', '#9fe8ff']];
 let topAt = 0;
 // on a phone at the cube itself (not in a room): the card and the crew's buttons step aside; the people button brings them back
-function atCubeUi() { const m = voice.st[ME], at = matchMedia('(max-width:760px)').matches && $('lobby').hidden && (net.on || soloOn) && !(m && (m.in || inPaintSt(m))); document.body.classList.toggle('atcube', at); if (!at) document.body.classList.remove('peek'); $('peekb').setAttribute('aria-pressed', String(document.body.classList.contains('peek'))); }
+function atCubeUi() { const m = voice.st[ME], at = matchMedia('(max-width:760px)').matches && $('lobby').hidden && (net.on || soloOn) && !(m && (m.in || inPaintSt(m))); document.body.classList.toggle('atcube', at); if (!at && !inPaint) document.body.classList.remove('peek'); $('peekb').setAttribute('aria-pressed', String(document.body.classList.contains('peek'))); }
 $('peekb').onclick = () => { document.body.classList.toggle('peek'); atCubeUi(); };
 function drawTop() {
   atCubeUi(); pnSend();
@@ -1399,10 +1434,10 @@ function drawTop() {
     const p = net.players.get(id), st = voice.st[id], mine = id === ME, lk = lookOk(p.look) || [0, 0, 1];
     const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : st.h === -4 ? 'bitmap garden' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
     const here = !mine && st && mst && (inPaintSt(st) ? inPaintSt(mst) : st.in && mst.in && !inPaintSt(mst) && st.h === mst.h), go = !mine && st && (st.in || inPaintSt(st)) && !here;
-    const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + (GLOWS[lk[0]] || GLOWS[lk[0] % GLOWS.length])[lk[1] % 3], title: go ? 'go to ' + (p.name || 'them') : '' },
+    const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + (GLOWS[lk[0]] || GLOWS[lk[0] % GLOWS.length])[lk[1] % 3], title: go ? 'Tap to go to ' + (p.name || 'them') : '' },
       el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('i', { class: 'ai', text: 'AI', title: 'an AI agent' }) : null, (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
     if (one) { b.classList.remove('go'); b.title = ''; b.append(el('span', { class: 'nx', text: (k + 1) + '/' + ids.length + ' \u203a' })); b.onclick = () => { topAt++; drawTop(); }; }
-    else if (go) b.onclick = () => toGame({ type: 'go', id });
+    else if (go) { b.append(el('span', { class: 'gx', text: 'GO \u203a', 'aria-hidden': 'true' })); const goNow = () => { toast('Going to ' + (p.name || 'them') + '…', [], 3000); toGame({ type: 'go', id }); }; b.setAttribute('role', 'button'); b.tabIndex = 0; b.setAttribute('aria-label', 'Go to ' + (p.name || 'them') + ', in ' + where); b.onclick = goNow; b.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goNow(); } }; }
     box.append(b);
   }
   lights();
@@ -1624,12 +1659,15 @@ const walStatus = () => wal.addr ? { connected: true, address: wal.addr, by: wal
 $('name').value = store.get('name'); drawPicker();
 let nameT = 0; $('name').addEventListener('input', () => { store.set('name', $('name').value.trim()); clearTimeout(nameT); nameT = setTimeout(() => presence(), 3000); });
 const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789', newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), b => letters[b % letters.length]).join('');
-$('crew').onclick = () => { if (net.on) leave(); net.sail = false; host('crew', newCode()); };
+let starting = false;
+$('crew').onclick = async () => { if (starting) return; starting = true; note('Checking there’s room in the lobby…');
+  try { const all = await findRooms(() => true, 1500, { all: true, most: 8000 }); if (liveCrews(all) >= MAXCREWS) { note(FULL); return; }
+    note(''); if (net.on) leave(); net.sail = false; host('crew', newCode()); } finally { starting = false; } };
 $('join').onclick = async () => { const code = $('code').value.trim().toUpperCase(); if (code.length < 4) { note(''); flash($('code')); return; } note('Finding crew ' + code + '…');
   const rooms = await findRooms(r => r.mode === 'crew' && r.code === code, 3500, { early: true, most: 12000 }), r = pickBest(rooms); if (!r) { note('No crew with that code is in the cube right now.'); return; } if (r.n >= r.max) { note('That crew is full.'); return; } note('Joining…'); joinBest(rooms); };
-$('sea').onclick = async () => { note('Looking for runners in the open hall…'); const rooms = await findRooms(r => r.mode === 'sea' && r.n < r.max, 3500);
-  const r = rooms.filter(fresh).sort((a, b) => (b.n - a.n) || (b.at - a.at))[0];
-  if (r) { note('Joining…'); joinRoom(r); } else { net.sail = true; host('sea', ''); } };
+$('sea').onclick = async () => { note('Looking for runners in the open hall…'); const all = await findRooms(() => true, 3500, { all: true, most: 8000 });
+  const r = all.filter(x => x.mode === 'sea' && x.n < x.max).filter(fresh).sort((a, b) => (b.n - a.n) || (b.at - a.at))[0];
+  if (r) { note('Joining…'); joinRoom(r); } else if (liveCrews(all) >= MAXCREWS) note(FULL); else { net.sail = true; host('sea', ''); } };
 $('solo').onclick = () => { soloOn = true; hideLobby(); toGame({ type: 'look', id: 'me', look: picked }); try { frame.contentWindow.focus(); } catch (e) {} presenceSoon(); };
 $('crewsb').onclick = () => openPanel('crews'); $('friendsb').onclick = () => openPanel('friends'); $('frpill').onclick = () => openPanel('friends'); $('room').onclick = () => openPanel('crew');
 $('sail').onclick = () => startGame();
@@ -1898,8 +1936,8 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'setName', does: 'Set the name other players see.', args: [{name: 'name', does: 'up to 20 letters', req: true}], run: ({name}) => { const i = $('name'); i.value = String(name).slice(0, 20); i.dispatchEvent(new Event('input', {bubbles: true})); i.dispatchEvent(new Event('change', {bubbles: true})); return look(); }},
     {name: 'pickRunner', does: 'Pick which of the ten you are: Leo, Kofi, Ren, Marco, Sam, Mia, Zara, Yuki, Elena or Nia.', args: [{name: 'name', enum: RUNNERS, does: 'one of the ten', req: true}],
       run: ({name}) => { const tiles = [...$('chars').children], t = tiles.find(el => (el.getAttribute('aria-label') || text(el)).toLowerCase().includes(String(name).toLowerCase())); if (!t) return {ok: false, error: 'pick one of: ' + RUNNERS.join(', ')}; t.click(); return look(); }},
-    {name: 'startCrew', does: 'Start a new crew (you get a code to share).', run: async () => { if (!press('crew')) return {ok: false, error: 'not on the start page'}; await until(() => net.on && net.code, 20000); return crewState(); }},
-    {name: 'openHall', does: 'Open a hall anyone can join.', run: async () => { if (!press('sea')) return {ok: false, error: 'not on the start page'}; await until(() => net.on, 20000); return crewState(); }},
+    {name: 'startCrew', does: 'Start a new crew (you get a code to share). The lobby takes up to 100 crews at once; when it is full, this says so and starts nothing.', run: async () => { if (!press('crew')) return {ok: false, error: 'not on the start page'}; await until(() => net.on && net.code, 20000); if (!net.on) return {ok: false, error: $('note').textContent || 'no crew was started'}; return crewState(); }},
+    {name: 'openHall', does: 'Open a hall anyone can join (or join one with room). When the lobby is full (100 crews, open halls count too), this says so.', run: async () => { if (!press('sea')) return {ok: false, error: 'not on the start page'}; await until(() => net.on, 20000); if (!net.on) return {ok: false, error: $('note').textContent || 'no hall was opened'}; return crewState(); }},
     {name: 'join', does: 'Join a crew with its code.', args: [{name: 'code', does: 'the crew code, e.g. GRX27', req: true}],
       run: async ({code}) => { const i = $('code'); if (!shown(i)) return {ok: false, error: 'not on the start page'}; i.value = String(code).toUpperCase().trim(); i.dispatchEvent(new Event('input', {bubbles: true})); press('join'); await until(() => net.on && net.players.size > 1, 25000); return crewState(); }},
     {name: 'exploreAlone', does: 'Play without a crew.', run: async () => { if (!press('solo')) return {ok: false, error: 'not on the start page'}; await wait(1500); return {screen: lobbyOpen() ? 'start page' : 'in the game'}; }},
@@ -1907,6 +1945,8 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({height}) => { if (!lobbyOpen()) { const g = gameAgent(); if (g && g.commands().includes('walkIn')) return g.walkIn({height}); return {ok: false, error: 'you are already in the game'}; } startGame(); await until(() => !lobbyOpen(), 8000); await until(() => gameAgent(), 20000); return {screen: lobbyOpen() ? 'lobby' : 'in the game: ' + which()}; }},
     {name: 'say', does: 'Say something in the crew chat (everyone in the crew sees it). One message every 5 seconds.', args: [{name: 'text', does: 'up to 200 letters', req: true}], run: ({text: t}) => { if (!net.on) return {ok: false, error: 'not in a crew'}; const w = K.chatWait(); if (w) return {ok: false, error: 'one chat message every 5 seconds: wait ' + Math.ceil(w / 1000) + ' s'}; K.chatSent(); K.asAgent(() => say(String(t))); return {said: String(t).slice(0, 200)}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Your crew: its code, who is in it and which game each is in, and the latest chat.', run: () => crewState()},
+    {name: 'goToCrewmate', does: 'Go to a crewmate who is in another room or in Block Paint, as tapping their tile in the strip at the top does.', args: [{name: 'name', does: 'their name, as crew() shows it', req: true}],
+      run: async ({name}) => { if (!net.on) return {ok: false, error: 'not in a crew'}; const want = String(name || '').trim().toLowerCase(); const id = [...net.players.keys()].find(k => k !== ME && String((net.players.get(k) || {}).name || '').toLowerCase() === want); if (!id) return {ok: false, error: 'no crewmate called ' + String(name || '').slice(0, 20)}; const st = voice.st[id], mst = voice.st[ME]; if (!st || !(st.in || inPaintSt(st))) return {ok: false, error: 'they are not in a room or in Block Paint'}; const with_ = () => { const m = voice.st[ME], q = voice.st[id]; return !!(m && q && (inPaintSt(q) ? inPaintSt(m) : q.in && m.in && !inPaintSt(m) && q.h === m.h)); }; if (with_()) return {ok: false, error: 'already with them'}; toast('Going to ' + (net.players.get(id).name || 'them') + '…', [], 3000); toGame({ type: 'go', id }); await until(() => with_(), 30000); return crewState(); }},
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said; in the bitmap garden also chess moves, throws, cheers and the scores).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
       run: async ({all}) => { const C = (net.chat || []).map(c => c.id === ME ? null : c.name ? {untrusted: c.name + ' said in chat: ' + c.text} : {happened: c.text}); const newC = (all ? C : C.slice(Math.min(chatRead, C.length))).filter(Boolean); chatRead = C.length; const g = gameAgent(); const G = g ? await g.events({all}) : {events: []}; const L = newC.concat(G.events || []); return {events: L, note: L.length ? undefined : 'nothing new'}; }},
     {name: 'wallet', ro: true, does: 'Your wallet\'s read status: whose it is, how many inscriptions it holds, whether your crew can see them; and, when none is connected, the exact message to sign to prove a wallet of your own (walletProve).', run: () => Object.assign(walStatus(), wal.addr ? {} : { message: walMsg(fpk), how: 'Sign this exact message with your own Bitcoin key, mainnet, either way: a BIP-322 "simple" signature (what taproot and segwit wallets make, or bip322-js; for taproot bc1p..., native SegWit bc1q... and nested SegWit 3... addresses), or the older standard signed message (65 bytes, as signmessage or bitcoinjs-message make; legacy 1... too). Base64 either way. Then walletProve({address, signature}). Read only: it sends, spends and approves nothing.' })},
@@ -1922,7 +1962,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'game', always: true, untrusted: true, does: 'Run a command in the game in front (Agent Blockhall or Block Paint), e.g. {command: "parcels", args: {type: "images"}}. Its help() lists them.', args: [{name: 'command', does: 'the game command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = gameAgent(); if (!g) return {ok: false, error: 'no game open yet: walkIn() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'the game has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
   ];
-  const intro = 'PLAY TOGETHER agent kit (Agent Blockhall with a crew). This page runs the crew; the game sits in a frame in front. Commands not listed here go to the game in front (agent.help() inside it: agent.game({command: "help"})). Start with agent.see().';
+  const intro = 'PLAY TOGETHER agent kit (Agent Blockhall with a crew). This page runs the crew; the game sits in a frame in front. Commands not listed here go to the game in front (agent.help() inside it: agent.game({command: "help"})). You can choose your own name: pick one yourself, no one\'s permission needed, with setName (up to 20 letters); until you do, you go by your runner\'s name. Start with agent.see().';
   const own = K.make('Agent Blockhall · play together', intro, cmds);
   // anything the page does not have itself goes to the game in front
   const api = new Proxy(own, {get(o, k) { if (k in o) return o[k]; const g = gameAgent(); if (g && typeof k === 'string' && g.commands().includes(k)) return g[k].bind(g); return undefined; }});
