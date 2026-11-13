@@ -10610,13 +10610,13 @@ window.AgentKit = window.AgentKit || (() => {
     const C = room.at, p = room.p, o = {in: C.gal ? 'a gallery' : cmOn(C) ? 'the common room' : 'block ' + fmtN(C.h), ready: roomReady(), x: r1(p.x), y: r1(p.y), z: r1(p.z), facing: deg(p.yaw), pitch: deg(p.pitch) > 180 ? deg(p.pitch) - 360 : deg(p.pitch), sitting: !!p.sit};
     if (cmOn(C) && C.ready) { const [x, d] = cmL(C, p.x, p.z); o.roomX = r1(x); o.roomD = r1(d); o.area = zoneOf(x, d); try { const A = cmAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} if (cm.pint) o.holdingPint = true; }
     if (room.held && !room.held.back) { const t = room.held.it.t; o.holding = t ? parcelInfo(t, true) : 'a parcel'; o.card = {untrusted: cardText()}; }
-    if (typeof fol !== 'undefined' && fol) o.followingBack = text($fol);
+    if (typeof fol !== 'undefined' && fol) { o.followingBack = text($fol); const th = tetherHere(); if (th) o.tetherHere = th; }
     const ar = arrowTo(); if (ar) o.arrow = ar;
     return o;
   }
   // the parcel a search's arrow points at (a player follows it with their eyes; hold({txid}) picks it up)
   function arrowTo() {
-    if (typeof srT === 'undefined' || !srT || !text($('sra'))) return null;
+    if (typeof srT === 'undefined' || !srT || !text($('sra')) || !K.shown($('sra'))) return null;   // (only while it shows: a player sees no arrow where its find is not)
     const it = srT.it || (srT.id && curRoom() ? curRoom().plan.items.find(i => i.t && !i.cp && i.t.id === srT.id) : null);
     return {says: text($('sra')), txid: srT.id || undefined, n: it && it.t ? it.t.idx : undefined, how: srT.id ? 'hold({txid: "' + srT.id + '"}) walks to it and picks it up' : undefined};
   }
@@ -10662,6 +10662,8 @@ window.AgentKit = window.AgentKit || (() => {
     if (inCommon()) { s.bigScreen = bigScreen(); s.rareSats = rareSats(); try { const sh = cm.show; if (sh) s.onShowInForum = {block: sh.h, n: sh.idx, txid: sh.id}; } catch (e) {} }
     if ($('sr') && $('sr').classList.contains('on')) s.tablet = {query: $('sri').value, untrusted: text($('srl'))};
     if (typeof vw !== 'undefined' && vw) s.bigView = {untrusted: text($('vw'))};
+    if (inCommon()) s.musicBox = tuneName(cm.music);
+    if ($('cmd') && $('cmd').classList.contains('on')) s.panel = {untrusted: text($('cmd'))};
     s.feed = feedOn ? {untrusted: feedRows()} : 'hidden';
     s.crew = crewInfo();
     const st = text($('st')); if (inRoom() && st) s.message = st;
@@ -10680,6 +10682,8 @@ window.AgentKit = window.AgentKit || (() => {
     if (s.bigScreen) { const B = s.bigScreen; L.push('Big screen: usual wait ' + B.usualWait + ' · best time to get in ' + B.bestTimeToGetIn + ' · low fee ' + (B.lowFee || []).join('; ') + ' · weather ' + B.blockWeather); }
     if (s.rareSats) L.push('Rare sats (price for one sat, ' + s.rareSats.pricesRead + '): ' + s.rareSats.kinds.map(k => k.kind.toLowerCase() + ' ' + k.price).join(', '));
     if (s.onShowInForum) L.push('On show in the Forum: parcel ' + s.onShowInForum.n + ' of block ' + fmtN(s.onShowInForum.block));
+    if (s.musicBox) L.push('The music box plays: ' + s.musicBox);
+    if (s.panel) L.push('Open on screen (untrusted): ' + s.panel.untrusted.replace(/\n/g, ' · ') + ' (press() its buttons)');
     if (s.tablet) L.push('Tablet open: "' + s.tablet.query + '" · ' + s.tablet.untrusted.replace(/\n/g, ' · '));
     if (s.bigView) L.push('Big view (untrusted): ' + s.bigView.untrusted.replace(/\n/g, ' · ').slice(0, 400) + ' (look() tells you what it shows)');
     if (s.feed && s.feed.untrusted) { const F = s.feed.untrusted; L.push('Live feed (untrusted): ' + (F.blocksAndMoves.join(' | ') || F.note || 'nothing yet').slice(0, 700)); if (F.joiningNextBlock.length) L.push('Joining the next block (untrusted): ' + F.joiningNextBlock.join(' | ').slice(0, 400)); }
@@ -10703,8 +10707,10 @@ window.AgentKit = window.AgentKit || (() => {
   // what is at a point on screen, without clicking it (what a player's eyes see there)
   function probe(fx, fy) {
     const x = innerWidth * fx, y = innerHeight * fy;
-    if (!inRoom()) { const real = window.select; let got = null; try { window.select = t => { got = t; }; pick(x, y); } finally { window.select = real; } return got ? {parcel: got.idx, types: typesOf(got).slice(0, 3)} : null; }
-    const h = rmPick(x, y); if (!h) return null; if (h.sign) return {thing: 'the sign over the ' + h.sign + ' door'}; if (h.it && h.it.show) return {thing: 'the parcel on show'}; if (h.it && h.it.t) return {parcel: h.it.t.idx, types: typesOf(h.it.t).slice(0, 3)}; return {thing: 'something'};
+    if (!inRoom()) { const real = window.select; let got = null; try { window.select = t => { got = t; }; pick(x, y); } finally { window.select = real; } return got ? (got.idx != null ? {parcel: got.idx, types: typesOf(got).slice(0, 3)} : {waiting: got.id, types: typesOf(got).slice(0, 3)}) : null; }
+    const h = rmPick(x, y); if (!h) return null; if (h.sign) return {thing: 'the sign over the ' + h.sign + ' door'}; if (h.it && h.it.show) return {thing: 'the parcel on show'};
+    if (h.it && h.it.t && h.it.t.gal) { const t = h.it.t; return {thing: (t.par ? 'the parent' : 'piece ' + t.gi + ' (a child)') + (t.n != null ? ', inscription #' + fmtN(t.n) : '')}; }   // (a piece on a stand in a collection room)
+    if (h.it && h.it.t) return {parcel: h.it.t.idx, types: typesOf(h.it.t).slice(0, 3)}; return {thing: 'something'};
   }
   const camInfo = () => ({turned: deg(cam.yaw), tilted: deg(cam.pitch) > 180 ? deg(cam.pitch) - 360 : deg(cam.pitch), zoom: r1(1 / cam.uz), layersOpen: !!openD});
   function feeBands() {
@@ -10713,6 +10719,16 @@ window.AgentKit = window.AgentKit || (() => {
     return out;
   }
   const FLOOR_NAMES = ['ice', 'water', 'grass', 'desert', 'fire', 'lava storm', 'plasma'];
+  // the follow-back line (the glowing tether a player sees): the parcel in this hall it is fastened to, if any
+  function tetherHere() {
+    if (typeof fol === 'undefined' || !fol || !fol.steps || fol.busy || !inRoom() || cmOn(room.at) || room.at.gal) return null;
+    const R = curRoom(); if (!R) return null; const p = room.p, T = trail();
+    for (let i = 0; i < fol.steps.length; i++) { const st = fol.steps[i]; if (st.h !== room.at.h) continue;
+      const it = R.plan.items.find(x => x.t && !x.cp && x.t.id === st.txid); if (!it) continue;
+      const dx = it.w[0] - p.x, dz = it.w[2] - p.z;
+      return {n: it.t.idx, txid: st.txid, step: i, what: T ? T.steps[i].what : undefined, metres: r1(Math.hypot(dx, dz)), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)), how: 'hold({txid: "' + st.txid + '"}) picks it up'}; }
+    return null;
+  }
   // the big view (VIEW BIG), as a player sees it: an image (or an SVG) as a picture, a text by its words, else what it is.
   // Its file is read once (one ask of ordinals.com, or the next site the cube reads from), then kept.
   const SEEN = new WeakMap();
@@ -10768,10 +10784,12 @@ window.AgentKit = window.AgentKit || (() => {
       L.push('The cube is turned ' + c.turned + '°, tilted ' + c.tilted + '°, zoom ' + c.zoom + 'x, layers ' + (c.layersOpen ? 'pulled apart' : 'closed') + ', X-ray ' + (xray ? 'on (plain transactions are see-through glass)' : 'off') + '. It turns slowly by itself when nobody has touched it for a few seconds, so boxes move: clickAt({n}) clicks a box wherever it is.');
       if (lens === 'fees') L.push('Colours show the fee each paid. Boxes per fee: ' + Object.entries(feeBands()).map(([k, v]) => k + ' ' + fmtN(v)).join(', ') + '.');
       else L.push('Colours show what each box carries. Lit: ' + (pinK != null ? TYPES[pinK].name : 'every kind, each in its own colour') + '.');
-      const big = shown.slice().sort((a, b) => (b.vsize || 0) - (a.vsize || 0)).slice(0, 3); if (big.length) L.push('Biggest boxes: ' + big.map(t => 'parcel ' + t.idx + ' (' + fmtN(t.vsize) + ' vB, ' + (typesOf(t)[0] || 'transaction') + ')').join(', ') + '.');
+      const big = shown.slice().sort((a, b) => (b.vsize || 0) - (a.vsize || 0)).slice(0, 3); if (big.length) L.push('Biggest boxes: ' + big.map(t => (t.idx != null ? 'parcel ' + t.idx : 'transaction ' + String(t.id).slice(0, 8) + '…') + ' (' + fmtN(t.vsize) + ' vB, ' + (typesOf(t)[0] || 'transaction') + ')').join(', ') + '.');
+      if (mode === 'live') L.push('This block is not mined yet, so its parcels have no place numbers: open({txid}) opens one, and clickAt({x, y}) clicks a spot.');
       if (sel) L.push('Lit up and open: parcel ' + sel.idx + '.');
     } else {
       const r = roomInfo(); L.push('You are ' + (r.sitting ? 'sitting ' : '') + 'in ' + r.in + (r.area ? ' (' + r.area + ')' : '') + ', facing ' + r.facing + '°, looking ' + (r.pitch > 8 ? 'up' : r.pitch < -8 ? 'down' : 'straight ahead') + '.');
+      if (room.at.gal) { const G = room.at.gal; L.push('It is the collection room of inscription #' + fmtN(G.num) + ': the parent on its pedestal and ' + fmtN(G.n) + ' ' + (G.n === 1 ? 'child' : 'children') + ' on the stands (contents() lists every piece; hold({n}) picks one up).'); }
       if (r.inFront) L.push('In front of you: ' + r.inFront + '.');
       if (inCommon()) {
         const p = room.p, [mx, md] = cmL(room.at, p.x, p.z), myZ = zoneIx(mx, md), big = new Set([0, 1, 2]);
@@ -10784,7 +10802,7 @@ window.AgentKit = window.AgentKit || (() => {
         const p = room.p, R = curRoom(), groups = new Map();
         for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {n: 0, x: 0, z: 0, best: 1e9}; g.n++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.x = it.w[0]; g.z = it.w[2]; } groups.set(it.k, g); }   // (each kind: how many, and the nearest of them)
         const sec = [...groups.entries()].map(([k, g]) => { const x = g.x, z = g.z, dx = x - p.x, dz = z - p.z, nm = TYPES[k] ? TYPES[k].name : 'parcels'; return {nm: nm + ' (' + fmtN(g.n) + (SHELF_MEANS[nm] ? ': ' + SHELF_MEANS[nm] : '') + ')', d: Math.hypot(dx, dz), b: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.d - b.d);
-        L.push('Shelf signs (how many sit on that shelf, and the nearest one; each parcel sits on one shelf only, so contents() also says how many carry each kind): ' + sec.slice(0, 8).map(o => o.nm + ' ' + o.b + ', ' + Math.round(o.d) + ' m').join('; ') + (sec.length > 8 ? '; and ' + (sec.length - 8) + ' more further on' : '') + '.');
+        L.push((room.at.gal ? 'Pieces on the stands, by kind (how many, and the nearest one): ' : 'Shelf signs (how many sit on that shelf, and the nearest one; each parcel sits on one shelf only, so contents() also says how many carry each kind): ') + sec.slice(0, 8).map(o => o.nm + ' ' + o.b + ', ' + Math.round(o.d) + ' m').join('; ') + (sec.length > 8 ? '; and ' + (sec.length - 8) + ' more further on' : '') + '.');
         if (room.at.gal) { const G = room.at.gal, dz = room.at.z0 - p.z; L.push('Doors: the door back to ' + (G.from === COMMON ? 'the common room' : 'block ' + fmtN(G.from)) + ' ' + K.bearing(deg(Math.atan2(0, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.abs(dz)) + ' m: its middle is at x 0, z ' + r1(room.at.z0) + ' (walkTo({x: 0, z: ' + r1(room.at.z0 + 1.6) + '}) walks you out through it). The far end has no door.'); }
         else { const C = room.at, door = (zz, to, out) => {   // (the doorway is in the middle of the end wall, at x 0: off to one side of it, walls stop you)
           const dx = -p.x, dz = zz - p.z, off = Math.abs(p.x) >= .4 ? 'its middle is ' + r1(Math.abs(p.x)) + ' m ' + K.bearing(deg(Math.atan2(-dx, 0)) - deg(p.yaw)).replace(' (out of view)', '') + ': ' : '';
@@ -10792,10 +10810,11 @@ window.AgentKit = window.AgentKit || (() => {
         if (C.back && C.front) L.push(C.h === 0 ? 'Doors: ' + door(C.z0 - (R.plan.L || 30), C.front.to, -1.6) + '. The hall has no back door: nothing comes before the genesis block (that wall shows the newspaper headline the block carries).' : 'Doors: ' + door(C.z0, C.back.to, 1.6) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to, -1.6) + '.');
         // 5. the floor: players see the block's fee heat underfoot
         const fr = medianRate(R.plan.items.filter(i => i.t && !i.cp).map(i => i.t)), hv = blockHeat.has(C.h) ? blockHeat.get(C.h) : heatOf(fr);
+        const th = tetherHere(); if (th) L.push('The follow-back line (a glowing tether) is fastened to parcel ' + th.n + ' here (step ' + th.step + ': ' + th.what + '), ' + th.where + ', ' + Math.round(th.metres) + ' m: ' + th.how + '.');
         if (hv != null) L.push('Underfoot: a' + (Math.round(hv) === 0 ? 'n' : '') + ' ' + FLOOR_NAMES[Math.max(0, Math.min(6, Math.round(hv)))] + ' floor. The floor shows how much this block paid: its middle fee was about ' + rf(fr) + ' sat/vB (ice under 1 · water 1-2 · grass 2-5 · desert 5-20 · fire 20-100 · lava storm 100-500 · plasma 500 and up; near a door it starts turning into the next block\'s).'); }
       }
     }
-    const say = h => h.parcel != null ? 'parcel ' + h.parcel + (h.types.length ? ' (' + h.types.join(', ') + ')' : '') : h.thing;
+    const say = h => h.parcel != null ? 'parcel ' + h.parcel + (h.types.length ? ' (' + h.types.join(', ') + ')' : '') : h.waiting ? 'a waiting transaction ' + h.waiting.slice(0, 8) + '…' + (h.types.length ? ' (' + h.types.join(', ') + ')' : '') : h.thing || 'something';
     if (!inRoom()) {   // the cube sits where the screen leaves room for it: find it, then read it in a 3 x 3 grid of its own
       const hits = []; for (let j = 1; j < 18; j++) for (let i = 1; i < 30; i++) { const h = probe(i / 30, j / 18); if (h) hits.push([i / 30, j / 18, h]); }
       if (!hits.length) L.push('The cube is not in view (turnCube() or zoom() to bring it back).');
@@ -11006,7 +11025,8 @@ window.AgentKit = window.AgentKit || (() => {
     const R = inGal ? room.at : curRoom(); if (!R) return {ok: false, error: 'the block room is not ready yet'};
     let it = null;
     if (inGal) { it = R.plan.items.find(i => i.t && i.t.gal && !i.cp && (txid ? i.t.gid === txid || i.t.id === txid : i.t.gi === +n)); if (!it) return {ok: false, error: 'no piece ' + (txid || n) + ' in this collection room (contents() lists them)'}; }
-    else if (type != null && n == null && !txid) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"'}; let bd = 1e9; for (const i of R.plan.items) { if (!i.t || i.cp || i.k !== k) continue; const dd = Math.hypot(i.w[0] - room.p.x, i.w[2] - room.p.z); if (dd < bd) { bd = dd; it = i; } } if (!it) return {ok: false, error: 'no ' + TYPES[k].name + ' in this block'}; }
+    else if (type != null && n == null && !txid) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"'}; let bd = 1e9; for (const i of R.plan.items) { if (!i.t || i.cp || i.k !== k) continue; const dd = Math.hypot(i.w[0] - room.p.x, i.w[2] - room.p.z); if (dd < bd) { bd = dd; it = i; } } if (!it) { bd = 1e9; for (const i of R.plan.items) { if (!i.t || i.cp) continue; let has = false; try { has = hasType(i.t, k); } catch (e) {} if (!has) continue; const dd = Math.hypot(i.w[0] - room.p.x, i.w[2] - room.p.z); if (dd < bd) { bd = dd; it = i; } } }   // (no shelf of its own, e.g. inscriptions or children: the nearest parcel carrying it)
+      if (!it) return {ok: false, error: 'no ' + TYPES[k].name + ' in this block'}; }
     else it = R.plan.items.find(i => i.t && !i.cp && (txid ? i.t.id === txid : i.t.idx === +n));
     if (!it) return {ok: false, error: 'no parcel ' + (txid || n) + ' in block ' + room.at.h + ' (parcels() lists them)'};
     if (room.held) { rmPut(); await wait(900); }
@@ -11021,6 +11041,7 @@ window.AgentKit = window.AgentKit || (() => {
     let all = false; if (await until(() => it.t._heldAll, 3000)) all = await Promise.race([it.t._heldAll.then(() => true), wait(30000).then(() => false)]);
     const o = {ok: !!room.held, holding: parcelInfo(it.t, true), card: {untrusted: cardText()}};
     if (!all) o.note = 'some of its card is still coming: state() shows the rest once it has come';
+    if (K.shown($('cgal'))) o.collection = 'it belongs to a collection: press({text: "OPEN GALLERY"}) walks you into its collection room, as a player does';
     return o;
   }
 
@@ -11035,7 +11056,9 @@ window.AgentKit = window.AgentKit || (() => {
         if (inRoom() && room.at.gal) { const P = galPieces(); return {gallery: true, total: P.length, from, parcels: P.slice(from, from + Math.min(500, limit)), note: 'you are in a collection room: these are its pieces'}; }
         const R = inRoom() && !cmOn(room.at) && !room.at.gal ? curRoom() : null; let L = R ? R.plan.items.filter(i => i.t && !i.cp).map(i => i.t) : shown.slice();
         if (type) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"', types: TYPES.map(T => T.name)}; L = L.filter(t => hasType(t, k)); }
-        L.sort((a, b) => (a.idx ?? 1e9) - (b.idx ?? 1e9)); return {total: L.length, from, parcels: L.slice(from, from + Math.min(500, limit)).map(t => parcelInfo(t))};
+        L.sort((a, b) => (a.idx ?? 1e9) - (b.idx ?? 1e9)); const o = {total: L.length, from, parcels: L.slice(from, from + Math.min(500, limit)).map(t => parcelInfo(t))};
+        if (!R && mode === 'live') o.note = 'the next block is not mined yet, so these have no place numbers (n): use txid, e.g. open({txid})';
+        return o;
       }},
     {name: 'block', does: 'Show a block by its number (inside, it walks you into that block).', args: [{name: 'height', type: 'number', does: 'block number', req: true}],
       run: async ({height}) => { const h = +height; if (!Number.isInteger(h) || h < 0) return {ok: false, error: 'a block number is a whole number from 0'}; if (tipH >= 0 && h > tipH) return {ok: false, error: 'block ' + fmtN(h) + ' has not been mined yet: the newest is ' + fmtN(tipH)}; if (inRoom()) return enterBlock(h); go(h); await settled(); return {ok: true, block: block()}; }},
@@ -11086,7 +11109,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height (default 1.5, eye level)'}, {name: 'z', type: 'number', does: 'z', req: true}],
       run: ({x, y, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; faceTo(+x, y == null ? 1.5 : +y, +z); return roomInfo(); }},
     {name: 'use', does: 'Do what is in front of you, like pressing E (sit, pour a pint, the music box, the big screen…).', run: async () => { if (!inCommon()) return {ok: false, error: 'only in the common room'}; const A = cmAct(null, null); if (!A) return {ok: false, error: 'nothing in front of you'}; cmDo(A); await wait(500); return {did: A.label, room: roomInfo()}; }},
-    {name: 'hold', untrusted: true, does: 'Walk up to a parcel in the block you are in (or the one shown) and pick it up, as a player clicks it: its card shows what is inside. By number, by transaction ID, or by kind (the nearest of that kind, e.g. "images", "BRC-20").', args: [N, TX, {name: 'type', does: 'or a kind: the nearest parcel of that kind'}], run: a => holdParcel(a)},
+    {name: 'hold', untrusted: true, does: 'Walk up to a parcel in the block you are in (or the one shown) and pick it up, as a player clicks it: its card shows what is inside. By number, by transaction ID, or by kind (the nearest of that kind, e.g. "images", "BRC-20", "children": on its shelf, else any parcel carrying it).', args: [N, TX, {name: 'type', does: 'or a kind: the nearest parcel of that kind'}], run: a => holdParcel(a)},
     {name: 'contents', ro: true, does: 'What is in the block you are in, once its shelves have loaded: each kind, how many, and the nearest one (its number, how far, which way), and where the doors go.', run: () => contents()},
     {name: 'people', ro: true, untrusted: true, does: 'Where every crewmate is at all times (each a player or an AI agent), which way they face, what they are doing (emotes, dances, sitting, holding a pint or a parcel), and which way, how far and whether they face you when they are in the room with you.', run: () => peopleCube()},
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crewmates joined, left, moved to another block or room, started a dance or emote, sat down, picked something up or started talking on voice chat; a new Bitcoin block was found; the music box changed; and what the person at your screen typed to you.', args: [{name: 'all', type: 'boolean', does: 'every event kept (the last 80), not only new ones'}], run: ({all}) => { evTick(); const L = all ? EVT.list : EVT.list.slice(EVT.read); EVT.read = EVT.list.length; return {events: L, note: L.length ? undefined : 'nothing new'}; }},
