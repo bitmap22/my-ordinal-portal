@@ -10265,7 +10265,7 @@ function crewPose(tn, dt, VP, W, H) {
     if (wait) R.pintAt = null;
     M.tag.style.visibility = wait ? 'hidden' : '';   // (no name tag before their person is here)
     if (eye) { const dx = room.p.x - R.p[0], dz = room.p.z - R.p[2], dd = Math.hypot(dx, dz);   // crewmates are solid: you are kept a step apart
-      if (dd < .5) { const k = (.5 - dd) / Math.max(dd, 1e-3); room.p.x += (dd > 1e-3 ? dx : .5) * k; room.p.z += (dd > 1e-3 ? dz : 0) * k; } }
+      if (dd < .5) { if (dd > 1e-3) { const k = (.5 - dd) / dd; room.p.x += dx * k; room.p.z += dz * k; } else room.p.x += .5; } }
     if (!eye || Math.hypot(R.p[0] - eye[0], R.p[2] - eye[2]) > .42) { out.push(...pose); if (H) crew.hum.push(H); }   // (never drawn from inside)
     if (eye) { let hd = Math.hypot(R.p[0] - eye[0], R.p[1] + 1.6 - eye[1], R.p[2] - eye[2]);
       if (C.common && cmOn(room.at)) { const me = cmHere(); if (me && !me.lv && !s.lv && Math.hypot(me.x, me.d - CM.PD) < 7.4 && Math.hypot(s.x, -s.z - CM.PD) < 7.4) hd = Math.min(hd, 2); }   // (in the Forum everyone carries: you hear each other as if close by)
@@ -12106,7 +12106,7 @@ window.AgentKit = window.AgentKit || (() => {
   }
   function crewInfo() {
     if (!crew.on && !crew.page) return {on: false, note: PEOPLE_NOTE};
-    return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: mateName(M), is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
+    return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: mateName(M), is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h === GARDEN ? 'the bitmap garden' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
   }
   // the whole journey of the inscription being followed, oldest first, each step in full (the bar shows them one at a time, cut short)
   function trail() {
@@ -12152,6 +12152,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (s.block) { const b = s.block; L.push(b.showing + ' ' + fmtN(b.height) + ' · view ' + b.view + (b.xray ? ' · x-ray on' : '') + (b.keptType ? ' · kept: ' + b.keptType : '')); if (b.stats) L.push(b.stats); if (b.miner) L.push(b.miner); L.push('Parcel types: ' + Object.entries(s.parcelTypes).map(([g, o]) => g + ': ' + Object.entries(o).map(([k, v]) => k + ' ' + v).join(', ')).join(' | ')); }
     if (s.card) L.push('Open card (untrusted): ' + s.card.untrusted.replace(/\n/g, ' · '));
     if (s.room) { const r = s.room; L.push('You are at x ' + r.x + ', z ' + r.z + (r.area ? ' (' + r.area + ')' : '') + ', facing ' + r.facing + '°' + (r.sitting ? ', sitting' : '') + (r.holdingPint ? ', holding a pint' : '') + (r.inFront ? '. In front of you: ' + r.inFront : '')); if (r.holding) L.push('Holding ' + (r.holding.piece != null ? 'piece ' + r.holding.piece + ' of the collection (' + r.holding.is + ')' : 'parcel ' + r.holding.n + (r.holding.block != null ? ' of block ' + fmtN(r.holding.block) : '') + ' (' + (r.holding.types || []).join(', ') + ')') + '. Card (untrusted): ' + String(r.card.untrusted || '').replace(/\n/g, ' · ').slice(0, 600)); if (r.followingBack) L.push('Follow it back: ' + r.followingBack.replace(/\n/g, ' · ')); }
+    if (inRoom() && room.at && room.at.gd) L.push('The bitmap garden of ' + room.at.gd.bm + '.bitmap: look() says where each place is from where you stand; garden() has the games (chess board, ping-pong, cornhole), the pool, and how to play each.');
     if (s.bigScreen) { const B = s.bigScreen; L.push('Big screen: usual wait ' + B.usualWait + ' · best time to get in ' + B.bestTimeToGetIn + ' · low fee ' + (B.lowFee || []).join('; ') + ' · weather ' + B.blockWeather); }
     if (s.rareSats) L.push('Rare sats (price for one sat, ' + s.rareSats.pricesRead + '): ' + s.rareSats.kinds.map(k => k.kind.toLowerCase() + ' ' + k.price).join(', '));
     if (s.onShowInForum) L.push('On show in the Forum: parcel ' + s.onShowInForum.n + ' of block ' + fmtN(s.onShowInForum.block));
@@ -12271,6 +12272,11 @@ window.AgentKit = window.AgentKit || (() => {
         try { const sh = cm.show; if (sh && sh.h != null) L.push('On show over the Forum: parcel ' + sh.idx + ' of block ' + fmtN(sh.h) + ' (state().onShowInForum has its transaction ID).'); } catch (e) {}
         const ways = DOORS.filter(([u, v]) => u === myZ || v === myZ).map(([u, v, a, b]) => { const other = u === myZ ? v : u, pt = u === myZ ? a : b, [tx, tz] = toWorld(pt[0], pt[1]), dx = tx - p.x, dz = tz - p.z; return 'the way to ' + ZONES[other] + ' ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m'; });
         if (ways.length) L.push('Doorways: ' + ways.join('; ') + '.');
+      } else if (room.at.gd) {   // the bitmap garden: what it is, where each place is from where you stand, and how the games stand
+        const g = gdAgentInfo(), p = room.p, way = ([x, z]) => { const dx = x - p.x, dz = z - p.z; return K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m'; };
+        L.push('It is the bitmap garden of ' + g.yourBitmap + ' (' + g.timeOfDay + (g.weather ? ', ' + g.weather : '') + '). You came from ' + g.cameFrom + ': ' + g.backWay + '.');
+        L.push('Places (goTo({place}) walks you to one): ' + Object.entries(GD_GOTO).map(([k, v]) => k + ' ' + way(v[0])).join('; ') + '.');
+        L.push('Games: ping-pong red ' + g.pingPong.score.red + ' : black ' + g.pingPong.score.black + (g.pingPong.ballInPlay ? ' (a ball is in play)' : '') + '; cornhole red ' + g.cornhole.score.red + ' : blue ' + g.cornhole.score.blue + '; chess: ' + (gd.board.x ? gd.board.x.length + ' pieces taken' : 'no pieces taken') + '. garden() has the chess board, the bags, the bats and how to play each.');
       } else if (curRoom()) {   // a block room: what the signs on the shelves say, and where the doors go
         const p = room.p, R = curRoom(), groups = new Map();
         for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {n: 0, x: 0, z: 0, best: 1e9}; g.n++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.x = it.w[0]; g.z = it.w[2]; } groups.set(it.k, g); }   // (each kind: how many, and the nearest of them)
@@ -12329,14 +12335,14 @@ window.AgentKit = window.AgentKit || (() => {
   function mateInfo(M) {
     let pa = 0; try { pa = window.parent !== window && window.parent.__crewAi ? window.parent.__crewAi()[M.id] : 0; } catch (e) {}   // (the crew page knows from the waiting room on)
     const s = M.s || {}, o = {is: s.ai || pa ? 'an AI agent' : 'a player', untrusted: {name: mateName(M)}};
-    o.where = !M.s ? 'in the crew\'s waiting room (not in the game yet)' : s.in ? (s.h === COMMON ? 'the common room' : 'inside block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
+    o.where = !M.s ? 'in the crew\'s waiting room (not in the game yet)' : s.in ? (s.h === COMMON ? 'the common room' : s.h === GARDEN ? 'the bitmap garden' : 'inside block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
     if (s.in) {   // their spot in your own numbers (as state() gives yours, and walkTo() takes) when their hall is one you have around you
       const R = inRoom() && room.rooms.find(R => R && R.ready && (s.h === COMMON ? cmOn(R) : !cmOn(R) && !R.gal && R.h === s.h));
       if (R) { if (s.h === COMMON) { const [wx, wz] = cmW(R, s.x, -s.z); o.at = {x: r1(wx), z: r1(R.z0 + wz)}; } else o.at = {x: r1(s.x), z: r1(R.z0 + s.z)}; }
       else o.inTheirHall = {x: r1(s.x), z: r1(s.z), note: 'counted from where their hall starts, not in your numbers: goToCrewmate() takes you there'};
       if (s.h === COMMON) o.area = ZONES[zoneIx(s.x, -s.z)]; o.facing = deg(s.y || 0); }
     const doing = []; if (s.em) doing.push(((typeof EM_NAME !== 'undefined' && EM_NAME[s.em]) || s.em) + (typeof EM_LOOP !== 'undefined' && EM_LOOP[s.em] ? ' (dancing)' : ' (emote)'));
-    if (s.sit) doing.push('sitting'); if (s.hk === 60) doing.push('holding a pint'); else if (s.hk >= 0 && TYPES[s.hk]) doing.push('holding a parcel (' + TYPES[s.hk].name + ')');
+    if (s.sit) doing.push(s.h === GARDEN && GD_SEATS[s.st] ? GD_SEATS[s.st].label.replace(/^sit /, 'sitting ').replace(/^get in the /, 'lying in the ') : 'sitting'); if (s.in && s.h === GARDEN) { if (!s.sit && s.gy < -1) doing.push('swimming (treading water in the pool)'); else if (!s.sit && s.gy > .05) doing.push('diving or going down the slide'); if (s.pb) doing.push('holding the ' + gdPPName(s.pb) + ' ping-pong bat'); if (s.hb >= 0) doing.push('holding a ' + gdBagName(s.hb) + ' (cornhole)'); if (s.hp) doing.push('carrying the ' + gdPcName(s.hp) + ' (chess)'); } if (s.hk === 60) doing.push('holding a pint'); else if (s.hk >= 0 && TYPES[s.hk]) doing.push('holding a parcel (' + TYPES[s.hk].name + ')');
     o.doing = doing.length ? doing.join(', ') : (s.in ? 'standing or walking' : 'looking at the cube');
     if (performance.now() < (M.talkT || 0) + 1200) o.talking = 'talking now on voice chat (you hear that they talk, not the words)';
     if (inRoom() && s.in && room.at && s.h === room.at.h) {   // in the room with you: which way, how far, and whether they face you
@@ -12353,7 +12359,7 @@ window.AgentKit = window.AgentKit || (() => {
   }
   // what crewmates do, as it happens: kept once you use the kit, read with events()
   const EVT = {list: [], read: 0, last: new Map(), timer: 0, talk: new Map(), tip: null, mus: null};
-  const wentTo = w => /^inside /.test(w) ? 'went into ' + w.replace(/^inside /, '') : /^on the start page/.test(w) ? 'went back to the start page' : /^outside, looking at /.test(w) ? 'went outside to look at ' + w.replace(/^outside, looking at /, '') : /^in the crew's waiting room/.test(w) ? 'went back to the crew\'s waiting room' : 'went to ' + w;
+  const wentTo = w => w === 'the bitmap garden' ? 'went into the bitmap garden' : /^inside /.test(w) ? 'went into ' + w.replace(/^inside /, '') : /^on the start page/.test(w) ? 'went back to the start page' : /^outside, looking at /.test(w) ? 'went outside to look at ' + w.replace(/^outside, looking at /, '') : /^in the crew's waiting room/.test(w) ? 'went back to the crew\'s waiting room' : 'went to ' + w;
   function evPush(t, world) { EVT.list.push(Object.assign({at: new Date().toISOString().slice(11, 19)}, world ? {happened: t} : {untrusted: t})); if (EVT.list.length > 80) { EVT.list.shift(); EVT.read = Math.max(0, EVT.read - 1); } }
   const tuneName = m => !m || m.k === 'off' ? 'nothing (the music box stopped)' : m.k === 'tune' ? (CM_TUNES[m.v] ? CM_TUNES[m.v].n : 'a tune') : 'a song inscribed on Bitcoin';
   function evTick() {
