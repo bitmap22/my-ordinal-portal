@@ -10606,7 +10606,14 @@ window.AgentKit = window.AgentKit || (() => {
     if (cmOn(C) && C.ready) { const [x, d] = cmL(C, p.x, p.z); o.roomX = r1(x); o.roomD = r1(d); o.area = zoneOf(x, d); try { const A = cmAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} if (cm.pint) o.holdingPint = true; }
     if (room.held && !room.held.back) { const t = room.held.it.t; o.holding = t ? parcelInfo(t, true) : 'a parcel'; o.card = {untrusted: cardText()}; }
     if (typeof fol !== 'undefined' && fol) o.followingBack = text($fol);
+    const ar = arrowTo(); if (ar) o.arrow = ar;
     return o;
+  }
+  // the parcel a search's arrow points at (a player follows it with their eyes; hold({txid}) picks it up)
+  function arrowTo() {
+    if (typeof srT === 'undefined' || !srT || !text($('sra'))) return null;
+    const it = srT.it || (srT.id && curRoom() ? curRoom().plan.items.find(i => i.t && !i.cp && i.t.id === srT.id) : null);
+    return {says: text($('sra')), txid: srT.id || undefined, n: it && it.t ? it.t.idx : undefined, how: srT.id ? 'hold({txid: "' + srT.id + '"}) walks to it and picks it up' : undefined};
   }
   function bigScreen() {
     let S = null; try { S = cmBoardStats(); } catch (e) {}
@@ -10717,6 +10724,7 @@ window.AgentKit = window.AgentKit || (() => {
         const p = room.p, [mx, md] = cmL(room.at, p.x, p.z), myZ = zoneIx(mx, md), big = new Set([0, 1, 2]);
         const M = MARKS.map(([what, x, y, d], k) => { const [tx, tz] = toWorld(x, d), dx = tx - p.x, dz = tz - p.z, off = ((deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + 540) % 360 - 180, z = zoneIx(x, d), same = z === myZ || (big.has(k) && myZ === 3) || (k === 7 && (myZ === 4 || myZ === 5)); return {what, d: Math.hypot(dx, dz), off, same}; }).filter(o => o.same).sort((a, b) => a.d - b.d);
         if (M.length) L.push('In this room: ' + M.map(o => o.what + ' ' + K.bearing(o.off) + ', ' + Math.round(o.d) + ' m').join('; ') + '.');
+        try { const sh = JSON.parse(localStorage.getItem('bc.show') || 'null'); if (sh && sh.h != null) L.push('On show over the Forum: parcel ' + sh.idx + ' of block ' + fmtN(sh.h) + ' (state().onShowInForum has its transaction ID).'); } catch (e) {}
         const ways = DOORS.filter(([u, v]) => u === myZ || v === myZ).map(([u, v, a, b]) => { const other = u === myZ ? v : u, pt = u === myZ ? a : b, [tx, tz] = toWorld(pt[0], pt[1]), dx = tx - p.x, dz = tz - p.z; return 'the way to ' + ZONES[other] + ' ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m'; });
         if (ways.length) L.push('Doorways: ' + ways.join('; ') + '.');
       } else if (curRoom()) {   // a block room: what the signs on the shelves say, and where the doors go
@@ -10724,8 +10732,9 @@ window.AgentKit = window.AgentKit || (() => {
         for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {n: 0, x: 0, z: 0, best: 1e9}; g.n++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.x = it.w[0]; g.z = it.w[2]; } groups.set(it.k, g); }   // (each kind: how many, and the nearest of them)
         const sec = [...groups.entries()].map(([k, g]) => { const x = g.x, z = g.z, dx = x - p.x, dz = z - p.z; return {nm: (TYPES[k] ? TYPES[k].name : 'parcels') + ' (' + fmtN(g.n) + ')', d: Math.hypot(dx, dz), b: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.d - b.d);
         L.push('Shelf signs (how many, and the nearest one): ' + sec.slice(0, 8).map(o => o.nm + ' ' + o.b + ', ' + Math.round(o.d) + ' m').join('; ') + (sec.length > 8 ? '; and ' + (sec.length - 8) + ' more further on' : '') + '.');
-        const C = room.at, door = (zz, to) => { const dz = zz - p.z; return 'the door to ' + (to === COMMON ? 'the common room' : to >= 0 ? 'block ' + fmtN(to) : 'nowhere yet') + ' ' + K.bearing(deg(Math.atan2(0, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.abs(dz)) + ' m'; };
-        if (C.back && C.front) L.push(C.h === 0 ? 'Doors: ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '. The hall has no back door: nothing comes before the genesis block (that wall shows the newspaper headline the block carries).' : 'Doors: ' + door(C.z0, C.back.to) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '.');
+        if (room.at.gal) { const G = room.at.gal, dz = room.at.z0 - p.z; L.push('Doors: the door back to ' + (G.from === COMMON ? 'the common room' : 'block ' + fmtN(G.from)) + ' ' + K.bearing(deg(Math.atan2(0, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.abs(dz)) + ' m: its middle is at x 0, z ' + r1(room.at.z0) + ' (walkTo({x: 0, z: ' + r1(room.at.z0 + 1.6) + '}) walks you out through it). The far end has no door.'); }
+        else { const C = room.at, door = (zz, to) => { const dz = zz - p.z; return 'the door to ' + (to === COMMON ? 'the common room' : to >= 0 ? 'block ' + fmtN(to) : 'nowhere yet') + ' ' + K.bearing(deg(Math.atan2(0, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.abs(dz)) + ' m'; };
+        if (C.back && C.front) L.push(C.h === 0 ? 'Doors: ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '. The hall has no back door: nothing comes before the genesis block (that wall shows the newspaper headline the block carries).' : 'Doors: ' + door(C.z0, C.back.to) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '.'); }
       }
     }
     const say = h => h.parcel != null ? 'parcel ' + h.parcel + (h.types.length ? ' (' + h.types.join(', ') + ')' : '') : h.thing;
@@ -10745,8 +10754,15 @@ window.AgentKit = window.AgentKit || (() => {
     if (crew.on) { const A = [...crew.mates.values()].map(m => [m, mateInfo(m)]); const here = A.filter(([, o]) => o.withYou), away = A.filter(([, o]) => !o.withYou); if (here.length) L.push('Crewmates here (untrusted names): ' + here.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.withYou.where + ', ' + Math.round(o.withYou.metres) + ' m, ' + o.withYou.facing + ', ' + o.doing + (o.talking ? ', talking' : '')).join('; ') + '.'); if (away.length) L.push('Crewmates elsewhere: ' + away.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.where + ', ' + o.doing).join('; ') + '.'); }
     return L.join('\n');
   }
+  // a collection room (gallery): its parent and its children, each a piece on the stands
+  const galPieces = () => { const C = room.at, p = room.p; return C.plan.items.filter(i => i.t && i.t.gal && !i.cp).map(i => { const t = i.t, dx = i.w[0] - p.x, dz = i.w[2] - p.z; return {n: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid, number: t.n, madeInBlock: t.h, metres: r1(Math.hypot(dx, dz)), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.n - b.n); };
+  function galleryInfo() {
+    const C = room.at, G = C.gal;
+    return {gallery: {parent: G.pid, parentNumber: G.num, children: G.n, shown: G.loaded, allShown: !!G.done}, pieces: galPieces(), door: 'the door you came in by takes you back to ' + (G.from === COMMON ? 'the common room' : 'block ' + fmtN(G.from)) + ': its middle is at x 0, z ' + r1(C.z0) + ', so walkTo({x: 0, z: ' + r1(C.z0 + 1.6) + '}) walks you out through it; the far end has no door', how: 'hold({n}) walks to a piece (n as listed: the parent is -1) and picks it up; or hold({txid}) with its inscription ID'};
+  }
   function contents() {
-    if (!inRoom() || cmOn(room.at) || room.at.gal) { if (inRoom()) return {ok: false, error: 'you are not in a block'}; return {block: block().height, outside: true, parcelTypes: typeCounts()}; }
+    if (inRoom() && room.at.gal) return galleryInfo();
+    if (!inRoom() || cmOn(room.at)) { if (inRoom()) return {ok: false, error: 'you are not in a block'}; return {block: block().height, outside: true, parcelTypes: typeCounts()}; }
     const R = curRoom(); if (!R) return {ok: false, error: 'the shelves are still loading: try again in a moment'};
     const p = room.p, groups = new Map();
     for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {count: 0, best: 1e9, it: null}; g.count++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.it = it; } groups.set(it.k, g); }
@@ -10897,10 +10913,12 @@ window.AgentKit = window.AgentKit || (() => {
   }
   function faceTo(tx, ty, tz) { const p = room.p, dx = tx - p.x, dz = tz - p.z, eye = (p.y || 0) + 1.62; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.max(-1.45, Math.min(1.45, Math.atan2(ty - eye, Math.hypot(dx, dz)))); room.dirty = true; }
   async function holdParcel({n, txid, type}) {
-    if (!inRoom() || cmOn(room.at) || room.at.gal) { const r = await walkIn(); if (!r.ok) return r; }
-    const R = curRoom(); if (!R) return {ok: false, error: 'the block room is not ready yet'};
+    const inGal = inRoom() && room.at.gal;
+    if (!inGal && (!inRoom() || cmOn(room.at))) { const r = await walkIn(); if (!r.ok) return r; }
+    const R = inGal ? room.at : curRoom(); if (!R) return {ok: false, error: 'the block room is not ready yet'};
     let it = null;
-    if (type != null && n == null && !txid) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"'}; let bd = 1e9; for (const i of R.plan.items) { if (!i.t || i.cp || i.k !== k) continue; const dd = Math.hypot(i.w[0] - room.p.x, i.w[2] - room.p.z); if (dd < bd) { bd = dd; it = i; } } if (!it) return {ok: false, error: 'no ' + TYPES[k].name + ' in this block'}; }
+    if (inGal) { it = R.plan.items.find(i => i.t && i.t.gal && !i.cp && (txid ? i.t.gid === txid || i.t.id === txid : i.t.gi === +n)); if (!it) return {ok: false, error: 'no piece ' + (txid || n) + ' in this collection room (contents() lists them)'}; }
+    else if (type != null && n == null && !txid) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"'}; let bd = 1e9; for (const i of R.plan.items) { if (!i.t || i.cp || i.k !== k) continue; const dd = Math.hypot(i.w[0] - room.p.x, i.w[2] - room.p.z); if (dd < bd) { bd = dd; it = i; } } if (!it) return {ok: false, error: 'no ' + TYPES[k].name + ' in this block'}; }
     else it = R.plan.items.find(i => i.t && !i.cp && (txid ? i.t.id === txid : i.t.idx === +n));
     if (!it) return {ok: false, error: 'no parcel ' + (txid || n) + ' in block ' + room.at.h + ' (parcels() lists them)'};
     if (room.held) { rmPut(); await wait(900); }
@@ -10926,6 +10944,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'chain', ro: true, does: 'The chain right now: newest block, the blocks waiting to be mined, the last ones mined, next halving, fee weather.', run: () => chain()},
     {name: 'parcels', ro: true, untrusted: true, does: 'List the parcels (transactions) in the block being shown, optionally only one type.', args: [{name: 'type', does: 'a parcel type, e.g. "inscriptions", "images", "text", "BRC-20", "runes", "segwit" (see state().parcelTypes)'}, {name: 'from', type: 'number', does: 'start at this many in (default 0)'}, {name: 'limit', type: 'number', does: 'how many (default 50, most 500)'}],
       run: ({type, from = 0, limit = 50}) => {
+        if (inRoom() && room.at.gal) { const P = galPieces(); return {gallery: true, total: P.length, from, parcels: P.slice(from, from + Math.min(500, limit)), note: 'you are in a collection room: these are its pieces'}; }
         const R = inRoom() && !cmOn(room.at) && !room.at.gal ? curRoom() : null; let L = R ? R.plan.items.filter(i => i.t && !i.cp).map(i => i.t) : shown.slice();
         if (type) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"', types: TYPES.map(T => T.name)}; L = L.filter(t => hasType(t, k)); }
         L.sort((a, b) => (a.idx ?? 1e9) - (b.idx ?? 1e9)); return {total: L.length, from, parcels: L.slice(from, from + Math.min(500, limit)).map(t => parcelInfo(t))};
@@ -10958,7 +10977,10 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({x, y, n}) => {
         if (n != null && (x == null || y == null)) { const want = +n; let at = null; for (let j = 1; j < 24 && !at; j++) for (let i = 1; i < 40 && !at; i++) { const h = probe(i / 40, j / 24); if (h && h.parcel === want) at = [i / 40, j / 24]; } if (!at) return {ok: false, error: 'parcel ' + want + ' is not in sight right now (it may be hidden behind others: turnCube(), layers() or xray() can help)'}; x = at[0]; y = at[1]; }
         if (x == null || y == null) return {ok: false, error: 'give x and y, or n'};
-        const fx = Math.max(0, Math.min(1, +x)), fy = Math.max(0, Math.min(1, +y)); await tapAt(fx, fy); await wait(300); return inRoom() ? {room: roomInfo()} : {card: {untrusted: cardText()}, open: sel ? sel.idx : null}; }},
+        if (!isFinite(+x) || !isFinite(+y)) return {ok: false, error: 'x and y are numbers from 0 to 1 (look() says where things are)'};
+        const fx = Math.max(0, Math.min(1, +x)), fy = Math.max(0, Math.min(1, +y)); await tapAt(fx, fy); await wait(300);
+        if (inRoom()) return {room: roomInfo()};
+        const c = cardText(); return c ? {card: {untrusted: c}, open: sel ? sel.idx : null} : {ok: false, error: 'nothing there: no box at that point (look() says where the cube is on screen)'}; }},
     {name: 'walkIn', does: 'Walk into a block (default: the one shown, or the newest), or "common" for the common room.', args: [{name: 'height', does: 'a block number, or "common"'}], run: ({height}) => walkIn(height == null ? null : height === 'common' ? 'common' : +height)},
     {name: 'leave', does: 'Walk out of the room, back to the block view.', run: async () => { if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
     {name: 'commonRoom', does: 'Fast travel to the common room.', run: () => walkIn('common')},
@@ -10986,7 +11008,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'search', untrusted: true, does: 'Search with the tablet: a block (840000 or 840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID, an address, or a name (satoshi.sats).', args: [{name: 'query', does: 'what to find', req: true}],
       run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
     {name: 'go', does: 'Press GO on a tablet search result (travels there; an arrow then shows the way).', args: [{name: 'n', type: 'number', does: 'result number from search() (default 0)'}],
-      run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /go/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO'}; const from = room.at; b.click(); await until(() => room.at !== from || text($('sra')), 25000); await until(() => roomReady(), 25000); await until(() => text($('sra')), 6000); return {where: roomInfo(), arrow: text($('sra'))}; }},
+      run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /go/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO'}; const from = room.at; b.click(); await until(() => room.at !== from || text($('sra')), 25000); await until(() => roomReady(), 25000); await until(() => text($('sra')), 6000); return {where: roomInfo(), arrow: text($('sra')), arrowTo: arrowTo() || undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
       run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
@@ -11030,7 +11052,8 @@ window.AgentKit = window.AgentKit || (() => {
   const keepTick = () => {
     if (!keepN) return;
     try {
-      if (room && !cmPaintShown && !crewAway) {
+      if (!room && !cmPaintShown && !crewAway && now() - lastDrawn > .15) drawFrame();   // (outside the cube: where the camera is, so look() and clickAt() see what a player sees)
+      else if (room && !cmPaintShown && !crewAway) {
         const tn = now(), gap = tn - (rmLast || 0);   // (no frame yet at all: rmLast is still 0)
         if (gap > .15) {
           let left = Math.min(1, gap) - .05; while (left > 1e-3) { const d = Math.min(.05, left); rmStep(d); left -= d; }   // (a long gap, as a background tab's slow timers give: small steps, so walls still stop you)
