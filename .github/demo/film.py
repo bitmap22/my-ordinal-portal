@@ -13,9 +13,11 @@ D = json.load(open(os.path.join(DATA, 'index.json'))) if not FAKE else {'t0': ti
 IDX = D['idx']; NOQ = {}
 for u, e in IDX.items(): NOQ.setdefault(u.split('?')[0], e)
 miss = {}
+ORDLIVE = [sys.argv[1].endswith('5')]
 async def route(rt):
     u = rt.request.url
     if u.startswith('data:') or u.startswith('blob:') or re.match(r'https?://(127\.0\.0\.1|localhost)', u) or u.startswith('https://bitmap22.github.io/'): return await rt.continue_()
+    if ORDLIVE[0] and '://ordinals.com/' in u: return await rt.continue_()
     if FAKE:
         sys.path.insert(0, '/tmp/st/fx'); from run import route as fr; return await fr(rt)
     e = IDX.get(u) or NOQ.get(u.split('?')[0])
@@ -31,7 +33,7 @@ async def main():
         b = await p.chromium.launch(args=['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'], **kw)
         ctx = await b.new_context(viewport={'width': W, 'height': H}); await ctx.route('**/*', route); await ctx.add_init_script(VT)
         WSOK = [True]
-        if SC.endswith('4'):   # (the live feed loads the room, then is held still while filming: frames take seconds, so live blocks would come far too fast)
+        if SC.endswith('4') or SC.endswith('5'):   # (the live feed loads the room, then is held still while filming: frames take seconds, so live blocks would come far too fast)
             async def wshold(ws):
                 server = ws.connect_to_server()
                 def down(m):
@@ -47,7 +49,7 @@ async def main():
         g = pg.frames[1]
         await g.wait_for_function('window.agent', timeout=180000); await pg.wait_for_timeout(20000)
         A = lambda js: g.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 400); } catch (e) { return 'ERR ' + e; } }")
-        SC0 = SC; SC = {'common4': 'common3', 'crew4': 'crew3'}.get(SC, SC); R3 = SC in ('hall3', 'hold3', 'common3', 'crew3')
+        SC0 = SC; SC = {'common4': 'common3', 'crew4': 'crew3', 'common5': 'common3', 'crew5': 'crew3', 'pick5': 'pick3'}.get(SC, SC); R3 = SC in ('hall3', 'hold3', 'common3', 'crew3')
         BH0 = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)
         if SC == 'pick3':
             print('real', await A("agent.feed({on: false})"), flush=True)
@@ -59,9 +61,9 @@ async def main():
                 print('real', await A(f"agent.walkIn({{height: {BH0}}})"), flush=True); await pg.wait_for_timeout(45000)
             else:
                 print('real', await A("agent.commonRoom()"), flush=True); await pg.wait_for_timeout(45000)
-        OFF = {'pick3': 100e3, 'hall3': 70e3, 'hold3': 100e3, 'common3': 140e3, 'crew3': 170e3, 'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
+        OFF = {'pick3': 100e3, 'common5': 140e3, 'crew5': 170e3, 'pick5': 100e3, 'hall3': 70e3, 'hold3': 100e3, 'common3': 140e3, 'crew3': 170e3, 'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
         await g.evaluate(f"__vtStart({D['t0'] * 1000 + OFF.get(SC, 0)})")
-        if SC0.endswith('4'): WSOK[0] = False
+        if SC0.endswith('4') or SC0.endswith('5'): WSOK[0] = False
         tstep = [0, time.time()]
         async def step(n=1):
             for i in range(n):
@@ -86,6 +88,15 @@ async def main():
             act = lambda f: "agent.zoom({steps: 1})" if f in (40, 110, 180) else None
         elif R3:
             await step(20)
+            if SC0.endswith('5'):
+                quick = 0
+                for i in range(1500):
+                    t1 = time.time(); await step()
+                    if time.time() - t1 > .25:
+                        quick += 1
+                        if quick >= 5: print('   room drawing after', i, 'frames', flush=True); break
+                    else: quick = 0
+                await step(30)
             if SC == 'hall3': N = 240; act = lambda f: "agent.walk({direction: 'forward', seconds: 7})" if f == 15 else None
             elif SC == 'hold3':
                 for ty in ('images', 'inscriptions', 'text', None):
@@ -94,15 +105,19 @@ async def main():
                 await step(45); N = 300
                 act = lambda f: "agent.viewBig()" if f == 120 else None
             elif SC == 'common3':
-                await run("agent.goTo({place: 'grand hall'})", 600); await step(20); N = 240
+                await run("agent.goTo({place: 'grand hall'})", 1200); await step(20); N = 240
                 act = lambda f: "agent.turn({facing: (agent.state().room || {}).facing + .25})"
             else:
-                await run("agent.goTo({place: 'forum steps'})", 600); await step(20)
+                await run("agent.goTo({place: 'forum steps'})", 1200); await step(20)
                 await pg.evaluate("send({type: 'page'})"); await step(5)
                 await pg.evaluate("send({type: 'ready', me: {id: 'me'}})"); await step(20)
                 me = await pg.evaluate("(() => { const s = __got.filter(m => m.type === 'state').pop(); return s ? s.s : null; })()")
                 print('me', me, flush=True); N = 360
                 MATES = [('n', 9, 'macarena', -1.7, 34.0), ('m', 3, 'chicken', 0.0, 34.6), ('y', 7, 'twist', 1.7, 34.0)]
+                if SC0.endswith('5'):   # (closer: a few steps in front of you, down on the Forum floor)
+                    mx, md = (me or {}).get('x', 2.5), -((me or {}).get('z', -28.1))
+                    MATES = [('n', 9, 'macarena', mx - 1.5, md + 4.2), ('m', 3, 'chicken', mx, md + 4.8), ('y', 7, 'twist', mx + 1.5, md + 4.2)]
+                    print('mates', MATES, flush=True)
                 for mid, i, em, x, d in MATES: await pg.evaluate("m => send(m)", {'type': 'look', 'id': mid, 'look': [i, 0, TONES[i]]})
                 yaw = ((me or {}).get('y', 0) or 0) + math.pi
                 def states(t):
@@ -146,6 +161,10 @@ async def main():
                 me = await pg.evaluate("(() => { const s = __got.filter(m => m.type === 'state').pop(); return s ? s.s : null; })()")
                 print('me', me, flush=True); N = 360
                 MATES = [('n', 9, 'macarena', -1.7, 34.0), ('m', 3, 'chicken', 0.0, 34.6), ('y', 7, 'twist', 1.7, 34.0)]
+                if SC0.endswith('5'):   # (closer: a few steps in front of you, down on the Forum floor)
+                    mx, md = (me or {}).get('x', 2.5), -((me or {}).get('z', -28.1))
+                    MATES = [('n', 9, 'macarena', mx - 1.5, md + 4.2), ('m', 3, 'chicken', mx, md + 4.8), ('y', 7, 'twist', mx + 1.5, md + 4.2)]
+                    print('mates', MATES, flush=True)
                 for mid, i, em, x, d in MATES: await pg.evaluate("m => send(m)", {'type': 'look', 'id': mid, 'look': [i, 0, TONES[i]]})
                 yaw = ((me or {}).get('y', 0) or 0) + math.pi
                 def states(t):
