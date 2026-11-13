@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inscription Cost Calculator</title>
+<meta name="description" content="Work out what a Bitcoin inscription costs: file size and fee rate, plus postage and extras, in sats, BTC and your currency, with live fees and price. Drop a file and it fills in the exact size.">
+<style>
+/* Layout: a sunny meadow scene on top, then cards standing on the grass - inputs on the left, the answer on the right; one column on phones with the answer first */
+:root{
+  --sky:#bfe8f8; --mist:#e6f7ef; --grass:#5fb24b; --grass-deep:#4b9f3d;
+  --leaf-deep:#1c5736; --leaf:#2e8b4f; --leaf-soft:#7cc66b;
+  --sun:#ffc83d; --orange:#f5922a; --pink:#e8649d; --violet:#8b70de; --red:#de4b3b;
+  --card:#ffffffeb; --field:#f1f9ec; --ink:#173524; --ink-soft:#4b6856; --line:#d2e9c7;
+  --font:ui-rounded,"SF Pro Rounded","Nunito","Varela Round","Segoe UI",system-ui,-apple-system,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{background:var(--grass)}
+body{
+  margin:0;font-family:var(--font);color:var(--ink);font-size:15px;line-height:1.45;
+  background-color:var(--grass);
+  background-image:
+    radial-gradient(#ffffff1a 1px,transparent 1.6px),
+    radial-gradient(900px 420px at 90% 30%,#fff7c455,transparent 70%),
+    linear-gradient(180deg,var(--grass) 0,#6cbd55 45%,var(--grass-deep) 100%);
+  background-size:18px 18px,auto,auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0 calc(24px + env(safe-area-inset-bottom,0px));
+}
+button,input,select{font-family:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+
+/* ---------- meadow scene ---------- */
+.scene{
+  position:relative;overflow:hidden;
+  margin-left:calc(-1 * max(16px,env(safe-area-inset-left,0px)));
+  margin-right:calc(-1 * max(16px,env(safe-area-inset-right,0px)));
+  min-height:270px;
+}
+.scene svg.bg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.scene-in{
+  position:relative;max-width:1120px;margin:0 auto;
+  padding:calc(30px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 86px max(16px,env(safe-area-inset-left,0px));
+  display:grid;gap:10px;justify-items:start;
+}
+h1{
+  margin:0;font-weight:900;font-size:clamp(30px,5.4vw,54px);line-height:1.02;letter-spacing:-.01em;
+  color:var(--leaf-deep);text-wrap:balance;max-width:14ch;
+  text-shadow:0 2px 0 #fff,0 0 22px #ffffffcc;
+}
+.tagline{margin:0;font-weight:800;font-size:16px;color:var(--leaf-deep);text-shadow:0 0 6px #fff,0 0 2px #fff,0 1px 0 #fff}
+.live-chip{
+  display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;
+  background:#ffffffd9;border:2px solid #fff;border-radius:999px;padding:6px 14px 6px 10px;
+  font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 6px 18px -8px #1c573655;
+}
+.dot{width:11px;height:11px;border-radius:50%;background:#b9c4bd;flex:none}
+.live-chip[data-state="live"] .dot{background:#2fbf5b;box-shadow:0 0 0 0 #2fbf5b88;animation:pulse 2s infinite}
+.live-chip[data-state="chain"] .dot{background:var(--orange)}
+.live-chip[data-state="off"] .dot{background:#b9c4bd}
+@keyframes pulse{0%{box-shadow:0 0 0 0 #2fbf5b88}70%{box-shadow:0 0 0 9px #2fbf5b00}100%{box-shadow:0 0 0 0 #2fbf5b00}}
+.live-chip small{font-weight:700;color:var(--ink-soft);font-size:12.5px}
+
+/* ---------- garden of cards ---------- */
+.garden{
+  position:relative;z-index:2;max-width:1120px;margin:-58px auto 0;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start;
+}
+.col{display:flex;flex-direction:column;gap:20px;min-width:0}
+.card{
+  background:var(--card);border:2px solid #fff;border-radius:28px;padding:22px;
+  box-shadow:0 18px 36px -18px #123d2499,inset 0 -3px 0 #e3f1dc;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:grid;gap:14px;min-width:0;
+}
+.lbl{
+  display:flex;align-items:center;gap:8px;margin:0;
+  font-size:12.5px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;color:var(--leaf);
+}
+.lbl::before{content:"";width:13px;height:13px;flex:none;border-radius:0 100% 0 100%;background:var(--dotc,var(--leaf-soft));transform:rotate(-12deg)}
+.hint{margin:-6px 0 0;font-size:13px;color:var(--ink-soft);font-weight:600}
+.group{display:grid;gap:10px}
+.divider{height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 10px,transparent 10px 16px);border:0;margin:4px 0}
+
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.big{
+  flex:1 1 160px;min-width:0;width:100%;
+  font-weight:900;font-size:32px;line-height:1.1;color:var(--ink);font-variant-numeric:tabular-nums;
+  background:var(--field);border:2px solid var(--line);border-radius:18px;padding:10px 16px;
+}
+.big:focus{outline:none;border-color:var(--sun);box-shadow:0 0 0 4px #ffc83d55}
+.seg{display:inline-flex;background:var(--field);border:2px solid var(--line);border-radius:999px;padding:4px;gap:4px}
+.seg button{border:0;background:transparent;font-weight:900;font-size:14px;color:var(--ink-soft);padding:9px 14px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--leaf);color:#fff}
+select.big{flex:0 0 auto;width:auto;font-size:18px;padding:14px 12px;cursor:pointer}
+
+/* live speed picks */
+.speeds{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.speed{
+  --c:var(--leaf);--on:#fff;
+  display:grid;gap:1px;text-align:left;cursor:pointer;min-width:0;
+  background:#fff;border:2px solid color-mix(in srgb,var(--c) 40%,#fff);border-radius:18px;padding:9px 9px;
+  transition:transform .15s,background .15s;
+}
+.speed:hover{transform:translateY(-2px)}
+.speed .nm{font-size:12.5px;white-space:nowrap;font-weight:900;color:color-mix(in srgb,var(--c) 75%,#173524)}
+.speed b{font-size:19px;font-weight:900;font-variant-numeric:tabular-nums}
+.speed .tm{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;color:var(--ink-soft)}
+.speed[aria-pressed="true"]{background:var(--c);border-color:var(--c);color:var(--on)}
+.speed[aria-pressed="true"] .nm,.speed[aria-pressed="true"] .tm{color:var(--on)}
+.speed[data-k="fastestFee"]{--c:var(--red)}
+.speed[data-k="halfHourFee"]{--c:var(--orange)}
+.speed[data-k="hourFee"]{--c:#e7ad12;--on:#3a2a00}
+.speed[data-k="economyFee"]{--c:var(--leaf)}
+.speed[data-k="minimumFee"]{--c:var(--violet)}
+.speed:disabled{opacity:.55;cursor:default;transform:none}
+
+.presets{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}
+.preset{
+  border:2px solid var(--line);background:#fff;border-radius:12px;padding:7px 0;cursor:pointer;
+  font-weight:900;font-size:13.5px;font-variant-numeric:tabular-nums;color:var(--ink);
+}
+.preset[aria-pressed="true"]{background:var(--sun);border-color:var(--sun)}
+.follow-note{font-size:13px;font-weight:700;color:var(--ink-soft);margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.link-btn{border:0;background:none;padding:0;font-weight:900;font-size:13px;color:var(--leaf);text-decoration:underline;cursor:pointer}
+
+/* ---------- answer ---------- */
+.answer{--dotc:var(--sun);background:linear-gradient(160deg,#fffef6f0,#f4fbefeb)}
+.total{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.total .n{font-weight:900;font-size:clamp(38px,6.2vw,58px);line-height:1;color:var(--leaf-deep);font-variant-numeric:tabular-nums;letter-spacing:-.02em;overflow-wrap:anywhere}
+.total .u{font-weight:900;font-size:20px;color:var(--orange)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border-radius:999px;padding:7px 14px;font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
+.chip b{font-size:18px}
+.chip.sats{background:#fff0dd;color:#8a4a07}
+.chip.fiat{background:#fde6f0;color:#8c2556}
+.breakdown{margin:0;font-size:13.5px;line-height:1.6;color:var(--ink-soft);font-weight:600;font-variant-numeric:tabular-nums;background:#ffffffaa;border:2px dashed var(--line);border-radius:16px;padding:10px 14px}
+.extras{display:grid;gap:8px}
+.extra{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;font-weight:800;font-size:14px}
+.extra input[type=number]{width:96px;text-align:right;font-weight:900;font-size:15px;font-variant-numeric:tabular-nums;background:var(--field);border:2px solid var(--line);border-radius:12px;padding:6px 10px}
+.extra input[type=number]:disabled{opacity:.45}
+.extra .u{font-size:12.5px;color:var(--ink-soft);width:28px}
+.switch{appearance:none;-webkit-appearance:none;width:42px;height:24px;border-radius:999px;background:#cfd9d2;position:relative;cursor:pointer;margin:0;transition:background .15s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:left .15s}
+.switch:checked{background:var(--leaf-soft)}
+.switch:checked::after{left:21px}
+
+/* ---------- comparison ---------- */
+.compare{--dotc:var(--pink)}
+.cmp{display:grid;grid-template-columns:auto minmax(40px,1fr) auto;column-gap:12px;row-gap:4px}
+.cmp-row{
+  grid-column:1/-1;display:grid;grid-template-columns:subgrid;align-items:center;
+  padding:6px 10px;border-radius:14px;cursor:pointer;border:2px solid transparent;
+}
+@supports not (grid-template-columns:subgrid){.cmp-row{grid-template-columns:150px minmax(40px,1fr) 140px;gap:12px}}
+.cmp-row:hover{background:#f3faef}
+.cmp-row.on{background:#fff6d6;border-color:var(--sun)}
+.cmp-row .r{font-weight:900;font-size:14px;font-variant-numeric:tabular-nums;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tag{font-style:normal;font-size:11px;font-weight:900;border-radius:999px;padding:2px 8px;color:#fff;background:var(--tc,var(--leaf))}
+.track{height:12px;border-radius:999px;background:#e5f2df;overflow:hidden}
+.fill{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--leaf-soft),var(--sun) 70%,var(--orange));min-width:6px}
+.cmp-row .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:800;font-size:13.5px;line-height:1.25}
+.cmp-row .v small{display:block;font-weight:700;color:var(--ink-soft);font-size:12px}
+
+/* ---------- file ---------- */
+.file{--dotc:var(--violet)}
+.drop{
+  display:grid;place-items:center;gap:6px;text-align:center;cursor:pointer;
+  border:3px dashed #c9b9f2;border-radius:22px;padding:22px 14px;background:#f8f5ff;
+  font-weight:800;color:#5a46a8;transition:background .15s,border-color .15s;
+}
+.drop:hover,.drop.over{background:#efe9ff;border-color:var(--violet)}
+.drop small{font-weight:700;color:var(--ink-soft)}
+.drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0;font-size:14px}
+.facts dt{font-weight:800;color:var(--ink-soft)}
+.facts dd{margin:0;font-weight:800;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.tips{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.tips li{background:#f1f9ec;border-radius:14px;padding:10px 12px 10px 38px;position:relative;font-weight:700;font-size:14px}
+.tips li::before{content:"";position:absolute;left:13px;top:13px;width:14px;height:14px;border-radius:0 100% 0 100%;background:var(--leaf-soft);transform:rotate(-12deg)}
+
+footer{max-width:1120px;margin:26px auto 0;display:grid;justify-items:center;gap:8px;text-align:center;color:#eef9e8;font-weight:700;font-size:13px;text-shadow:0 1px 0 #2a6d2e}
+footer svg{width:min(360px,90%);height:auto}
+
+/* laptops: wider two columns, title on one line */
+@media (min-width:900px){
+  h1{max-width:none}
+  .scene-in,.garden,footer{max-width:1400px}
+}
+/* big screens: three columns (inputs | answer + file | comparison) so it all fits on one screen */
+@media (min-width:1500px){
+  .scene{min-height:224px}
+  .scene-in{max-width:1760px;padding-bottom:72px}
+  .garden{
+    max-width:1760px;margin-top:-50px;
+    grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto 1fr;
+    grid-template-areas:"in an cmp" "in fl cmp";
+  }
+  .col{display:contents}
+  .inputs{grid-area:in}.answer{grid-area:an}.file{grid-area:fl}.compare{grid-area:cmp}
+  .cmp-row{padding-block:4px}
+  footer{max-width:1760px;margin-top:20px}
+}
+@media (max-width:860px){
+  .garden{display:flex;flex-direction:column;align-items:stretch}
+  .col{display:contents}
+  .answer{order:-1}
+  .file{order:1}
+}
+@media (max-width:640px){
+  .speeds{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .speed{grid-column:span 2}
+  .speed[data-k="economyFee"],.speed[data-k="minimumFee"]{grid-column:span 3}
+}
+@media (max-width:520px){
+  .card{padding:18px;border-radius:24px}
+  .presets{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .big{font-size:28px}
+  .cmp{column-gap:10px}
+  .cmp-row{padding:6px 6px}
+  .cmp-row .r{flex-direction:column;align-items:flex-start;gap:3px}
+  .extra{grid-template-columns:auto 1fr auto}
+  .extra .u{display:none}
+  .scene{min-height:250px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<header class="scene">
+  <svg class="bg" viewBox="0 0 1200 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="skyG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#a9def5"/><stop offset=".55" stop-color="#d9f2f1"/><stop offset="1" stop-color="#eef9e6"/>
+      </linearGradient>
+      <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+        <stop offset="0" stop-color="#fffbe0"/><stop offset="1" stop-color="#fffbe0" stop-opacity="0"/>
+      </radialGradient>
+      <symbol id="fl" viewBox="-30 -30 60 60">
+        <g fill="currentColor">
+          <ellipse cy="-13" rx="8.5" ry="13"/>
+          <ellipse cy="-13" rx="8.5" ry="13" transform="rotate(72)"/>
+          <ellipse cy="-13" rx="8.5" ry="13" transform="rotate(144)"/>
+          <ellipse cy="-13" rx="8.5" ry="13" transform="rotate(216)"/>
+          <ellipse cy="-13" rx="8.5" ry="13" transform="rotate(288)"/>
+        </g>
+        <circle r="7.5" fill="#ffd44f"/><circle r="3.5" fill="#ef8a1d"/>
+      </symbol>
+      <symbol id="sp" viewBox="-12 -12 24 24"><path d="M0-11L2.4-2.4 11 0 2.4 2.4 0 11-2.4 2.4-11 0-2.4-2.4Z" fill="#fff"/></symbol>
+    </defs>
+    <rect width="1200" height="300" fill="url(#skyG)"/>
+    <circle cx="760" cy="40" r="260" fill="url(#glow)" opacity=".9"/>
+    <!-- far trees -->
+    <g fill="#a5d898" opacity=".75">
+      <circle cx="200" cy="200" r="46"/><circle cx="255" cy="185" r="52"/><circle cx="318" cy="205" r="40"/>
+      <circle cx="455" cy="196" r="44"/><circle cx="520" cy="182" r="54"/><circle cx="590" cy="204" r="38"/>
+      <circle cx="700" cy="200" r="42"/><circle cx="752" cy="184" r="50"/><circle cx="905" cy="192" r="50"/>
+      <circle cx="965" cy="178" r="56"/><circle cx="1030" cy="200" r="42"/>
+    </g>
+    <g fill="#8ccb7d" opacity=".9">
+      <circle cx="372" cy="214" r="36"/><circle cx="640" cy="216" r="34"/><circle cx="830" cy="212" r="38"/><circle cx="1088" cy="214" r="36"/>
+    </g>
+    <!-- hills -->
+    <path d="M0 238C200 205 390 210 600 228S1000 200 1200 218V300H0Z" fill="#86cc72"/>
+    <path d="M0 268C260 238 470 248 700 262S1030 240 1200 254V300H0Z" fill="#5fb24b"/>
+    <!-- canopies framing the corners -->
+    <g>
+      <circle cx="-14" cy="-6" r="84" fill="#2c8448"/><circle cx="62" cy="-40" r="64" fill="#3a9a55"/>
+      <circle cx="-30" cy="104" r="56" fill="#26773f"/><circle cx="34" cy="40" r="30" fill="#4fae62"/>
+      <circle cx="10" cy="-10" r="24" fill="#6cc277" opacity=".7"/>
+      <circle cx="1170" cy="18" r="98" fill="#2c8448"/><circle cx="1060" cy="-16" r="76" fill="#3a9a55"/>
+      <circle cx="1214" cy="124" r="64" fill="#26773f"/><circle cx="1108" cy="62" r="42" fill="#4fae62"/>
+      <circle cx="1140" cy="8" r="28" fill="#6cc277" opacity=".7"/><circle cx="1046" cy="16" r="20" fill="#6cc277" opacity=".6"/>
+    </g>
+    <!-- flowers in the grass -->
+    <use href="#fl" x="60" y="232" width="42" height="42" color="#f5922a"/>
+    <use href="#fl" x="150" y="250" width="30" height="30" color="#e8649d"/>
+    <use href="#fl" x="250" y="236" width="26" height="26" color="#ffffff"/>
+    <use href="#fl" x="400" y="240" width="34" height="34" color="#8b70de"/>
+    <use href="#fl" x="470" y="226" width="22" height="22" color="#ffffff"/>
+    <use href="#fl" x="560" y="244" width="30" height="30" color="#f5922a"/>
+    <use href="#fl" x="640" y="232" width="24" height="24" color="#e8649d"/>
+    <use href="#fl" x="720" y="246" width="34" height="34" color="#ffffff"/>
+    <use href="#fl" x="800" y="228" width="28" height="28" color="#8b70de"/>
+    <use href="#fl" x="880" y="246" width="38" height="38" color="#e8649d"/>
+    <use href="#fl" x="990" y="236" width="30" height="30" color="#f5922a"/>
+    <use href="#fl" x="1090" y="226" width="44" height="44" color="#8b70de"/>
+    <use href="#fl" x="1150" y="252" width="28" height="28" color="#ffffff"/>
+    <!-- sparkles -->
+    <use href="#sp" x="590" y="70" width="18" height="18" opacity=".9"/>
+    <use href="#sp" x="880" y="110" width="14" height="14" opacity=".8"/>
+    <use href="#sp" x="300" y="120" width="12" height="12" opacity=".7"/>
+    <use href="#sp" x="1010" y="160" width="20" height="20" opacity=".85"/>
+  </svg>
+  <div class="scene-in">
+    <h1>Inscription Cost Calculator</h1>
+    <p class="tagline" id="tagline">Checking for live fees and price…</p>
+    <div class="live-chip" id="liveChip" data-state="off" role="status" aria-live="polite">
+      <span class="dot"></span><span id="liveText">Checking for live data…</span><small id="liveSub"></small>
+    </div>
+  </div>
+</header>
+
+<main class="garden">
+  <div class="col">
+    <section class="card inputs" aria-label="Your numbers">
+      <div class="group">
+        <h2 class="lbl" style="--dotc:var(--leaf-soft)">File size</h2>
+        <div class="row">
+          <input class="big" id="size" type="number" inputmode="decimal" min="0" step="any" value="100" aria-label="File size">
+          <div class="seg" role="group" aria-label="Size unit">
+            <button type="button" data-unit="B" aria-pressed="false">B</button>
+            <button type="button" data-unit="KB" aria-pressed="true">KB</button>
+            <button type="button" data-unit="MB" aria-pressed="false">MB</button>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <div class="group">
+        <h2 class="lbl" style="--dotc:var(--orange)">Fee rate (sat/vB)</h2>
+        <input class="big" id="rate" type="number" inputmode="decimal" min="0.1" step="any" value="1" aria-label="Fee rate in sats per vbyte">
+        <p class="follow-note" id="followNote">Checking for live fees…</p>
+        <div class="speeds" id="speeds">
+          <button type="button" class="speed" data-k="fastestFee" aria-pressed="false" disabled><span class="nm">Fastest</span><b>-</b><span class="tm">next block</span></button>
+          <button type="button" class="speed" data-k="halfHourFee" aria-pressed="false" disabled><span class="nm">Half hour</span><b>-</b><span class="tm">~30 min</span></button>
+          <button type="button" class="speed" data-k="hourFee" aria-pressed="false" disabled><span class="nm">One hour</span><b>-</b><span class="tm">~1 hour</span></button>
+          <button type="button" class="speed" data-k="economyFee" aria-pressed="false" disabled><span class="nm">No rush</span><b>-</b><span class="tm">few hours</span></button>
+          <button type="button" class="speed" data-k="minimumFee" aria-pressed="false" disabled><span class="nm">Lowest</span><b>-</b><span class="tm">slowest</span></button>
+        </div>
+        <div class="presets" id="presets" role="group" aria-label="Set fee rates">
+          <button type="button" class="preset" data-r="0.15">0.15</button>
+          <button type="button" class="preset" data-r="0.25">0.25</button>
+          <button type="button" class="preset" data-r="0.5">0.5</button>
+          <button type="button" class="preset" data-r="1" aria-pressed="true">1</button>
+          <button type="button" class="preset" data-r="2">2</button>
+          <button type="button" class="preset" data-r="5">5</button>
+          <button type="button" class="preset" data-r="10">10</button>
+          <button type="button" class="preset" data-r="50">50</button>
+          <button type="button" class="preset" data-r="100">100</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <div class="group">
+        <h2 class="lbl" style="--dotc:var(--pink)">BTC price</h2>
+        <div class="row">
+          <input class="big" id="price" type="number" inputmode="decimal" min="0" step="any" value="" placeholder="type a price" aria-label="Bitcoin price">
+          <select class="big" id="cur" aria-label="Currency">
+            <option>USD</option><option>GBP</option><option>EUR</option><option>CAD</option><option>CHF</option><option>AUD</option><option>JPY</option>
+          </select>
+        </div>
+        <p class="follow-note" id="priceNote">Checking for a live price…</p>
+      </div>
+    </section>
+
+    <section class="card file" aria-label="File analysis">
+      <h2 class="lbl">File analysis</h2>
+      <label class="drop" id="drop">
+        <input type="file" id="fileIn">
+        <span>Drop a file here, or tap to pick one</span>
+        <small>It fills in the exact size for you</small>
+      </label>
+      <div id="fileOut" hidden></div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card answer" aria-label="Total cost">
+      <h2 class="lbl">Total cost</h2>
+      <div class="total"><span class="n" id="tBtc">0.00026278</span><span class="u">BTC</span></div>
+      <div class="chips">
+        <span class="chip sats"><b id="tSats">26,278</b> sats</span>
+        <span class="chip fiat"><b id="tFiat">-</b> <span id="tCur">USD</span></span>
+      </div>
+      <p class="breakdown" id="breakdown">102,400 bytes ÷ 4 = 25,600 vB for the file + 148 vB data markers + 200 vB extra = 25,948 vB × 1 sat/vB = 25,948 sats fee + 330 postage = 26,278 sats</p>
+      <div class="extras">
+        <div class="extra"><input class="switch" type="checkbox" id="ovOn" checked aria-label="Count extra transaction size"><label for="ovOn">Extra transaction size</label><input type="number" id="ov" min="0" step="1" value="200" aria-label="Extra size in vB"><span class="u">vB</span></div>
+        <div class="extra"><input class="switch" type="checkbox" id="pgOn" checked aria-label="Count postage"><label for="pgOn">Postage</label><input type="number" id="pg" min="0" step="1" value="330" aria-label="Postage in sats"><span class="u">sats</span></div>
+        <div class="extra"><input class="switch" type="checkbox" id="svOn" aria-label="Count service fee"><label for="svOn">Service fee</label><input type="number" id="sv" min="0" step="1" value="0" aria-label="Service fee in sats" disabled><span class="u">sats</span></div>
+      </div>
+    </section>
+
+    <section class="card compare" aria-label="Rate comparison">
+      <h2 class="lbl">Rate comparison</h2>
+      <p class="hint">Tap a row to use that rate.</p>
+      <div class="cmp" id="cmp"></div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <svg viewBox="0 0 360 40" aria-hidden="true">
+    <use href="#fl" x="20" y="6" width="28" height="28" color="#f5922a"/>
+    <use href="#fl" x="80" y="10" width="20" height="20" color="#ffffff"/>
+    <use href="#fl" x="130" y="4" width="32" height="32" color="#8b70de"/>
+    <use href="#fl" x="196" y="10" width="20" height="20" color="#e8649d"/>
+    <use href="#fl" x="246" y="6" width="28" height="28" color="#ffffff"/>
+    <use href="#fl" x="306" y="8" width="24" height="24" color="#f5922a"/>
+  </svg>
+  <p id="sources">Checking for live data…</p>
+</footer>
+
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+var UNIT={B:1,KB:1024,MB:1048576};
+var SPEED_NAMES={fastestFee:'Fastest',halfHourFee:'Half hour',hourFee:'One hour',economyFee:'No rush',minimumFee:'Lowest'};
+var LABELS={
+  mempool:{fastestFee:['Fastest','next block'],halfHourFee:['Half hour','~30 min'],hourFee:['One hour','~1 hour'],economyFee:['No rush','few hours'],minimumFee:['Lowest','slowest']},
+  chain:{fastestFee:['High','top 10%'],halfHourFee:['Upper','top 25%'],hourFee:['Middle','half way'],economyFee:['Lower','bottom 25%'],minimumFee:['Low','bottom 10%']}
+};
+function labelOf(k){return LABELS[S.feeSrc==='chain'?'chain':'mempool'][k]}
+var loading=true;
+var S={
+  unit:'KB', bytes:102400,
+  rate:1, follow:'halfHourFee', // follow = which live speed the rate copies, or null for your own rate
+  cur:'USD', price:null, priceFollow:true,
+  fees:null, feeSrc:'', feesAt:0, height:null,
+  prices:null, priceSrc:'', priceAt:0, priceTime:0, priceFromLive:false
+};
+
+/* ---------- small helpers ---------- */
+function num(v){var x=parseFloat(v);return isFinite(x)&&x>0?x:0}
+function n0(x){return Math.round(x).toLocaleString('en-US')}
+function r2(x){return Math.round(x*100)/100}
+function rateTxt(r){return String(r2(r))}
+function money(v,cur){
+  try{
+    if(v>0&&v<0.01&&cur!=='JPY')return '<'+new Intl.NumberFormat('en-US',{style:'currency',currency:cur}).format(0.01);
+    return new Intl.NumberFormat('en-US',{style:'currency',currency:cur,maximumFractionDigits:cur==='JPY'?0:2}).format(v);
+  }catch(e){return v.toFixed(2)+' '+cur}
+}
+function ago(t){if(!t)return '';var s=Math.max(0,Math.round((Date.now()-t)/1000));return s<60?s+'s ago':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago'}
+
+/* ---------- the maths ---------- */
+/* An inscription stores the file in the witness part of the transaction, which costs 1/4.
+   The file goes in as 520-byte pieces, and each piece needs a 3-byte marker. */
+function cost(rate){
+  var b=S.bytes;
+  var ov=$('ovOn').checked?Math.round(num($('ov').value)):0;
+  var pg=$('pgOn').checked?Math.round(num($('pg').value)):0;
+  var sv=$('svOn').checked?Math.round(num($('sv').value)):0;
+  var dataVb=Math.ceil(b/4);
+  var markVb=Math.ceil(Math.ceil(b/520)*3/4);
+  var vb=dataVb+markVb+ov;
+  var fee=Math.ceil(vb*rate-1e-9);
+  return {b:b,dataVb:dataVb,markVb:markVb,ov:ov,vb:vb,fee:fee,pg:pg,sv:sv,total:fee+pg+sv};
+}
+function fiatOf(sats){return S.price?sats/1e8*S.price:null}
+
+/* ---------- drawing the answer ---------- */
+function render(){
+  var c=cost(S.rate);
+  $('tBtc').textContent=(c.total/1e8).toFixed(8);
+  $('tSats').textContent=n0(c.total);
+  var f=fiatOf(c.total);
+  $('tFiat').textContent=f==null?'-':money(f,S.cur);
+  $('tCur').textContent=S.cur;
+  var t=n0(c.b)+' bytes ÷ 4 = '+n0(c.dataVb)+' vB for the file + '+n0(c.markVb)+' vB data markers';
+  if(c.ov)t+=' + '+n0(c.ov)+' vB extra';
+  t+=' = '+n0(c.vb)+' vB. '+n0(c.vb)+' vB × '+rateTxt(S.rate)+' sat/vB = '+n0(c.fee)+' sats fee';
+  if(c.pg)t+=' + '+n0(c.pg)+' postage';
+  if(c.sv)t+=' + '+n0(c.sv)+' service';
+  t+=' = '+n0(c.total)+' sats';
+  $('breakdown').textContent=t;
+  document.querySelectorAll('.preset').forEach(function(b){
+    b.setAttribute('aria-pressed',String(!S.follow&&r2(+b.dataset.r)===r2(S.rate)));
+  });
+  document.querySelectorAll('.speed').forEach(function(b){
+    b.setAttribute('aria-pressed',String(S.follow===b.dataset.k));
+  });
+  notes();
+  if(window.__drawCompare)window.__drawCompare();
+}
+function notes(){
+  var fn=$('followNote');
+  var chain=S.feeSrc==='chain';
+  if(S.follow&&S.fees)fn.textContent=chain
+    ?'Using the \u201c'+labelOf(S.follow)[0]+'\u201d rate paid in block '+n0(S.height)+'. It changes with each new block.'
+    :'Using the live \u201c'+labelOf(S.follow)[0]+'\u201d rate. It changes by itself as fees move.';
+  else if(S.fees)fn.textContent=chain?'Your own rate. Tap a button to use what the last block paid.':'Your own rate. Tap a speed to follow live fees.';
+  else fn.textContent=loading?'Checking for live fees\u2026':'No live fees here. Type a rate, or tap a number below.';
+  var pn=$('priceNote');pn.textContent='';
+  if(S.priceFollow&&S.prices&&S.prices[S.cur]){
+    pn.textContent='Live price from '+S.priceSrc+', set '+ago(S.priceTime||S.priceAt)+'. It checks again every minute.';
+  }else if(S.prices&&S.prices[S.cur]){
+    pn.appendChild(document.createTextNode('Your own price. '));
+    var b=document.createElement('button');b.type='button';b.className='link-btn';b.textContent='Use live price';
+    b.onclick=function(){S.priceFollow=true;applyLive();save()};pn.appendChild(b);
+  }else if(loading){
+    pn.textContent='Checking for a live price\u2026';
+  }else if(S.price&&S.priceFromLive){
+    pn.textContent='No live price right now. This is the last one seen, '+ago(S.priceTime||S.priceAt)+'.';
+  }else{
+    pn.textContent=S.price?'Your own price. No live price here.':'No live price here. Type a price to see the cost in '+S.cur+'.';
+  }
+}
+
+/* ---------- copying live numbers into the boxes ---------- */
+function applyLive(){
+  if(S.follow&&S.fees&&S.fees[S.follow]!=null){
+    S.rate=Math.max(0.1,r2(S.fees[S.follow]));
+    if(document.activeElement!==$('rate'))$('rate').value=rateTxt(S.rate);
+  }
+  if(S.priceFollow&&S.prices&&S.prices[S.cur]){
+    S.price=S.prices[S.cur];S.priceFromLive=true;
+    if(document.activeElement!==$('price'))$('price').value=S.price;
+  }
+  render();
+}
+window.__applyLive=applyLive;
+
+/* ---------- remembering your settings on this device ---------- */
+function save(){
+  try{localStorage.setItem('icc-settings',JSON.stringify({
+    cur:S.cur,follow:S.follow,
+    ovOn:$('ovOn').checked,ov:$('ov').value,pgOn:$('pgOn').checked,pg:$('pg').value,svOn:$('svOn').checked,sv:$('sv').value
+  }))}catch(e){}
+}
+function load(){
+  try{
+    var o=JSON.parse(localStorage.getItem('icc-settings')||'null');if(!o)return;
+    if(o.cur&&/^[A-Z]{3}$/.test(o.cur)){S.cur=o.cur;$('cur').value=o.cur}
+    if(o.follow===null||SPEED_NAMES[o.follow])S.follow=o.follow;
+    ['ov','pg','sv'].forEach(function(k){
+      if(typeof o[k+'On']==='boolean')$(k+'On').checked=o[k+'On'];
+      if(o[k]!=null&&o[k]!=='')$(k).value=o[k];
+    });
+  }catch(e){}
+}
+
+/* ---------- wiring up the controls ---------- */
+function setBytesFromBox(){S.bytes=Math.round(num($('size').value)*UNIT[S.unit])}
+function setUnit(u){
+  S.unit=u;
+  document.querySelectorAll('.seg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.unit===u))});
+}
+$('size').addEventListener('input',function(){setBytesFromBox();render()});
+document.querySelectorAll('.seg button').forEach(function(b){
+  b.addEventListener('click',function(){setUnit(b.dataset.unit);setBytesFromBox();render()});
+});
+$('rate').addEventListener('input',function(){S.rate=num(this.value);S.follow=null;render();save()});
+$('rate').addEventListener('blur',function(){this.value=rateTxt(S.rate)});
+document.querySelectorAll('.preset').forEach(function(b){
+  b.addEventListener('click',function(){S.rate=+b.dataset.r;S.follow=null;$('rate').value=rateTxt(S.rate);render();save()});
+});
+document.querySelectorAll('.speed').forEach(function(b){
+  b.addEventListener('click',function(){S.follow=b.dataset.k;applyLive();save()});
+});
+$('price').addEventListener('input',function(){S.price=num(this.value)||null;S.priceFollow=false;S.priceFromLive=false;render()});
+$('price').addEventListener('blur',function(){if(S.priceFollow&&S.price)this.value=S.price});
+$('cur').addEventListener('change',function(){
+  S.cur=this.value;
+  if(S.prices&&S.prices[S.cur])S.priceFollow=true;
+  applyLive();save();
+});
+['ov','pg','sv'].forEach(function(k){
+  $(k+'On').addEventListener('change',function(){$(k).disabled=!this.checked;render();save()});
+  $(k).addEventListener('input',function(){render();save()});
+});
+window.__setRate=function(r,k){S.rate=r;S.follow=k||null;$('rate').value=rateTxt(r);render();save()};
+window.__state=S;window.__render=render;window.__cost=cost;window.__fiatOf=fiatOf;window.__money=money;window.__rateTxt=rateTxt;window.__n0=n0;
+
+/* ---------- live data ----------
+   1) mempool.space gives live fees, block height and price (works on a website, on GitHub, or opened from your computer).
+   2) When inscribed, outside sites are blocked, so fees come from the last block through the chain itself (/r/blockheight + /r/blockinfo).
+   3) Price backup: CoinGecko. If nothing loads, you can type your own numbers. */
+var MP='https://mempool.space';
+var CURS=['USD','GBP','EUR','CAD','CHF','AUD','JPY'];
+var FEE_KEYS=['minimumFee','economyFee','hourFee','halfHourFee','fastestFee'];
+var CHAIN_BASES=['','https://ordinals.com'];
+function getJSON(u,ms){
+  var c=window.AbortController?new AbortController():null;
+  var t=setTimeout(function(){if(c)c.abort()},ms||8000);
+  return fetch(u,c?{signal:c.signal,cache:'no-store'}:{cache:'no-store'}).then(function(r){
+    clearTimeout(t);if(!r.ok)throw new Error('HTTP '+r.status);return r.text();
+  }).then(function(x){return JSON.parse(x)},function(e){clearTimeout(t);throw e});
+}
+function cleanFees(o){
+  var out={},prev=0;
+  FEE_KEYS.forEach(function(k){
+    var v=+o[k];if(!isFinite(v)||v<0)throw new Error('bad fee');
+    v=Math.max(0.1,v,prev);out[k]=v;prev=v;
+  });
+  return out;
+}
+function chainFees(){
+  var i=0;
+  function next(){
+    if(i>=CHAIN_BASES.length)return Promise.reject(new Error('no chain data'));
+    var base=CHAIN_BASES[i++];
+    return getJSON(base+'/r/blockheight',6000).then(function(h){
+      h=parseInt(h,10);if(!(h>0))throw new Error('bad height');
+      return getJSON(base+'/r/blockinfo/'+h,6000).then(function(bi){
+        var p=bi&&bi.feerate_percentiles;if(!p||p.length<5)throw new Error('no percentiles');
+        S.fees=cleanFees({minimumFee:p[0],economyFee:p[1],hourFee:p[2],halfHourFee:p[3],fastestFee:p[4]});
+        S.feeSrc='chain';S.feesAt=Date.now();S.height=h;
+      });
+    }).catch(next);
+  }
+  return next();
+}
+function loadFees(){
+  return getJSON(MP+'/api/v1/fees/precise')
+    .catch(function(){return getJSON(MP+'/api/v1/fees/recommended')})
+    .then(function(o){
+      S.fees=cleanFees(o);S.feeSrc='mempool';S.feesAt=Date.now();
+      return getJSON(MP+'/api/blocks/tip/height').then(function(h){if(+h>0)S.height=+h}).catch(function(){});
+    })
+    .catch(function(){return chainFees()})
+    .catch(function(){if(Date.now()-S.feesAt>5*60e3)S.fees=null});
+}
+function pickPrices(get){
+  var out={};
+  CURS.forEach(function(c){var v=+get(c);if(v>0)out[c]=v});
+  if(!out.USD)throw new Error('no price');
+  return out;
+}
+/* Price: ask mempool.space and CoinGecko at the same time and use whichever price is newest.
+   (mempool.space only changes its price every few minutes; CoinGecko changes every few seconds.) */
+function setAt(t){t=+t*1000;var n=Date.now();return t>n-864e5&&t<=n+60e3?Math.min(t,n):n}
+function fromMempool(){
+  return getJSON(MP+'/api/v1/prices').then(function(o){
+    return {prices:pickPrices(function(c){return o[c]}),src:'mempool.space',t:setAt(o.time)};
+  });
+}
+function fromGecko(){
+  return getJSON('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies='+CURS.join(',').toLowerCase()+'&include_last_updated_at=true').then(function(o){
+    var b=(o&&o.bitcoin)||{};
+    return {prices:pickPrices(function(c){return b[c.toLowerCase()]}),src:'CoinGecko',t:setAt(b.last_updated_at)};
+  });
+}
+function loadPrice(){
+  var got=[];
+  function keep(p){return p.then(function(r){got.push(r)},function(){})}
+  return Promise.all([keep(fromMempool()),keep(fromGecko())]).then(function(){
+    if(!got.length){if(Date.now()-S.priceAt>10*60e3)S.prices=null;return}
+    got.sort(function(a,b){return b.t-a.t});
+    var best=got[0];
+    S.priceAt=Date.now();
+    if(S.prices&&best.t<S.priceTime)return; /* never swap to an older price */
+    S.prices=best.prices;S.priceSrc=best.src;S.priceTime=best.t;
+  });
+}
+function drawSpeeds(){
+  document.querySelectorAll('.speed').forEach(function(b){
+    var v=S.fees&&S.fees[b.dataset.k];
+    b.disabled=v==null;
+    b.querySelector('b').textContent=v==null?'-':rateTxt(v);
+    var l=labelOf(b.dataset.k);
+    b.querySelector('.nm').textContent=l[0];b.querySelector('.tm').textContent=l[1];
+  });
+}
+function status(){
+  var chip=$('liveChip'),txt=$('liveText'),sub=$('liveSub');
+  var fresh=S.fees&&Date.now()-S.feesAt<5*60e3;
+  if(fresh&&S.feeSrc==='mempool'){
+    chip.dataset.state='live';
+    txt.textContent='Live'+(S.height?' · block '+n0(S.height):'');
+    sub.textContent='fees '+ago(S.feesAt)+(S.prices?' · price '+ago(S.priceTime||S.priceAt):'');
+  }else if(fresh&&S.feeSrc==='chain'){
+    chip.dataset.state='chain';
+    txt.textContent='Fees from block '+n0(S.height);
+    sub.textContent='what that block paid, not live';
+  }else if(loading){
+    chip.dataset.state='off';txt.textContent='Checking for live data\u2026';sub.textContent='';
+  }else{
+    chip.dataset.state='off';txt.textContent='No live data here';sub.textContent='using your numbers';
+  }
+  var feesLive=fresh&&S.feeSrc==='mempool',feesChain=fresh&&S.feeSrc==='chain',priceLive=!!S.prices,tg;
+  if(loading)tg='Checking for live fees and price\u2026';
+  else if(feesLive&&priceLive)tg='Live fees and live price. It does the maths for you.';
+  else if(feesLive)tg='Live fees. No live price here, so type your own.';
+  else if(feesChain&&priceLive)tg='Fees from the last block and a live price.';
+  else if(feesChain)tg='Fees from the last Bitcoin block. No live price here, so type your own.';
+  else if(priceLive)tg='Live price. No live fees here, so type your own rate.';
+  else tg='No live data here. Type your numbers and it does the maths.';
+  $('tagline').textContent=tg;
+  var src='';
+  if(fresh)src+='Fees from '+(S.feeSrc==='chain'?'the last Bitcoin block':'mempool.space')+'. ';
+  if(priceLive)src+='Price from '+S.priceSrc+'.';
+  if(!src)src='No live data reached this page.';
+  $('sources').textContent=src;
+}
+function refresh(what){
+  var jobs=[];
+  if(what!=='price')jobs.push(loadFees());
+  if(what!=='fees')jobs.push(loadPrice());
+  return Promise.all(jobs).then(function(){var first=loading;loading=false;drawSpeeds();applyLive();status();if(first)fit()});
+}
+refresh();
+setInterval(function(){refresh('fees')},30e3);
+setInterval(function(){refresh('price')},60e3);
+setInterval(function(){status();notes()},5e3);
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&Date.now()-S.feesAt>20e3)refresh();
+});
+
+/* ---------- rate comparison ---------- */
+var FIXED=[0.15,0.25,0.5,1,2,5,10,50,100];
+var TAG_COLOUR={fastestFee:'var(--red)',halfHourFee:'var(--orange)',hourFee:'#c98f00',economyFee:'var(--leaf)',minimumFee:'var(--violet)'};
+window.__drawCompare=function(){
+  var rows=FIXED.map(function(r){return {r:r,keys:[]}});
+  function find(r){for(var i=0;i<rows.length;i++)if(r2(rows[i].r)===r2(r))return rows[i];return null}
+  if(S.fees)FEE_KEYS.forEach(function(k){
+    var v=Math.max(0.1,r2(S.fees[k])),row=find(v);
+    if(row)row.keys.push(k);else rows.push({r:v,keys:[k]});
+  });
+  if(S.rate>0&&!find(S.rate))rows.push({r:r2(S.rate),keys:[],mine:true});
+  rows.sort(function(a,b){return a.r-b.r});
+  var max=0;rows.forEach(function(x){x.c=cost(x.r);if(x.c.total>max)max=x.c.total});
+  var box=$('cmp');box.innerHTML='';
+  rows.forEach(function(x){
+    var el=document.createElement('div');
+    el.className='cmp-row'+(r2(x.r)===r2(S.rate)?' on':'');
+    el.setAttribute('role','button');el.tabIndex=0;
+    el.dataset.r=x.r;if(x.keys.length)el.dataset.k=x.keys[0];
+    var label=document.createElement('span');label.className='r';
+    label.appendChild(document.createTextNode(rateTxt(x.r)+' sat/vB'));
+    x.keys.forEach(function(k){
+      var t=document.createElement('em');t.className='tag';t.style.setProperty('--tc',TAG_COLOUR[k]);
+      t.textContent=labelOf(k)[0];label.appendChild(t);
+    });
+    if(x.mine){var t=document.createElement('em');t.className='tag';t.style.setProperty('--tc','var(--pink)');t.textContent='Your rate';label.appendChild(t)}
+    var track=document.createElement('span');track.className='track';
+    var fill=document.createElement('span');fill.className='fill';
+    fill.style.width=(max?x.c.total/max*100:0).toFixed(2)+'%';track.appendChild(fill);
+    var v=document.createElement('span');v.className='v';
+    v.textContent=(x.c.total/1e8).toFixed(8)+' BTC';
+    var f=fiatOf(x.c.total),sm=document.createElement('small');
+    sm.textContent=n0(x.c.total)+' sats'+(f==null?'':' · '+money(f,S.cur));v.appendChild(sm);
+    el.appendChild(label);el.appendChild(track);el.appendChild(v);
+    box.appendChild(el);
+  });
+};
+function pickRow(el){
+  if(!el)return;
+  var r=+el.dataset.r,k=el.dataset.k||null;
+  if(k&&S.fees){S.follow=k;applyLive();save()}else window.__setRate(r,null);
+}
+$('cmp').addEventListener('click',function(e){pickRow(e.target.closest('.cmp-row'))});
+$('cmp').addEventListener('keydown',function(e){
+  if(e.key==='Enter'||e.key===' '){e.preventDefault();pickRow(e.target.closest('.cmp-row'))}
+});
+
+/* ---------- file analysis ---------- */
+var TEXT_FILE=/\.(html?|js|mjs|css|json|svg|txt|md|xml|csv)$/i;
+function sizeTxt(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB'}
+function handleFile(f){
+  if(!f)return;
+  S.bytes=f.size;setUnit('B');$('size').value=f.size;render();
+  var out=$('fileOut');out.hidden=false;out.innerHTML='';out.style.display='grid';out.style.gap='12px';
+  var dl=document.createElement('dl');dl.className='facts';out.appendChild(dl);
+  function fact(k,v){var dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;dl.appendChild(dt);dl.appendChild(dd);return dd}
+  fact('Name',f.name);
+  fact('Type',f.type||'unknown');
+  fact('Size',n0(f.size)+' bytes ('+sizeTxt(f.size)+')');
+  var ul=document.createElement('ul');ul.className='tips';ul.hidden=true;out.appendChild(ul);
+  function tip(t){var li=document.createElement('li');li.textContent=t;ul.appendChild(li);ul.hidden=false}
+  var type=f.type||'';
+  if(TEXT_FILE.test(f.name)||/^text\/|json|svg|javascript|xml/.test(type)){
+    if(f.size>20*1048576)return;
+    f.text().then(function(t){
+      var spare=0;
+      t.split('\n').forEach(function(line){
+        var trimmed=line.trim();
+        spare+=trimmed?line.length-trimmed.length:line.length+1;
+      });
+      if(spare>200&&spare>t.length*0.01){
+        var sats=Math.ceil(spare/4*S.rate);
+        tip('About '+sizeTxt(spare)+' of this file is indents, spare spaces and blank lines. Minifying it could save about that, roughly '+n0(sats)+' sats at '+rateTxt(S.rate)+' sat/vB.');
+      }else tip('This file is already tight. There are hardly any spare spaces to trim.');
+    }).catch(function(){});
+  }else if(/^image\/(png|jpeg|gif|bmp|tiff)$/.test(type)){
+    tip(type==='image/gif'?'For animations, fewer frames or fewer colours saves the most.':'WebP or AVIF versions of a picture are often much smaller than PNG or JPG.');
+  }else if(/^image\/(webp|avif)$/.test(type)){
+    tip('This is already a small picture format.');
+  }else if(/^audio\//.test(type)){
+    tip('A lower bitrate (for example Opus, or a lower quality MP3) can shrink audio a lot.');
+  }else if(/^video\//.test(type)){
+    tip('A shorter clip or a lower bitrate saves the most. WebM is often smaller than MP4.');
+  }
+  if(/^image\/(png|jpeg|gif|bmp|webp|avif)$/.test(type)){
+    var url=URL.createObjectURL(f),img=new Image();
+    img.onload=function(){
+      fact('Pixels',img.naturalWidth+' × '+img.naturalHeight);
+      if(Math.max(img.naturalWidth,img.naturalHeight)>1000)tip('It is '+img.naturalWidth+' × '+img.naturalHeight+' pixels. A smaller picture (fewer pixels) costs less.');
+      URL.revokeObjectURL(url);
+    };
+    img.onerror=function(){URL.revokeObjectURL(url)};
+    img.src=url;
+  }
+}
+var drop=$('drop');
+$('fileIn').addEventListener('change',function(){handleFile(this.files&&this.files[0]);this.value=''});
+['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('over')})});
+['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('over')})});
+drop.addEventListener('drop',function(e){handleFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0])});
+
+/* ---------- big screens: grow the whole page to fill the screen (never shrinks it) ---------- */
+var fitTimer;
+function fit(){
+  var b=document.body;b.style.zoom='';
+  var w=innerWidth,h=innerHeight;
+  if(w<1500)return;
+  var g=document.querySelector('.garden').getBoundingClientRect();
+  var z=Math.min(w/(g.width+80),h/(g.bottom+(window.scrollY||0)+24),1.6);
+  if(z>1.02)b.style.zoom=z.toFixed(3);
+}
+addEventListener('resize',function(){clearTimeout(fitTimer);fitTimer=setTimeout(fit,150)});
+
+/* start */
+load();
+['ov','pg','sv'].forEach(function(k){$(k).disabled=!$(k+'On').checked});
+setBytesFromBox();
+render();
+fit();
+})();
+</script>
+</body>
+</html>
