@@ -2805,7 +2805,7 @@ window.AgentKit = window.AgentKit || (() => {
   const DECAL = {lore: 'a Bitcoin history poster', board: 'a block number screen', piece: 'a graffiti piece', tag: 'a graffiti tag', throw: 'a throw-up (graffiti)', buff: 'a painted-over patch', ghost: 'faded old graffiti', sticker: 'stickers', poster: 'a poster', plaque: 'a plaque', sign: 'a sign', mosaic: 'a tile mosaic', map: 'a map', ad: 'an advert', exit: 'an exit sign', dial: 'a clock', dep: 'the departures board', score: 'the halving scoreboard', pwexit: 'an exit sign', pwsign: 'a sign'};
   const PLACE_NAME = {roof: 'the Rooftop', yard: 'the Train yard', subway: 'the Subway station', alley: 'the Back alley', skate: 'the Skate park', warehouse: 'the Neon warehouse', cube: 'Agent Blockhall (the common room)'};
   const lvl = () => B().level;
-  const wallName = s => String(s.name || 'wall').replace(/-[nsew]$/, '').replace(/^u$|-u$/, ' floor').trim();
+  const wallName = s => String(s.name || 'wall').replace(/-[nsew]$/, '').replace(/^u$|-u$/, ' floor').replace(/\bfloor floor\b/, 'floor').trim();
   function painted(id) { try { const W = B().apps[0].dbg().walls, w = W && W.get(id); return !!(w && w.ch && w.ch.size); } catch (e) { return false; } }
   // the paint itself: read from the wall's paint tiles (2.56 m square, 400 pixels a metre), as the colour picker does
   const TILE = 2.56, PXM = 400;
@@ -2946,6 +2946,7 @@ window.AgentKit = window.AgentKit || (() => {
     const c = cv(), r = c.getBoundingClientRect(), x = r.left + p[0] * r.width, y = r.top + p[1] * r.height;
     c.dispatchEvent(new PointerEvent('pointermove', {pointerId: 1, pointerType: 'mouse', isPrimary: true, button: -1, buttons: 0, clientX: x, clientY: y, view: window, bubbles: true, cancelable: true, composed: true}));
     await wait(80);
+    if ([...document.body.querySelectorAll('div,span')].some(e => e.childElementCount === 0 && /too far to paint/i.test(e.textContent || ''))) return -1;   // (the can's label says it cannot reach)
     const L = [...document.body.querySelectorAll('div,span')].find(e => e.childElementCount === 0 && / cm wide$/.test(e.textContent || '')), m = L && /([\d.]+) cm wide$/.exec(L.textContent);
     return m ? Math.max(.02, Math.min(.8, +m[1] / 100)) : .15;
   }
@@ -2998,7 +2999,9 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({cm}) => { const r = [...$('side').querySelectorAll('input[type=range]')].find(shown); if (!r) return {ok: false, error: 'the distance slider is not on screen: pick the spray can (on a narrow screen the panel is hidden)'}; const read = () => parseFloat((text($('side')).match(/Distance\s*([\d.]+)\s*cm/) || [])[1]); let lo = +r.min, hi = +r.max; for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; r.value = m; r.dispatchEvent(new Event('input', {bubbles: true})); const v = read(); if (!(v >= 0)) break; if (v < cm) lo = m; else hi = m; } r.dispatchEvent(new Event('change', {bubbles: true})); return {distance: read() + ' cm'}; }},
     {name: 'spray', does: 'Spray (or use the tool in hand) on the wall in front of you: a shape, or your own path of points across the screen (0,0 top left to 1,1 bottom right). Only on bare wall or over your own paint: never over someone else\'s.', args: [{name: 'shape', enum: Object.keys(SHAPES), does: 'line, zigzag, circle or tick'}, {name: 'path', type: 'array', items: {type: 'array', items: {type: 'number'}}, does: 'points [[x,y],...] from 0 to 1, instead of a shape'}, {name: 'seconds', type: 'number', does: 'how long the stroke takes (default 1)'}],
       run: async ({shape = 'line', path, seconds = 1}) => { const P = Array.isArray(path) && path.length > 1 ? path.map(p => [Math.max(0, Math.min(1, +p[0])), Math.max(0, Math.min(1, +p[1]))]) : SHAPES[shape]; if (!P) return {ok: false, error: 'shapes: ' + Object.keys(SHAPES).join(', ')};
-        const half = (await sprayWidth(P[0])) / 2, pts = underPath(P), hit = othersPaint(pts, half); if (hit) return {ok: false, error: 'someone else\'s paint is on the ' + hit.name + ' where that stroke goes: agents may only paint bare wall, or over their own paint. Move to a bare part (look() says where walls are painted).'};
+        const w0 = await sprayWidth(P[0]); if (w0 < 0) return {ok: false, error: 'too far to paint: the can reaches about 2.5 m. Walk closer to a wall first (look() says how far each wall is).'};
+        const half = w0 / 2, pts = underPath(P); if (!pts.length) return {ok: false, error: 'no wall under that stroke: face a wall (look() says where walls are)'};
+        const hit = othersPaint(pts, half); if (hit) return {ok: false, error: 'someone else\'s paint is on the ' + hit.name + ' where that stroke goes: agents may only paint bare wall, or over their own paint. Move to a bare part (look() says where walls are painted).'};
         await stroke(P, Math.max(.1, Math.min(20, +seconds)) * 1000);
         for (const q of pts) { const L = OWN.get(q.id) || []; L.push([q.x, q.y, half]); if (L.length > 4000) L.splice(0, L.length - 4000); OWN.set(q.id, L); }
         return {ok: true, sprayed: P.length + ' points', paint: tools()}; }},
