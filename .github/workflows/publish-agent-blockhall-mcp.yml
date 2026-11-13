@@ -1,11 +1,12 @@
 # Publishes the free Agent Blockhall MCP tool: checks it on live data, packs it as an MCP bundle, puts the bundle in a
 # GitHub release, and lists it in the official MCP Registry (signed in with GitHub's own OIDC: no secrets, nothing to pay).
-# Runs only when a tag like agent-blockhall-mcp-v1.0.0 is pushed. The tag's version must match manifest.json.
+# Runs only when the publish-agent-blockhall-mcp branch is pushed. It publishes the version in manifest.json and makes its
+# tag (agent-blockhall-mcp-v1.0.0 and so on); a version that was already released stops it, so each release needs a new version.
 name: Publish Agent Blockhall MCP tool
 
 on:
   push:
-    tags: ['agent-blockhall-mcp-v*']
+    branches: [publish-agent-blockhall-mcp]
 
 permissions:
   contents: write    # to make the release
@@ -24,8 +25,8 @@ jobs:
         run: node agent-blockhall-mcp/test/live.js
       - name: Pack the bundle
         run: |
-          VERSION="${GITHUB_REF_NAME#agent-blockhall-mcp-v}"
-          test "$(node -p "require('./agent-blockhall-mcp/manifest.json').version")" = "$VERSION"
+          VERSION="$(node -p "require('./agent-blockhall-mcp/manifest.json').version")"
+          echo "TAG=agent-blockhall-mcp-v$VERSION" >> "$GITHUB_ENV"
           npx -y @anthropic-ai/mcpb@2.1.2 pack agent-blockhall-mcp agent-blockhall.mcpb
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SHA=$(sha256sum agent-blockhall.mcpb | cut -d' ' -f1)" >> "$GITHUB_ENV"
@@ -33,12 +34,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" agent-blockhall.mcpb --title "Agent Blockhall MCP tool $VERSION" \
+          gh release create "$TAG" agent-blockhall.mcpb --target "$GITHUB_SHA" --title "Agent Blockhall MCP tool $VERSION" \
             --notes "The free Agent Blockhall MCP tool for AI agents. Download agent-blockhall.mcpb and open it in an app that takes MCP bundles, or see https://bitmap22.github.io/my-ordinal-portal/agent-blockhall-mcp/README.md"
       - name: Write server.json for this release
         run: |
           jq --arg v "$VERSION" --arg sha "$SHA" \
-             --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/agent-blockhall.mcpb" \
+             --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/agent-blockhall.mcpb" \
              '.version = $v | .packages[0].identifier = $url | .packages[0].fileSha256 = $sha' \
              agent-blockhall-mcp/server.json > server.json
           cat server.json
