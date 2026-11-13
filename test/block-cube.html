@@ -11341,7 +11341,7 @@ function gdPPPoint(win) {
 }
 function gdPPStep(dt) {
   const T = GD_PP, p = room.p;
-  if (gd.pp && Math.hypot(p.x - T.x, p.z - T.z) > 7) gd.pp = null;   // (walk off and you leave the bat on the table)
+  if (gd.pp && Math.hypot(p.x - T.x, p.z - T.z) > 4.5) { gd.pp = null; crew.last = ''; }   // (walk away from the table and your bat goes back on it)
   const B = gd.ball; if (B && B.live && B.hide && performance.now() - (B.t0 || 0) > 4000) B.live = false;   // (no word from the other end: you can serve again)
   if (!B || B.hide) return;
   for (let k = 0; k < 3; k++) { const h = dt / 3, ox = B.p[0]; B.v[1] -= 9.8 * h; B.p[0] += B.v[0] * h; B.p[1] += B.v[1] * h; B.p[2] += B.v[2] * h;
@@ -11464,6 +11464,8 @@ const GD_GOTO = {
   'chess board': [[19, -12.6], [19, .4, -16]], 'ping-pong red end': [[26.5, -12.5], [28.5, .8, -12.5]], 'ping-pong black end': [[30.5, -12.5], [28.5, .8, -12.5]],
   'cornhole': [[33.4, -11], [34.2, .3, -21.53]]
 };
+// where you look this moment (for the agent kit: right after it turns your head, before the next frame is drawn)
+function gdViewNow() { const p = room && room.p, v = room && room.view; if (!p || !v) return; const cp = Math.cos(p.pitch); v.eye = [p.x, EYE + (p.bob || 0) + (p.y || 0) - (p.sit ? .62 : 0), p.z]; v.dir = [-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp]; }
 const gdSqIx = q => { const m = /^([a-h])([1-8])$/i.exec(String(q || '').trim()); return m ? (8 - +m[2]) * 8 + 'abcdefgh'.indexOf(m[1].toLowerCase()) : -1; };
 function gdAgentInfo() {
   const C = room && room.at; if (!C || !C.gd) return null; const p = room.p, B = gd.board.b, r1 = v => Math.round(v * 10) / 10;
@@ -12078,7 +12080,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (!inRoom()) return null;
     const C = room.at, p = room.p, o = {in: C.gd ? 'the bitmap garden' : C.gal ? 'a gallery' : cmOn(C) ? 'the common room' : 'block ' + fmtN(C.h), ready: roomReady(), x: r1(p.x), y: r1(p.y), z: r1(p.z), facing: deg(p.yaw), pitch: deg(p.pitch) > 180 ? deg(p.pitch) - 360 : deg(p.pitch), sitting: !!p.sit};
     if (cmOn(C) && C.ready) { const [x, d] = cmL(C, p.x, p.z); o.roomX = r1(x); o.roomD = r1(d); o.area = zoneOf(x, d); try { const A = cmAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} if (cm.pint) o.holdingPint = true; }
-    if (C.gd && C.ready) { try { const A = gdAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} const G = gdAgentInfo(); if (G) { o.garden = G.you; if (cm.pint) o.holdingPint = true; } }
+    if (C.gd && C.ready) { try { gdViewNow(); const A = gdAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} const G = gdAgentInfo(); if (G) { o.garden = G.you; if (cm.pint) o.holdingPint = true; } }
     if (room.held && !room.held.back) { const t = room.held.it.t; o.holding = t ? parcelInfo(t, true) : 'a parcel'; o.card = {untrusted: cardText()}; }
     if (typeof fol !== 'undefined' && fol) { o.followingBack = text($fol); const th = tetherHere(); if (th) o.tetherHere = th; }
     const ar = arrowTo(); if (ar) o.arrow = ar;
@@ -12579,7 +12581,7 @@ window.AgentKit = window.AgentKit || (() => {
       run: ({facing, pitch}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; if (facing != null) room.p.yaw = rad(+facing); if (pitch != null) room.p.pitch = Math.max(-1.45, Math.min(1.45, rad(+pitch))); room.dirty = true; return roomInfo(); }},
     {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height (default 1.5, eye level)'}, {name: 'z', type: 'number', does: 'z', req: true}],
       run: ({x, y, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; faceTo(+x, y == null ? 1.5 : +y, +z); return roomInfo(); }},
-    {name: 'use', does: 'Do what is in front of you, like pressing E (sit, pour a pint, the music box, the big screen…; in the bitmap garden: sit, pour, sip, cheers, the swing, the hammock, the pool, the games).', run: async () => { if (inRoom() && room.at.gd) { const A = gdAct(null, null); if (!A || A.a === 'hint') return {ok: false, error: A ? A.label : 'nothing in front of you', you: roomInfo()}; gdDo(A); await wait(A.a === 'pour' ? 2400 : A.a === 'dive' ? 3100 : A.a === 'slide' ? 4000 : 600); return {did: A.label, you: roomInfo()}; }
+    {name: 'use', does: 'Do what is in front of you, like pressing E (sit, pour a pint, the music box, the big screen…; in the bitmap garden: sit, pour, sip, cheers, the swing, the hammock, the pool, the games).', run: async () => { if (inRoom() && room.at.gd) { gdViewNow(); const A = gdAct(null, null); if (!A || A.a === 'hint') return {ok: false, error: A ? A.label : 'nothing in front of you' + (gd.pp ? ' (you hold a ping-pong bat: walk away from the table and it goes back)' : ''), you: roomInfo()}; gdDo(A); await wait(A.a === 'pour' ? 2400 : A.a === 'dive' ? 3100 : A.a === 'slide' ? 4000 : 600); return {did: A.label, you: roomInfo()}; }
       if (!inCommon()) return {ok: false, error: 'only in the common room or the bitmap garden'}; const A = cmAct(null, null); if (!A) return {ok: false, error: 'nothing in front of you'}; cmDo(A); await wait(500); return {did: A.label, room: roomInfo()}; }},
     {name: 'bitmapGarden', does: 'Go into the bitmap garden, as a player does: your wallet must hold the bitmap (read status on; an agent proves its own wallet with walletProve() on the play together page), and the chain must agree it is the real claim of its block (the first proper "N.bitmap"). It finds your bitmap\'s inscription, walks into the block where it was made, picks it up, and presses ENTER THE BITMAP GARDEN.', args: [{name: 'bitmap', type: 'number', does: 'your bitmap\'s number (its block), e.g. 388067', req: true}],
       run: async ({bitmap}) => { const n = Math.floor(+bitmap); if (!(n >= 0 && n <= tipH)) return {ok: false, error: 'a bitmap number from 0 to ' + tipH};
@@ -12604,9 +12606,9 @@ window.AgentKit = window.AgentKit || (() => {
           for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj, off = ni < 0 || ni > 7 || nj < 0 || nj > 7; if (!off && B[nj * 8 + ni] !== '.') continue; const px = x + di * .85, pz = z + dj * .85, d = Math.hypot(px - room.p.x, z0 + pz - room.p.z) + (di && dj ? .3 : 0); if (d < bd) { bd = d; best = [px, pz]; } }
           if (!best) best = [x, z + ((j >= 4) ? 1.15 : -1.15)]; return walkPoint(best[0], z0 + best[1], {within: .25}); };
         let r = await near(a); if (!r.ok) return Object.assign(r, {you: roomInfo()}); { const [x, z] = gdSqAt(a); faceTo(x, GD_PH[c.toLowerCase()] * .5, z0 + z); } await wait(250);
-        let A = gdAct(null, null); if (!A || A.a !== 'lift' || A.P.k !== a) return {ok: false, error: 'another piece is in the way of ' + from + (A ? ': in front of you is "' + A.label + '"' : ''), you: roomInfo()}; gdDo(A); await wait(300);
+        gdViewNow(); let A = gdAct(null, null); if (!A || A.a !== 'lift' || A.P.k !== a) return {ok: false, error: 'another piece is in the way of ' + from + (A ? ': in front of you is "' + A.label + '"' : ''), you: roomInfo()}; gdDo(A); await wait(300);
         r = await near(b); if (!r.ok) return Object.assign(r, {carrying: gdPcName(c), you: roomInfo()}); { const [x, z] = gdSqAt(b); faceTo(x, .06, z0 + z); } await wait(250);
-        A = gdAct(null, null); if (!A || A.a !== 'put' || A.sq !== b) return {ok: false, error: 'could not look at ' + to + ' to put it down' + (A ? ': "' + A.label + '"' : ''), carrying: gdPcName(c), you: roomInfo()}; gdDo(A); await wait(300);
+        gdViewNow(); A = gdAct(null, null); if (!A || A.a !== 'put' || A.sq !== b) return {ok: false, error: 'could not look at ' + to + ' to put it down' + (A ? ': "' + A.label + '"' : ''), carrying: gdPcName(c), you: roomInfo()}; gdDo(A); await wait(300);
         return {did: A.label, chess: gdAgentInfo().chess}; }},
     {name: 'hold', untrusted: true, does: 'Walk up to a parcel in the block you are in (or the one shown) and pick it up, as a player clicks it: its card shows what is inside. By number, by transaction ID, or by kind (the nearest of that kind, e.g. "images", "BRC-20", "children": on its shelf, else any parcel carrying it).', args: [N, TX, {name: 'type', does: 'or a kind: the nearest parcel of that kind'}], run: a => holdParcel(a)},
     {name: 'contents', ro: true, does: 'What is in the block you are in, once its shelves have loaded: each kind, how many, and the nearest one (its number, how far, which way), and where the doors go.', run: () => contents()},
