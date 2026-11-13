@@ -1305,7 +1305,7 @@ async function dxContent(B) {
   B.cont = {loading: true};
   return B.contP = (async () => {
     let bytes = 0;
-    const list = B.txs.filter(t => t.dxi && t.scC == null && !t.art && /^(text|application\/json|image)\//.test(String(t.dxi.contentType || '')) && !t.dxi.delegate).slice(0, 800);
+    const list = contList(B);
     B.cont.n = 0; B.cont.of = list.length;   // (how far it has got: shown while a hall is being built)
     await poolMap(list, 4, async t => {
       B.cont.n++;
@@ -1313,23 +1313,25 @@ async function dxContent(B) {
       const img = /^image\//.test(t.dxi.contentType);
       try { const c = await contentOf(t.dxi.id, img ? 400000 : 8000); bytes += c.u.length; classifyBody(t, t.dxi.contentType, c.u); } catch (e) { if (t.scC == null) t.scC = 0; }
     });
-    B.cont = {ok: true};
+    B.cont = {ok: true, n: list.length, of: list.length};
   })();
 }
+function contList(B) { return B.txs.filter(t => t.dxi && t.scC == null && !t.art && /^(text|application\/json|image)\//.test(String(t.dxi.contentType || '')) && !t.dxi.delegate).slice(0, 800); }
 // the dunes that came into being: the explorer's list of every dune ever etched (100 a page, kept for the visit), with the block and
 // transaction that etched each one. A dunestone that tried to etch a name already taken (or broke the rules) is not in it.
-let DUNES = null, dunesAt = 0, dunesP = null;
+let DUNES = null, dunesAt = 0, dunesP = null, DUNEP = null;
 function duneList() {
   if (DUNES && Date.now() - dunesAt < 600000) return Promise.resolve(DUNES);
   if (dunesP) return dunesP;
   return dunesP = (async () => {
     const map = DUNES || new Map(); let total = 1;
     for (let p = 1; (p - 1) * 100 < total && p <= 60; p++) {
+      DUNEP = {p, of: Math.max(1, Math.min(60, Math.ceil(total / 100)))};
       const j = await dj(DX + '/v1/dunes?sort=recent&limit=100&page=' + p, 20000); total = j.total || 0;
       let fresh = 0; for (const d of j.dunes || []) if (d.dune_id) { if (!map.has(d.dune_id)) fresh++; map.set(d.dune_id, d); }
       if (DUNES && !fresh) break;   // (a refresh: only new etchings were missing)
     }
-    DUNES = map; dunesAt = Date.now(); dunesP = null; return map;
+    DUNES = map; dunesAt = Date.now(); dunesP = null; DUNEP = null; return map;
   })().catch(e => { dunesP = null; throw e; });
 }
 function loadEtch(B) {
@@ -3882,8 +3884,9 @@ function hallProgText(R) {
   if (P.read < P.of) return P.of > 1 ? 'building the hall · reading its blocks: ' + fmt(P.read) + ' of ' + fmt(P.of) : 'building the hall · reading the block…';
   const Bs = P.blocks.filter(Boolean), one = Bs.length === 1 ? Bs[0] : null;
   if (one && one.txs.length <= 120 && one.scan && one.scan.loading) return 'building the hall · reading ' + fmt(one.scan.n) + ' of ' + fmt(one.scan.of) + ' transactions';
-  let n = 0, of = 0; for (const B of Bs) if (B.cont && B.cont.loading && B.cont.of != null) { n += B.cont.n; of += B.cont.of; } else if (B.cont && B.cont.ok) { n += 0; }
-  if (of) return 'building the hall · reading ' + fmt(n) + ' of ' + fmt(of) + ' inscription files';
+  let n = 0, of = 0; for (const B of Bs) { if (B.cont && B.cont.of != null) { of += B.cont.of; n += B.cont.n; } else of += contList(B).length; }
+  if (of && n < of) return 'building the hall · reading ' + fmt(n) + ' of ' + fmt(of) + ' inscription files';
+  if (DUNEP && Bs.some(B => B.etch && B.etch.loading)) return 'building the hall · reading the list of dunes: page ' + fmt(DUNEP.p) + ' of ' + fmt(DUNEP.of);
   return 'building the hall · putting it together…';
 }
 const $rmb = document.getElementById('rmb');
