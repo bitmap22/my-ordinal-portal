@@ -10994,11 +10994,11 @@ window.AgentKit = window.AgentKit || (() => {
         if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'};
         let tx, td, look = null, S = null; const step = /step/i.test(seat);
         if (step) { tx = 2.5; td = 28.1; look = [0, 1, 40]; }
-        else { const i = /^\d+$/.test(String(seat)) ? +seat : SEATS[String(seat).toLowerCase()]; S = CM_SEATS[i]; if (!S) return {ok: false, error: 'seats: ' + Object.keys(SEATS).join(', ') + ', forum step, or 0-' + (CM_SEATS.length - 1)}; [tx, td] = S[6] != null ? [S[6], S[7]] : [S[0], S[1]]; look = [S[0], S[2] + .6, S[1]]; }   // (walk to where a player sits down from)
+        else { const i = /^\d+$/.test(String(seat)) ? +seat : SEATS[String(seat).toLowerCase()]; S = CM_SEATS[i]; if (!S) return {ok: false, error: 'seats: ' + Object.keys(SEATS).join(', ') + ', forum step, or 0-' + (CM_SEATS.length - 1)}; tx = S[0]; td = S[1]; look = [S[0], S[2] + .6, S[1]]; }   // (walk to the nearest spot by the seat a player can stand on)
         if (room.p.sit) { room.p.sit = false; room.dirty = true; await wait(300); }   // (up first, if sitting)
         const right = () => { const A = cmAct(null, null); return !!A && (step ? A.a === 'sit' : A.a === 'seat' && A.s === S); };   // (only the seat asked for: never the first one in the way)
         const r = await walkCommon(tx, td, {run: true, within: .4, stopWhen: right, up: !!S && S[2] > 4}); if (!r.ok && !right()) return r;
-        if (!right()) { const [lx, lz] = toWorld(look[0], look[2]); faceTo(lx, look[1], lz); room.p.pitch = Math.min(room.p.pitch, .1); await wait(200); }
+        if (!right()) { const [lx, lz] = toWorld(look[0], look[2]); faceTo(lx, look[1], lz); room.p.pitch = Math.min(room.p.pitch, .1); await wait(200); }   // (face it, as a player turns to it)
         const A = cmAct(null, null); if (!right()) return {ok: false, error: A && A.a === 'seat' ? 'the seat in front of you is not the one asked for' : 'no seat to sit on here', inFront: A && A.label, you: roomInfo()};
         cmDo(A); await wait(300); return roomInfo();
       }},
