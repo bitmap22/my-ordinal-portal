@@ -49,7 +49,7 @@ async def main():
         g = pg.frames[1]
         await g.wait_for_function('window.agent', timeout=180000); await pg.wait_for_timeout(20000)
         A = lambda js: g.evaluate("async () => { try { return JSON.stringify(await (" + js + ")).slice(0, 400); } catch (e) { return 'ERR ' + e; } }")
-        SC0 = SC; SC = {'common4': 'common3', 'crew4': 'crew3', 'common5': 'common3', 'crew5': 'crew3', 'pick5': 'pick3'}.get(SC, SC); R3 = SC in ('hall3', 'hold3', 'common3', 'crew3')
+        SC0 = SC; SC = {'common4': 'common3', 'crew4': 'crew3', 'common5': 'common3', 'crew5': 'crew3', 'pick5': 'pick3', 'hold5': 'hold2'}.get(SC, SC); R3 = SC in ('hall3', 'hold3', 'common3', 'crew3')
         BH0 = D.get('h') or (int(open(os.path.join(HERE, 'h.txt')).read()) if os.path.exists(os.path.join(HERE, 'h.txt')) else None)
         if SC == 'pick3':
             print('real', await A("agent.feed({on: false})"), flush=True)
@@ -61,7 +61,7 @@ async def main():
                 print('real', await A(f"agent.walkIn({{height: {BH0}}})"), flush=True); await pg.wait_for_timeout(45000)
             else:
                 print('real', await A("agent.commonRoom()"), flush=True); await pg.wait_for_timeout(45000)
-        OFF = {'pick3': 100e3, 'common5': 140e3, 'crew5': 170e3, 'pick5': 100e3, 'hall3': 70e3, 'hold3': 100e3, 'common3': 140e3, 'crew3': 170e3, 'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
+        OFF = {'hold5': 100e3, 'pick3': 100e3, 'common5': 140e3, 'crew5': 170e3, 'pick5': 100e3, 'hall3': 70e3, 'hold3': 100e3, 'common3': 140e3, 'crew3': 170e3, 'cube3': 20e3, 'layers3': 40e3, 'cube2': 20e3, 'layers2': 40e3, 'cube': 20e3, 'layers': 40e3, 'hall': 70e3, 'hold': 100e3, 'hall2': 70e3, 'hold2': 100e3, 'common': 140e3, 'crew': 170e3}
         await g.evaluate(f"__vtStart({D['t0'] * 1000 + OFF.get(SC, 0)})")
         if SC0.endswith('4') or SC0.endswith('5'): WSOK[0] = False
         tstep = [0, time.time()]
@@ -140,7 +140,9 @@ async def main():
             act = lambda f: "agent.layers({open: true})" if f == 45 else "agent.turnCube({right: .3})"
         elif SC in ('hall', 'hold', 'hall2', 'hold2'):
             if BH: await run(f"agent.block({{height: {BH}}})"); await step(60)
-            await run(f"agent.walkIn({{height: {BH}}})" if BH else "agent.walkIn()"); await ready(); await step(150)
+            await run(f"agent.walkIn({{height: {BH}}})" if BH else "agent.walkIn()", 1500)
+            if SC0 == 'hold5': await step(300)
+            else: await ready(); await step(150)
             if SC in ('hall', 'hall2'): N = 240; act = lambda f: "agent.walk({direction: 'forward', seconds: 7})" if f == 15 else None
             elif SC == 'hold': N = 300; act = lambda f: "agent.hold({type: 'images'})" if f == 10 else None
             else:   # (picked up before filming: the card in your hands, then seen big)
