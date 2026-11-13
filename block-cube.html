@@ -2729,7 +2729,7 @@ $fs.innerHTML = '<span class="fl2">FEE sat/vB</span>' + [['<1', 0.5], ['1', 1], 
 let snapReq = false;
 $ts.onclick = () => { snapReq = true; };
 function snap() {
-  const W = cv.width, H = cv.height, d = W / innerWidth, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const W = cv.width, H = cv.height, d = W / (innerWidth || W), c = document.createElement('canvas'); c.width = W; c.height = H;   // (a hidden panel can say it is 0 wide)
   const x = c.getContext('2d'), mono = 'ui-monospace,"SF Mono",Menlo,Consolas,monospace';
   x.fillStyle = '#000'; x.fillRect(0, 0, W, H); x.drawImage(cv, 0, 0);
   x.font = `${12 * d}px ${mono}`; const lines = [], wide = W - 52 * d;
@@ -3478,7 +3478,12 @@ let paused = false, crewAway = false;
 document.addEventListener('visibilitychange', () => { if (!document.hidden && paused) { paused = false; lastFT = 0; requestAnimationFrame(frame); } });
 function frame() {
   if (document.hidden || cmPaintShown || crewAway) { paused = true; return; }   // (hidden, or resting while you are in Block Paint)
-  const dpr = Math.min(devicePixelRatio || 1, 3), W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
+  drawFrame();
+  requestAnimationFrame(frame);
+}
+// one whole frame, drawn now (the frame loop's own drawing; an agent's picture can ask for one when the browser gives no frames)
+function drawFrame() {
+  const dpr = Math.min(devicePixelRatio || 1, 3), W = Math.round(innerWidth * dpr) || cv.width || 300, H = Math.round(innerHeight * dpr) || cv.height || 150;   // (a hidden panel can say it is 0 wide: then the canvas keeps its size)
   if (cv.width !== W || cv.height !== H || !RT) { cv.width = W; cv.height = H; targets(W, H); }
   if (room) roomFrame(W, H, now(), dpr); else {
   crewSend(now());
@@ -3588,7 +3593,6 @@ function frame() {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, RT.st);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   if (snapReq) { snapReq = false; try { snap(); } catch (e) {} }
-  requestAnimationFrame(frame);
 }
 
 /* ---------- walk-in room: the block's parcels set out on library shelves, walked through in first person ---------- */
@@ -10473,11 +10477,18 @@ window.AgentKit = window.AgentKit || (() => {
     }
     return true;
   }
-  async function picture(cv, w = 640) {
-    return new Promise(res => requestAnimationFrame(() => {   // (after the game's own drawing in this frame, so the picture is whole)
-      try { const W = Math.min(w, cv.width), H = Math.round(cv.height * W / cv.width), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, W, H); x.drawImage(cv, 0, 0, W, H); res({type: 'image/jpeg', width: W, height: H, dataUrl: c.toDataURL('image/jpeg', .72)}); }
-      catch (e) { res({error: 'no picture: ' + e.message}); }
-    }));
+  async function picture(cv, w = 640, draw) {
+    return new Promise(res => {
+      let done = false;
+      const take = () => {
+        if (done) return; done = true;
+        try { const W = Math.min(w, cv.width), H = Math.round(cv.height * W / cv.width), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, W, H); x.drawImage(cv, 0, 0, W, H); res({type: 'image/jpeg', width: W, height: H, dataUrl: c.toDataURL('image/jpeg', .72)}); }
+        catch (e) { res({error: 'no picture: ' + e.message}); }
+      };
+      requestAnimationFrame(take);   // (after the game's own drawing in this frame, so the picture is whole)
+      // no frame from the browser (a hidden tab or a closed panel): the page draws one itself, and the picture is taken straight after
+      setTimeout(() => { if (done) return; if (draw) { try { draw(); } catch (e) {} } take(); }, 400);
+    });
   }
   // where things are on screen, in words: a 3 x 3 grid (top/middle/bottom, left/centre/right)
   const GRID = [['top left', .2, .25], ['top', .5, .25], ['top right', .8, .25], ['left', .2, .5], ['centre', .5, .5], ['right', .8, .5], ['bottom left', .2, .75], ['bottom', .5, .75], ['bottom right', .8, .75]];
@@ -10839,7 +10850,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'step', untrusted: true, does: 'Open the next (or previous) parcel of the kept type.', args: [{name: 'by', type: 'number', does: '1 for next, -1 for previous'}], run: async ({by = 1}) => { stepTo(by < 0 ? -1 : 1, true); await wait(300); return {card: {untrusted: cardText()}}; }},
     {name: 'close', does: 'Close whatever is open: a card, the big view, the tablet; puts a held parcel back.', run: () => { try { if (typeof vw !== 'undefined' && vw) vwClose(); } catch (e) {} try { srClose(); } catch (e) {} if (inRoom() && room.held) rmPut(); else select(null); const x = [...document.querySelectorAll('button')].find(b => K.shown(b) && /^close/i.test(text(b))); if (x) x.click(); return {ok: true}; }},
     {name: 'look', ro: true, untrusted: true, does: 'Look at the 3D view as a player sees it: a description in words of what is where (the cube or the room, colours, what is at the top, centre, bottom, left and right of your view, places and crewmates around you), and with picture: true also a picture of it (a JPEG as a data URL).', args: [{name: 'picture', type: 'boolean', does: 'also return a picture of the view'}],
-      run: async ({picture}) => { const o = {words: lookWords()}; if (picture) o.picture = await K.picture(cv); return o; }},
+      run: async ({picture}) => { const o = {words: lookWords()}; if (picture) o.picture = await K.picture(cv, 640, drawFrame); return o; }},
     {name: 'turnCube', does: 'Turn the cube with the mouse, as a player drags it: right or left (degrees), up or down (degrees).', args: [{name: 'right', type: 'number', does: 'degrees to turn it to the right (negative: left)'}, {name: 'up', type: 'number', does: 'degrees to tilt it (negative: down)'}],
       run: async ({right = 0, up = 0}) => { if (inRoom()) return {ok: false, error: 'you are inside: turn() and lookAt() turn your head here'}; await drag((+right) * Math.PI / 180 / .006, (+up) * Math.PI / 180 / .005); return camInfo(); }},
     {name: 'zoom', does: 'Zoom the cube in or out, as the mouse wheel does.', args: [{name: 'steps', type: 'number', does: 'how many wheel steps: positive zooms in, negative out', req: true}],
@@ -10910,7 +10921,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'feed', does: 'Show or hide the live feed.', args: [{name: 'on', type: 'boolean', does: 'true to show', req: true}], run: ({on}) => { setFeed(!!on); return {feed: !!on}; }},
     {name: 'flipBack', does: 'Start or stop flipping back through the blocks on its own.', args: [{name: 'on', type: 'boolean', does: 'true to start', req: true}], run: ({on}) => { setFlip(!!on); return {flipping: !!flipping}; }},
     {name: 'sound', does: 'Turn the sound on or off (it toggles).', run: () => { $('tu').click(); return {ok: true}; }},
-    {name: 'savePicture', does: 'Save a picture of the screen (downloads a file, as the camera button does).', run: () => { $('ts').click(); return {ok: true}; }},
+    {name: 'savePicture', does: 'Save a picture of the screen (downloads a file, as the camera button does).', run: async () => { $('ts').click(); await wait(400); if (snapReq) drawFrame(); return {ok: !snapReq}; }},   // (no frame from the browser: the page draws one itself, and the picture is saved from it)
     {name: 'paint', untrusted: true, does: 'Run a Block Paint command once you are through the warehouse door, e.g. {command: "see"}. Block Paint\'s help() lists them.', args: [{name: 'command', does: 'the Block Paint command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = paintAgent(); if (!g) return {ok: false, error: 'Block Paint is not open: toBlockPaint() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'Block Paint has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
     {name: 'toBlockPaint', does: 'Go through the warehouse door to Block Paint City.', run: async () => { if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; } cmToPaint(); return {ok: true}; }},
@@ -10928,9 +10939,7 @@ window.AgentKit = window.AgentKit || (() => {
         if (gap > .15) {
           let left = Math.min(1, gap) - .05; while (left > 1e-3) { const d = Math.min(.05, left); rmStep(d); left -= d; }   // (a long gap, as a background tab's slow timers give: small steps, so walls still stop you)
           rmLast = tn - .05;
-          const dpr = Math.min(devicePixelRatio || 1, 3), W = Math.round(innerWidth * dpr) || cv.width || 300, H = Math.round(innerHeight * dpr) || cv.height || 150;   // (a hidden panel can say it is 0 wide: then the canvas keeps its size)
-          if (cv.width !== W || cv.height !== H || !RT) { cv.width = W; cv.height = H; targets(W, H); }
-          roomFrame(W, H, tn, dpr);
+          drawFrame();   // (one whole frame: the room's own step, its doors, the crew, the picture)
         }
       }
     } catch (e) {}
