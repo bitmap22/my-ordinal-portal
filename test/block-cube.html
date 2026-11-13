@@ -10606,7 +10606,14 @@ window.AgentKit = window.AgentKit || (() => {
     if (cmOn(C) && C.ready) { const [x, d] = cmL(C, p.x, p.z); o.roomX = r1(x); o.roomD = r1(d); o.area = zoneOf(x, d); try { const A = cmAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} if (cm.pint) o.holdingPint = true; }
     if (room.held && !room.held.back) { const t = room.held.it.t; o.holding = t ? parcelInfo(t, true) : 'a parcel'; o.card = {untrusted: cardText()}; }
     if (typeof fol !== 'undefined' && fol) o.followingBack = text($fol);
+    const ar = arrowTo(); if (ar) o.arrow = ar;
     return o;
+  }
+  // the parcel a search's arrow points at (a player follows it with their eyes; hold({txid}) picks it up)
+  function arrowTo() {
+    if (typeof srT === 'undefined' || !srT || !text($('sra'))) return null;
+    const it = srT.it || (srT.id && curRoom() ? curRoom().plan.items.find(i => i.t && !i.cp && i.t.id === srT.id) : null);
+    return {says: text($('sra')), txid: srT.id || undefined, n: it && it.t ? it.t.idx : undefined, how: srT.id ? 'hold({txid: "' + srT.id + '"}) walks to it and picks it up' : undefined};
   }
   function bigScreen() {
     let S = null; try { S = cmBoardStats(); } catch (e) {}
@@ -10990,7 +10997,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'search', untrusted: true, does: 'Search with the tablet: a block (840000 or 840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID, an address, or a name (satoshi.sats).', args: [{name: 'query', does: 'what to find', req: true}],
       run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
     {name: 'go', does: 'Press GO on a tablet search result (travels there; an arrow then shows the way).', args: [{name: 'n', type: 'number', does: 'result number from search() (default 0)'}],
-      run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /go/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO'}; const from = room.at; b.click(); await until(() => room.at !== from || text($('sra')), 25000); await until(() => roomReady(), 25000); await until(() => text($('sra')), 6000); return {where: roomInfo(), arrow: text($('sra'))}; }},
+      run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /go/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO'}; const from = room.at; b.click(); await until(() => room.at !== from || text($('sra')), 25000); await until(() => roomReady(), 25000); await until(() => text($('sra')), 6000); return {where: roomInfo(), arrow: text($('sra')), arrowTo: arrowTo() || undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
       run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
