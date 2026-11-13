@@ -3515,7 +3515,10 @@ function frame() {
   requestAnimationFrame(frame);
 }
 // one whole frame, drawn now (the frame loop's own drawing; an agent's picture can ask for one when the browser gives no frames)
+let lastDrawn = 0;
+setInterval(() => { try { if (crew.on && now() - lastDrawn > 1) crewSend(now()); } catch (e) {} }, 1000);
 function drawFrame() {
+  lastDrawn = now();
   const dpr = Math.min(devicePixelRatio || 1, 3), W = Math.round(innerWidth * dpr) || cv.width || 300, H = Math.round(innerHeight * dpr) || cv.height || 150;   // (a hidden panel can say it is 0 wide: then the canvas keeps its size)
   if (cv.width !== W || cv.height !== H || !RT) { cv.width = W; cv.height = H; targets(W, H); }
   if (room) roomFrame(W, H, now(), dpr); else {
@@ -10753,7 +10756,8 @@ window.AgentKit = window.AgentKit || (() => {
   // where every crewmate is at all times, which way they face, and what they are doing (from what each one's game shares)
   const mateName = M => { if (M.name && M.name !== 'Runner') return M.name; try { const n = window.parent !== window && window.parent.__crewNames && window.parent.__crewNames()[M.id]; if (n) return n; } catch (e) {} return M.name; };
   function mateInfo(M) {
-    const s = M.s || {}, o = {is: s.ai ? 'an AI agent' : 'a player', untrusted: {name: mateName(M)}};
+    let pa = 0; try { pa = window.parent !== window && window.parent.__crewAi ? window.parent.__crewAi()[M.id] : 0; } catch (e) {}   // (the crew page knows from the waiting room on)
+    const s = M.s || {}, o = {is: s.ai || pa ? 'an AI agent' : 'a player', untrusted: {name: mateName(M)}};
     o.where = !M.s ? 'in the crew\'s waiting room (not in the game yet)' : s.in ? (s.h === COMMON ? 'the common room' : 'inside block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
     if (s.in) { o.at = {x: r1(s.x), z: r1(s.z)}; if (s.h === COMMON) o.area = ZONES[zoneIx(s.x, -s.z)]; o.facing = deg(s.y || 0); }
     const doing = []; if (s.em) doing.push(((typeof EM_NAME !== 'undefined' && EM_NAME[s.em]) || s.em) + (typeof EM_LOOP !== 'undefined' && EM_LOOP[s.em] ? ' (dancing)' : ' (emote)'));
