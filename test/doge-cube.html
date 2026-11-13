@@ -7644,8 +7644,8 @@ function showT(s) {
   return t;
 }
 const showName = s => s.g ? (s.par ? 'the parent of a collection' : 'piece ' + fmt(s.gi + 1) + ' of a collection') + (s.n ? ' · #' + fmt(s.n) : '') : 'parcel ' + fmt(s.idx) + ' of block ' + fmt(s.h);
-const showLoad = () => { if (SHOW_ST < 4) return null; try { return showOk(JSON.parse(localStorage.getItem('bc.show') || 'null')); } catch (e) { return null; } };
-const showSave = () => { if (SHOW_ST < 4) return; try { if (cm.show) { const {key, ...s} = cm.show; localStorage.setItem('bc.show', JSON.stringify(s)); } else localStorage.removeItem('bc.show'); } catch (e) {} };
+const showLoad = () => { if (SHOW_ST < 4) return null; try { return showOk(JSON.parse(localStorage.getItem('dc.show') || 'null')); } catch (e) { return null; } };
+const showSave = () => { if (SHOW_ST < 4) return; try { if (cm.show) { const {key, ...s} = cm.show; localStorage.setItem('dc.show', JSON.stringify(s)); } else localStorage.removeItem('dc.show'); } catch (e) {} };
 // someone in the crew put something on show (or did before you joined)
 function showGot(ev) {
   if (SHOW_ST < 4) return;
@@ -8533,8 +8533,8 @@ window.AgentKit = window.AgentKit || (() => {
 
   // ---------- reading ----------
   function chain() {
-    const fut = (futBlocks || []).slice(0, 4).map((b, i) => ({which: i ? '+' + (i + 1) : 'next', txs: b.nTx, vsizeMB: r1((b.blockVSize || 0) / 1e6), sizeKB: Math.round((b.blockSize || b.blockVSize || 0) / 1000), medianFeeDogePerKB: rf(b.medianFee), feeRangeDogePerKB: b.feeRange && b.feeRange.length ? [rf(b.feeRange[0]), rf(b.feeRange[b.feeRange.length - 1])] : null}));
-    const past = (pastBlocks || []).slice(0, 6).map(b => ({height: b.height, minedAt: iso(b.timestamp), txs: b.tx_count, sizeMB: r1((b.size || 0) / 1e6), pool: b.extras && b.extras.pool ? b.extras.pool.name : undefined, }));
+    const fut = (futBlocks || []).slice(0, 4).map((b, i) => ({which: i ? '+' + (i + 1) : 'next', txs: b.nTx, sizeKB: Math.round((b.blockSize || b.blockVSize || 0) / 1000), medianFeeDogePerKB: rf(b.medianFee), feeRangeDogePerKB: b.feeRange && b.feeRange.length ? [rf(b.feeRange[0]), rf(b.feeRange[b.feeRange.length - 1])] : null}));
+    const past = (pastBlocks || []).slice(0, 6).map(b => ({height: b.height, minedAt: iso(b.timestamp), txs: b.tx_count, sizeKB: Math.round((b.size || 0) / 1000), pool: b.extras && b.extras.pool ? b.extras.pool.name : undefined, }));
     const tip = tipH >= 0 ? tipH : null;
     return {newestBlock: tip, reward: 'a fixed 10,000 DOGE a block (Dogecoin has had no halvings since block 600,000)', waiting: fut, justMined: past, feeWeather: feeWeather()};
   }
@@ -8542,11 +8542,16 @@ window.AgentKit = window.AgentKit || (() => {
   const rowText = r => [...r.childNodes].map(n => (n.textContent || '').trim()).filter(Boolean).join(' ');
   const feedRows = () => ({blocksAndMoves: [...document.querySelectorAll('#fl .fi')].slice(0, 12).map(rowText), joiningNextBlock: [...document.querySelectorAll('#ft .fi')].slice(0, 8).map(rowText), note: [...document.querySelectorAll('#fl > :not(.fi)')].map(rowText).filter(Boolean).join(' ') || undefined});
   const curRoom = () => room.at && room.at.plan && room.at.plan.items ? room.at : null;
+  // a Doge Cube hall can hold several small blocks (one after another): its name says which
+  const hallName = C => C.h1 != null && C.h1 !== C.h ? 'the hall of blocks ' + fmtN(C.h) + ' to ' + fmtN(C.h1) : 'block ' + fmtN(C.h);
+  const inHall = (C, h) => C && h >= C.h && h <= (C.h1 != null ? C.h1 : C.h);
   function block() {
     const live = mode === 'live';
     return {showing: text($('tgt')), height: live ? (wsLive && tipH >= 0 ? tipH + 1 + liveIdx : tipH) : want, live, upcoming: live && wsLive ? liveIdx : undefined,
-      stats: text($('st')), firstSat: text($('ot')), miner: text($('mn')), view: lens === 'ord' ? 'ordinals' : 'fees', xray: !!xray, keptType: pinK != null ? TYPES[pinK].name : null,
-      parcels: shown.length, blockTime: cur && cur.height === want && cur.timestamp ? iso(cur.timestamp) : undefined, hash: cur && cur.height === want ? cur.id : undefined};
+      stats: text($('st')), newCoins: text($('ot')), miner: text($('mn')), view: lens === 'ord' ? 'ordinals' : 'fees', xray: !!xray, keptType: pinK != null ? TYPES[pinK].name : null,
+      parcels: shown.length, blockTime: cur && cur.height === want && cur.timestamp ? iso(cur.timestamp) : undefined, hash: cur && cur.height === want ? cur.id : undefined,
+      stillComing: loading ? 'the block is still coming (the explorer gives 300 units a minute): ask block() again in a moment' : undefined,
+      reading: !loading && cur && cur.scan && cur.scan.loading ? {transactionsRead: cur.scan.n, of: cur.scan.of, note: 'each transaction is read in turn for what kind it is (2 explorer units each): kinds fill in as it goes'} : undefined};
   }
   function typeCounts() {
     const n = new Array(TYPES.length).fill(0);
@@ -8556,13 +8561,14 @@ window.AgentKit = window.AgentKit || (() => {
     return out;
   }
   function parcelInfo(t, full) {
-    const o = {n: t.idx, txid: t.id, feeRateDogePerKB: rf(ownRate(t)), feeKoinu: t.fee, vsize: t.vsize, types: typesOf(t)};
+    const o = {n: t.idx, block: t.h != null ? t.h : undefined, txid: t.id, feeRateDogePerKB: rf(ownRate(t)), feeKoinu: t.fee, bytes: t.vsize, types: typesOf(t)};
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
-    o.kindsReadFrom = t.sc != null ? (t.live ? 'the transaction itself' : 'the block itself') : 'the explorer (thedoginalsexplorer.com)';   // (where its kinds were read, as its card says)
+    o.kindsReadFrom = t.live ? 'the explorer\'s inscription pool (thedoginalsexplorer.com)' : t.sc != null ? 'thedoginalsexplorer.com' : 'not read yet: each transaction is read in turn, so its kinds come in later';   // (where its kinds were read, as its card says)
+    try { if (t.sc != null && ((t.sc >> TF.part) & 1)) o.inscriptionPiece = 'a piece of a bigger file, written over several transactions (as its card says)'; } catch (e) {}
     if (o.types.includes('dunes') && !o.types.some(k => /^dunes (etched|minted|moved)$/.test(k)))   // a dunestone that made, minted and moved nothing: what it is, as its card says
       o.dunestone = t.rnLost ? 'it tried to make a new dune, which never came into being (thedoginalsexplorer.com): the name it tried for is untrusted.duneTried' : 'a dunestone with no new dune, no mint and no move';
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.dune = t.rn; if (t.rnLost) u.duneTried = t.rnLost;
-    if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a CRC-20 token's own word: deploy, mint…)
+    if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a DRC-20 token's own word: deploy, mint…)
     const lab = t.word ? [t.word.a, t.word.b].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box)
     if (t.txt) u.text = String(t.txt).slice(0, 300);
     if (Object.keys(u).length) o.untrusted = u;
@@ -8572,7 +8578,7 @@ window.AgentKit = window.AgentKit || (() => {
   const cardText = () => { const c = $('card'); if (!c || !c.classList.contains('on')) return null; const L = [text($('cn'))]; for (const r of $('cr').children) { const p = [...r.children].map(text).filter(Boolean); L.push(p.length === 2 ? p[0] + ': ' + p[1] : p.join(' ') || text(r)); } L.push(text($('ct'))); return L.filter(Boolean).join('\n') || null; };
   function roomInfo() {
     if (!inRoom()) return null;
-    const C = room.at, p = room.p, o = {in: C.gal ? 'a gallery' : cmOn(C) ? 'the common room' : 'block ' + fmtN(C.h), ready: roomReady(), x: r1(p.x), y: r1(p.y), z: r1(p.z), facing: deg(p.yaw), pitch: deg(p.pitch) > 180 ? deg(p.pitch) - 360 : deg(p.pitch), sitting: !!p.sit};
+    const C = room.at, p = room.p, o = {in: C.gal ? 'a gallery' : cmOn(C) ? 'the common room' : hallName(C), ready: roomReady(), x: r1(p.x), y: r1(p.y), z: r1(p.z), facing: deg(p.yaw), pitch: deg(p.pitch) > 180 ? deg(p.pitch) - 360 : deg(p.pitch), sitting: !!p.sit};
     if (cmOn(C) && C.ready) { const [x, d] = cmL(C, p.x, p.z); o.roomX = r1(x); o.roomD = r1(d); o.area = zoneOf(x, d); try { const A = cmAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} if (cm.pint) o.holdingPint = true; }
     if (room.held && !room.held.back) { const t = room.held.it.t; o.holding = t ? parcelInfo(t, true) : 'a parcel'; o.card = {untrusted: cardText()}; }
     if (typeof fol !== 'undefined' && fol) o.followingBack = text($fol);
@@ -8589,8 +8595,8 @@ window.AgentKit = window.AgentKit || (() => {
     let S = null; try { S = cmBoardStats(); } catch (e) {}
     const c = chain();
     return {waiting: c.waiting.slice(0, 3), justMined: c.justMined.slice(0, 4), reward: c.reward,
-      usualWait: S ? S.eta + ' (' + S.etaSub + ')' : null, bestTimeToGetIn: S ? S.best + ' (' + S.bestSub + ')' : null,
-      lowFee: S ? (S.rows ? S.rows.map(r => r.join(' ')) : [S.low + ' (' + S.lowSub + ')']) : null, blockWeather: S ? S.mood : null};
+      usualWait: S ? S.eta + ' (' + S.etaSub + ')' : null, feeToGetIn: S ? S.fee + ' (' + S.feeSub + ')' : null,
+      keepsScoreOfItself: S ? S.score + ' (' + S.scoreSub + ')' : null, blockWeather: S ? S.mood : null};
   }
   function crewInfo() {
     if (!crew.on && !crew.page) return {on: false, note: PEOPLE_NOTE};
@@ -8608,9 +8614,11 @@ window.AgentKit = window.AgentKit || (() => {
     return o;
   }
   // the data sites: what this browser has asked them in the last minute, and any that are resting after asking us to slow down
+  const COSTS = 'What things cost here (measured, in the explorer\'s units): the common room about 6; a search 5 to 10; picking up a parcel about 11 (3 s). A hall is built once every transaction in it has been read, at 2 units each: the newest hall (8 small blocks, 236 transactions) took about 320 units and 71 s; a busy old block takes minutes (869 transactions: past 5 minutes). Showing a block outside: its parcels come at once, then each is read for its kind in the background, using the whole budget until it is done.';
   function limits() {
     const n = performance.now(), sites = Object.keys(askLog).map(h => ({site: h.replace(/^https?:\/\//, ''), askedLastHour: askedHour(h), gapBetweenAsks: PACE[h] ? (PACE[h] / 1000) + ' s' : undefined, resting: restUntil[h] > n ? 'for ' + Math.ceil((restUntil[h] - n) / 1000) + ' s more' : undefined})).sort((a, b) => b.askedLastHour - a.askedLastHour);
-    return {explorer: {site: 'thedoginalsexplorer.com', budget: 'it gives each visitor 300 units a minute (its /api page lists what each ask costs); the game keeps to ' + DXB.cap + ' a minute', unitsLeftNow: Math.floor(DXB.tok)},
+    return {explorer: {site: 'thedoginalsexplorer.com', budget: 'it gives each visitor 300 units a minute (its /api page lists what each ask costs); the game keeps to ' + DXB.cap + ' a minute', unitsLeftNow: Math.floor(Math.min(DXB.cap, DXB.tok + (performance.now() - (DXB.at || performance.now())) / 1000 * DXB.rate))},
+      costs: COSTS,
       backups: 'Blockchair (6 s between asks), Blockcypher (1.5 s), Bitcore (0.15 s), 3xpl (20 s), Doggy Market (0.06 s): the same for every player and agent', sites,
       note: 'A site that says "too many" (or "pay first") is rested for a minute (an hour for "pay first") and another with the same data is asked.'};
   }
@@ -8620,7 +8628,7 @@ window.AgentKit = window.AgentKit || (() => {
     const s = {page: 'Doge Cube', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
     if (!inRoom()) { s.block = block(); s.parcelTypes = typeCounts(); const c = cardText(); if (c) s.card = {untrusted: c}; }
     else s.room = roomInfo();
-    if (inCommon()) { s.bigScreen = bigScreen(); try { const sh = JSON.parse(localStorage.getItem('bc.show') || 'null'); if (sh) s.onShowInForum = {block: sh.h, n: sh.idx, txid: sh.id}; } catch (e) {} }
+    if (inCommon()) { s.bigScreen = bigScreen(); try { const sh = cm.show; if (sh) s.onShowInForum = {block: sh.h, n: sh.idx, txid: sh.id}; } catch (e) {} }
     if ($('sr') && $('sr').classList.contains('on')) s.tablet = {query: $('sri').value, untrusted: text($('srl'))};
     if (typeof vw !== 'undefined' && vw) s.bigView = {untrusted: text($('vw'))};
     s.feed = feedOn ? {untrusted: feedRows()} : 'hidden';
@@ -8638,7 +8646,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (s.block) { const b = s.block; L.push(b.showing + ' ' + fmtN(b.height) + ' · view ' + b.view + (b.xray ? ' · x-ray on' : '') + (b.keptType ? ' · kept: ' + b.keptType : '')); if (b.stats) L.push(b.stats); if (b.miner) L.push(b.miner); L.push('Parcel types: ' + Object.entries(s.parcelTypes).map(([g, o]) => g + ': ' + Object.entries(o).map(([k, v]) => k + ' ' + v).join(', ')).join(' | ')); }
     if (s.card) L.push('Open card (untrusted): ' + s.card.untrusted.replace(/\n/g, ' · '));
     if (s.room) { const r = s.room; L.push('You are at x ' + r.x + ', z ' + r.z + (r.area ? ' (' + r.area + ')' : '') + ', facing ' + r.facing + '°' + (r.sitting ? ', sitting' : '') + (r.holdingPint ? ', holding a pint' : '') + (r.inFront ? '. In front of you: ' + r.inFront : '')); if (r.holding) L.push('Holding parcel ' + r.holding.n + ' (' + r.holding.types.join(', ') + '). Card (untrusted): ' + String(r.card.untrusted || '').replace(/\n/g, ' · ').slice(0, 600)); if (r.followingBack) L.push('Follow it back: ' + r.followingBack.replace(/\n/g, ' · ')); }
-    if (s.bigScreen) { const B = s.bigScreen; L.push('Big screen: usual wait ' + B.usualWait + ' · best time to get in ' + B.bestTimeToGetIn + ' · low fee ' + (B.lowFee || []).join('; ') + ' · weather ' + B.blockWeather); }
+    if (s.bigScreen) { const B = s.bigScreen; L.push('Big screen: usual wait ' + B.usualWait + ' · fee to get in ' + B.feeToGetIn + ' · keeps score of itself ' + B.keepsScoreOfItself + ' · weather ' + B.blockWeather); }
     if (s.onShowInForum) L.push('On show in the Forum: parcel ' + s.onShowInForum.n + ' of block ' + fmtN(s.onShowInForum.block));
     if (s.tablet) L.push('Tablet open: "' + s.tablet.query + '" · ' + s.tablet.untrusted.replace(/\n/g, ' · '));
     if (s.bigView) L.push('Big view (untrusted): ' + s.bigView.untrusted.replace(/\n/g, ' · ').slice(0, 400));
@@ -8680,7 +8688,7 @@ window.AgentKit = window.AgentKit || (() => {
       L.push('The cube is turned ' + c.turned + '°, tilted ' + c.tilted + '°, zoom ' + c.zoom + 'x, layers ' + (c.layersOpen ? 'pulled apart' : 'closed') + ', X-ray ' + (xray ? 'on (plain transactions are see-through glass)' : 'off') + '. It turns slowly by itself when nobody has touched it for a few seconds, so boxes move: clickAt({n}) clicks a box wherever it is.');
       if (lens === 'fees') L.push('Colours show the fee each paid. Boxes per fee: ' + Object.entries(feeBands()).map(([k, v]) => k + ' ' + fmtN(v)).join(', ') + '.');
       else L.push('Colours show what each box carries. Lit: ' + (pinK != null ? TYPES[pinK].name : 'every kind, each in its own colour') + '.');
-      const big = shown.slice().sort((a, b) => (b.vsize || 0) - (a.vsize || 0)).slice(0, 3); if (big.length) L.push('Biggest boxes: ' + big.map(t => 'parcel ' + t.idx + ' (' + fmtN(t.vsize) + ' vB, ' + (typesOf(t)[0] || 'transaction') + ')').join(', ') + '.');
+      const big = shown.slice().sort((a, b) => (b.vsize || 0) - (a.vsize || 0)).slice(0, 3); if (big.length) L.push('Biggest boxes: ' + big.map(t => 'parcel ' + t.idx + ' (' + fmtN(t.vsize) + ' bytes, ' + (typesOf(t)[0] || 'transaction') + ')').join(', ') + '.');
       if (sel) L.push('Lit up and open: parcel ' + sel.idx + '.');
     } else {
       const r = roomInfo(); L.push('You are ' + (r.sitting ? 'sitting ' : '') + 'in ' + r.in + (r.area ? ' (' + r.area + ')' : '') + ', facing ' + r.facing + '°, looking ' + (r.pitch > 8 ? 'up' : r.pitch < -8 ? 'down' : 'straight ahead') + '.');
@@ -8689,7 +8697,7 @@ window.AgentKit = window.AgentKit || (() => {
         const p = room.p, [mx, md] = cmL(room.at, p.x, p.z), myZ = zoneIx(mx, md), big = new Set([0, 1, 2]);
         const M = MARKS.map(([what, x, y, d], k) => { const [tx, tz] = toWorld(x, d), dx = tx - p.x, dz = tz - p.z, off = ((deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + 540) % 360 - 180, z = zoneIx(x, d), same = z === myZ || (big.has(k) && myZ === 3) || (k === 7 && (myZ === 4 || myZ === 5)); return {what, d: Math.hypot(dx, dz), off, same}; }).filter(o => o.same).sort((a, b) => a.d - b.d);
         if (M.length) L.push('In this room: ' + M.map(o => o.what + ' ' + K.bearing(o.off) + ', ' + Math.round(o.d) + ' m').join('; ') + '.');
-        try { const sh = JSON.parse(localStorage.getItem('bc.show') || 'null'); if (sh && sh.h != null) L.push('On show over the Forum: parcel ' + sh.idx + ' of block ' + fmtN(sh.h) + ' (state().onShowInForum has its transaction ID).'); } catch (e) {}
+        try { const sh = cm.show; if (sh && sh.h != null) L.push('On show over the Forum: parcel ' + sh.idx + ' of block ' + fmtN(sh.h) + ' (state().onShowInForum has its transaction ID).'); } catch (e) {}
         const ways = DOORS.filter(([u, v]) => u === myZ || v === myZ).map(([u, v, a, b]) => { const other = u === myZ ? v : u, pt = u === myZ ? a : b, [tx, tz] = toWorld(pt[0], pt[1]), dx = tx - p.x, dz = tz - p.z; return 'the way to ' + ZONES[other] + ' ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m'; });
         if (ways.length) L.push('Doorways: ' + ways.join('; ') + '.');
       } else if (curRoom()) {   // a block room: what the signs on the shelves say, and where the doors go
@@ -8731,15 +8739,15 @@ window.AgentKit = window.AgentKit || (() => {
     const R = curRoom(); if (!R) return {ok: false, error: 'the shelves are still loading: try again in a moment'};
     const p = room.p, groups = new Map();
     for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {count: 0, best: 1e9, it: null}; g.count++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.it = it; } groups.set(it.k, g); }
-    const kinds = [...groups.entries()].map(([k, g]) => { const dx = g.it.w[0] - p.x, dz = g.it.w[2] - p.z; return {type: TYPES[k] ? TYPES[k].name : 'parcels', count: g.count, nearest: {n: g.it.t.idx, metres: r1(g.best), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}}; }).sort((a, b) => b.count - a.count);
-    const C = room.at; return {block: C.h, parcels: kinds.reduce((a, k) => a + k.count, 0), kinds, doors: {back: C.h === 0 ? 'none: nothing comes before the genesis block' : C.back && C.back.to === COMMON ? 'the common room' : C.back && C.back.to, front: C.front && C.front.to === COMMON ? 'the common room' : C.front && C.front.to}, how: 'hold({type}) walks to the nearest of a kind and picks it up; hold({n}) a parcel by number'};
+    const kinds = [...groups.entries()].map(([k, g]) => { const dx = g.it.w[0] - p.x, dz = g.it.w[2] - p.z; return {type: TYPES[k] ? TYPES[k].name : 'parcels', count: g.count, nearest: {n: g.it.t.idx, block: g.it.t.h, metres: r1(g.best), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}}; }).sort((a, b) => b.count - a.count);
+    const C = room.at; return {block: C.h, toBlock: C.h1 != null && C.h1 !== C.h ? C.h1 : undefined, parcels: kinds.reduce((a, k) => a + k.count, 0), kinds, doors: {back: C.h === 0 ? 'none: nothing comes before the genesis block' : C.back && C.back.to === COMMON ? 'the common room' : C.back && C.back.to, front: C.front && C.front.to === COMMON ? 'the common room' : C.front && C.front.to}, how: 'hold({type}) walks to the nearest of a kind and picks it up; hold({n, block}) a parcel by its number in its block'};
   }
   // where every crewmate is at all times, which way they face, and what they are doing (from what each one's game shares)
   const mateName = M => { if (M.name && M.name !== 'Runner') return M.name; try { const n = window.parent !== window && window.parent.__crewNames && window.parent.__crewNames()[M.id]; if (n) return n; } catch (e) {} return M.name; };
   function mateInfo(M) {
     let pa = 0; try { pa = window.parent !== window && window.parent.__crewAi ? window.parent.__crewAi()[M.id] : 0; } catch (e) {}   // (the crew page knows from the waiting room on)
     const s = M.s || {}, o = {is: s.ai || pa ? 'an AI agent' : 'a player', untrusted: {name: mateName(M)}};
-    o.where = !M.s ? 'in the crew\'s waiting room (not in the game yet)' : s.in ? (s.h === COMMON ? 'the common room' : 'inside block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
+    o.where = !M.s ? 'in the crew\'s waiting room (not in the game yet)' : s.in ? (s.h === COMMON ? 'the common room' : 'inside the hall that starts at block ' + fmtN(s.h)) : s.h >= 0 ? 'outside, looking at block ' + fmtN(s.h) : 'on the start page';
     if (s.in) { o.at = {x: r1(s.x), z: r1(s.z)}; if (s.h === COMMON) o.area = ZONES[zoneIx(s.x, -s.z)]; o.facing = deg(s.y || 0); }
     const doing = []; if (s.em) doing.push(((typeof EM_NAME !== 'undefined' && EM_NAME[s.em]) || s.em) + (typeof EM_LOOP !== 'undefined' && EM_LOOP[s.em] ? ' (dancing)' : ' (emote)'));
     if (s.sit) doing.push('sitting'); if (s.hk === 60) doing.push('holding a pint'); else if (s.hk >= 0 && TYPES[s.hk]) doing.push('holding a parcel (' + TYPES[s.hk].name + ')');
@@ -8778,14 +8786,15 @@ window.AgentKit = window.AgentKit || (() => {
   EVT.timer = setInterval(evTick, 500);
   const paintAgent = () => { try { return typeof cmPaintFrame !== 'undefined' && cmPaintFrame && cmPaintFrame.style.display !== 'none' && cmPaintFrame.contentWindow.agent || null; } catch (e) { return null; } };
   // ---------- doing ----------
-  const settled = async () => { await until(() => !loading, 20000); await wait(300); };
+  const settled = async () => { await until(() => !loading, 60000); await wait(300); };   // (a big Dogecoin block comes in pages from the explorer: up to a minute)
   async function walkIn(h) {
     if (h != null && h !== 'common' && !(h >= 0)) return {ok: false, error: 'height must be a block number'};
     if (h === 'common') { if (inRoom()) await srTravel(COMMON); else await roomEnter(COMMON); await until(() => inCommon() && room.at.ready, 60000); return {ok: inCommon() && !!room.at.ready, where: roomInfo() && roomInfo().in}; }
     const want0 = h != null ? +h : null, wasLive = want0 == null && !inRoom() && mode === 'live';
     await roomEnter(want0 != null ? want0 : undefined);
-    await until(() => roomReady() && !cmOn(room.at) && (want0 == null || room.at.h === want0), 60000);
+    await until(() => roomReady() && !cmOn(room.at) && (want0 == null || inHall(room.at, want0)), 60000);
     const o = {ok: roomReady(), where: roomInfo() && roomInfo().in, ready: roomReady()};
+    if (!o.ready) { const S = room.at && room.at.B && room.at.B.scan; o.error = 'the hall is not built yet'; if (S && S.loading) o.building = {transactionsRead: S.n, of: S.of, note: 'a hall is built once every transaction in it has been read (2 explorer units each: about 135 a minute at most, fewer while other things are asked), so a busy block takes minutes: call walkIn() again, or see(), to check'}; }
     if (wasLive) o.note = 'the block on show was the next one, not mined yet: only mined blocks have halls, so you walked into the newest one; its front door leads to the common room';
     return o;
   }
@@ -8880,15 +8889,17 @@ window.AgentKit = window.AgentKit || (() => {
     return {ok: true};
   }
   function faceTo(tx, ty, tz) { const p = room.p, dx = tx - p.x, dz = tz - p.z, eye = (p.y || 0) + 1.62; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.max(-1.45, Math.min(1.45, Math.atan2(ty - eye, Math.hypot(dx, dz)))); room.dirty = true; }
-  async function holdParcel({n, txid, type}) {
+  async function holdParcel({n, block: blk, txid, type}) {
     const inGal = inRoom() && room.at.gal;
     if (!inGal && (!inRoom() || cmOn(room.at))) { const r = await walkIn(); if (!r.ok) return r; }
     const R = inGal ? room.at : curRoom(); if (!R) return {ok: false, error: 'the block room is not ready yet'};
     let it = null;
     if (inGal) { it = R.plan.items.find(i => i.t && i.t.gal && !i.cp && (txid ? i.t.gid === txid || i.t.id === txid : i.t.gi === +n)); if (!it) return {ok: false, error: 'no piece ' + (txid || n) + ' in this collection room (contents() lists them)'}; }
     else if (type != null && n == null && !txid) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"'}; let bd = 1e9; for (const i of R.plan.items) { if (!i.t || i.cp || i.k !== k) continue; const dd = Math.hypot(i.w[0] - room.p.x, i.w[2] - room.p.z); if (dd < bd) { bd = dd; it = i; } } if (!it) return {ok: false, error: 'no ' + TYPES[k].name + ' in this block'}; }
-    else it = R.plan.items.find(i => i.t && !i.cp && (txid ? i.t.id === txid : i.t.idx === +n));
-    if (!it) return {ok: false, error: 'no parcel ' + (txid || n) + ' in block ' + room.at.h + ' (parcels() lists them)'};
+    else { const M = R.plan.items.filter(i => i.t && !i.cp && (txid ? i.t.id === txid : i.t.idx === +n && (blk == null || i.t.h === +blk)));
+      if (M.length > 1) return {ok: false, error: 'this hall holds several blocks with a parcel ' + n + ': say which block too', blocks: M.map(i => i.t.h)};
+      it = M[0] || null; }
+    if (!it) return {ok: false, error: 'no parcel ' + (txid || n + (blk != null ? ' of block ' + fmtN(+blk) : '')) + ' in ' + hallName(room.at) + ' (parcels() lists them)'};
     if (room.held) { rmPut(); await wait(900); }
     const sd = it.w[0] > 0 ? -1 : 1, w = await walkPoint(it.w[0] + sd * 1.4, it.w[2], {run: true, within: .35});
     if (!w.ok) return Object.assign(w, {error: 'could not get to it: ' + w.error});
@@ -8904,7 +8915,7 @@ window.AgentKit = window.AgentKit || (() => {
     return o;
   }
 
-  const N = {name: 'n', type: 'number', does: 'the parcel number in the block (its place, from parcels())'}, TX = {name: 'txid', does: 'or the transaction ID'};
+  const N = {name: 'n', type: 'number', does: 'the parcel number in its block (its place, from parcels())'}, TX = {name: 'txid', does: 'or the transaction ID'}, BLK = {name: 'block', type: 'number', does: 'which block it is in, when a hall holds several (parcels() says each one\'s block)'};
   const cmds = [
     {name: 'see', ro: true, untrusted: true, does: 'Describe everything on screen now, in plain text: the chain, the block or room you are in, open cards, screens, crew.', run: () => see()},
     {name: 'state', ro: true, untrusted: true, does: 'Everything on screen now as data (the same as see(), as an object).', run: () => state()},
@@ -8915,7 +8926,7 @@ window.AgentKit = window.AgentKit || (() => {
         if (inRoom() && room.at.gal) { const P = galPieces(); return {gallery: true, total: P.length, from, parcels: P.slice(from, from + Math.min(500, limit)), note: 'you are in a collection room: these are its pieces'}; }
         const R = inRoom() && !cmOn(room.at) && !room.at.gal ? curRoom() : null; let L = R ? R.plan.items.filter(i => i.t && !i.cp).map(i => i.t) : shown.slice();
         if (type) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"', types: TYPES.map(T => T.name)}; L = L.filter(t => hasType(t, k)); }
-        L.sort((a, b) => (a.idx ?? 1e9) - (b.idx ?? 1e9)); return {total: L.length, from, parcels: L.slice(from, from + Math.min(500, limit)).map(t => parcelInfo(t))};
+        L.sort((a, b) => ((a.h ?? 0) - (b.h ?? 0)) || ((a.idx ?? 1e9) - (b.idx ?? 1e9))); return {total: L.length, from, parcels: L.slice(from, from + Math.min(500, limit)).map(t => parcelInfo(t))};
       }},
     {name: 'block', does: 'Show a block by its number (inside, it walks you into that block).', args: [{name: 'height', type: 'number', does: 'block number', req: true}],
       run: async ({height}) => { const h = +height; if (!Number.isInteger(h) || h < 0) return {ok: false, error: 'a block number is a whole number from 0'}; if (tipH >= 0 && h > tipH) return {ok: false, error: 'block ' + fmtN(h) + ' has not been mined yet: the newest is ' + fmtN(tipH)}; go(h); await settled(); return {ok: true, block: inRoom() ? roomInfo() : block()}; }},
@@ -8940,7 +8951,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'layers', does: 'Pull the cube\'s layers apart, or close them again (the layers button).', args: [{name: 'open', type: 'boolean', does: 'true to pull apart', req: true}], run: async ({open}) => { if (!!openD !== !!open) $('op').click(); await wait(800); return camInfo(); }},
     {name: 'tab', does: 'Show a tab of parcel types: inscriptions, tokens or transactions (as the tabs under PARCEL TYPES).', args: [{name: 'name', enum: ['inscriptions', 'tokens', 'transactions'], does: 'which tab', req: true}],
       run: async ({name}) => { const g = {inscriptions: 0, tokens: 1, transactions: 2}[String(name).toLowerCase()]; const t = document.querySelector('.ktab[data-g="' + g + '"]'); if (!t) return {ok: false, error: 'inscriptions, tokens or transactions'}; t.click(); await wait(200); return {tab: name, types: kChips.filter(c => TYPES[c.i].g === g).map(c => ({type: TYPES[c.i].name, count: +((c.el.querySelector('b') || {}).textContent || '0').replace(/[^0-9]/g, '') || 0, lit: pinK === c.i}))}; }},
-    {name: 'types', ro: true, does: 'Every parcel type in all three tabs, with how many are in this block and which one is lit.', run: () => { const G = CATS.map(c => c[0].toLowerCase()), out = {}; for (const c of kChips) { const T = TYPES[c.i]; (out[G[T.g]] = out[G[T.g]] || []).push({type: T.name, count: +((c.el.querySelector('b') || {}).textContent || '0').replace(/[^0-9]/g, '') || 0, lit: pinK === c.i || undefined}); } return out; }},
+    {name: 'types', ro: true, does: 'Every parcel type in all three tabs, with how many are in this block and which one is lit.', run: () => { const G = CATS.map(c => c[0].toLowerCase()), out = {}, n = new Array(TYPES.length).fill(0); for (const t of shown) { const m = tmask(t); for (let i = 0; i < TYPES.length; i++) if (((i < 30 ? m[0] >> i : m[1] >> (i - 30)) & 1) === 1) n[i]++; } for (const c of kChips) { const T = TYPES[c.i]; (out[G[T.g]] = out[G[T.g]] || []).push({type: T.name, count: n[c.i], lit: pinK === c.i || undefined}); } return out; }},   // (counted as the chip row counts them: a chip's number on screen is only redrawn while its tab is open)
     {name: 'clickAt', untrusted: true, does: 'Click a point on the screen, as a player clicks: outside, on a box of the cube (opens its card); inside, on a parcel (holds it). x and y go from 0,0 (top left) to 1,1 (bottom right). look() says what is where.', args: [{name: 'x', type: 'number', does: '0 (left) to 1 (right)'}, {name: 'y', type: 'number', does: '0 (top) to 1 (bottom)'}, {name: 'n', type: 'number', does: 'or a parcel number: clicks that box wherever it is on screen now, if you can see it'}],
       run: async ({x, y, n}) => {
         if (n != null && (x == null || y == null)) { const want = +n; let at = null; for (let j = 1; j < 24 && !at; j++) for (let i = 1; i < 40 && !at; i++) { const h = probe(i / 40, j / 24); if (h && h.parcel === want) at = [i / 40, j / 24]; } if (!at) return {ok: false, error: 'parcel ' + want + ' is not in sight right now (it may be hidden behind others: turnCube(), layers() or xray() can help)'}; x = at[0]; y = at[1]; }
@@ -8963,7 +8974,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'lookAt', does: 'Face a point in the room.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'y', type: 'number', does: 'height (default 1.5, eye level)'}, {name: 'z', type: 'number', does: 'z', req: true}],
       run: ({x, y, z}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; faceTo(+x, y == null ? 1.5 : +y, +z); return roomInfo(); }},
     {name: 'use', does: 'Do what is in front of you, like pressing E (sit, pour a pint, the music box, the big screen…).', run: async () => { if (!inCommon()) return {ok: false, error: 'only in the common room'}; const A = cmAct(null, null); if (!A) return {ok: false, error: 'nothing in front of you'}; cmDo(A); await wait(500); return {did: A.label, room: roomInfo()}; }},
-    {name: 'hold', untrusted: true, does: 'Walk up to a parcel in the block you are in (or the one shown) and pick it up, as a player clicks it: its card shows what is inside. By number, by transaction ID, or by kind (the nearest of that kind, e.g. "images", "DRC-20").', args: [N, TX, {name: 'type', does: 'or a kind: the nearest parcel of that kind'}], run: a => holdParcel(a)},
+    {name: 'hold', untrusted: true, does: 'Walk up to a parcel in the block you are in (or the one shown) and pick it up, as a player clicks it: its card shows what is inside. By number, by transaction ID, or by kind (the nearest of that kind, e.g. "images", "DRC-20").', args: [N, BLK, TX, {name: 'type', does: 'or a kind: the nearest parcel of that kind'}], run: a => holdParcel(a)},
     {name: 'contents', ro: true, does: 'What is in the block you are in, once its shelves have loaded: each kind, how many, and the nearest one (its number, how far, which way), and where the doors go.', run: () => contents()},
     {name: 'people', ro: true, untrusted: true, does: 'Where every crewmate is at all times (each a player or an AI agent), which way they face, what they are doing (sitting, holding a pint or a parcel), and which way, how far and whether they face you when they are in the room with you.', run: () => peopleCube()},
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crewmates joined, left, moved to another block or room, sat down, picked something up or started talking on voice chat; a new Dogecoin block was found; the music box changed; and what the person at your screen typed to you.', args: [{name: 'all', type: 'boolean', does: 'every event kept (the last 80), not only new ones'}], run: ({all}) => { evTick(); const L = all ? EVT.list : EVT.list.slice(EVT.read); EVT.read = EVT.list.length; return {events: L, note: L.length ? undefined : 'nothing new'}; }},
@@ -8973,8 +8984,8 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'followBack', does: 'Follow the inscription you hold back to where it was made and each place it moved. Gives the whole trail at once (trail.steps, oldest first: each with its block, time, transaction ID and the address it went to).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; folStart(); await until(() => typeof fol !== 'undefined' && fol && fol.steps && !fol.busy, 30000); return {steps: fol && fol.steps ? fol.steps.length : 0, now: fol ? fol.i : null, bar: text($fol), trail: trail()}; }},
     {name: 'followStep', does: 'Go to a step of the follow-it-back line (you travel to its block).', args: [{name: 'to', type: 'number', does: 'step number, 0 = where it was made', req: true}], run: async ({to}) => { if (typeof fol === 'undefined' || !fol) return {ok: false, error: 'followBack() first'}; folGo(+to); await wait(1500); const T = trail(); return {now: fol && fol.i, bar: text($fol), step: T && fol ? T.steps[fol.i] : null}; }},
     {name: 'stopFollow', does: 'End the follow-it-back line.', run: () => { folStop(); return {ok: true}; }},
-    {name: 'search', untrusted: true, does: 'Search with the tablet: a block (5000000), a dogemap (300.dogemap), a parcel (12.300.dogemap), an inscription (#1000 or its ID), a transaction ID, an address, a name (dogecoin.doge) or a collection (its name).', args: [{name: 'query', does: 'what to find', req: true}],
-      run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
+    {name: 'search', untrusted: true, does: 'Search with the tablet: a block (5000000), a dogemap (300.dogemap), a parcel (12.300.dogemap), an inscription (#1000 or its ID), a transaction ID, an address, a name (dogecoin.doge) or a collection (its name). From outside, it takes you into the common room first (the tablet works in any room).', args: [{name: 'query', does: 'what to find', req: true}],
+      run: async ({query}) => { if (!inRoom()) { const r = await walkIn('common'); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
     {name: 'go', does: 'Press GO on a tablet search result (travels there; an arrow then shows the way).', args: [{name: 'n', type: 'number', does: 'result number from search() (default 0)'}],
       run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /go/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO'}; const from = room.at; b.click(); await until(() => room.at !== from || text($('sra')), 25000); await until(() => roomReady(), 25000); await until(() => text($('sra')), 6000); return {where: roomInfo(), arrow: text($('sra')), arrowTo: arrowTo() || undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
@@ -9005,7 +9016,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'sound', does: 'Turn the sound on or off (it toggles).', run: () => { $('tu').click(); return {ok: true}; }},
     {name: 'savePicture', does: 'Save a picture of the screen (downloads a file, as the camera button does).', run: async () => { $('ts').click(); await wait(400); if (snapReq) drawFrame(); return {ok: !snapReq}; }},   // (no frame from the browser: the page draws one itself, and the picture is saved from it)
   ];
-  const intro = 'DOGE CUBE agent kit (its tools start doge_). Doge Cube is a 3D Dogecoin block explorer, the Dogecoin twin of Agent Blockhall: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves (inscriptions, DRC-20, dunes, dogemaps and the rest); and there is a common room. You play by the same rules as a player: you walk at a player\'s speed, walls stop you, you pick what is in the middle of your view, and you see what a player would. Once you use this kit, your crewmates see you marked as an AI agent. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives. Fees are in DOGE per kB (1 DOGE/kB = 100,000 koinu a byte).\n\nBEING GENTLE WITH THE DATA SITES: everything here comes free from public sites, straight to this browser. The explorer (thedoginalsexplorer.com) gives each visitor 300 units a minute (its /api page lists what each ask costs) and the game keeps to 270; the back-ups (Blockchair, Blockcypher, Bitcore, 3xpl, Doggy Market) are asked with a gap between asks. This is the same for every player and agent. A site that says \"too many\" is rested and another is asked; events() tells you, and limits() shows what is left. To gather a lot, go steadily and read what you have (parcels() lists a whole block with no asks).';
+  const intro = 'DOGE CUBE agent kit (its tools start doge_). Doge Cube is a 3D Dogecoin block explorer, the Dogecoin twin of Agent Blockhall: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves (inscriptions, DRC-20, dunes, dogemaps and the rest); and there is a common room. You play by the same rules as a player: you walk at a player\'s speed, walls stop you, you pick what is in the middle of your view, and you see what a player would. Once you use this kit, your crewmates see you marked as an AI agent. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives. Fees are in DOGE per kB (1 DOGE/kB = 100,000 koinu a byte).\n\nBEING GENTLE WITH THE DATA SITES: everything here comes free from public sites, straight to this browser. The explorer (thedoginalsexplorer.com) gives each visitor 300 units a minute (its /api page lists what each ask costs) and the game keeps to 270; the back-ups (Blockchair, Blockcypher, Bitcore, 3xpl, Doggy Market) are asked with a gap between asks. This is the same for every player and agent. A site that says \"too many\" is rested and another is asked; events() tells you, and limits() shows what is left. To gather a lot, go steadily and read what you have (parcels() lists a whole block with no asks). ' + COSTS + '\n\nHALLS: a hall can hold several small blocks one after another (its name says which, e.g. "the hall of blocks 6,455,620 to 6,455,627"); each parcel says its own block, and a parcel number is its place in its block, so hold({n, block}).';
   // the game moves on only in the frames the browser gives the page to draw. A hidden tab, a tab in the background or a closed panel
   // gets none, so a walk there never starts and ends as "blocked". While a command runs and no frame has come for a moment, the kit
   // moves the game on itself, at the same pace: the same walking speed, walls and doors as ever (only the picture waits to be seen)
