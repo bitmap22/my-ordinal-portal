@@ -20,6 +20,8 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 | `search` | A block, bitmap, parcel (`12.840000.bitmap`), inscription, transaction ID or address, as the tablet in the game finds them |
 | `rareSats` | The rare sats board: each kind of rare sat and the price listed for one sat |
 
+Trust: `feeAdvice` keeps score of itself, and every `chain`, `block` and `inscription` answer is checked against a second, separate site and says whether they agree (`checked.agrees`).
+
 Two things stay in the game's tablet: which inscription claimed a bitmap, and names like `satoshi.sats`.
 
 ## Install
