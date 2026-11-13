@@ -88,7 +88,16 @@ async def main():
             act = lambda f: "agent.zoom({steps: 1})" if f in (40, 110, 180) else None
         elif R3:
             await step(20)
-            if SC0[-1] in '56':
+            if SC0[-1] == '6':   # (on a slow machine the room takes a while to appear: wait until the picture is not black)
+                from PIL import Image, ImageStat
+                import io
+                for i in range(60):
+                    await step(30)
+                    im = Image.open(io.BytesIO(await pg.screenshot(type='jpeg', quality=40, timeout=180000))).convert('L')
+                    m = ImageStat.Stat(im).mean[0]; print('   brightness', i * 30, round(m, 1), flush=True)
+                    if m > 25: break
+                await step(30)
+            elif SC0[-1] in '56':
                 quick = 0
                 for i in range(1500):
                     t1 = time.time(); await step()
