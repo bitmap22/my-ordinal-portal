@@ -2811,7 +2811,10 @@ window.AgentKit = window.AgentKit || (() => {
       const cx = Math.max(s.lo[0], Math.min(e[0], s.hi[0])), cz = Math.max(s.lo[2], Math.min(e[2], s.hi[2])), d = Math.hypot(e[0] - cx, e[2] - cz);
       if (d > 8) continue;
       const a = deg(Math.atan2(-(cx - e[0]), -(cz - e[2]))); if (d > .5 && Math.abs(((a - yaw) + 540) % 360 - 180) > 60) continue;
-      const mid = [(s.lo[0] + s.hi[0]) / 2, Math.min(s.hi[1] - .05, e[1] - .1), (s.lo[2] + s.hi[2]) / 2]; if (d > .5 && !seen(mid)) continue;
+      if (d > .5) {   // in view and not behind a wall: any of its top's middle, nearest point and corners, or just above them (a sofa's back, a forklift's mast)
+        const y = Math.min(s.hi[1] - .05, e[1] - .1), P = [[(s.lo[0] + s.hi[0]) / 2, (s.lo[2] + s.hi[2]) / 2], [cx, cz], [s.lo[0], s.lo[2]], [s.lo[0], s.hi[2]], [s.hi[0], s.lo[2]], [s.hi[0], s.hi[2]]];
+        if (!P.some(([px, pz]) => seen([px, y, pz]) || seen([px, y + .5, pz]))) continue;
+      }
       out.push({name: solidName(s, feet), d, where: K.bearing(a - yaw)});
     }
     return out.sort((p, q) => p.d - q.d).filter(o => { if (seenN.has(o.name)) return false; seenN.add(o.name); return true; }).slice(0, 5).map(o => ({what: o.name, where: o.where, metres: r1(Math.max(0, o.d - .28))}));
