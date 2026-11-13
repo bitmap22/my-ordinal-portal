@@ -2949,12 +2949,14 @@ window.AgentKit = window.AgentKit || (() => {
   // never over someone else's paint: before a stroke, the wall under it is read along its path (and a little either side);
   // paint the agent put there itself is fine. (Bare wall, or your own paint, only.)
   const OWN = new Map();   // wall id -> points [x, y, half its width] (metres along it) this agent has sprayed
-  async function sprayWidth(p) {   // how wide the can sprays here (the can's own label: "38 cm away, 9.3 cm wide"), in metres
+  async function sprayWidth(p) {   // how wide the can sprays here (the can's own label: "38 cm away, 9.3 cm wide"), in metres; -1: too far to reach
     const c = cv(), r = c.getBoundingClientRect(), x = r.left + p[0] * r.width, y = r.top + p[1] * r.height;
-    c.dispatchEvent(new PointerEvent('pointermove', {pointerId: 1, pointerType: 'mouse', isPrimary: true, button: -1, buttons: 0, clientX: x, clientY: y, view: window, bubbles: true, cancelable: true, composed: true}));
-    await wait(80);
-    if ([...document.body.querySelectorAll('div,span')].some(e => e.childElementCount === 0 && /too far to paint/i.test(e.textContent || ''))) return -1;   // (the can's label says it cannot reach)
-    const L = [...document.body.querySelectorAll('div,span')].find(e => e.childElementCount === 0 && / cm wide$/.test(e.textContent || '')), m = L && /([\d.]+) cm wide$/.exec(L.textContent);
+    const ev = type => c.dispatchEvent(new PointerEvent(type, {pointerId: 1, pointerType: 'mouse', isPrimary: true, button: -1, buttons: 0, clientX: x, clientY: y, view: window, bubbles: true, cancelable: true, composed: true}));
+    ev('pointerover'); ev('pointerenter'); ev('pointermove');   // (the pointer comes onto the canvas first, as a real one does: then the can's label shows)
+    await wait(120);
+    const lab = [...document.body.querySelectorAll('div,span')].find(e => e.childElementCount === 0 && /cm away|too far to paint/i.test(e.textContent || '') && getComputedStyle(e).display !== 'none');
+    if (lab && /too far to paint/i.test(lab.textContent)) return -1;
+    const m = lab && /([\d.]+) cm wide$/.exec(lab.textContent);
     return m ? Math.max(.02, Math.min(.8, +m[1] / 100)) : .15;
   }
   function underPath(P) {
