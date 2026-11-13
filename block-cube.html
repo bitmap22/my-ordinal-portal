@@ -418,11 +418,44 @@ async function ordFetch(path, ms, list) {
   for (const b of list || ORD_R) { try { return await fetchT(b + path, null, ms); } catch (e) { err = e; } }
   throw err || new Error('no site answered');
 }
+// being gentle with the free sites the data comes from, the same for every player and agent: each site is asked at most 30 times at
+// once, then 6 times a second (nobody clicking by hand comes near it). A site that answers "too many" (429) or "busy" (503), or stops
+// answering, is rested for as long as it asks (or 30 s), and the next site with the same data is asked meanwhile.
+const PACE = {rate: 6, burst: 30, rest: 30, sites: new Map(), slowed: []};
+const paceSite = h => { let b = PACE.sites.get(h); if (!b) PACE.sites.set(h, b = {tok: PACE.burst, t: performance.now(), restUntil: 0, times: [], fails: []}); return b; };
+async function paceWait(h) {
+  const b = paceSite(h);
+  for (;;) {
+    const n = performance.now();
+    if (b.restUntil > n) { const e = new Error('resting ' + h + ': it asked us to slow down'); e.resting = true; throw e; }
+    b.tok = Math.min(PACE.burst, b.tok + (n - b.t) / 1000 * PACE.rate); b.t = n;
+    if (b.tok >= 1) { b.tok -= 1; b.times.push(n); if (b.times.length > 600) b.times.splice(0, b.times.length - 600); return; }
+    await new Promise(r => setTimeout(r, Math.ceil((1 - b.tok) / PACE.rate * 1000) + 5));
+  }
+}
+function paceRest(h, r, why) {
+  const ra = r && r.headers && +r.headers.get('retry-after'), sec = ra > 0 && ra <= 3600 ? ra : PACE.rest, b = paceSite(h);
+  if (b.restUntil > performance.now()) return;
+  b.restUntil = performance.now() + sec * 1000;
+  PACE.slowed.push({site: h, at: new Date().toISOString().slice(11, 19), restS: sec, why: why || ('it answered ' + (r && r.status))}); if (PACE.slowed.length > 20) PACE.slowed.shift();
+  try { if (window.__paceNote) window.__paceNote(h, sec, why || ('it answered ' + (r && r.status))); } catch (e) {}
+}
 function fetchT(url, opt, ms) {
-  const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms || 25000);
-  return fetch(url, Object.assign({signal: ac.signal}, opt || {})).then(r => {
-    clearTimeout(t); if (!r.ok) throw new Error('http ' + r.status); return r;
-  }, e => { clearTimeout(t); throw e; });
+  let h = ''; try { h = new URL(url, location.href).host; } catch (e) {}
+  const own = !h || h === location.host;
+  return (own ? Promise.resolve() : paceWait(h)).then(() => {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms || 25000);
+    return fetch(url, Object.assign({signal: ac.signal}, opt || {})).then(r => {
+      clearTimeout(t); if (!own && (r.status === 429 || r.status === 503)) paceRest(h, r); if (!r.ok) throw new Error('http ' + r.status); return r;
+    }, e => {
+      clearTimeout(t);
+      if (!own && e && e.name === 'TypeError') {   // (no answer at all: a site that is turning us away often sends no answer we may read)
+        const b = paceSite(h), n = performance.now(); b.fails = b.fails.filter(x => n - x < 10000); b.fails.push(n);
+        if (b.fails.length >= 3) { b.fails = []; paceRest(h, null, 'it stopped answering'); }
+      }
+      throw e;
+    });
+  });
 }
 function vlen(n) { return n < 0xfd ? 1 : n <= 0xffff ? 3 : n <= 0xffffffff ? 5 : 9; }
 // exact weight of one transaction from ord's JSON (base bytes x4 + witness bytes)
@@ -10598,6 +10631,14 @@ window.AgentKit = window.AgentKit || (() => {
     else if (fol.lost) o.note = 'it was once paid to a miner in a fee: before that, its moves cannot be followed';
     return o;
   }
+  // the data sites: what this browser has asked them in the last minute, and any that are resting after asking us to slow down
+  function limits() {
+    const n = performance.now();
+    return {pace: 'each site: at most ' + PACE.burst + ' asks at once, then ' + PACE.rate + ' a second (the same for every player and agent)',
+      sites: [...PACE.sites.entries()].map(([site, b]) => ({site, askedLastMinute: b.times.filter(x => n - x < 60000).length, resting: b.restUntil > n ? 'for ' + Math.ceil((b.restUntil - n) / 1000) + ' s more' : undefined})).sort((a, b) => b.askedLastMinute - a.askedLastMinute),
+      slowedDown: PACE.slowed.slice(-10), note: 'The sites do not publish their limits. Before this pace, going into a new block hall asked one site up to 34 times in about 1.4 seconds.'};
+  }
+  window.__paceNote = (site, sec, why) => { try { evPush(site + ' is resting for ' + sec + ' s (' + why + '): other sites with the same data are asked meanwhile. Go steadily.', true); } catch (e) {} };
   const PEOPLE_NOTE = 'People in Agent Blockhall are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   function state() {
     const s = {page: 'Agent Blockhall', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
@@ -10681,7 +10722,7 @@ window.AgentKit = window.AgentKit || (() => {
         const sec = [...groups.entries()].map(([k, g]) => { const x = g.x, z = g.z, dx = x - p.x, dz = z - p.z; return {nm: (TYPES[k] ? TYPES[k].name : 'parcels') + ' (' + fmtN(g.n) + ')', d: Math.hypot(dx, dz), b: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.d - b.d);
         L.push('Shelf signs (how many, and the nearest one): ' + sec.slice(0, 8).map(o => o.nm + ' ' + o.b + ', ' + Math.round(o.d) + ' m').join('; ') + (sec.length > 8 ? '; and ' + (sec.length - 8) + ' more further on' : '') + '.');
         const C = room.at, door = (zz, to) => { const dz = zz - p.z; return 'the door to ' + (to === COMMON ? 'the common room' : to >= 0 ? 'block ' + fmtN(to) : 'nowhere yet') + ' ' + K.bearing(deg(Math.atan2(0, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.abs(dz)) + ' m'; };
-        if (C.back && C.front) L.push('Doors: ' + door(C.z0, C.back.to) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '.');
+        if (C.back && C.front) L.push(C.h === 0 ? 'Doors: ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '. The hall has no back door: nothing comes before the genesis block (that wall shows the newspaper headline the block carries).' : 'Doors: ' + door(C.z0, C.back.to) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to) + '.');
       }
     }
     const say = h => h.parcel != null ? 'parcel ' + h.parcel + (h.types.length ? ' (' + h.types.join(', ') + ')' : '') : h.thing;
@@ -10707,7 +10748,7 @@ window.AgentKit = window.AgentKit || (() => {
     const p = room.p, groups = new Map();
     for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {count: 0, best: 1e9, it: null}; g.count++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.it = it; } groups.set(it.k, g); }
     const kinds = [...groups.entries()].map(([k, g]) => { const dx = g.it.w[0] - p.x, dz = g.it.w[2] - p.z; return {type: TYPES[k] ? TYPES[k].name : 'parcels', count: g.count, nearest: {n: g.it.t.idx, metres: r1(g.best), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}}; }).sort((a, b) => b.count - a.count);
-    const C = room.at; return {block: C.h, parcels: kinds.reduce((a, k) => a + k.count, 0), kinds, doors: {back: C.back && C.back.to === COMMON ? 'the common room' : C.back && C.back.to, front: C.front && C.front.to === COMMON ? 'the common room' : C.front && C.front.to}, how: 'hold({type}) walks to the nearest of a kind and picks it up; hold({n}) a parcel by number'};
+    const C = room.at; return {block: C.h, parcels: kinds.reduce((a, k) => a + k.count, 0), kinds, doors: {back: C.h === 0 ? 'none: nothing comes before the genesis block' : C.back && C.back.to === COMMON ? 'the common room' : C.back && C.back.to, front: C.front && C.front.to === COMMON ? 'the common room' : C.front && C.front.to}, how: 'hold({type}) walks to the nearest of a kind and picks it up; hold({n}) a parcel by number'};
   }
   // where every crewmate is at all times, which way they face, and what they are doing (from what each one's game shares)
   const mateName = M => { if (M.name && M.name !== 'Runner') return M.name; try { const n = window.parent !== window && window.parent.__crewNames && window.parent.__crewNames()[M.id]; if (n) return n; } catch (e) {} return M.name; };
@@ -10796,9 +10837,58 @@ window.AgentKit = window.AgentKit || (() => {
     const pts = []; for (let i = 1; i < zs.length; i++) { const D = DOORS.find(([u, v]) => (u === zs[i - 1] && v === zs[i]) || (v === zs[i - 1] && u === zs[i])); pts.push(...(D[0] === zs[i - 1] ? [D[2], D[3]] : [D[3], D[2]])); }
     return pts;
   }
+  // finding the way in the common room, as a player would: round the sofas, stools and tables, through the doorways, and up the
+  // stairs only when going up. Worked out on the room's own floor plan (the same walls and furniture that stop every player), in 25 cm squares.
+  const PG = {c: .25, x0: -42, d0: 0, nx: 336, nd: 192, g: null, u: null};
+  const pgIn = (R, x, d) => R.some(([a, b, c, e]) => x >= a && x <= b && d >= c && d <= e);
+  const pgNear = (B, x, d, m) => B.some(([a, b, c, e]) => Math.hypot(x - Math.max(a, Math.min(b, x)), d - Math.max(c, Math.min(e, d))) < m);
+  const pgStairFoot = (x, d) => d > CM.SD0 - 1.4 && d < CM.SD0 + .7 && Math.abs(x) > CM.SX0 - .2 && Math.abs(x) < 16.4;   // (walking into the foot of the stairs takes you up them)
+  function pgGrid(up) {
+    const k = up ? 'u' : 'g'; if (PG[k]) return PG[k];
+    const G = new Uint8Array(PG.nx * PG.nd);
+    for (let j = 0; j < PG.nd; j++) for (let i = 0; i < PG.nx; i++) {
+      const x = PG.x0 + (i + .5) * PG.c, d = PG.d0 + (j + .5) * PG.c;
+      G[j * PG.nx + i] = up ? (pgIn(CM_UP, x, d) && !pgNear(CM_UPB, x, d, .36) ? 1 : 0) : (pgIn(CM_WALK, x, d) && !pgNear(CM_BLOCK, x, d, .36) && !pgStairFoot(x, d) ? 1 : 0);
+    }
+    return PG[k] = G;
+  }
+  function pgPath(x0, d0, x1, d1, up) {   // the way from one spot to another on one floor, as a few straight walks (null: no way there)
+    const G = pgGrid(up), {c, nx, nd} = PG, X0 = PG.x0, D0 = PG.d0;
+    const cell = (x, d) => [Math.floor((x - X0) / c), Math.floor((d - D0) / c)], ok = (i, j) => i >= 0 && j >= 0 && i < nx && j < nd && G[j * nx + i] === 1;
+    const near = (x, d) => { const [i, j] = cell(x, d); if (ok(i, j)) return [i, j]; for (let r = 1; r < 14; r++) { let best = null, bd = 1e9; for (let a = -r; a <= r; a++) for (const [ii, jj] of [[i + a, j - r], [i + a, j + r], [i - r, j + a], [i + r, j + a]]) if (ok(ii, jj)) { const e = Math.hypot(ii - i, jj - j); if (e < bd) { bd = e; best = [ii, jj]; } } if (best) return best; } return null; };
+    const s = near(x0, d0), t = near(x1, d1); if (!s || !t) return null;
+    const si = s[1] * nx + s[0], ti = t[1] * nx + t[0], prev = new Int32Array(nx * nd).fill(-1), Q = new Int32Array(nx * nd); let qh = 0, qt = 0; prev[si] = si; Q[qt++] = si;
+    while (qh < qt) { const k = Q[qh++]; if (k === ti) break; const i = k % nx, j = (k - i) / nx;
+      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) { const ii = i + a, jj = j + b; if (!ok(ii, jj) || (a && b && (!ok(i + a, j) || !ok(i, j + b)))) continue; const kk = jj * nx + ii; if (prev[kk] >= 0) continue; prev[kk] = k; Q[qt++] = kk; } }
+    if (prev[ti] < 0) return null;
+    const pts = []; for (let k = ti; ; k = prev[k]) { const i = k % nx; pts.push([X0 + (i + .5) * c, D0 + ((k - i) / nx + .5) * c]); if (k === si) break; } pts.reverse();
+    const [ti0, tj0] = cell(x1, d1); if (ok(ti0, tj0)) pts.push([x1, d1]);   // (the spot itself, when a player can stand there)
+    const clear = (A, B) => { const n = Math.ceil(Math.hypot(B[0] - A[0], B[1] - A[1]) / .1); for (let q = 1; q < n; q++) { const [i, j] = cell(A[0] + (B[0] - A[0]) * q / n, A[1] + (B[1] - A[1]) * q / n); if (!ok(i, j)) return false; } return true; };
+    const out = []; let a = 0; while (a < pts.length - 1) { let b = pts.length - 1; while (b > a + 1 && !clear(pts[a], pts[b])) b--; out.push(pts[b]); a = b; }
+    return out.length ? out : [pts[pts.length - 1]];
+  }
+  const STAIRS_X = 14.6;   // (the middle of each staircase, either side of the Grand Hall: up from d 30 to the balcony)
   async function walkCommon(tx, td, opt = {}) {
-    const C = room.at, [x0, d0] = cmL(C, room.p.x, room.p.z), pts = route(zoneIx(x0, d0), zoneIx(tx, td)).concat([[tx, td]]);
-    for (let i = 0; i < pts.length; i++) { const [wx, wz] = toWorld(pts[i][0], pts[i][1]); const last = i === pts.length - 1, r = await walkPoint(wx, wz, Object.assign({}, opt, {within: last ? opt.within || .5 : .9, stopWhen: last ? opt.stopWhen : null})); if (!r.ok) return Object.assign(r, {stoppedAt: roomInfo()}); }
+    const C = room.at, here = () => cmL(C, room.p.x, room.p.z), upNow = () => !!room.p.lv, wantUp = !!opt.up;   // (lv: on the stairs or the balcony; the bar's raised floor is not that)
+    const [x0, d0] = here(), legs = [];
+    if (upNow() === wantUp) legs.push({to: [tx, td], up: wantUp});
+    else {   // a change of floor: by the nearer staircase, walking up (or down) it as a player does
+      const sx = (wantUp ? tx : x0) < 0 ? -STAIRS_X : STAIRS_X;
+      if (wantUp) legs.push({to: [sx, CM.SD0 + 1.1], up: false}, {stairs: [sx, 20]}, {to: [tx, td], up: true});
+      else legs.push({to: [sx, 21], up: true}, {stairs: [sx, CM.SD0 + 1.1]}, {to: [tx, td], up: false});
+    }
+    for (let L = 0; L < legs.length; L++) {
+      const g = legs[L], lastLeg = L === legs.length - 1;
+      if (g.stairs) { const [wx, wz] = toWorld(g.stairs[0], g.stairs[1]); const r = await walkPoint(wx, wz, Object.assign({}, opt, {within: .6, stopWhen: null})); if (!r.ok) return Object.assign(r, {stoppedAt: roomInfo()}); continue; }
+      const [cx, cd] = here(); let pts = pgPath(cx, cd, g.to[0], g.to[1], g.up);
+      if (!pts) pts = route(zoneIx(cx, cd), zoneIx(g.to[0], g.to[1])).concat([g.to]);   // (no way found on the plan: the doorway to doorway way, as before)
+      for (let i = 0; i < pts.length; i++) {
+        const last = lastLeg && i === pts.length - 1, [wx, wz] = toWorld(pts[i][0], pts[i][1]);
+        const r = await walkPoint(wx, wz, Object.assign({}, opt, {within: last ? opt.within || .5 : .45, stopWhen: lastLeg ? opt.stopWhen : null}));
+        if (!r.ok) return Object.assign(r, {stoppedAt: roomInfo()});
+        if (lastLeg && opt.stopWhen && opt.stopWhen()) return {ok: true};
+      }
+    }
     return {ok: true};
   }
   function faceTo(tx, ty, tz) { const p = room.p, dx = tx - p.x, dz = tz - p.z, eye = (p.y || 0) + 1.62; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.max(-1.45, Math.min(1.45, Math.atan2(ty - eye, Math.hypot(dx, dz)))); room.dirty = true; }
@@ -10828,6 +10918,7 @@ window.AgentKit = window.AgentKit || (() => {
   const cmds = [
     {name: 'see', ro: true, untrusted: true, does: 'Describe everything on screen now, in plain text: the chain, the block or room you are in, open cards, screens, crew.', run: () => see()},
     {name: 'state', ro: true, untrusted: true, does: 'Everything on screen now as data (the same as see(), as an object).', run: () => state()},
+    {name: 'limits', ro: true, does: 'The data sites this page asks (all free and public): how many asks each got in the last minute, the pace every player and agent keeps, and any site resting after asking us to slow down.', run: () => limits()},
     {name: 'chain', ro: true, does: 'The chain right now: newest block, the blocks waiting to be mined, the last ones mined, next halving, fee weather.', run: () => chain()},
     {name: 'parcels', ro: true, untrusted: true, does: 'List the parcels (transactions) in the block being shown, optionally only one type.', args: [{name: 'type', does: 'a parcel type, e.g. "inscriptions", "images", "text", "BRC-20", "runes", "segwit" (see state().parcelTypes)'}, {name: 'from', type: 'number', does: 'start at this many in (default 0)'}, {name: 'limit', type: 'number', does: 'how many (default 50, most 500)'}],
       run: ({type, from = 0, limit = 50}) => {
@@ -10857,7 +10948,7 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({steps}) => { if (inRoom()) return {ok: false, error: 'only outside the cube'}; const n = Math.max(-10, Math.min(10, Math.round(+steps))); for (let i = 0; i < Math.abs(n); i++) { cv.dispatchEvent(new WheelEvent('wheel', {deltaY: n > 0 ? -100 : 100, clientX: innerWidth / 2, clientY: innerHeight / 2, bubbles: true, cancelable: true})); await wait(60); } return camInfo(); }},
     {name: 'layers', does: 'Pull the cube\'s layers apart, or close them again (the layers button).', args: [{name: 'open', type: 'boolean', does: 'true to pull apart', req: true}], run: async ({open}) => { if (!!openD !== !!open) $('op').click(); await wait(800); return camInfo(); }},
     {name: 'tab', does: 'Show a tab of parcel types: inscriptions, tokens or transactions (as the tabs under PARCEL TYPES).', args: [{name: 'name', enum: ['inscriptions', 'tokens', 'transactions'], does: 'which tab', req: true}],
-      run: async ({name}) => { const g = {inscriptions: 0, tokens: 1, transactions: 2}[String(name).toLowerCase()]; const t = document.querySelector('.ktab[data-g="' + g + '"]'); if (!t) return {ok: false, error: 'inscriptions, tokens or transactions'}; t.click(); await wait(200); return {tab: name, types: kChips.filter(c => TYPES[c.i].g === g).map(c => ({type: TYPES[c.i].name, count: +(c.el.querySelector('b') || {}).textContent || 0, lit: pinK === c.i}))}; }},
+      run: async ({name}) => { const g = {inscriptions: 0, tokens: 1, transactions: 2}[String(name).toLowerCase()]; const t = document.querySelector('.ktab[data-g="' + g + '"]'); if (!t) return {ok: false, error: 'inscriptions, tokens or transactions'}; t.click(); await wait(200); return {tab: name, types: kChips.filter(c => TYPES[c.i].g === g).map(c => ({type: TYPES[c.i].name, count: +((c.el.querySelector('b') || {}).textContent || '0').replace(/[^0-9]/g, '') || 0, lit: pinK === c.i}))}; }},
     {name: 'types', ro: true, does: 'Every parcel type in all three tabs, with how many are in this block and which one is lit.', run: () => { const G = CATS.map(c => c[0].toLowerCase()), out = {}; for (const c of kChips) { const T = TYPES[c.i]; (out[G[T.g]] = out[G[T.g]] || []).push({type: T.name, count: +((c.el.querySelector('b') || {}).textContent || '0').replace(/[^0-9]/g, '') || 0, lit: pinK === c.i || undefined}); } return out; }},
     {name: 'clickAt', untrusted: true, does: 'Click a point on the screen, as a player clicks: outside, on a box of the cube (opens its card); inside, on a parcel (holds it). x and y go from 0,0 (top left) to 1,1 (bottom right). look() says what is where.', args: [{name: 'x', type: 'number', does: '0 (left) to 1 (right)'}, {name: 'y', type: 'number', does: '0 (top) to 1 (bottom)'}, {name: 'n', type: 'number', does: 'or a parcel number: clicks that box wherever it is on screen now, if you can see it'}],
       run: async ({x, y, n}) => {
@@ -10889,7 +10980,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'followStep', does: 'Go to a step of the follow-it-back line (you travel to its block).', args: [{name: 'to', type: 'number', does: 'step number, 0 = where it was made', req: true}], run: async ({to}) => { if (typeof fol === 'undefined' || !fol) return {ok: false, error: 'followBack() first'}; folGo(+to); await wait(1500); const T = trail(); return {now: fol && fol.i, bar: text($fol), step: T && fol ? T.steps[fol.i] : null}; }},
     {name: 'stopFollow', does: 'End the follow-it-back line.', run: () => { folStop(); return {ok: true}; }},
     {name: 'search', untrusted: true, does: 'Search with the tablet: a block (840000 or 840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID, an address, or a name (satoshi.sats).', args: [{name: 'query', does: 'what to find', req: true}],
-      run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading/i.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
+      run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
     {name: 'go', does: 'Press GO on a tablet search result (travels there; an arrow then shows the way).', args: [{name: 'n', type: 'number', does: 'result number from search() (default 0)'}],
       run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /go/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO'}; const from = room.at; b.click(); await until(() => room.at !== from || text($('sra')), 25000); await until(() => roomReady(), 25000); await until(() => text($('sra')), 6000); return {where: roomInfo(), arrow: text($('sra'))}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
@@ -10901,20 +10992,21 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'sit', does: 'Sit down in the common room: "sofa", "armchair", "bar stool", "garden bench", "balcony", "forum step", or a seat number 0-' + (CM_SEATS.length - 1 || 39) + '.', args: [{name: 'seat', does: 'which seat', req: true}],
       run: async ({seat}) => {
         if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'};
-        let tx, td, look = null;
-        if (/step/i.test(seat)) { tx = 2.5; td = 28.1; look = [0, 1, 40]; }
-        else { const i = /^\d+$/.test(String(seat)) ? +seat : SEATS[String(seat).toLowerCase()], s = CM_SEATS[i]; if (!s) return {ok: false, error: 'seats: ' + Object.keys(SEATS).join(', ') + ', forum step, or 0-' + (CM_SEATS.length - 1)}; tx = s[0]; td = s[1]; look = [s[0], .6, s[1]]; }
-        const canSit = () => { const A = cmAct(null, null); return A && (A.a === 'seat' || A.a === 'sit'); };   // (close enough to sit, as E would)
-        const r = await walkCommon(tx, td, {run: true, within: .4, stopWhen: canSit}); if (!r.ok && !canSit()) return r;
-        const [lx, lz] = toWorld(look[0], look[2]); faceTo(lx, look[1], lz); room.p.pitch = Math.min(room.p.pitch, .1); await wait(200);
-        const A = cmAct(null, null); if (!A || (A.a !== 'seat' && A.a !== 'sit')) return {ok: false, error: 'no seat to sit on here', inFront: A && A.label};
+        let tx, td, look = null, S = null; const step = /step/i.test(seat);
+        if (step) { tx = 2.5; td = 28.1; look = [0, 1, 40]; }
+        else { const i = /^\d+$/.test(String(seat)) ? +seat : SEATS[String(seat).toLowerCase()]; S = CM_SEATS[i]; if (!S) return {ok: false, error: 'seats: ' + Object.keys(SEATS).join(', ') + ', forum step, or 0-' + (CM_SEATS.length - 1)}; tx = S[0]; td = S[1]; look = [S[0], S[2] + .6, S[1]]; }   // (walk to the nearest spot by the seat a player can stand on)
+        if (room.p.sit) { room.p.sit = false; room.dirty = true; await wait(300); }   // (up first, if sitting)
+        const right = () => { const A = cmAct(null, null); return !!A && (step ? A.a === 'sit' : A.a === 'seat' && A.s === S); };   // (only the seat asked for: never the first one in the way)
+        const r = await walkCommon(tx, td, {run: true, within: .4, stopWhen: right, up: !!S && S[2] > 4}); if (!r.ok && !right()) return r;
+        if (!right()) { const [lx, lz] = toWorld(look[0], look[2]); faceTo(lx, look[1], lz); room.p.pitch = Math.min(room.p.pitch, .1); await wait(200); }   // (face it, as a player turns to it)
+        const A = cmAct(null, null); if (!right()) return {ok: false, error: A && A.a === 'seat' ? 'the seat in front of you is not the one asked for' : 'no seat to sit on here', inFront: A && A.label, you: roomInfo()};
         cmDo(A); await wait(300); return roomInfo();
       }},
     {name: 'stand', does: 'Stand up.', run: () => { if (inRoom()) { room.p.sit = false; room.dirty = true; } return roomInfo(); }},
     {name: 'pint', does: 'Walk to the tap at the Mempool bar and pour a pint (or sip the one you hold).', run: async () => { if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'}; if (cm.pint) { cmSip(); return {sipped: true}; } const canPour = () => { const A = cmAct(null, null); return A && A.a === 'pour'; }; const r = await walkCommon(CM.TAP[0] + .9, CM.TAP[1], {run: true, within: .35, stopWhen: canPour}); if (!r.ok && !canPour()) return r; const [tx, tz] = toWorld(CM.TAP[0] - 1, CM.TAP[1]); faceTo(tx, 2.8, tz); await wait(200); const A = cmAct(null, null); if (!A || A.a !== 'pour') return {ok: false, error: 'not at the tap', inFront: A && A.label}; cmDo(A); await until(() => cm.pint, 8000); return {holdingPint: !!cm.pint}; }},
     {name: 'emotes', ro: true, does: 'List the emotes and dances by group.', run: () => EMOTES.map(([g, l]) => ({group: g, emotes: l.map(([id, nm]) => id + ' (' + nm + ')')}))},
     {name: 'emote', does: 'Do an emote or dance (others in your crew see it). A dance picked again stops it.', args: [{name: 'name', does: 'its id or name from emotes(), e.g. "wave", "Macarena", "moonwalk"', req: true}],
-      run: ({name}) => { const q = String(name).toLowerCase().replace(/[^a-z0-9]/g, ''); const all = EMOTES.flatMap(([, l]) => l), e = all.find(([id, nm]) => id.toLowerCase() === q || nm.toLowerCase().replace(/[^a-z0-9]/g, '') === q); if (!e) return {ok: false, error: 'no emote "' + name + '"'}; emPlay(e[0]); return {doing: e[1]}; }},
+      run: ({name}) => { const q = String(name).toLowerCase().replace(/[^a-z0-9]/g, ''); const all = EMOTES.flatMap(([, l]) => l), e = all.find(([id, nm]) => id.toLowerCase() === q || nm.toLowerCase().replace(/[^a-z0-9]/g, '') === q); if (!e) return {ok: false, error: 'no emote "' + name + '"'}; emPlay(e[0]); return em.cur ? {doing: e[1]} : {doing: null, stopped: e[1]}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Who is in your crew and where they are.', run: () => crewInfo()},
     {name: 'goToCrewmate', does: 'Go to where a crewmate is (as the crew list\'s button does).', args: [{name: 'name', does: 'their name', req: true}],
       run: async ({name}) => { const M = [...crew.mates.values()].find(m => String(mateName(m)).toLowerCase() === String(name).toLowerCase()); if (!M) return {ok: false, error: 'no crewmate called ' + name}; goToMate(M); await wait(1500); await until(() => roomReady(), 20000); return roomInfo(); }},
@@ -10926,7 +11018,7 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({command, args}) => { const g = paintAgent(); if (!g) return {ok: false, error: 'Block Paint is not open: toBlockPaint() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'Block Paint has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
     {name: 'toBlockPaint', does: 'Go through the warehouse door to Block Paint City.', run: async () => { if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; } cmToPaint(); return {ok: true}; }},
   ];
-  const intro = 'AGENT BLOCKHALL agent kit (once called AI Agent Bitcoin Block Explorer, and first Block\u0020Cube, so its tools start cube_). It is a 3D Bitcoin block explorer world for players and agents: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room. You play by the same rules as a player: you walk at a player\'s speed, walls stop you, you pick what is in the middle of your view, and you see what a player would. Once you use this kit, your crewmates see you marked as an AI agent. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives.';
+  const intro = 'AGENT BLOCKHALL agent kit (once called AI Agent Bitcoin Block Explorer, and first Block\u0020Cube, so its tools start cube_). It is a 3D Bitcoin block explorer world for players and agents: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room. You play by the same rules as a player: you walk at a player\'s speed, walls stop you, you pick what is in the middle of your view, and you see what a player would. Once you use this kit, your crewmates see you marked as an AI agent. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives.\n\nBEING GENTLE WITH THE DATA SITES: everything here comes free from public sites (mempool.space and its copies, ordpool.space, ordinals.com and others), straight to this browser. They do not publish their limits, so the game keeps one pace for every player and agent: each site is asked at most 30 times at once, then 6 times a second. If a site says \"too many\" (or stops answering), the game rests it for 30 s (or as long as it asks) and uses another site with the same data; events() tells you, and limits() shows what you have asked and what is resting. What things cost (measured): changing block 5 to 6 asks; a search 1 to 9; going into a new block hall 25 to 40 (going back to one again: none); picking up a parcel 5 to 13; following an inscription back about 2 a move; most other commands none. To gather a lot, go steadily and read what you have (parcels() lists a whole block with no asks).';
   // the game moves on only in the frames the browser gives the page to draw. A hidden tab, a tab in the background or a closed panel
   // gets none, so a walk there never starts and ends as "blocked". While a command runs and no frame has come for a moment, the kit
   // moves the game on itself, at the same pace: the same walking speed, walls and doors as ever (only the picture waits to be seen)
