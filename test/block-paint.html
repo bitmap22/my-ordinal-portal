@@ -2794,7 +2794,7 @@ window.AgentKit = window.AgentKit || (() => {
   function blockers(reach, dirDeg) {   // nearest first; given the way you are going, the ones that way first
     const e = eyeP(), feet = e[1] - 1.65, out = [];
     for (const s of lvl().solids || []) {
-      if (!(s.hi[1] > feet + .35 && s.lo[1] < e[1] + .15)) continue;
+      if (!(s.hi[1] > feet + .45 && s.lo[1] < e[1] + .15)) continue;   // (anything up to 0.45 m you step up onto, as a player does)
       const cx = Math.max(s.lo[0], Math.min(e[0], s.hi[0])), cz = Math.max(s.lo[2], Math.min(e[2], s.hi[2])), d = Math.hypot(e[0] - cx, e[2] - cz);
       if (d < reach) out.push({s, d, a: deg(Math.atan2(-(cx - e[0]), -(cz - e[2])))});
     }
@@ -2807,7 +2807,7 @@ window.AgentKit = window.AgentKit || (() => {
   function lowThings() {
     const e = eyeP(), feet = e[1] - 1.65, yaw = deg(B().BP.cam.yaw), seenN = new Set(), out = [];
     for (const s of lvl().solids || []) {
-      if (!(s.hi[1] > feet + .35 && s.hi[1] <= e[1] + .1 && s.lo[1] < e[1])) continue;
+      if (!(s.hi[1] > feet + .45 && s.hi[1] <= e[1] + .1 && s.lo[1] < e[1])) continue;
       const cx = Math.max(s.lo[0], Math.min(e[0], s.hi[0])), cz = Math.max(s.lo[2], Math.min(e[2], s.hi[2])), d = Math.hypot(e[0] - cx, e[2] - cz);
       if (d > 8) continue;
       const a = deg(Math.atan2(-(cx - e[0]), -(cz - e[2]))); if (d > .5 && Math.abs(((a - yaw) + 540) % 360 - 180) > 60) continue;
@@ -2901,7 +2901,7 @@ window.AgentKit = window.AgentKit || (() => {
     const mid = hitAt(.5, .5); if (mid && mid.wall) L.push(mid.metres != null && mid.metres < 2.4 ? 'The ' + (mid.name || 'surface') + ' in the middle of your view is close enough to spray.' : 'Walk closer to the ' + (mid.name || 'surface') + ' in the middle of your view to spray it.');
     const seenKey = new Set(), T = things().map(t => Object.assign(t, {v: seen(t.p)})).filter(t => t.v).sort((a, b) => a.v.len - b.v.len).filter(t => { const k = t.what + Math.round(t.p[0]) + ',' + Math.round(t.p[2]); if (seenKey.has(k)) return false; seenKey.add(k); return true; }).slice(0, 10);
     if (T.length) L.push('Things in view: ' + T.map(t => t.what + ' ' + K.bearing(t.v.off) + ', ' + Math.round(t.v.len) + ' m').join('; ') + '.');
-    const LT = lowThings(); if (LT.length) L.push('Lower than your eyes in front of you (they stop you walking): ' + LT.map(t => t.what + ' ' + t.where + ', ' + t.metres + ' m').join('; ') + '.');
+    const LT = lowThings(); if (LT.length) L.push('Lower than your eyes in front of you (they stop you walking): ' + LT.map(t => t.what + ' ' + t.where + (t.metres < .1 ? ', right against you' : ', ' + t.metres + ' m')).join('; ') + '.');
     const e = B().eye, yaw = B().BP.cam.yaw, P = people(), dir = p => p ? K.bearing(deg(Math.atan2(-(p[0] - e[0]), -(p[2] - e[2]))) - deg(yaw)) : '';
     const L2 = B().level && B().level.live ? B().level.live.npcs || [] : [];
     const tf = L2.map(n => { const q = n.p || n.pos; return Array.isArray(q) ? {d: Math.hypot(q[0] - e[0], q[2] - e[2]), b: dir(q), k: typeof n.kit === 'string' ? n.kit : 'townsfolk', a: n.act} : null; }).filter(Boolean).sort((a, b) => a.d - b.d).slice(0, 6);
