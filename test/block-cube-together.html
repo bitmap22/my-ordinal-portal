@@ -510,7 +510,6 @@ addEventListener('message', e => {
   if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
   if (m.type === 'hello') { gameReady = true; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, '*'); portraits(); walSend(); for (const [id, a] of walMates) toCube({ type: 'mwal', id, addr: a }); pnLast = ''; pnSend(); if (net.on && net.sail) startGame(); return; }
   if (m.type === 'portraits') { gotPortraits(m); return; }
-  if (m.type === 'trade') { const on = !!m.on; if (on !== walTrade) { walTrade = on; walShare(); } return; }   // (your block on your trade base, or not)
   if (m.type === 'hear') { voice.hear(m.d); return; }   // how far away each crewmate is in the rooms (for their voices)
   if (m.type === 'chat-open') { openSay(); return; }
   if (m.type === 'go' && m.to === 'paint') { swapTo('paint'); return; }   // walked into the warehouse shutter
@@ -1563,16 +1562,14 @@ function walSetShare(on) { if (!wal.addr) on = false; wal.share = !!on; walSave(
 // the game: your address, the inscriptions in it, and whether the crew may see
 const walSend = () => toCube({ type: 'wallet', addr: wal.addr, ids: wal.ids, share: wal.share ? 1 : 0 });
 // the crew: your card (address, the wallet's signature, and your friend key signing this session's key, so no one else can
-// pass your card off as theirs), or "nothing to see" when the switch is off. While your block is on your trade base in the
-// Forum, the card goes too, so your crew can check your block is yours (your address only: what you hold stays private)
-let walTrade = false;
+// pass your card off as theirs), or "nothing to see" when the switch is off
 function walCard() {
-  if (!wal.addr || !(wal.share || walTrade)) return { t: 'wal', sh: 0 };
+  if (!wal.addr || !wal.share) return { t: 'wal', sh: 0 };
   return { t: 'wal', sh: 1, a: wal.addr, s: wal.sig, f: fpk, ps: bytesToHex(schnorr.sign(sha256(enc.encode('blockhall-wallet|' + pk + '|' + wal.addr)), fsk)) };
 }
 let walSent = 0;
 function walShare() { if (!net.on) return; walSent = Date.now(); share(walCard()); }
-setInterval(() => { if (net.on && (wal.share || walTrade) && Date.now() - walSent > 30000) walShare(); }, 5000);   // (now and then, for anyone who came in since)
+setInterval(() => { if (net.on && wal.share && Date.now() - walSent > 30000) walShare(); }, 5000);   // (now and then, for anyone who came in since)
 // a crewmate's card: checked here before the game hears of it
 const walMates = new Map();
 function walIn(id, m) {
@@ -1622,7 +1619,7 @@ async function walAgentProve(a, sig) {
   wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'agent'; walSave(); walDraw();
   await walRefresh(true); walShare(); return { ok: true };
 }
-const walStatus = () => wal.addr ? { connected: true, address: wal.addr, by: wal.by === 'agent' ? 'you (an AI agent), with your own signed message' : 'the person at this screen (UniSat)', inscriptions: wal.ids.length, read: wal.at ? new Date(wal.at).toISOString() : null, crewCanSee: !!wal.share, addressSharedForTradeBase: walTrade || undefined, note: wal.note || undefined } : { connected: false };
+const walStatus = () => wal.addr ? { connected: true, address: wal.addr, by: wal.by === 'agent' ? 'you (an AI agent), with your own signed message' : 'the person at this screen (UniSat)', inscriptions: wal.ids.length, read: wal.at ? new Date(wal.at).toISOString() : null, crewCanSee: !!wal.share, note: wal.note || undefined } : { connected: false };
 // ---------------- the start screen ----------------
 $('name').value = store.get('name'); drawPicker();
 let nameT = 0; $('name').addEventListener('input', () => { store.set('name', $('name').value.trim()); clearTimeout(nameT); nameT = setTimeout(() => presence(), 3000); });
@@ -1766,6 +1763,11 @@ window.AgentKit = window.AgentKit || (() => {
     if (from === 'agent' && !B.open) { B.open = true; boxDraw(); if (boxPlace(true)) B.unread = 0; else { B.open = false; B.unread++; boxDraw(); boxPlace(true); } }   // (it opens to show the agent's words only where it covers nothing; else "1 new" on the tab)
     else { boxDraw(); boxPlace(); }
   }
+  // system health for the crew: when no relay is connected (crewmates cannot find each other), and when they are back
+  const RH = {n: -1, since: 0, told: null, news: [], read: 0};
+  setInterval(() => { const n = relays.filter(r => r.open).length; if (n !== RH.n) { RH.n = n; RH.since = Date.now(); } const st = n ? 'up' : 'down';
+    if (RH.told !== st && Date.now() - RH.since > 15000) { if (RH.told !== null || st === 'down') RH.news.push({at: new Date().toISOString().slice(11, 19), happened: st === 'down' ? 'System health: no crew relay is connected, so crewmates cannot find each other (the page keeps trying all ' + relays.length + ')' : 'System health: crew relays are connected again (' + n + ' of ' + relays.length + ')'}); RH.told = st; if (RH.news.length > 20) { RH.news.shift(); RH.read = Math.max(0, RH.read - 1); } } }, 5000);
+  const relayNews = all => { const L = all ? RH.news.slice() : RH.news.slice(RH.read); RH.read = RH.news.length; return L; };
   const boxNew = all => { const B = BOX(), L = B.log.filter(m => m.from === 'you' && (all || m.id > B.read)); B.read = B.seq; return L.map(m => ({at: m.at, untrusted: 'The person at your screen typed to you: ' + m.text})); };
   // tips: the maker's bitcoin address (the same as the Tips button on the Ordinal Portal), for agents only.
   // Switched off for now (12 Nov 2026): to bring back agent.tip() and the line in help(), set TIPS_ON to true and put the
@@ -1810,7 +1812,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
-      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
+      try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = relayNews(args.all).concat(boxNew(args.all)); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
     api.help = async () => {
@@ -1915,6 +1917,8 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'walletRead', does: 'Read your own wallet again (after you got or sent inscriptions).', run: async () => { if (!wal.addr || wal.by !== 'agent') return { ok: false, error: wal.addr ? 'this is the person\u2019s wallet' : 'no wallet: walletProve() first' }; await walRefresh(true); return walStatus(); }},
     {name: 'walletOff', does: 'Stop read status for your own wallet (the markers go).', run: () => { if (!wal.addr) return { ok: false, error: 'no wallet connected' }; if (wal.by !== 'agent') return { ok: false, error: 'this is the person\u2019s wallet: only they can disconnect it' }; walOff(''); return walStatus(); }},
     {name: 'leaveCrew', always: true, does: 'Leave the crew.', run: async () => { if (!net.on) return {ok: false, error: 'not in a crew'}; await leaveCrew(); await wait(800); return crewState(); }},
+    {name: 'health', ro: true, does: 'System health: the crew relays (how players find each other: each one connected or not) and, with a game open, every outside source it reads, whether it answers, from which site, and what is not shown while one does not (the game\'s health()). events() tells you when a source stops or starts answering.',
+      run: async () => { const o = {crewRelays: {connected: relays.filter(r => r.open).map(r => r.url.replace('wss://', '')), notConnected: relays.filter(r => !r.open).map(r => r.url.replace('wss://', '')), note: 'a crew needs one relay that passes notes on: the rest are spares'}}; const g = gameAgent(); if (g && g.commands().includes('health')) { try { o.game = await g.health({}); } catch (e) {} } else o.game = 'no game open yet: walkIn() first'; return o; }},
     {name: 'game', always: true, untrusted: true, does: 'Run a command in the game in front (Agent Blockhall or Block Paint), e.g. {command: "parcels", args: {type: "images"}}. Its help() lists them.', args: [{name: 'command', does: 'the game command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = gameAgent(); if (!g) return {ok: false, error: 'no game open yet: walkIn() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'the game has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
   ];
