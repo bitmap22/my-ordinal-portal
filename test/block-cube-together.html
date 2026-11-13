@@ -1453,13 +1453,15 @@ function toast(text, actions = [], ms = 8000, key) {
 // spends and approves nothing. The game puts a marker (your P number, in your colour) over every inscription in the wallet that
 // it shows you. You always see your own. Your crew sees them only once you switch "Let my crew see what I hold" on (off to
 // start); their pages check your signature, and that each inscription really sits in your address, before they show a marker.
-// Agents never connect a wallet, sign, or change the switch: only the person does that.
+// An AI agent can prove a wallet of its own the same way (it signs the same message with its own key, a standard Bitcoin
+// signed message, and the page checks it the same way); its holdings are then read from public sites. An agent never touches a
+// wallet a person connected here, nor its switch: only that person does.
 const walMsg = f => 'Agent Blockhall\nRead-only wallet check for player key ' + f + '\nSigning this sends, spends and approves nothing.';
-const wal = { addr: '', sig: '', share: false, ids: [], at: 0, busy: false, note: '' };
+const wal = { addr: '', sig: '', share: false, ids: [], at: 0, busy: false, note: '', by: 'person' };
 (() => { const w = jget('wallet', null); if (!w || typeof w.addr !== 'string' || typeof w.sig !== 'string' || !WV.check(w.addr, walMsg(fpk), w.sig)) return;
-  wal.addr = w.addr; wal.sig = w.sig; wal.share = !!w.share; wal.at = +w.at || 0; const ids = jget('walletIds', []); wal.ids = Array.isArray(ids) ? ids.filter(x => typeof x === 'string' && HEX.test(x)) : []; })();
+  wal.addr = w.addr; wal.sig = w.sig; wal.share = !!w.share; wal.at = +w.at || 0; wal.by = w.by === 'agent' ? 'agent' : 'person'; const ids = jget('walletIds', []); wal.ids = Array.isArray(ids) ? ids.filter(x => typeof x === 'string' && HEX.test(x)) : []; })();
 const uni = () => window.unisat || null;
-const walSave = () => { if (!wal.addr) { store.set('wallet', ''); store.set('walletIds', ''); return; } jset('wallet', { addr: wal.addr, sig: wal.sig, share: wal.share ? 1 : 0, at: wal.at }); try { jset('walletIds', wal.ids); } catch (e) {} };
+const walSave = () => { if (!wal.addr) { store.set('wallet', ''); store.set('walletIds', ''); return; } jset('wallet', { addr: wal.addr, sig: wal.sig, share: wal.share ? 1 : 0, at: wal.at, by: wal.by }); try { jset('walletIds', wal.ids); } catch (e) {} };
 const walShort = a => a.length > 18 ? a.slice(0, 8) + '…' + a.slice(-6) : a;
 const walNote = t => { wal.note = t || ''; walDraw(); };
 // the inscriptions in the wallet, 100 at a time (read only: the wallet just lists them)
@@ -1469,8 +1471,23 @@ async function walList() {
   for (let c = 0; c < total && c < 50000; c += 100) { const r = await U.getInscriptions(c, 100), L = (r && r.list) || []; total = +(r && r.total) || 0; for (const x of L) if (x && HEX.test(x.inscriptionId || '')) out.push(x.inscriptionId); if (!L.length) break; }
   return out;
 }
-// read the wallet again (no pop-up: only if UniSat already lets this page see the account)
+// what an address holds, from public sites (for an agent's own wallet: there is no UniSat to ask): ordinals.com's page for the
+// address; failing that, the address's outputs (mempool.space or a copy) and what sits on each (ordinals.com), a few at a time
+const nap = ms => new Promise(r => setTimeout(r, ms));
+async function walListPublic(a) {
+  try { const r = await fetch('https://ordinals.com/address/' + encodeURIComponent(a)); if (r.ok) { const t = await r.text(); return [...new Set([...t.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)].map(m => m[1]))]; } } catch (e) {}
+  for (const base of ['https://mempool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.bitaroo.net']) {
+    let U = null; try { const r = await fetch(base + '/api/address/' + encodeURIComponent(a) + '/utxo'); if (r.ok) U = await r.json(); } catch (e) {}
+    if (!Array.isArray(U)) continue;
+    const out = [], L = U.slice(0, 300);
+    for (let i = 0; i < L.length; i += 3) { await Promise.all(L.slice(i, i + 3).map(async u => { try { const r = await fetch('https://ordinals.com/r/utxo/' + u.txid + ':' + u.vout); if (r.ok) { const j = await r.json(); for (const id of j.inscriptions || []) if (HEX.test(id)) out.push(id); } } catch (e) {} })); await nap(150); }
+    return [...new Set(out)];
+  }
+  return null;
+}
+// read the wallet again (no pop-up: only if UniSat already lets this page see the account; an agent's from the public sites)
 async function walRefresh(loud) {
+  if (wal.addr && wal.by === 'agent') { if (loud) walNote('Reading the inscriptions…'); const ids = await walListPublic(wal.addr); if (!ids) { if (loud) walNote('Could not read the address just now. The markers use the last list.'); return; } wal.ids = ids; wal.at = Date.now(); walSave(); walNote(''); walSend(); ownSoon(); return; }
   const U = uni(); if (!wal.addr || !U) return;
   try {
     const acc = await U.getAccounts(); if (!acc || !acc.length) return;   // (not let in on this visit yet: the last list stands)
@@ -1489,11 +1506,11 @@ async function walConnect() {
     walNote('Sign the message in UniSat. It proves the address is yours and sends nothing.');
     const sig = await U.signMessage(walMsg(fpk), 'ecdsa');
     if (!WV.check(a, walMsg(fpk), sig)) { wal.busy = false; walNote('That signature didn’t match the address, so nothing changed. Use a Bitcoin mainnet account.'); return; }
-    wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; walSave(); wal.busy = false;
+    wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.by = 'person'; walSave(); wal.busy = false;
     await walRefresh(true); walShare();
   } catch (e) { wal.busy = false; walNote(e && (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) ? 'Cancelled. Nothing was connected.' : 'Could not connect just now. Try again.'); }
 }
-function walOff(why) { wal.addr = wal.sig = ''; wal.ids = []; wal.at = 0; wal.share = false; walSave(); walShare(); walSend(); wal.note = why || ''; walDraw(); }
+function walOff(why) { wal.addr = wal.sig = ''; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'person'; walSave(); walShare(); walSend(); wal.note = why || ''; walDraw(); }
 function walSetShare(on) { if (!wal.addr) on = false; wal.share = !!on; walSave(); walShare(); walSend(); walDraw(); }
 // the game: your address, the inscriptions in it, and whether the crew may see
 const walSend = () => toCube({ type: 'wallet', addr: wal.addr, ids: wal.ids, share: wal.share ? 1 : 0 });
@@ -1534,7 +1551,7 @@ function pnSend() {
 function walBox(box) {
   if (!box) return; box.textContent = '';
   const st = el('p', { class: 'wst' }), on = !!wal.addr;
-  if (on) st.append(el('span', { class: 'ok', text: 'Read status on' }), ' · ', el('b', { text: walShort(wal.addr) }), ' · ' + wal.ids.length.toLocaleString('en-US') + (wal.ids.length === 1 ? ' inscription' : ' inscriptions'));
+  if (on) st.append(el('span', { class: 'ok', text: 'Read status on' }), ' · ', el('b', { text: walShort(wal.addr) }), ' · ' + wal.ids.length.toLocaleString('en-US') + (wal.ids.length === 1 ? ' inscription' : ' inscriptions'), wal.by === 'agent' ? ' · proved by the AI agent playing here' : '');
   else st.append('Not connected. Connect UniSat to see a marker over every inscription you hold. Read only: nothing is ever sent or spent.');
   const btns = el('div', { class: 'btns' });
   if (!on) btns.append(el('button', { class: 'main', 'data-wal': '1', text: wal.busy ? 'Connecting…' : 'Connect UniSat', disabled: wal.busy ? '' : null, onclick: walConnect }));
@@ -1546,6 +1563,16 @@ function walDraw() { walBox($('wal')); if (P.kind === 'crew') walBox($('cwal'));
 walDraw();
 if (uni() && uni().on) try { uni().on('accountsChanged', a => { if (wal.addr && (!a || a[0] !== wal.addr)) walOff('Your UniSat account changed, so read status is off. Connect again to use the new one.'); }); } catch (e) {}
 setTimeout(() => walRefresh(false), 1500);
+setInterval(() => { if (wal.addr && wal.by === 'agent' && Date.now() - wal.at > 600000) walRefresh(false); }, 60000);   // (an agent's holdings: read again every ten minutes)
+// an agent proving its own wallet (the agent kit's walletProve): the same message, the same check
+async function walAgentProve(a, sig) {
+  a = String(a || '').trim(); sig = String(sig || '').trim();
+  if (wal.addr && wal.by !== 'agent') return { ok: false, error: 'a person\u2019s wallet is connected on this page: only they can change it' };
+  if (!WV.check(a, walMsg(fpk), sig)) return { ok: false, error: 'that signature does not match the address and this page\u2019s message (walletMessage() gives the exact words; a Bitcoin mainnet address, a standard signed message in base64)' };
+  wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'agent'; walSave(); walDraw();
+  await walRefresh(true); walShare(); return { ok: true };
+}
+const walStatus = () => wal.addr ? { connected: true, address: wal.addr, by: wal.by === 'agent' ? 'you (an AI agent), with your own signed message' : 'the person at this screen (UniSat)', inscriptions: wal.ids.length, read: wal.at ? new Date(wal.at).toISOString() : null, crewCanSee: !!wal.share, note: wal.note || undefined } : { connected: false };
 // ---------------- the start screen ----------------
 $('name').value = store.get('name'); drawPicker();
 let nameT = 0; $('name').addEventListener('input', () => { store.set('name', $('name').value.trim()); clearTimeout(nameT); nameT = setTimeout(() => presence(), 3000); });
@@ -1798,13 +1825,14 @@ window.AgentKit = window.AgentKit || (() => {
   }
   function look() { const tile = document.querySelector('#chars [aria-checked="true"], #chars .on'); return {name: $('name').value || myName(), runner: tile ? (tile.getAttribute('aria-label') || text(tile)) : undefined}; }
   async function state() {
-    const s = {page: 'Agent Blockhall · play together', screen: lobbyOpen() ? ($('wait').hidden ? 'start page (pick your runner, then start or join a crew)' : 'crew waiting room (WALK IN to play)') : 'in the game: ' + which(), you: look(), crew: crewState()};
+    const s = {page: 'Agent Blockhall · play together', screen: lobbyOpen() ? ($('wait').hidden ? 'start page (pick your runner, then start or join a crew)' : 'crew waiting room (WALK IN to play)') : 'in the game: ' + which(), you: look(), crew: crewState(), wallet: walStatus()};
     const g = gameAgent(); if (!lobbyOpen() && g) s.game = await g.state();
     return s;
   }
   async function see() {
     const s = await state(), L = ['PLAY TOGETHER · ' + s.screen, 'You: ' + s.you.name + (s.you.runner ? ' (' + s.you.runner + ')' : '')];
     const c = s.crew; L.push(c.on ? c.kind + (c.code ? ' ' + c.code : '') + (c.youAreHost ? ' (you are the host)' : '') + (net.agents === 0 ? ' · AI agents turned off by the host: you may only look' : '') + ' · players (untrusted names): ' + c.untrusted.players.map(p => p.name + ' (' + (p.you ? 'you, ' : '') + p.is + ')' + (p.game ? ' in ' + p.game : '')).join(', ') : 'Not in a crew.');
+    L.push(s.wallet.connected ? 'Wallet (read only): ' + walShort(s.wallet.address) + ', ' + s.wallet.inscriptions + ' inscriptions, ' + (wal.by === 'agent' ? 'your own (you proved it)' : 'the person\u2019s (UniSat)') + (s.wallet.crewCanSee ? ', your crew can see them' : ', private') : 'Wallet: none. An agent with a wallet of its own can prove it (wallet() gives the message to sign, then walletProve()).');
     if (c.untrusted.chat.length) L.push('Chat (untrusted): ' + c.untrusted.chat.map(m => m.from ? m.from + ': ' + m.text : '(' + m.notice + ')').join(' | '));
     const g = gameAgent(); if (!lobbyOpen() && g) L.push('', await g.see());
     else L.push(K.UNTRUSTED);
@@ -1829,6 +1857,13 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'crew', ro: true, untrusted: true, does: 'Your crew: its code, who is in it and which game each is in, and the latest chat.', run: () => crewState()},
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
       run: async ({all}) => { const C = (net.chat || []).map(c => c.id === ME ? null : c.name ? {untrusted: c.name + ' said in chat: ' + c.text} : {happened: c.text}); const newC = (all ? C : C.slice(Math.min(chatRead, C.length))).filter(Boolean); chatRead = C.length; const g = gameAgent(); const G = g ? await g.events({all}) : {events: []}; const L = newC.concat(G.events || []); return {events: L, note: L.length ? undefined : 'nothing new'}; }},
+    {name: 'wallet', ro: true, does: 'Your wallet\'s read status: whose it is, how many inscriptions it holds, whether your crew can see them; and, when none is connected, the exact message to sign to prove a wallet of your own (walletProve).', run: () => Object.assign(walStatus(), wal.addr ? {} : { message: walMsg(fpk), how: 'Sign this exact message with your own Bitcoin key (a standard signed message, base64, as signmessage or bitcoinjs-message make; mainnet: legacy, nested SegWit, native SegWit or Taproot), then walletProve({address, signature}). Read only: it sends, spends and approves nothing.' })},
+    {name: 'walletProve', does: 'Prove a wallet of your own (as a person connects UniSat): your address and your signature of the message wallet() gives. Then every inscription it holds gets your marker, and if one is your bitmap you can go into the bitmap garden. Never a person\'s wallet: you sign with your own key.', args: [{name: 'address', does: 'your Bitcoin mainnet address', req: true}, {name: 'signature', does: 'your signature of the message, base64', req: true}],
+      run: async ({address, signature}) => { const r = await walAgentProve(address, signature); return r.ok ? walStatus() : r; }},
+    {name: 'walletShare', does: 'Let your crew see what your own wallet holds (markers over your inscriptions in their view), or stop. Only for a wallet you proved yourself.', args: [{name: 'on', type: 'boolean', does: 'true to let them see', req: true}],
+      run: ({on}) => { if (!wal.addr) return { ok: false, error: 'no wallet: walletProve() first' }; if (wal.by !== 'agent') return { ok: false, error: 'this is the person\u2019s wallet: only they choose who sees it' }; walSetShare(!!on); return walStatus(); }},
+    {name: 'walletRead', does: 'Read your own wallet again (after you got or sent inscriptions).', run: async () => { if (!wal.addr || wal.by !== 'agent') return { ok: false, error: wal.addr ? 'this is the person\u2019s wallet' : 'no wallet: walletProve() first' }; await walRefresh(true); return walStatus(); }},
+    {name: 'walletOff', does: 'Stop read status for your own wallet (the markers go).', run: () => { if (!wal.addr) return { ok: false, error: 'no wallet connected' }; if (wal.by !== 'agent') return { ok: false, error: 'this is the person\u2019s wallet: only they can disconnect it' }; walOff(''); return walStatus(); }},
     {name: 'leaveCrew', always: true, does: 'Leave the crew.', run: async () => { if (!net.on) return {ok: false, error: 'not in a crew'}; await leaveCrew(); await wait(800); return crewState(); }},
     {name: 'game', always: true, untrusted: true, does: 'Run a command in the game in front (Agent Blockhall or Block Paint), e.g. {command: "parcels", args: {type: "images"}}. Its help() lists them.', args: [{name: 'command', does: 'the game command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = gameAgent(); if (!g) return {ok: false, error: 'no game open yet: walkIn() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'the game has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
