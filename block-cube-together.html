@@ -282,7 +282,9 @@ window.NB = (() => { const T = (()=>{const e=[];for(let t=2;e.length<64;t++)e.ev
 // GAME: the cube (the same folder as this page; open this page with ?game=<address> to use another copy)
 const Q = new URLSearchParams(location.search);
 const GAME = Q.get('game') || 'block-cube.html';
-const RELAYS = Q.get('relay') ? Q.get('relay').split(',') : ['wss://nos.lol', 'wss://relay.damus.io', 'wss://nostr-pub.wellorder.net', 'wss://relay.primal.net'];
+// (13 Nov 2026: tested by starting a crew in one tab and joining it by code in another, on each relay alone. nos.lol,
+//  relay.damus.io and nostr-pub.wellorder.net failed that test, so they were swapped for the three after primal)
+const RELAYS = Q.get('relay') ? Q.get('relay').split(',') : ['wss://relay.primal.net', 'wss://nostr.oxtr.dev', 'wss://offchain.pub', 'wss://nostr-01.yakihonne.com'];
 // how two players find a way to each other. STUN tells each player its own public address, which is all most homes and phones need.
 // A TURN server passes the messages along when nothing else gets through (some offices, schools and mobile networks). None is set
 // up yet. To add one later, put it in TURN, e.g.
@@ -522,14 +524,14 @@ function relayConnect() {
   for (const url of RELAYS) { const r = { url, ws: null, open: false, q: [] }; relays.push(r);
     const go = () => { try { r.ws = new WebSocket(url); } catch (e) { return; }
       r.ws.onopen = () => { r.open = true; for (const [id, s] of subs) r.ws.send(JSON.stringify(['REQ', id, ...s.filters])); for (const m of r.q.splice(0)) r.ws.send(m); };
-      r.ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m[0] !== 'EVENT') return; const s = subs.get(m[1]), ev = m[2]; if (!s || !ev || typeof ev.id !== 'string' || s.seen.has(ev.id)) return; if (!verify(ev)) return; s.seen.add(ev.id); try { s.cb(ev); } catch (x) {} };
+      r.ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m[0] === 'EOSE') { const s = subs.get(m[1]); if (s) (s.eose || (s.eose = new Set())).add(r); return; } if (m[0] !== 'EVENT') return; const s = subs.get(m[1]), ev = m[2]; if (!s || !ev || typeof ev.id !== 'string' || s.seen.has(ev.id)) return; if (!verify(ev)) return; s.seen.add(ev.id); try { s.cb(ev); } catch (x) {} };
       r.ws.onclose = () => { r.open = false; setTimeout(go, 4000); }; r.ws.onerror = () => {}; };
     go(); }
 }
 const relaySend = m => { const s = JSON.stringify(m); for (const r of relays) { if (r.open) r.ws.send(s); else if (r.q.length < 200) r.q.push(s); } };
 const publish = ev => relaySend(['EVENT', ev]);
 // (each subscription keeps its own list of what it has had, so a later search sees the same rooms again)
-function subscribe(filters, cb) { const id = 'a' + (++subN); subs.set(id, { filters, cb, seen: new Set() }); for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['REQ', id, ...filters])); return () => { if (!subs.delete(id)) return; for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['CLOSE', id])); }; }
+function subscribe(filters, cb) { const id = 'a' + (++subN), sub = { filters, cb, seen: new Set() }; subs.set(id, sub); for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['REQ', id, ...filters])); const un = () => { if (!subs.delete(id)) return; for (const r of relays) if (r.open) r.ws.send(JSON.stringify(['CLOSE', id])); }; un.sub = sub; return un; }
 let relaysUp = false; const relaysOn = () => { if (!relaysUp) { relaysUp = true; relayConnect(); } };
 
 // ---------------- WebRTC: direct links between players (the host relays for its crew) ----------------
@@ -670,14 +672,22 @@ function awakeTimer(ms, fn) { let t = 0, last = Date.now(); const iv = setInterv
 // the rooms on the relays right now (the newest word from each; not ones that have ended, or that a newer host has taken over from).
 // It listens for ms. opt.early: done a moment after a fresh room like this turns up. opt.most: if none has by then, it keeps listening up to this long.
 // (a busy page can run its timers late: only the time the page was awake counts, and what came in meanwhile is looked at first)
+// opt.all: also wait until every connected relay has sent all it keeps (for counting the crews: a busy page can't count short), up to opt.most
 function findRooms(want, ms, opt = {}) { return new Promise(res => {
   const rooms = new Map(); let done = false, soon = 0, t = 0, last = Date.now();
   const pick = () => { const all = [...rooms.values()].filter(r => r.status !== 'ended'); const prevs = new Set(all.filter(r => r.prev).map(r => r.prev)); return all.filter(r => !prevs.has(r.pk) && r.pk !== pk && want(r)); };
   const finish = () => { if (done) return; done = true; clearInterval(iv); clearTimeout(soon); un(); res(pick()); };
   const un = subscribe([{ kinds: [30311], '#t': [TAG], since: now() - 90 }], ev => { const r = roomOf(ev); if (!r) return; const p = rooms.get(ev.pubkey); if (p && p.at > r.at) return; rooms.set(ev.pubkey, r); if (opt.early && !soon && !done && pick().some(fresh)) soon = setTimeout(finish, 700); });
-  const iv = setInterval(() => { const n = Date.now(); t += Math.min(n - last, 1100); last = n; if (t >= ms && (t >= (opt.most || ms) || pick().length)) { clearInterval(iv); setTimeout(finish, 200); } }, 250);
+  const allIn = () => relays.some(r => r.open) && relays.every(r => !r.open || (un.sub.eose && un.sub.eose.has(r)));
+  const iv = setInterval(() => { const n = Date.now(); t += Math.min(n - last, 1100); last = n; if (t >= ms && (opt.all ? allIn() || t >= (opt.most || ms) : (t >= (opt.most || ms) || pick().length))) { clearInterval(iv); setTimeout(finish, 200); } }, 250);
 }); }
 const fresh = r => now() - r.at <= 45;
+// The most crews (open halls count too) the lobby takes at once. The relays hand back at most 500 room notes per ask
+// (strfry's maxFilterLimit), and a crew that changes host or closes can have 2 or 3 notes for a minute and a half: 100 stays well clear.
+// There's no server to hold it, so each page checks before it starts a new one (two starting in the same second can make it 101).
+const MAXCREWS = 100;
+const liveCrews = rooms => { const ids = new Set(); for (const r of rooms) if (r.status === 'live' && fresh(r)) ids.add(r.rid || r.pk); return ids.size; };
+const FULL = 'The lobby is full: ' + MAXCREWS + ' crews are going. Join one with space from the Crew list, or explore alone.';
 const ranked = rooms => rooms.slice().sort((a, b) => (fresh(b) - fresh(a)) || (b.n - a.n) || (b.gen - a.gen) || (b.at - a.at));
 const pickBest = rooms => ranked(rooms)[0] || null;
 // join the best of these rooms, falling back to the others if it doesn't answer
@@ -721,6 +731,7 @@ function lostGuest(peer, why) {
 // hosting: a room on the relays; each guest that asks gets a direct link. (opt.back: taking over a crew whose host has gone)
 function host(mode, code, opt = {}) {
   const takeover = !!opt.back;
+  for (const u of net.unsub.splice(0)) u();   // (listeners left from linking to an earlier host: closed, so they don't pile up on the relays)
   Object.assign(net, { on: true, host: true, mode, code: code || '', rid: opt.rid || (mode === 'crew' ? code : newCode() + newCode()), gen: opt.gen || 0, open: !!opt.open, hostId: ME, started: now(), prev: opt.prev || '', fast: Date.now() + (takeover ? 45000 : 0), nextBeat: 0, hostLink: null, back: false });
   soloOn = false; net.line = [ME]; net.pks = { [ME]: pk };
   net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, sail: net.sail ? 1 : 0 }));
@@ -780,6 +791,7 @@ function hostSide(pc) {
 function joinRoom(room, opt = {}) {
   const back = !!opt.back;
   if (!back && net.on) leave();
+  for (const u of net.unsub.splice(0)) u();   // (listeners left from linking to an earlier host: closed, so they don't pile up on the relays)
   Object.assign(net, { on: true, host: false, mode: room.mode === 'sea' ? 'sea' : 'crew', code: room.code || '', rid: room.rid || net.rid || '', gen: room.gen | 0, open: !!room.open, back });
   soloOn = false;
   if (!back) { net.players.clear(); net.history = []; net.chat = []; net.line = []; net.pks = {}; net.hostId = ''; drawChat(); }
@@ -805,7 +817,9 @@ function joinRoom(room, opt = {}) {
       findRooms(r => r.mode === 'crew' && r.rid === rid, 3500, { early: true, most: 8000 }).then(rooms => { if (net.on) return; const r = pickBest(rooms); if (r && r.n < r.max) { note('Joining…'); joinRoom(r, { again: true }); } else showStart('Couldn’t reach that crew.'); });
       return;
     }
-    if (net.mode === 'sea') { leave(); net.sail = true; host('sea', ''); } else { leave(); showStart('Couldn’t reach that crew.'); }
+    if (net.mode === 'sea') { leave(); showStart('Checking there’s room in the lobby…');
+      findRooms(() => true, 1500, { all: true, most: 8000 }).then(all => { if (net.on) return; if (liveCrews(all) >= MAXCREWS) { showStart(FULL); return; } note(''); net.sail = true; host('sea', ''); }); }
+    else { leave(); showStart('Couldn’t reach that crew.'); }
   };
   // (if that host's room closes before we're in, as when it joins up with another room of the crew, there's no point waiting)
   if (net.rid) net.unsub.push(subscribe([{ kinds: [30311], authors: [room.pk], '#r': [net.rid], since: now() - 5 }], ev => { const r = roomOf(ev); if (r && r.status === 'ended' && net.hostLink === L && !L.init) fail(); }));
@@ -1323,12 +1337,15 @@ function toast(text, actions = [], ms = 8000, key) {
 $('name').value = store.get('name'); drawPicker();
 let nameT = 0; $('name').addEventListener('input', () => { store.set('name', $('name').value.trim()); clearTimeout(nameT); nameT = setTimeout(() => presence(), 3000); });
 const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789', newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), b => letters[b % letters.length]).join('');
-$('crew').onclick = () => { if (net.on) leave(); net.sail = false; host('crew', newCode()); };
+let starting = false;
+$('crew').onclick = async () => { if (starting) return; starting = true; note('Checking there’s room in the lobby…');
+  try { const all = await findRooms(() => true, 1500, { all: true, most: 8000 }); if (liveCrews(all) >= MAXCREWS) { note(FULL); return; }
+    note(''); if (net.on) leave(); net.sail = false; host('crew', newCode()); } finally { starting = false; } };
 $('join').onclick = async () => { const code = $('code').value.trim().toUpperCase(); if (code.length < 4) { note(''); flash($('code')); return; } note('Finding crew ' + code + '…');
   const rooms = await findRooms(r => r.mode === 'crew' && r.code === code, 3500, { early: true, most: 12000 }), r = pickBest(rooms); if (!r) { note('No crew with that code is in the cube right now.'); return; } if (r.n >= r.max) { note('That crew is full.'); return; } note('Joining…'); joinBest(rooms); };
-$('sea').onclick = async () => { note('Looking for runners in the open hall…'); const rooms = await findRooms(r => r.mode === 'sea' && r.n < r.max, 3500);
-  const r = rooms.filter(fresh).sort((a, b) => (b.n - a.n) || (b.at - a.at))[0];
-  if (r) { note('Joining…'); joinRoom(r); } else { net.sail = true; host('sea', ''); } };
+$('sea').onclick = async () => { note('Looking for runners in the open hall…'); const all = await findRooms(() => true, 3500, { all: true, most: 8000 });
+  const r = all.filter(x => x.mode === 'sea' && x.n < x.max).filter(fresh).sort((a, b) => (b.n - a.n) || (b.at - a.at))[0];
+  if (r) { note('Joining…'); joinRoom(r); } else if (liveCrews(all) >= MAXCREWS) note(FULL); else { net.sail = true; host('sea', ''); } };
 $('solo').onclick = () => { soloOn = true; hideLobby(); toGame({ type: 'look', id: 'me', look: picked }); try { frame.contentWindow.focus(); } catch (e) {} presenceSoon(); };
 $('crewsb').onclick = () => openPanel('crews'); $('friendsb').onclick = () => openPanel('friends'); $('frpill').onclick = () => openPanel('friends'); $('room').onclick = () => openPanel('crew');
 $('sail').onclick = () => startGame();
@@ -1591,8 +1608,8 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'setName', does: 'Set the name other players see.', args: [{name: 'name', does: 'up to 20 letters', req: true}], run: ({name}) => { const i = $('name'); i.value = String(name).slice(0, 20); i.dispatchEvent(new Event('input', {bubbles: true})); i.dispatchEvent(new Event('change', {bubbles: true})); return look(); }},
     {name: 'pickRunner', does: 'Pick which of the ten you are: Leo, Kofi, Ren, Marco, Sam, Mia, Zara, Yuki, Elena or Nia.', args: [{name: 'name', enum: RUNNERS, does: 'one of the ten', req: true}],
       run: ({name}) => { const tiles = [...$('chars').children], t = tiles.find(el => (el.getAttribute('aria-label') || text(el)).toLowerCase().includes(String(name).toLowerCase())); if (!t) return {ok: false, error: 'pick one of: ' + RUNNERS.join(', ')}; t.click(); return look(); }},
-    {name: 'startCrew', does: 'Start a new crew (you get a code to share).', run: async () => { if (!press('crew')) return {ok: false, error: 'not on the start page'}; await until(() => net.on && net.code, 20000); return crewState(); }},
-    {name: 'openHall', does: 'Open a hall anyone can join.', run: async () => { if (!press('sea')) return {ok: false, error: 'not on the start page'}; await until(() => net.on, 20000); return crewState(); }},
+    {name: 'startCrew', does: 'Start a new crew (you get a code to share).', run: async () => { if (!press('crew')) return {ok: false, error: 'not on the start page'}; await until(() => net.on && net.code, 20000); if (!net.on) return {ok: false, error: $('note').textContent || 'no crew was started'}; return crewState(); }},
+    {name: 'openHall', does: 'Open a hall anyone can join.', run: async () => { if (!press('sea')) return {ok: false, error: 'not on the start page'}; await until(() => net.on, 20000); if (!net.on) return {ok: false, error: $('note').textContent || 'no hall was opened'}; return crewState(); }},
     {name: 'join', does: 'Join a crew with its code.', args: [{name: 'code', does: 'the crew code, e.g. GRX27', req: true}],
       run: async ({code}) => { const i = $('code'); if (!shown(i)) return {ok: false, error: 'not on the start page'}; i.value = String(code).toUpperCase().trim(); i.dispatchEvent(new Event('input', {bubbles: true})); press('join'); await until(() => net.on && net.players.size > 1, 25000); return crewState(); }},
     {name: 'exploreAlone', does: 'Play without a crew.', run: async () => { if (!press('solo')) return {ok: false, error: 'not on the start page'}; await wait(1500); return {screen: lobbyOpen() ? 'start page' : 'in the game'}; }},
