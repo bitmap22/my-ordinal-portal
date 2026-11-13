@@ -11129,7 +11129,7 @@ const GD_SEATS = (() => {
   [[-28, -41.5], [-20.5, -43.5], [-28.5, -45.2]].forEach(([x, z], t) => { for (const s of [-1, 1]) for (const e of [-.5, .5]) S.push({x: x + e, z: z + s * .62, y: .465, f: [0, -s], o: [x + e, z + s * 1.4], way: (t + e > 0 ? 1 : 0) ? 'sitLap' : 'sit', r: 1.1, label: 'sit at the picnic table'}); });
   for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + .4, c = Math.cos(a), sn = Math.sin(a); for (const e of [-.45, .45]) { const x = F.x + c * 2.7 - sn * e, z = F.z + sn * 2.7 + c * e; S.push({x, z, y: .485, f: [-c, -sn], o: [x + c * 1.05, z + sn * 1.05], way: 'sitFwd', r: 1.15, label: 'sit by the fire'}); } }
   for (const x of [15.5, 18.5, 23, 26, 30.5]) for (const s of [-1, 1]) S.push({x: x + s * .2, z: -38.7, y: .42, f: [s, 0], o: [x + s * 1.0, -38.7], way: 'sit', r: 1.0, label: 'sit on the lounger'});
-  S.push({x: -31, z: -16, y: .55, f: [0, -1], o: [-31, -17.3], way: 'sitBack', r: 1.5, label: 'get in the hammock', kind: 'hammock'});   // (in the middle, where it hangs lowest, looking into the garden)
+  S.push({x: -31, z: -16, y: .55, f: [0, -1], o: [-31, -17.3], way: 'sitBack', r: 1.7, label: 'get in the hammock', kind: 'hammock'});   // (in the middle, where it hangs lowest, looking into the garden)
   S.push({x: GD_SWING.bx, z: GD_SWING.z, y: .55, f: [0, -1], o: [GD_SWING.bx + .9, GD_SWING.z + .6], way: 'sit', r: 1.6, label: 'sit on the swing', kind: 'swing'});
   return S;
 })();
@@ -11458,12 +11458,13 @@ function gdSigns(T, Lt, zo) {
 // each place: where to stand [x, z], and the point to face [x, y, z]
 const GD_GOTO = {
   'your bitmap': [[0, -47.6], [0, 1.9, -50]], 'the gate': [[0, -6], [0, 1.4, -1.2]], 'bar cart': [[-31.4, -35.9], [-31.5, 1.15, -37.4]],
-  'picnic table': [[-28.4, -40.1], [-28.5, .5, -40.9]], 'fire pit': [[-26, -70.6], [-26, .5, -74]], 'loungers': [[23.6, -37.6], [23.2, .4, -38.7]],
-  'hammock': [[-31, -17.3], [-31, .6, -16]], 'swing': [[GD_SWING.bx + .9, GD_SWING.z + .6], [GD_SWING.bx, .6, GD_SWING.z]], 'pool': [[22, -42.2], [22, 0, -46]],
+  'pool': [[22, -42.2], [22, 0, -46]],
   'diving board': [[36.2, -49], [31.9, .7, -49]], 'slide': [[12.2, -40], [12.2, 1.4, -41.6]], 'hot tub': [[38, -43.6], [38, .8, -46]], 'koi pond': [[25, -72.4], [25, 0, -80]],
   'chess board': [[19, -12.6], [19, .4, -16]], 'ping-pong red end': [[26.5, -12.5], [28.5, .8, -12.5]], 'ping-pong black end': [[30.5, -12.5], [28.5, .8, -12.5]],
   'cornhole': [[33.4, -11], [34.2, .3, -21.53]]
 };
+// the seats: stand where you would step out of one, facing it (close enough to sit)
+for (const [nm, f] of [['picnic table', s => s.label.includes('picnic')], ['fire pit', s => s.label.includes('fire')], ['loungers', s => s.label.includes('lounger')], ['hammock', s => s.kind === 'hammock'], ['swing', s => s.kind === 'swing']]) { const s = GD_SEATS.find(f); GD_GOTO[nm] = [[s.o[0], s.o[1]], [s.x, .5, s.z]]; }
 // where you look this moment (for the agent kit: right after it turns your head, before the next frame is drawn)
 function gdViewNow() { const p = room && room.p, v = room && room.view; if (!p || !v) return; const cp = Math.cos(p.pitch); v.eye = [p.x, EYE + (p.bob || 0) + (p.y || 0) - (p.sit ? .62 : 0), p.z]; v.dir = [-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp]; }
 const gdSqIx = q => { const m = /^([a-h])([1-8])$/i.exec(String(q || '').trim()); return m ? (8 - +m[2]) * 8 + 'abcdefgh'.indexOf(m[1].toLowerCase()) : -1; };
@@ -12571,7 +12572,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'leave', does: 'Walk out of the room, back to the block view (from the bitmap garden: back the way you came, as touching the case does).', run: async () => { if (inRoom() && room.at.gd) { gdBack(); await until(() => !(room && room.at && room.at.gd) && roomReady(), 30000); await wait(600); return {where: inRoom() ? roomInfo() : 'block view'}; } if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
     {name: 'commonRoom', does: 'Fast travel to the common room.', run: () => walkIn('common')},
     {name: 'goTo', does: 'Walk to a place in the common room (through its doorways, at a player\'s speed) and face what is there. In the bitmap garden: one of its places (garden() lists them).', args: [{name: 'place', enum: Object.keys(SPOTS).concat(Object.keys(GD_GOTO)), does: 'common room: ' + Object.keys(SPOTS).join(', ') + '. bitmap garden: ' + Object.keys(GD_GOTO).join(', '), req: true}],
-      run: async ({place: pl}) => { if (inRoom() && room.at.gd) { const g = GD_GOTO[String(pl).toLowerCase()]; if (!g) return {ok: false, error: 'garden places: ' + Object.keys(GD_GOTO).join(', ')}; if (room.p.sit || room.p.swim) return {ok: false, error: room.p.swim ? 'you are in the pool: climb out first (face a side, use())' : 'you are sitting: stand() first'}; const r = await walkPoint(g[0][0], room.at.z0 + g[0][1], {run: true, within: .45}); faceTo(g[1][0], g[1][1], room.at.z0 + g[1][2]); await wait(300); return Object.assign({ok: r.ok, error: r.error}, {you: roomInfo()}); }
+      run: async ({place: pl}) => { if (inRoom() && room.at.gd) { const g = GD_GOTO[String(pl).toLowerCase()]; if (!g) return {ok: false, error: 'garden places: ' + Object.keys(GD_GOTO).join(', ')}; if (room.p.sit || room.p.swim) return {ok: false, error: room.p.swim ? 'you are in the pool: climb out first (face a side, use())' : 'you are sitting: stand() first'}; const r = await walkPoint(g[0][0], room.at.z0 + g[0][1], {run: true, within: .25}); faceTo(g[1][0], g[1][1], room.at.z0 + g[1][2]); await wait(300); return Object.assign({ok: r.ok, error: r.error}, {you: roomInfo()}); }
         const S = SPOTS[String(pl).toLowerCase()]; if (!S) return {ok: false, error: 'places: ' + Object.keys(SPOTS).join(', ')}; if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'}; const r = await walkCommon(S[0], S[1], {run: true}); if (!r.ok) return r; const [tx, tz] = toWorld(S[2], S[4]); faceTo(tx, S[3], tz); await wait(300); return roomInfo(); }},
     {name: 'walkTo', does: 'Walk to a spot in the room (x and z as state() gives them), as a player walks: at walking (or running) speed, and walls and things stop you.', args: [{name: 'x', type: 'number', does: 'x', req: true}, {name: 'z', type: 'number', does: 'z', req: true}, {name: 'run', type: 'boolean', does: 'run (as with Shift)'}],
       run: async ({x, z, run}) => { if (!inRoom()) return {ok: false, error: 'walk in first'}; const r = inCommon() ? await walkCommon(...cmL(room.at, +x, +z), {run}) : await walkPoint(+x, +z, {run}); return Object.assign(r, {you: roomInfo()}); }},
