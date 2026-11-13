@@ -11254,7 +11254,7 @@ function gdAskWho(p, ray) {   // the crewmate in the garden you are looking at (
   for (const M of crew.mates.values()) { if (!gdInGarden(M)) continue; const e = Math.hypot(M.R.p[0] - p.x, M.R.p[2] - p.z); if (e < bd && gdFacing(p, M.R.p[0], M.R.p[2], ray, e, e < 3 ? .6 : .93)) { bd = e; best = M; } }
   return best;
 }
-function gdAskPick(M) { if (!M) return; const why = gdAskWhyNot(M); if (why) { gdToast(why); return; } gd.pick = {id: M.id, name: M.name || 'your crewmate'}; gd.askKey = ''; }
+function gdAskPick(M) { if (!M) return; const why = gdAskWhyNot(M); if (why) { gdToast(why); return; } gd.pick = {id: M.id, name: M.name || 'your crewmate'}; gd.askKey = null; }
 function gdAskWhyNot(M) {
   const pn = performance.now(), nm = M && M.name || 'your crewmate';
   if (!room || !room.at || !room.at.gd) return 'you are not in the bitmap garden';
@@ -11265,37 +11265,37 @@ function gdAskWhyNot(M) {
 }
 function gdAskStart(M, g) {   // returns '' when asked, else why not
   const why = gdAskWhyNot(M); if (why) return why; if (!(g >= 0 && g < 3)) return 'which game: chess, ping-pong or cornhole';
-  gd.pick = null; gd.ask = {to: M.id, name: M.name || 'your crewmate', g, st: Date.now(), at: performance.now()}; gd.askRes = null; gd.askKey = ''; crew.last = '';
+  gd.pick = null; gd.ask = {to: M.id, name: M.name || 'your crewmate', g, st: Date.now(), at: performance.now()}; gd.askRes = null; gd.askKey = null; crew.last = '';
   gdToast('You asked ' + gd.ask.name + ' to play ' + GD_GAMES[g]); return '';
 }
 function gdAskEnd(res) {   // your ask is over: yes, no, no answer, or they left
-  const A = gd.ask; if (!A) return; gd.ask = null; gd.askKey = ''; crew.last = ''; if (res === 'no' || res === 'no answer') gd.cool.set(A.to, performance.now() + GD_COOL_MS);
+  const A = gd.ask; if (!A) return; gd.ask = null; gd.askKey = null; crew.last = ''; if (res === 'no' || res === 'no answer') gd.cool.set(A.to, performance.now() + GD_COOL_MS);
   const say = res === 'yes' ? A.name + ' said yes to ' + GD_GAMES[A.g] + ': meet at the ' + GD_MEET[A.g] : res === 'no' ? A.name + ' said no to ' + GD_GAMES[A.g] : res === 'left' ? A.name + ' left the garden, so your ask is off' : A.name + ' did not answer in 60 seconds';
   gd.askRes = {st: A.st, to: A.to, name: A.name, g: A.g, res, say}; gdToast(say); gdNews(say + (res === 'yes' ? ' (goTo({place: "' + GD_GOTO_OF[A.g] + '"}))' : res === 'left' ? '' : ' (you can ask them again in 2 minutes, or ask someone else)'));
 }
 const GD_GOTO_OF = ['chess board', 'ping-pong red end', 'cornhole'];
 function gdAnswer(yes, fromId) {   // your answer to an ask (the oldest, unless you say whose); returns '' or why not
   const i = fromId ? gd.asked.findIndex(a => a.from === fromId) : 0, A = gd.asked[i]; if (!A) return 'nobody is asking you to play right now';
-  gd.asked.splice(i, 1); gd.ans.push({from: A.from, st: A.st, yes: yes ? 1 : 0, until: performance.now() + 10000}); if (gd.ans.length > 3) gd.ans.shift(); gd.askKey = ''; crew.last = '';
+  gd.asked.splice(i, 1); gd.ans.push({from: A.from, st: A.st, yes: yes ? 1 : 0, until: performance.now() + 10000}); if (gd.ans.length > 3) gd.ans.shift(); gd.askKey = null; crew.last = '';
   gdToast(yes ? 'You said yes to ' + A.name + ': ' + GD_GAMES[A.g] + ' at the ' + GD_MEET[A.g] : 'You said no to ' + A.name); return '';
 }
 function gdMateAsk(M, s, pn) {   // each crewmate in the garden, each frame: an ask to you, and their answer to yours
   const iv = s.iv, nm = M.name || 'A crewmate';
   gd.asked = gd.asked.filter(a => a.from !== M.id || (iv && iv[0] === crew.me && iv[2] === a.st));   // (they gave up on it)
-  if (iv && iv[0] === crew.me && iv[2] !== M.lask) { M.lask = iv[2]; if (!gd.asked.some(a => a.from === M.id && a.st === iv[2])) { gd.asked.push({from: M.id, name: nm, g: iv[1], st: iv[2], at: pn}); gd.askKey = '';
+  if (iv && iv[0] === crew.me && iv[2] !== M.lask) { M.lask = iv[2]; if (!gd.asked.some(a => a.from === M.id && a.st === iv[2])) { gd.asked.push({from: M.id, name: nm, g: iv[1], st: iv[2], at: pn}); gd.askKey = null;
     gdNews(nm + ' asks you to play ' + GD_GAMES[iv[1]] + ': answer within 60 seconds with answerAsk({yes: true}) or answerAsk({yes: false})'); setTimeout(() => gdClink(.5), 0); } }
   const A = gd.ask, ia = s.ia; if (A && A.to === M.id && ia) for (let i = 0; i + 2 < ia.length; i += 3) if (ia[i] === crew.me && ia[i + 1] === A.st) { gdAskEnd(ia[i + 2] ? 'yes' : 'no'); break; }
 }
 function gdAskTick(pn) {   // the clock on asks, and the card that shows them
   if (gd.ask && (pn - gd.ask.at > GD_ASK_MS)) gdAskEnd('no answer');
   else if (gd.ask && !gdInGarden(crew.mates.get(gd.ask.to)) && pn - gd.ask.at > 3000) gdAskEnd('left');
-  const before = gd.asked.length; gd.asked = gd.asked.filter(a => pn - a.at < GD_ASK_MS && crew.mates.has(a.from)); if (gd.asked.length !== before) gd.askKey = '';
+  const before = gd.asked.length; gd.asked = gd.asked.filter(a => pn - a.at < GD_ASK_MS && crew.mates.has(a.from)); if (gd.asked.length !== before) gd.askKey = null;
   gd.ans = gd.ans.filter(a => pn < a.until);
   if (gd.pick && !gdInGarden(crew.mates.get(gd.pick.id))) gd.pick = null;
   gdAskDraw(pn);
 }
 // the card: choosing a game, an ask to you (Y / N), or waiting for an answer
-document.head.insertAdjacentHTML('beforeend', '<style>#gdask{position:fixed;left:50%;top:calc(58px + env(safe-area-inset-top));transform:translateX(-50%);z-index:31;display:none;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;max-width:92vw;padding:8px 12px;border-radius:14px;background:rgba(14,9,6,.9);border:1px solid rgba(247,147,26,.5);color:#ffcf8a;font:600 12.5px/1.35 ui-monospace,Menlo,Consolas,monospace;text-align:center}#gdask.on{display:flex}#gdask button{font:700 12px ui-monospace,Menlo,Consolas,monospace;color:#1b1206;background:#f7a43a;border:0;border-radius:9px;padding:5px 10px;cursor:pointer}#gdask button.no{background:#5a4632;color:#ffdcb0}#gdask .t{opacity:.7}</style>');
+document.head.insertAdjacentHTML('beforeend', '<style>#gdask{position:fixed;left:50%;top:calc(112px + env(safe-area-inset-top));transform:translateX(-50%);z-index:31;display:none;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;max-width:92vw;padding:8px 12px;border-radius:14px;background:rgba(14,9,6,.9);border:1px solid rgba(247,147,26,.5);color:#ffcf8a;font:600 12.5px/1.35 ui-monospace,Menlo,Consolas,monospace;text-align:center}#gdask.on{display:flex}#gdask button{font:700 12px ui-monospace,Menlo,Consolas,monospace;color:#1b1206;background:#f7a43a;border:0;border-radius:9px;padding:5px 10px;cursor:pointer}#gdask button.no{background:#5a4632;color:#ffdcb0}#gdask .t{opacity:.7}</style>');
 const $gdAsk = document.createElement('div'); $gdAsk.id = 'gdask'; document.body.appendChild($gdAsk);
 function gdAskDraw(pn) {
   const on = !!(room && room.at && room.at.gd), A = gd.asked[0], key = !on ? '' : gd.pick ? 'p' + gd.pick.id : A ? 'a' + A.from + A.st + Math.ceil((GD_ASK_MS - (pn - A.at)) / 1000) : gd.ask ? 'w' + gd.ask.st + Math.ceil((GD_ASK_MS - (pn - gd.ask.at)) / 1000) : '';
@@ -11607,7 +11607,7 @@ async function gdTravel() {
 }
 // back where you came from: the block (with the arrow over your bitmap), or the common room
 function gdBack() {
-  const C = room && room.at; if (!C || !C.gd || C.gd.leaving) return; C.gd.leaving = true; gd.ask = null; gd.asked = []; gd.pick = null; gd.askKey = ''; $gdAsk.classList.remove('on'); const f = C.gd.from; gd.pour = null; cm.pint = null; gd.pp = null; gd.ball = null; if (gd.hb >= 0) { const L = gdBagList().map(b => Object.assign({}, b)); L[gd.hb].st = 'g'; gd.hb = -1; gdBagSet(L); } if (gd.hold) { const H = gd.hold, b = gd.board.b.split(''); gd.hold = null; if (H.k >= 0 && b[H.k] === '.') b[H.k] = H.c; else { const k = b.indexOf('.'); if (k >= 0) b[k] = H.c; } gdChessSet(b.join(''), gd.board.x); }   // (your glass stays in the garden; a chess piece you carry goes back)
+  const C = room && room.at; if (!C || !C.gd || C.gd.leaving) return; C.gd.leaving = true; gd.ask = null; gd.asked = []; gd.pick = null; gd.askKey = null; $gdAsk.classList.remove('on'); const f = C.gd.from; gd.pour = null; cm.pint = null; gd.pp = null; gd.ball = null; if (gd.hb >= 0) { const L = gdBagList().map(b => Object.assign({}, b)); L[gd.hb].st = 'g'; gd.hb = -1; gdBagSet(L); } if (gd.hold) { const H = gd.hold, b = gd.board.b.split(''); gd.hold = null; if (H.k >= 0 && b[H.k] === '.') b[H.k] = H.c; else { const k = b.indexOf('.'); if (k >= 0) b[k] = H.c; } gdChessSet(b.join(''), gd.board.x); }   // (your glass stays in the garden; a chess piece you carry goes back)
   (async () => { if (f.h === COMMON) { await srTravel(COMMON); return; } await roomEnter(f.h, {x: f.x, z: f.z}, {wait: true}); if (room && room.at && room.at.h === f.h) srT = {R: null, it: null, h: f.h, id: f.id.slice(0, 64), label: 'your bitmap'}; })();
 }
 $cbg.onclick = () => gdTravel();
