@@ -2395,7 +2395,7 @@ function select(t) {
   if (!t) { $card.classList.remove('on', 'st', 'big'); const cm = document.getElementById('cm'); if (cm) cm.innerHTML = 'more &#9662;'; $cp.innerHTML = ''; $cp.style.display = 'none'; return; }
   if (t.show) { showCard(t); return; }
   if (t.gal) { galCard(t); return; }
-  $cn.textContent = t.live ? 'waiting in the next block' : 'transaction ' + fmt(t.idx) + ' in block ' + fmt(t.h != null ? t.h : cur.height);
+  $cn.textContent = t.live ? 'waiting in the next block' : 'transaction ' + fmt(t.idx) + ' in block ' + fmt(t.bh != null ? t.bh : room && room.at && !room.at.gal && !cmOn(room.at) ? room.at.h : cur.height);
   const rows = [];
   if (!t.live && t.idx === 0) rows.push(['type', 'coinbase (miner reward)']);
   if (t.fee >= 0 && !(t.idx === 0 && !t.live)) {
@@ -3820,7 +3820,7 @@ function rmLoadHall(s, e) {
     });
     for (const B of blocks) await dxContent(B).catch(() => {});   // (one block at a time, four files at once: the explorer is never flooded)
     await Promise.allSettled(blocks.map(B => loadEtch(B)));
-    for (const B of blocks) { dgFill(B); for (const t of B.txs) t.h = B.height; }
+    for (const B of blocks) { dgFill(B); for (const t of B.txs) t.bh = B.height; }   // (each parcel's own block: t.h is its box's height in the cube)
     const HB = {hall: true, height: s, h1: e, hs, blocks, txs: blocks.flatMap(B => B.txs), count: blocks.reduce((a, B) => a + (B.count || B.txs.length), 0),
       size: blocks.reduce((a, B) => a + (B.size || 0), 0), t0: blocks[0].time, time: blocks[blocks.length - 1].time, fees: blocks.every(B => B.txs.every(t => !t.est && t.fee >= 0)), scan: {ok: true, hall: true}, dx: true};
     HB.weight = HB.size * 4;
@@ -6445,7 +6445,7 @@ function rmHover() {
   let s = '', sip = false;
   if (h && h.it && h.it.show) s = showHover(h.it);
   else if (h && h.it && h.it.t.gal) s = galHover(h.it);
-  else if (h && h.it) { const t = h.it.t, w = t.word && t.word.a; s = (folOn(h.it) ? 'ON THE TETHER · ' : '') + TYPES[h.it.k].name + (t.h != null && room.at && room.at.h1 > room.at.h ? ' · block ' + fmt(t.h) : '') + (w ? ' · ' + w.slice(0, 24) : '') + (t.fee >= 0 ? ' · ' + rt(ownRate(t)) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to hold'; }
+  else if (h && h.it) { const t = h.it.t, w = t.word && t.word.a; s = (folOn(h.it) ? 'ON THE TETHER · ' : '') + TYPES[h.it.k].name + (t.bh != null && room.at && room.at.h1 > room.at.h ? ' · block ' + fmt(t.bh) : '') + (w ? ' · ' + w.slice(0, 24) : '') + (t.fee >= 0 ? ' · ' + rt(ownRate(t)) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to hold'; }
   else if (h && h.sign) s = 'change where this door goes';
   else if (cmOn(room.at)) { const A = cmAct(mid ? null : room.mx, mid ? null : room.my); if (A) { s = A.label + ' · ' + (coarse ? 'tap' : A.ray || room.lock ? 'click or E' : 'E'); sip = !!cm.pint && (A.a === 'sip' || A.a === 'stand'); } }
   $rl.classList.toggle('sip', sip);   // (the pint's own words sit just above the glass, not over what you look at)
@@ -6565,7 +6565,7 @@ const vwFree = () => { if (vwUrl) { URL.revokeObjectURL(vwUrl); vwUrl = null; } 
 function vwHeld() {
   const H = room && room.held; if (!H || H.back) return null;
   const R = room.rooms.find(R => R && R.plan && R.plan.items && R.plan.items.includes(H.it));
-  return {t: H.it.t, h: H.it.t.show || H.it.t.h != null ? H.it.t.h : R ? R.h : null};
+  return {t: H.it.t, h: H.it.t.show || H.it.t.gal ? H.it.t.h : H.it.t.bh != null ? H.it.t.bh : R ? R.h : null};
 }
 async function vwOpen() {
   const at = vwHeld(); if (!at || vw) return;
@@ -7083,7 +7083,7 @@ function srArrow(VP) {
   const R = room.rooms.find(R => R && R.ready && !R.common && (R.gal ? R.h === S.h : hallHas(R, S.h)) && R.plan);
   if (!R) return srHide();
   if (S.R !== R) {
-    S.R = R; S.it = R.plan.items.find(it => S.gid ? it.t.gid === S.gid : S.ins && it.t.dxi && it.t.dxi.id === S.ins ? true : S.id ? it.t.id === S.id : it.t.idx === S.idx && (it.t.h == null || it.t.h === S.h)) || null;
+    S.R = R; S.it = R.plan.items.find(it => S.gid ? it.t.gid === S.gid : S.ins && it.t.dxi && it.t.dxi.id === S.ins ? true : S.id ? it.t.id === S.id : it.t.idx === S.idx && (it.t.bh == null || it.t.bh === S.h)) || null;
     if (!S.it && R.gal && !R.gal.done) { S.R = null; return srHide(); }   // (its page is still on the way)
     if (!S.it && R.gal) { note('that piece is not in this collection', 8); srT = null; return srHide(); }
     if (!S.it) { note(S.id ? 'that transaction is not in block ' + srNum(S.h) : 'block ' + srNum(S.h) + ' has ' + srNum(R.plan.items.length) + ' parcels: 0 to ' + srNum(R.plan.items.length - 1), 10); srT = null; return srHide(); }
@@ -7627,7 +7627,7 @@ function showOk(s) {
 }
 function showPack(it, R) {
   const t = it && it.t; if (!t || t.live) return null;
-  const s = {h: t.gal || t.h != null ? t.h : R && R.h, id: t.id, idx: t.gal ? -1 : t.idx, kk: it.k, at: Date.now()};
+  const s = {h: t.gal ? t.h : t.bh != null ? t.bh : R && R.h, id: t.id, idx: t.gal ? -1 : t.idx, kk: it.k, at: Date.now()};
   const o = t.gal ? [t.gid] : (t.ordIds || (t.id && t.ins && t.ins.length ? t.ins.map(e => t.id + 'i' + e.i) : []));
   s.o = o.slice(0, 4);
   if (t.gal) Object.assign(s, {g: t.gid, n: t.n, gi: t.gi, par: !!t.par, ts: t.ts || 0});
@@ -8545,6 +8545,7 @@ window.AgentKit = window.AgentKit || (() => {
   // a Doge Cube hall can hold several small blocks (one after another): its name says which
   const hallName = C => C.h1 != null && C.h1 !== C.h ? 'the hall of blocks ' + fmtN(C.h) + ' to ' + fmtN(C.h1) : 'block ' + fmtN(C.h);
   const inHall = (C, h) => C && h >= C.h && h <= (C.h1 != null ? C.h1 : C.h);
+  const blockOf = t => t.live ? undefined : t.bh != null ? t.bh : inRoom() && !cmOn(room.at) && !room.at.gal ? room.at.h : mode === 'live' ? undefined : want;
   function block() {
     const live = mode === 'live';
     return {showing: text($('tgt')), height: live ? (wsLive && tipH >= 0 ? tipH + 1 + liveIdx : tipH) : want, live, upcoming: live && wsLive ? liveIdx : undefined,
@@ -8561,7 +8562,7 @@ window.AgentKit = window.AgentKit || (() => {
     return out;
   }
   function parcelInfo(t, full) {
-    const o = {n: t.idx, block: t.h != null ? t.h : undefined, txid: t.id, feeRateDogePerKB: rf(ownRate(t)), feeKoinu: t.fee, bytes: t.vsize, types: typesOf(t)};
+    const o = {n: t.idx, block: blockOf(t), txid: t.id, feeRateDogePerKB: rf(ownRate(t)), feeKoinu: t.fee, bytes: t.vsize, types: typesOf(t)};
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
     o.kindsReadFrom = t.live ? 'the explorer\'s inscription pool (thedoginalsexplorer.com)' : t.sc != null ? 'thedoginalsexplorer.com' : 'not read yet: each transaction is read in turn, so its kinds come in later';   // (where its kinds were read, as its card says)
     try { if (t.sc != null && ((t.sc >> TF.part) & 1)) o.inscriptionPiece = 'a piece of a bigger file, written over several transactions (as its card says)'; } catch (e) {}
@@ -8739,7 +8740,7 @@ window.AgentKit = window.AgentKit || (() => {
     const R = curRoom(); if (!R) return {ok: false, error: 'the shelves are still loading: try again in a moment'};
     const p = room.p, groups = new Map();
     for (const it of R.plan.items) { if (!it.t || it.cp) continue; const g = groups.get(it.k) || {count: 0, best: 1e9, it: null}; g.count++; const dd = Math.hypot(it.w[0] - p.x, it.w[2] - p.z); if (dd < g.best) { g.best = dd; g.it = it; } groups.set(it.k, g); }
-    const kinds = [...groups.entries()].map(([k, g]) => { const dx = g.it.w[0] - p.x, dz = g.it.w[2] - p.z; return {type: TYPES[k] ? TYPES[k].name : 'parcels', count: g.count, nearest: {n: g.it.t.idx, block: g.it.t.h, metres: r1(g.best), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}}; }).sort((a, b) => b.count - a.count);
+    const kinds = [...groups.entries()].map(([k, g]) => { const dx = g.it.w[0] - p.x, dz = g.it.w[2] - p.z; return {type: TYPES[k] ? TYPES[k].name : 'parcels', count: g.count, nearest: {n: g.it.t.idx, block: blockOf(g.it.t), metres: r1(g.best), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}}; }).sort((a, b) => b.count - a.count);
     const C = room.at; return {block: C.h, toBlock: C.h1 != null && C.h1 !== C.h ? C.h1 : undefined, parcels: kinds.reduce((a, k) => a + k.count, 0), kinds, doors: {back: C.h === 0 ? 'none: nothing comes before the genesis block' : C.back && C.back.to === COMMON ? 'the common room' : C.back && C.back.to, front: C.front && C.front.to === COMMON ? 'the common room' : C.front && C.front.to}, how: 'hold({type}) walks to the nearest of a kind and picks it up; hold({n, block}) a parcel by its number in its block'};
   }
   // where every crewmate is at all times, which way they face, and what they are doing (from what each one's game shares)
@@ -8896,8 +8897,8 @@ window.AgentKit = window.AgentKit || (() => {
     let it = null;
     if (inGal) { it = R.plan.items.find(i => i.t && i.t.gal && !i.cp && (txid ? i.t.gid === txid || i.t.id === txid : i.t.gi === +n)); if (!it) return {ok: false, error: 'no piece ' + (txid || n) + ' in this collection room (contents() lists them)'}; }
     else if (type != null && n == null && !txid) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"'}; let bd = 1e9; for (const i of R.plan.items) { if (!i.t || i.cp || i.k !== k) continue; const dd = Math.hypot(i.w[0] - room.p.x, i.w[2] - room.p.z); if (dd < bd) { bd = dd; it = i; } } if (!it) return {ok: false, error: 'no ' + TYPES[k].name + ' in this block'}; }
-    else { const M = R.plan.items.filter(i => i.t && !i.cp && (txid ? i.t.id === txid : i.t.idx === +n && (blk == null || i.t.h === +blk)));
-      if (M.length > 1) return {ok: false, error: 'this hall holds several blocks with a parcel ' + n + ': say which block too', blocks: M.map(i => i.t.h)};
+    else { const M = R.plan.items.filter(i => i.t && !i.cp && (txid ? i.t.id === txid : i.t.idx === +n && (blk == null || blockOf(i.t) === +blk)));
+      if (M.length > 1) return {ok: false, error: 'this hall holds several blocks with a parcel ' + n + ': say which block too', blocks: M.map(i => blockOf(i.t))};
       it = M[0] || null; }
     if (!it) return {ok: false, error: 'no parcel ' + (txid || n + (blk != null ? ' of block ' + fmtN(+blk) : '')) + ' in ' + hallName(room.at) + ' (parcels() lists them)'};
     if (room.held) { rmPut(); await wait(900); }
@@ -8926,7 +8927,7 @@ window.AgentKit = window.AgentKit || (() => {
         if (inRoom() && room.at.gal) { const P = galPieces(); return {gallery: true, total: P.length, from, parcels: P.slice(from, from + Math.min(500, limit)), note: 'you are in a collection room: these are its pieces'}; }
         const R = inRoom() && !cmOn(room.at) && !room.at.gal ? curRoom() : null; let L = R ? R.plan.items.filter(i => i.t && !i.cp).map(i => i.t) : shown.slice();
         if (type) { const k = typeIx(type); if (k < 0) return {ok: false, error: 'no parcel type "' + type + '"', types: TYPES.map(T => T.name)}; L = L.filter(t => hasType(t, k)); }
-        L.sort((a, b) => ((a.h ?? 0) - (b.h ?? 0)) || ((a.idx ?? 1e9) - (b.idx ?? 1e9))); return {total: L.length, from, parcels: L.slice(from, from + Math.min(500, limit)).map(t => parcelInfo(t))};
+        L.sort((a, b) => ((a.bh ?? 0) - (b.bh ?? 0)) || ((a.idx ?? 1e9) - (b.idx ?? 1e9))); return {total: L.length, from, parcels: L.slice(from, from + Math.min(500, limit)).map(t => parcelInfo(t))};
       }},
     {name: 'block', does: 'Show a block by its number (inside, it walks you into that block).', args: [{name: 'height', type: 'number', does: 'block number', req: true}],
       run: async ({height}) => { const h = +height; if (!Number.isInteger(h) || h < 0) return {ok: false, error: 'a block number is a whole number from 0'}; if (tipH >= 0 && h > tipH) return {ok: false, error: 'block ' + fmtN(h) + ' has not been mined yet: the newest is ' + fmtN(tipH)}; go(h); await settled(); return {ok: true, block: inRoom() ? roomInfo() : block()}; }},
