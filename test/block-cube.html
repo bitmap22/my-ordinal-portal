@@ -10742,8 +10742,8 @@ window.AgentKit = window.AgentKit || (() => {
     } else if (/html/.test(ty)) {
       const d = new DOMParser().parseFromString(new TextDecoder().decode(bytes.subarray(0, 400000)), 'text/html');   // (read, never run)
       d.querySelectorAll('script,style,noscript,template').forEach(e => e.remove());
-      o.words = (d.body ? d.body.textContent : '').replace(/\s+/g, ' ').trim().slice(0, 1500);
-      o.why = 'an HTML page runs in a sealed frame (SAFE VIEW: nothing runs, so it may look blank or still; GO LIVE runs it): the kit cannot take a picture inside it. Its words are read from its file.';
+      o.words = (d.body ? d.body.textContent : '').replace(/\s+/g, ' ').trim().slice(0, 1500) || undefined;
+      o.why = 'an HTML page runs in a sealed frame (SAFE VIEW: nothing runs, so it may look blank or still; GO LIVE runs it): the kit cannot take a picture inside it. ' + (o.words ? 'Its words are read from its file.' : 'Its file has no words of its own to read (what it shows, it draws or loads as it runs).');
     } else if (/^text\/|json|javascript|xml/.test(ty)) o.words = new TextDecoder().decode(bytes.subarray(0, 12000)).slice(0, 3000);
     else o.why = 'a ' + (ty || 'file') + ' file: nothing to see as a picture or words';
     return o;
@@ -11049,7 +11049,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'look', ro: true, untrusted: true, does: 'Look at the 3D view as a player sees it: a description in words of what is where (the cube or the room, colours, what is at the top, centre, bottom, left and right of your view, places and crewmates around you), and with picture: true also a picture of it (a JPEG as a data URL).', args: [{name: 'picture', type: 'boolean', does: 'also return a picture of the view'}],
       run: async ({picture}) => {
         const B = await bigSeen();   // (the big view fills the screen: a player sees it, not the room behind it)
-        if (B) { const o = {words: bigWords(B) + '\n\nBehind it, hidden by the big view: ' + lookWords()}; if (picture) { if (B.picture) o.picture = B.picture; else o.noPicture = B.why || 'no picture of this one can be taken here'; } return o; }
+        if (B) { const o = {words: bigWords(B) + '\n\nBehind it, hidden by the big view: ' + lookWords()}; if (picture) { if (B.picture) o.picture = B.picture; else o.noPicture = B.why || (B.words ? 'it shows words, not a picture: they are in words above' : 'no picture of this one can be taken here'); } return o; }
         const o = {words: lookWords()}; if (picture) o.picture = await K.picture(cv, 640, drawFrame); return o; }},
     {name: 'turnCube', does: 'Turn the cube with the mouse, as a player drags it: right or left (degrees), up or down (degrees).', args: [{name: 'right', type: 'number', does: 'degrees to turn it to the right (negative: left)'}, {name: 'up', type: 'number', does: 'degrees to tilt it (negative: down)'}],
       run: async ({right = 0, up = 0}) => { if (inRoom()) return {ok: false, error: 'you are inside: turn() and lookAt() turn your head here'}; await drag((+right) * Math.PI / 180 / .006, (+up) * Math.PI / 180 / .005); return camInfo(); }},
@@ -11098,8 +11098,9 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
     {name: 'go', does: 'Press GO on a tablet search result (travels there; an arrow then shows the way), or GALLERY on a collection (walks you into its hall).', args: [{name: 'n', type: 'number', does: 'result number from search() (default 0)'}],
       run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /\bgo\b|gallery/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO or GALLERY'}; const from = room && room.at, was = srT; b.click();
-        await until(() => (room && room.at !== from) || (srT !== was && (!srT || text($('sra')))), 25000); await until(() => roomReady(), 60000); await until(() => srT !== was && (!srT || text($('sra'))), 8000);   // (answers once you are there, with the new arrow, not the one before)
-        const fresh = srT !== was && srT; return {where: roomInfo(), arrow: fresh ? text($('sra')) : null, arrowTo: fresh ? arrowTo() || undefined : undefined}; }},
+        const fresh = () => srT !== was && (!srT || (text($('sra')) && (!srT.label || text($('sra')).includes(srT.label))));   // (the arrow's words name the new find, not the one before)
+        await until(() => (room && room.at !== from) || fresh(), 25000); await until(() => roomReady(), 60000); await until(fresh, 8000);   // (answers once you are there, with the new arrow)
+        const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
       run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
