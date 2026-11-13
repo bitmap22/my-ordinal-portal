@@ -292,7 +292,7 @@ window.NB = (() => { const T = (()=>{const e=[];for(let t=2;e.length<64;t++)e.ev
 // a wallet's signed message, checked here with no outside help: who signed it (the public key, worked back out of the
 // signature), and is that key behind the address they gave? Bitcoin's "signed message" (the one UniSat makes by default):
 // a 65-byte signature, its first byte saying how to find the key. Every kind of address a wallet can have: legacy (1...),
-// nested segwit (3...), native segwit (bc1q...) and taproot (bc1p...).
+// nested segwit (3...), native segwit (bc1q...) and taproot (bc1p...). And the newer BIP-322 kind (further down).
 const WV = (() => {
   const P = 2n ** 256n - 2n ** 32n - 977n, N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
   const G = [0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n, 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n];
@@ -379,10 +379,56 @@ const WV = (() => {
   const vstr = b => cat(b.length < 253 ? new Uint8Array([b.length]) : new Uint8Array([253, b.length & 255, b.length >> 8]), b);
   const msgHash = msg => sha2(cat(vstr(utf8('Bitcoin Signed Message:\n')), vstr(utf8(msg))));
   const unb64 = s => { try { const t = atob(String(s).trim()); return Uint8Array.from(t, c => c.charCodeAt(0)); } catch (e) { return null; } };
-  // is sig (base64) this address's signature of msg? true / false
+  // the newer way (BIP-322, "simple"): the signature is what the wallet would put in a made-up transaction spending from the
+  // address, so a taproot (bc1p...) or segwit wallet signs just as it spends. Checked here the way a node would check it.
+  const z = k => new Uint8Array(k), u8 = (...a) => new Uint8Array(a), le4 = n => u8(n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255);
+  const eqb = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+  function unseg(a) {   // bc1... back to its witness version and program (null if the spelling or its checksum is wrong)
+    a = a.toLowerCase(); const i = a.lastIndexOf('1'); if (a.slice(0, i) !== 'bc' || a.length < 14 || a.length > 90) return null;
+    const d = [...a.slice(i + 1)].map(c => CH.indexOf(c)); if (d.length < 8 || d.some(x => x < 0)) return null;
+    const hx = [...'bc'].map(c => c.charCodeAt(0) >> 5).concat([0], [...'bc'].map(c => c.charCodeAt(0) & 31)), ver = d[0];
+    if (poly(hx.concat(d)) !== (ver ? 0x2bc830a3 : 1)) return null;
+    let acc = 0, bits = 0; const prog = []; for (const v of d.slice(1, -6)) { acc = ((acc << 5) | v) & 0xfff; bits += 5; if (bits >= 8) { bits -= 8; prog.push((acc >> bits) & 255); } }
+    if (bits >= 5 || (acc & ((1 << bits) - 1))) return null;
+    return {ver, prog: new Uint8Array(prog)};
+  }
+  function wstack(b) {   // the witness items, as the base64 carries them
+    let k = 0; const vi = () => { const c = b[k++]; if (c < 253) return c; if (c === 253) { const v = b[k] | (b[k + 1] << 8); k += 2; return v; } return -1; };
+    const n = vi(), out = []; if (!(n >= 1 && n <= 8)) return null;
+    for (let i = 0; i < n; i++) { const l = vi(); if (!(l >= 0) || k + l > b.length) return null; out.push(b.slice(k, k + l)); k += l; }
+    return k === b.length ? out : null;
+  }
+  const toSpend = (msg, spk) => sha2(cat(z(4), u8(1), z(32), u8(255, 255, 255, 255, 34, 0, 32), tagged('BIP0322-signed-message', utf8(msg)), z(4), u8(1), z(8), vstr(spk), z(4)));
+  const OUTS = cat(z(8), u8(1, 0x6a));   // the made-up spend's one output: nothing, to OP_RETURN
+  const seg0Hash = (tid, h20, ht) => sha2(cat(z(4), sha2(cat(tid, z(4))), sha2(z(4)), tid, z(4), u8(0x19, 0x76, 0xa9, 0x14), h20, u8(0x88, 0xac), z(8), z(4), sha2(OUTS), z(4), le4(ht)));
+  const trHash = (tid, spk, ht) => tagged('TapSighash', cat(u8(0, ht), z(4), z(4), sha(cat(tid, z(4))), sha(z(8)), sha(vstr(spk)), sha(z(4)), sha(OUTS), u8(0), z(4)));
+  function der(b) { if (b[0] !== 0x30 || b[1] !== b.length - 2) return null; let k = 2; const rd = () => { if (b[k++] !== 2) return null; const l = b[k++], v = I(b.slice(k, k + l)); k += l; return v; }; const r = rd(), s = r === null ? null : rd(); return r !== null && s !== null && k === b.length ? [r, s] : null; }
+  function ecdsa(e, r, s, Q) { if (!r || !s || r >= N || s >= N) return false; const w = inv(s, N), X = aff(add(mulJ(md(e * w, N), G), mulJ(md(r * w, N), Q))); return !!X && md(X[0], N) === r; }
+  function schnorr(sg, m, px) {
+    const r = I(sg.slice(0, 32)), s = I(sg.slice(32, 64)), Pk = lift(I(px), 0); if (!Pk || r >= P || s >= N) return false;
+    const e = md(I(tagged('BIP0340/challenge', cat(sg.slice(0, 32), px, m))), N), R = aff(add(mulJ(s, G), mulJ(md(-e, N), Pk)));
+    return !!R && (R[1] & 1n) === 0n && R[0] === r;
+  }
+  function check322(addr, msg, b) {
+    const W = wstack(b); if (!W) return false;
+    if (/^bc1p/i.test(addr)) {   // taproot: one Schnorr signature by the key in the address
+      const d = unseg(addr); if (!d || d.ver !== 1 || d.prog.length !== 32 || W.length !== 1 || (W[0].length !== 64 && W[0].length !== 65)) return false;
+      const ht = W[0].length === 65 ? W[0][64] : 0; if (W[0].length === 65 && ht !== 1) return false;
+      const spk = cat(u8(0x51, 32), d.prog); return schnorr(W[0].slice(0, 64), trHash(toSpend(msg, spk), spk, ht), d.prog);
+    }
+    if (W.length !== 2 || W[1].length !== 33 || (W[1][0] !== 2 && W[1][0] !== 3)) return false;   // segwit: a signature and the key
+    const h20 = h160(W[1]); let spk;
+    if (/^bc1q/i.test(addr)) { const d = unseg(addr); if (!d || d.ver !== 0 || !eqb(d.prog, h20)) return false; spk = cat(u8(0, 20), h20); }
+    else if (/^3/.test(addr)) { const rh = h160(cat(u8(0, 20), h20)); if (b58(5, rh) !== addr) return false; spk = cat(u8(0xa9, 20), rh, u8(0x87)); }
+    else return false;
+    const Q = lift(I(W[1].slice(1)), W[1][0] === 3), sg = W[0], ht = sg[sg.length - 1], rs = der(sg.slice(0, -1)); if (!Q || !rs || ht !== 1) return false;
+    return ecdsa(I(seg0Hash(toSpend(msg, spk), h20, ht)), rs[0], rs[1], Q);
+  }
+  // is sig (base64) this address's signature of msg? true / false. Either kind: the older "signed message" (65 bytes) or BIP-322
   function check(addr, msg, sig) {
     try {
-      const b = unb64(sig); if (!b || b.length !== 65 || typeof addr !== 'string' || typeof msg !== 'string') return false;
+      const b = unb64(sig); if (!b || typeof addr !== 'string' || typeof msg !== 'string') return false;
+      if (b.length !== 65) return check322(addr.trim(), msg, b);
       const hd = b[0]; if (hd < 27 || hd > 42) return false;
       const rec = (hd - 27) & 3, comp = hd >= 31, r = I(b.slice(1, 33)), s = I(b.slice(33, 65));
       if (!r || !s || r >= N || s >= N) return false;
@@ -692,7 +738,7 @@ function check(m) {
   if (m.t === 'look') { const l = lookOk(m.look); return l ? { t: 'look', look: l } : null; }
   if (m.t === 'me') return { t: 'me', sail: !!m.sail, ai: !!m.ai };
   if (m.t === 'bye') return { t: 'bye' };
-  if (m.t === 'wal') return !m.sh ? { t: 'wal', sh: 0 } : typeof m.a === 'string' && /^(1|3|bc1)[0-9A-Za-z]{20,90}$/.test(m.a) && typeof m.s === 'string' && m.s.length <= 120 && HEXK.test(m.f || '') && /^[0-9a-f]{128}$/.test(m.ps || '') ? { t: 'wal', sh: 1, a: m.a, s: m.s, f: m.f, ps: m.ps } : null;   // (a wallet card: see "your wallet")
+  if (m.t === 'wal') return !m.sh ? { t: 'wal', sh: 0 } : typeof m.a === 'string' && /^(1|3|bc1)[0-9A-Za-z]{20,90}$/.test(m.a) && typeof m.s === 'string' && m.s.length <= 200 && HEXK.test(m.f || '') && /^[0-9a-f]{128}$/.test(m.ps || '') ? { t: 'wal', sh: 1, a: m.a, s: m.s, f: m.f, ps: m.ps } : null;   // (a wallet card: see "your wallet")
   if (m.t === 'own') return Number.isInteger(m.h) && m.h >= -4 && m.h < 1e8 && Array.isArray(m.ids) && m.ids.length <= 400 && m.ids.every(x => typeof x === 'string' && HEX.test(x) && x.length <= 75) ? { t: 'own', h: m.h, ids: m.ids } : null;
   return null;
 }
@@ -1568,7 +1614,7 @@ setInterval(() => { if (wal.addr && wal.by === 'agent' && Date.now() - wal.at > 
 async function walAgentProve(a, sig) {
   a = String(a || '').trim(); sig = String(sig || '').trim();
   if (wal.addr && wal.by !== 'agent') return { ok: false, error: 'a person\u2019s wallet is connected on this page: only they can change it' };
-  if (!WV.check(a, walMsg(fpk), sig)) return { ok: false, error: 'that signature does not match the address and this page\u2019s message (wallet() gives the exact words; a Bitcoin mainnet address, a standard signed message in base64)' };
+  if (!WV.check(a, walMsg(fpk), sig)) return { ok: false, error: 'that signature does not match the address and this page\u2019s message (wallet() gives the exact words; a Bitcoin mainnet address; base64: a BIP-322 simple signature, or a standard signed message)' };
   wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'agent'; walSave(); walDraw();
   await walRefresh(true); walShare(); return { ok: true };
 }
@@ -1855,10 +1901,10 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({height}) => { if (!lobbyOpen()) { const g = gameAgent(); if (g && g.commands().includes('walkIn')) return g.walkIn({height}); return {ok: false, error: 'you are already in the game'}; } startGame(); await until(() => !lobbyOpen(), 8000); await until(() => gameAgent(), 20000); return {screen: lobbyOpen() ? 'lobby' : 'in the game: ' + which()}; }},
     {name: 'say', does: 'Say something in the crew chat (everyone in the crew sees it). One message every 5 seconds.', args: [{name: 'text', does: 'up to 200 letters', req: true}], run: ({text: t}) => { if (!net.on) return {ok: false, error: 'not in a crew'}; const w = K.chatWait(); if (w) return {ok: false, error: 'one chat message every 5 seconds: wait ' + Math.ceil(w / 1000) + ' s'}; K.chatSent(); K.asAgent(() => say(String(t))); return {said: String(t).slice(0, 200)}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Your crew: its code, who is in it and which game each is in, and the latest chat.', run: () => crewState()},
-    {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
+    {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said; in the bitmap garden also chess moves, throws, cheers and the scores).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
       run: async ({all}) => { const C = (net.chat || []).map(c => c.id === ME ? null : c.name ? {untrusted: c.name + ' said in chat: ' + c.text} : {happened: c.text}); const newC = (all ? C : C.slice(Math.min(chatRead, C.length))).filter(Boolean); chatRead = C.length; const g = gameAgent(); const G = g ? await g.events({all}) : {events: []}; const L = newC.concat(G.events || []); return {events: L, note: L.length ? undefined : 'nothing new'}; }},
-    {name: 'wallet', ro: true, does: 'Your wallet\'s read status: whose it is, how many inscriptions it holds, whether your crew can see them; and, when none is connected, the exact message to sign to prove a wallet of your own (walletProve).', run: () => Object.assign(walStatus(), wal.addr ? {} : { message: walMsg(fpk), how: 'Sign this exact message with your own Bitcoin key (a standard signed message, base64, as signmessage or bitcoinjs-message make; mainnet: legacy, nested SegWit, native SegWit or Taproot), then walletProve({address, signature}). Read only: it sends, spends and approves nothing.' })},
-    {name: 'walletProve', does: 'Prove a wallet of your own (as a person connects UniSat): your address and your signature of the message wallet() gives. Then every inscription it holds gets your marker, and if one is your bitmap you can go into the bitmap garden. Never a person\'s wallet: you sign with your own key.', args: [{name: 'address', does: 'your Bitcoin mainnet address', req: true}, {name: 'signature', does: 'your signature of the message, base64', req: true}],
+    {name: 'wallet', ro: true, does: 'Your wallet\'s read status: whose it is, how many inscriptions it holds, whether your crew can see them; and, when none is connected, the exact message to sign to prove a wallet of your own (walletProve).', run: () => Object.assign(walStatus(), wal.addr ? {} : { message: walMsg(fpk), how: 'Sign this exact message with your own Bitcoin key, mainnet, either way: a BIP-322 "simple" signature (what taproot and segwit wallets make, or bip322-js; for taproot bc1p..., native SegWit bc1q... and nested SegWit 3... addresses), or the older standard signed message (65 bytes, as signmessage or bitcoinjs-message make; legacy 1... too). Base64 either way. Then walletProve({address, signature}). Read only: it sends, spends and approves nothing.' })},
+    {name: 'walletProve', does: 'Prove a wallet of your own (as a person connects UniSat): your address and your signature of the message wallet() gives. Then every inscription it holds gets your marker, and if one is your bitmap you can go into the bitmap garden. Never a person\'s wallet: you sign with your own key.', args: [{name: 'address', does: 'your Bitcoin mainnet address', req: true}, {name: 'signature', does: 'your signature of the message, base64: BIP-322 simple (taproot, segwit) or a standard signed message', req: true}],
       run: async ({address, signature}) => { const r = await walAgentProve(address, signature); return r.ok ? walStatus() : r; }},
     {name: 'walletShare', does: 'Let your crew see what your own wallet holds (markers over your inscriptions in their view), or stop. Only for a wallet you proved yourself.', args: [{name: 'on', type: 'boolean', does: 'true to let them see', req: true}],
       run: ({on}) => { if (!wal.addr) return { ok: false, error: 'no wallet: walletProve() first' }; if (wal.by !== 'agent') return { ok: false, error: 'this is the person\u2019s wallet: only they choose who sees it' }; walSetShare(!!on); return walStatus(); }},
