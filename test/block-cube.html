@@ -10352,15 +10352,17 @@ function ownTag(k) {
   let e = own.pool[k]; if (!e) { e = document.createElement('div'); e.className = 'om'; e.setAttribute('aria-hidden', 'true'); $crt.append(e); own.pool[k] = e; }
   return e;
 }
-function ownPaint(e, who, sx, sy, sc) {
-  const key = who.map(w => w.p + w.c).join();
-  if (e._k !== key) { e._k = key; e.textContent = ''; for (const w of who) { const b = document.createElement('b'); b.textContent = w.p; b.style.setProperty('--g', w.c); e.append(b); } }
+function ownPaint(e, who, sx, sy, sc, n = 1) {
+  const key = who.map(w => w.p + w.c).join() + 'x' + n;
+  if (e._k !== key) { e._k = key; e.textContent = ''; who.forEach((w, i) => { const b = document.createElement('b'); b.textContent = w.p + (n > 1 && i === who.length - 1 ? ' \u00d7' + n : ''); b.style.setProperty('--g', w.c); e.append(b); }); }
   e.style.display = ''; e.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-100%) scale(${sc.toFixed(2)})`;
 }
 function ownTick(VP) {
   const C = room && room.rooms[1], eye = room && room.view && room.view.eye; let n = 0;
-  if (C && C.ready && eye) {
-    ownShare(C);
+  if (C && C.ready) ownShare(C);
+  // (not while a tablet is up in front of you: a parcel in your hands, the search tablet, the big view)
+  const cover = (room && room.held && !room.held.back) || vw || $sr.classList.contains('on');
+  if (C && C.ready && eye && !cover) {
     const at = (P, d) => { const cx = VP[0] * P[0] + VP[4] * P[1] + VP[8] * P[2] + VP[12], cy = VP[1] * P[0] + VP[5] * P[1] + VP[9] * P[2] + VP[13], cw = VP[3] * P[0] + VP[7] * P[1] + VP[11] * P[2] + VP[15];
       if (cw < .2) return null; const sx = (cx / cw * .5 + .5) * innerWidth, sy = (.5 - cy / cw * .5) * innerHeight; if (sx < -40 || sx > innerWidth + 40 || sy < -40 || sy > innerHeight + 60) return null;
       return [sx, sy, Math.max(.55, Math.min(1.15, 4.5 / Math.max(d, 1)))]; };
@@ -10369,7 +10371,12 @@ function ownTick(VP) {
     for (const o of ownList(C)) { const it = o.it; if (it.t0 > now() || C.gal && !galSees(C, it, eye[0]) || room.held && room.held.it === it) continue;
       const d = Math.hypot(it.w[0] - eye[0], it.w[1] - eye[1], it.w[2] - eye[2]); if (d < 14) near.push([d, o]); }
     near.sort((a, b) => a[0] - b[0]);
-    for (const [d, o] of near.slice(0, 40)) { const it = o.it, q = at([it.w[0], it.w[1] + it.e / 2 + .07, it.w[2]], d); if (q) ownPaint(ownTag(n++), o.who, q[0], q[1], q[2]); }
+    // parcels side by side on a shelf are close on the screen: their tags gather into one ("P1 ×3") over the middle of them
+    const tags = [];
+    for (const [d, o] of near.slice(0, 60)) { const it = o.it, q = at([it.w[0], it.w[1] + it.e / 2 + .07, it.w[2]], d); if (!q) continue;
+      const key = o.who.map(w => w.p).join(), g = tags.find(T => T.key === key && Math.abs(T.x - q[0]) < 30 * T.s && Math.abs(T.y - q[1]) < 12 * T.s);
+      if (g) { g.n++; g.sx += q[0]; g.x = g.sx / g.n; } else tags.push({key, who: o.who, x: q[0], y: q[1], sx: q[0], s: q[2], n: 1}); }
+    for (const T of tags.slice(0, 40)) ownPaint(ownTag(n++), T.who, T.x, T.y, T.s, T.n);
     // in a crewmate's hands: theirs, if they let the crew see and the chain agrees
     for (const [id, M] of crew.mates) {
       const O = own.mates.get(id), hid = M.s && M.s.hid, R = M.R; if (!O || !O.addr || !hid || !M.shown || !R || M.s.h !== C.h || !ownOk(hid, O.addr)) continue;
