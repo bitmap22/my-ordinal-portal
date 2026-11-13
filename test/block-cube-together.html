@@ -566,19 +566,21 @@ function check(m) {
   if (m.t === 'event') return m.ev && typeof m.ev === 'object' && typeof m.ev.list === 'string' && m.ev.list.length <= 24 && small(m.ev, 0) ? { t: 'event', ev: m.ev } : null;
   if (m.t === 'chat') return typeof m.text === 'string' && m.text.trim() ? { t: 'chat', text: m.text.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200), ai: m.ai ? 1 : 0 } : null;
   if (m.t === 'sdp') return m.d && (m.d.type === 'offer' || m.d.type === 'answer') && typeof m.d.sdp === 'string' && m.d.sdp.length < 20000 ? { t: 'sdp', d: { type: m.d.type, sdp: m.d.sdp } } : null;
-  if (m.t === 'hello') return { t: 'hello', name: clean(m.name) || 'Runner', look: lookOk(m.look) || [0, 0, 1], pk: HEXK.test(m.pk || '') ? m.pk : '', fpk: HEXK.test(m.fpk || '') ? m.fpk : '', back: !!m.back, sail: !!m.sail };
+  if (m.t === 'hello') return { t: 'hello', name: clean(m.name) || 'Runner', look: lookOk(m.look) || [0, 0, 1], pk: HEXK.test(m.pk || '') ? m.pk : '', fpk: HEXK.test(m.fpk || '') ? m.fpk : '', back: !!m.back, sail: !!m.sail, ai: !!m.ai };
   if (m.t === 'look') { const l = lookOk(m.look); return l ? { t: 'look', look: l } : null; }
-  if (m.t === 'me') return { t: 'me', sail: !!m.sail };
+  if (m.t === 'me') return { t: 'me', sail: !!m.sail, ai: !!m.ai };
   if (m.t === 'bye') return { t: 'bye' };
   return null;
 }
 const RUNNERS = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia'];
 const myName = () => clean($('name').value) || RUNNERS[picked[0]] || 'Runner';
+// am I an AI agent? (using the agent kit, here or in a game, marks you as one for the whole crew, from the waiting room on)
+const iAmAgent = () => { if (window.__agentOn) return true; for (const id of ['game', 'paint']) { try { const f = document.getElementById(id); if (f && f.contentWindow.__agentOn) return true; } catch (e) {} } return false; };
 const flash = i => { i.classList.remove('bad'); void i.offsetWidth; i.classList.add('bad'); i.focus(); setTimeout(() => i.classList.remove('bad'), 900); };   // (an empty box: it flashes, no words)
 const send = (ch, m) => { if (ch && ch.readyState === 'open') try { ch.send(JSON.stringify(m)); } catch (e) {} };
 const toAll = (m, except) => { for (const [id, p] of net.peers) if (id !== except) send(p.ch, m); };
 const liveCount = () => { let n = 0; for (const p of net.players.values()) if (!p.lost) n++; return Math.max(1, n); };
-const pub = (id, p) => ({ id, name: p.name || 'Runner', look: lookOk(p.look) || [0, 0, 1], fpk: p.fpk || '', sail: p.sail ? 1 : 0 });
+const pub = (id, p) => ({ id, name: p.name || 'Runner', look: lookOk(p.look) || [0, 0, 1], fpk: p.fpk || '', sail: p.sail ? 1 : 0, ai: p.ai ? 1 : 0 });
 const keepEvent = out => { net.history.push(out); if (net.history.length > 300) net.history.shift(); };
 // a message for the whole crew: the host passes it on; guests send it to the host
 function share(m) { if (net.host) { handle(ME, m); } else send(net.hostLink && net.hostLink.ch, m); }
@@ -589,7 +591,7 @@ function handle(from, m) {
   else if (m.t === 'event') { const out = { t: 'event', ...meta, ev: m.ev }; keepEvent(out); toAll(out, from); if (from !== ME) toGame({ type: 'event', id: from, ev: m.ev }); }
   else if (m.t === 'pev') { const out = { t: 'pev', id: from, ev: m.ev }; toAll(out, from); if (from !== ME) toPaint({ type: 'event', id: from, ev: m.ev }); }
   else if (m.t === 'chat') { const out = { t: 'chat', ...meta, text: String(m.text || '').slice(0, 200), ai: m.ai ? 1 : 0 }; toAll(out, from); if (from !== ME) chatIn(out); }
-  else if (m.t === 'me') { const q = net.players.get(from); if (q) q.sail = m.sail ? 1 : 0; toAll({ t: 'me', id: from, sail: m.sail ? 1 : 0 }, from); drawCrew(); }
+  else if (m.t === 'me') { const q = net.players.get(from); if (q) { q.sail = m.sail ? 1 : 0; q.ai = m.ai ? 1 : 0; } toAll({ t: 'me', id: from, sail: m.sail ? 1 : 0, ai: m.ai ? 1 : 0 }, from); drawCrew(); }
   else if (m.t === 'look') { const q = net.players.get(from); if (q) { q.look = m.look; toAll({ t: 'joined', ...pub(from, q), back: 1 }, from); if (from !== ME) toGame({ type: 'look', id: from, look: m.look }); } }
 }
 // what reaches this player (host included)
@@ -604,7 +606,7 @@ function gameState(m) {
 function upsert(id, pl) {
   const p = net.players.get(id) || {}, look = lookOk(pl.look) || p.look || [0, 0, 1];
   const lookNew = String(look) !== String(p.look);
-  Object.assign(p, { name: clean(pl.name) || p.name || 'Runner', look, fpk: HEXK.test(pl.fpk || '') ? pl.fpk : (p.fpk || ''), sail: pl.sail ? 1 : 0 });
+  Object.assign(p, { name: clean(pl.name) || p.name || 'Runner', look, fpk: HEXK.test(pl.fpk || '') ? pl.fpk : (p.fpk || ''), sail: pl.sail ? 1 : 0, ai: pl.ai ? 1 : 0 });
   delete p.lost; clearTimeout(p.goneT); net.players.set(id, p);
   if (lookNew) toGame({ type: 'look', id, look });
 }
@@ -645,7 +647,7 @@ function guestIn(m) {
   else if (m.t === 'joined') { if (typeof m.id !== 'string' || m.id === ME) return; const known = net.players.has(m.id); upsert(m.id, m); if (!known && !m.back) logLine('', clean(m.name) + ' joined'); updateHud(); drawCrew(); presenceSoon(); }
   else if (m.t === 'left') goneNow(m.id);
   else if (m.t === 'line') setLine(m.line, m.pks);
-  else if (m.t === 'me') { const p = net.players.get(m.id); if (p) { p.sail = m.sail ? 1 : 0; drawCrew(); } }
+  else if (m.t === 'me') { const p = net.players.get(m.id); if (p) { p.sail = m.sail ? 1 : 0; p.ai = m.ai ? 1 : 0; drawCrew(); } }
   else if (m.t === 'room') { net.open = !!m.open; net.agents = m.agents === 0 ? 0 : 1; window.__crewAgents = net.agents; drawCrew(); }
   else if (m.t === 'bye') lostHost('bye', typeof m.next === 'string' ? m.next : '');
   else if (m.t === 'move') moveTo(m.to);
@@ -695,7 +697,7 @@ function guestLink(peer) {
 }
 function welcome(peer, m) {
   const gid = peer.gid, was = net.players.get(gid), back = !!(was || m.back);
-  const pl = Object.assign(was || {}, { name: m.name, look: m.look, fpk: m.fpk, sail: m.sail ? 1 : 0 }); delete pl.lost; clearTimeout(pl.goneT); net.players.set(gid, pl);
+  const pl = Object.assign(was || {}, { name: m.name, look: m.look, fpk: m.fpk, sail: m.sail ? 1 : 0, ai: m.ai ? 1 : 0 }); delete pl.lost; clearTimeout(pl.goneT); net.players.set(gid, pl);
   const gpk = peer.pk || (m.pk && m.pk.startsWith(gid) ? m.pk : ''); if (gpk) net.pks[gid] = gpk;
   if (!net.line.includes(gid)) net.line.push(gid);
   const init = { t: 'init', you: gid, host: ME, mode: net.mode, code: net.code, rid: net.rid, gen: net.gen, open: net.open ? 1 : 0, agents: net.agents === 0 ? 0 : 1, players: [...net.players].filter(([, v]) => !v.lost).map(([id, v]) => pub(id, v)), history: net.history.slice(-200), line: net.line, pks: net.pks, chat: net.chat.slice(-20) };
@@ -765,7 +767,7 @@ function hostSide(pc) {
   pc.ondatachannel = e => { const ch = e.channel; L.ch = ch;
     let opened = false; const onOpen = () => { if (opened) return; opened = true; voice.linked(L, null);
       // hello (again every few seconds until the host answers, in case it went astray)
-      const hi = () => send(ch, { t: 'hello', name: myName(), look: picked, pk, fpk, back: net.back || net.regroup ? 1 : 0, sail: net.sail ? 1 : 0 }); hi();
+      const hi = () => send(ch, { t: 'hello', name: myName(), look: picked, pk, fpk, back: net.back || net.regroup ? 1 : 0, sail: net.sail ? 1 : 0, ai: iAmAgent() ? 1 : 0 }); hi();
       const iv = setInterval(() => { if (!net.on || net.hostLink !== L || L.init || ch.readyState !== 'open') clearInterval(iv); else hi(); }, 3000);
       net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, sail: net.sail ? 1 : 0 }));
       if (net.mode === 'sea' || net.sail) startGame(); else showWait();
@@ -946,7 +948,7 @@ let soloOn = false;
 // walking in: into the cube's rooms (straight away in the open hall; from the waiting room in a crew)
 function startGame() {
   hideLobby();
-  if (net.on) { net.sail = true; const me = net.players.get(ME); if (me && !me.sail) { me.sail = 1; if (net.host) handle(ME, { t: 'me', sail: 1 }); else send(net.hostLink && net.hostLink.ch, { t: 'me', sail: 1 }); } }
+  if (net.on) { net.sail = true; const me = net.players.get(ME); if (me && !me.sail) { me.sail = 1; const ai = iAmAgent() ? 1 : 0; me.ai = ai; if (net.host) handle(ME, { t: 'me', sail: 1, ai }); else send(net.hostLink && net.hostLink.ch, { t: 'me', sail: 1, ai }); } }
   if (!gameReady) return;
   toGame({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode }); toGame({ type: 'look', id: 'me', look: picked });
   try { const f = inPaint ? pframe : frame; f.focus(); f.contentWindow.focus(); } catch (e) {}
@@ -1184,7 +1186,7 @@ function playerRows(ul) {
   for (const id of [...net.players.keys()].sort((a, b) => rank(a) - rank(b))) {
     const p = net.players.get(id), mine = id === ME, host = id === net.hostId, mu = isMuted(id), nm = p.name || 'Runner', st = voice.st[id];
     const li = el('li', { class: [mine && 'me', host && 'host', p.sail && 'on', mu && 'muted'].filter(Boolean).join(' ') || null, data: { id } });
-    li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), host ? el('span', { class: 'tag', text: 'Host' }) : null),
+    li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), host ? el('span', { class: 'tag', text: 'Host' }) : null, (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('span', { class: 'tag', text: 'AI', title: 'an AI agent' }) : null),
       el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
     // (a crewmate in another block's room: go to them)
     const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && (inPaintSt(st) ? !inPaintSt(mst) : st.in && !(mst && mst.in && !inPaintSt(mst) && mst.h === st.h))) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
@@ -1195,6 +1197,7 @@ function playerRows(ul) {
   }
   lights();
 }
+setInterval(() => { if (!net.on) return; const me = net.players.get(ME), ai = iAmAgent() ? 1 : 0; if (!me || (me.ai ? 1 : 0) === ai) return; me.ai = ai; const m = { t: 'me', sail: me.sail ? 1 : 0, ai }; if (net.host) handle(ME, m); else send(net.hostLink && net.hostLink.ch, m); drawCrew(); }, 1000);
 function drawCrew() { if (!$('wait').hidden) { playerRows($('rplist')); drawWait(); } if (P.kind === 'crew') crewPanel(false); updateHud(); }
 // which block each crewmate is in (redrawn now and then, not on every step)
 let whereAt = 0; function crewWhere() { if (Date.now() - whereAt < 1000) return; whereAt = Date.now(); if (P.kind === 'crew' || !$('wait').hidden) drawCrew(); else drawTop(); }
@@ -1554,7 +1557,7 @@ window.AgentKit = window.AgentKit || (() => {
   const markGames = () => { for (const id of ['game', 'paint']) { try { $(id).contentWindow.__agentOn = true; } catch (e) {} } };
   const PEOPLE_NOTE = 'Everyone in a crew is a player (a person) or an AI agent like you, as marked. Townsfolk in Block Paint are part of the game (NPCs).';
   function crewState() {
-    const P = [...net.players.entries()].map(([id, p]) => ({name: p.name, is: (id === ME ? agentHere() : voice.st[id] && voice.st[id].ai) ? 'an AI agent' : 'a player', you: id === ME || undefined, host: id === net.hostId || undefined, game: mateG.get(id) || undefined}));
+    const P = [...net.players.entries()].map(([id, p]) => ({name: p.name, is: (id === ME ? agentHere() : (voice.st[id] && voice.st[id].ai) || p.ai) ? 'an AI agent' : 'a player', you: id === ME || undefined, host: id === net.hostId || undefined, game: mateG.get(id) || undefined}));
     if (window.__agentOn) markGames();
     return {note: PEOPLE_NOTE, on: net.on, kind: net.on ? (net.mode === 'sea' ? 'open hall' : 'crew') : 'not in a crew', code: net.on && net.mode === 'crew' ? net.code : undefined, youAreHost: net.on ? !!net.host : undefined,
       aiAgents: net.on ? (net.agents === 0 ? 'turned off by the host: you may only look, talk() to the person at your screen, or leaveCrew()' : 'allowed to play') : undefined,
@@ -1602,7 +1605,8 @@ window.AgentKit = window.AgentKit || (() => {
   // anything the page does not have itself goes to the game in front
   const api = new Proxy(own, {get(o, k) { if (k in o) return o[k]; const g = gameAgent(); if (g && typeof k === 'string' && g.commands().includes(k)) return g[k].bind(g); return undefined; }});
   window.agent = window.playTogetherAgent = api;
-  window.__crewNames = () => { const o = {}; for (const [id, p] of net.players) o[id] = p.name; return o; };   // (the game asks for names of crewmates it has not seen yet)
+  window.__crewNames = () => { const o = {}; for (const [id, p] of net.players) o[id] = p.name; return o; };
+  window.__crewAi = () => { const o = {}; for (const [id, p] of net.players) o[id] = p.ai ? 1 : 0; return o; };   // (which crewmates are AI agents, known from the waiting room on)   // (the game asks for names of crewmates it has not seen yet)
   // WebMCP from this top page: the crew's own tools, plus each game's tools once that game is open (they run in whichever game it is)
   if (window.top === window) {
     K.webmcp('crew_', own, own._cmds);
