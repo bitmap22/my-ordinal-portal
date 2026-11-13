@@ -1129,7 +1129,7 @@
     </svg>
     <div class="scene-in">
       <h1>Ordinal View Tester — Full Scan</h1>
-      <p class="tagline">Paste or load one complete ordinal HTML file. Press one button. The tool runs static checks, dependency mapping, size analysis, runtime error capture, first-frame checkpoints, mobile portrait/landscape rotation stress, dynamic viewport-height checks, touch/scroll diagnostics, paused-motion checks, social-preview targets, square crops, thumbnail stress passes, and a full report.</p>
+      <p class="tagline">Paste or load one complete ordinal HTML file. Press one button. The tool runs static checks, dependency mapping, size analysis, runtime error capture, first-frame checkpoints, mobile portrait/landscape rotation stress, dynamic viewport-height checks, touch/scroll diagnostics, iPhone zoom-trap checks, paused-motion checks, social-preview targets, square crops, thumbnail stress passes, and a full report.</p>
       <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Waiting for HTML</span></div>
     </div>
   </header>
@@ -1362,6 +1362,17 @@
         { id: "stress-ipad-mini", label: "iPad Mini Rotation", portrait: { width: 768, height: 1024 }, landscape: { width: 1024, height: 768 }, group: "tablet" },
         { id: "stress-android-tablet", label: "Android Tablet Rotation", portrait: { width: 800, height: 1280 }, landscape: { width: 1280, height: 800 }, group: "tablet" }
       ];
+
+      // iPhone zoom check: the page is loaded as a touch phone ((pointer:coarse), (hover:none), touch events on),
+      // then it looks for ways the page can zoom in (text boxes under 16px, double-tap) and whether pinch can zoom back out.
+      const IPHONE_ZOOM_TARGETS = [
+        { id: "zoomSE", label: "iPhone SE Portrait", width: 375, height: 667, group: "iphone-zoom", social: false, tiny: false },
+        { id: "zoom390p", label: "iPhone 390 Portrait", width: 390, height: 844, group: "iphone-zoom", social: false, tiny: false },
+        { id: "zoom390l", label: "iPhone 390 Landscape", width: 844, height: 390, group: "iphone-zoom", social: false, tiny: false }
+      ];
+      const ZOOM_MODE = "iphone-zoom";
+      const ZOOM_FIELD_MIN_PX = 16;
+      const ZOOM_TRAP_SHARE = 0.75;
 
       const fileInput = document.getElementById("fileInput");
       const fileNameLabel = document.getElementById("fileName");
@@ -1628,13 +1639,14 @@
       }
 
       function buildInjectedHtml(rawHtml, token, mode) {
-        let html = rawHtml;
+        const touchMode = mode === ZOOM_MODE;
+        let html = touchMode ? rewriteTouchMediaHtml(rawHtml) : rawHtml;
         const csp = offlineGuard.checked
           ? "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline' blob: data:; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'\">"
           : "";
 
         const modeCss = buildModeCss(mode);
-        const telemetryScript = buildTelemetryScript(token, CHECKPOINTS);
+        const telemetryScript = buildTelemetryScript(token, CHECKPOINTS, touchMode);
         const injection = csp + modeCss + telemetryScript;
 
         if (/<head[\s>]/i.test(html)) {
@@ -1658,16 +1670,219 @@
         return "";
       }
 
-      function buildTelemetryScript(token, checkpoints) {
+      // ---- iPhone zoom check helpers ----
+      // touchMediaQuery is used here (to rewrite the page's CSS) and inside the test frame (for matchMedia).
+      // The other zoom* functions below only run inside the test frame: they are injected as source text
+      // by buildTelemetryScript and use the frame's own helpers (send, shortSelector, isVisible, numberStyle, collectViewport).
+      function touchMediaQuery(query) {
+        return String(query)
+          .replace(/\(\s*(?:any-)?pointer\s*:\s*coarse\s*\)/gi, "(min-width:0px)")
+          .replace(/\(\s*(?:any-)?pointer\s*:\s*(?:fine|none)\s*\)/gi, "(max-width:0px)")
+          .replace(/\(\s*(?:any-)?hover\s*:\s*none\s*\)/gi, "(min-width:0px)")
+          .replace(/\(\s*(?:any-)?hover\s*:\s*hover\s*\)/gi, "(max-width:0px)")
+          .replace(/\(\s*(?:any-)?pointer\s*\)/gi, "(min-width:0px)")
+          .replace(/\(\s*(?:any-)?hover\s*\)/gi, "(max-width:0px)");
+      }
+
+      function rewriteTouchMediaHtml(html) {
+        return String(html)
+          .replace(/@media([^{;]*)\{/gi, (match, prelude) => "@media" + touchMediaQuery(prelude) + "{")
+          .replace(/(\bmedia\s*=\s*)(["'])([^"']*)\2/gi, (match, start, quote, value) => start + quote + touchMediaQuery(value) + quote);
+      }
+
+      function zoomTouchSetup() {
+        try { Object.defineProperty(Navigator.prototype, "maxTouchPoints", { configurable: true, get: function () { return 5; } }); } catch (error) {}
+        // Computers without a touch screen hide ontouchstart & co. Add them back so touch detection
+        // ('ontouchstart' in window) sees a phone, and handlers set as el.ontouchmove = fn still run.
+        const names = ["touchstart", "touchmove", "touchend", "touchcancel", "gesturestart", "gesturechange", "gestureend"];
+        [window, Document.prototype, HTMLElement.prototype, SVGElement.prototype].forEach(function (holder) {
+          names.forEach(function (name) {
+            const prop = "on" + name;
+            try {
+              if (prop in holder) return;
+              Object.defineProperty(holder, prop, {
+                configurable: true,
+                get: function () { return (this.__ordinalOn && this.__ordinalOn[name] && this.__ordinalOn[name].fn) || null; },
+                set: function (fn) {
+                  const self = this;
+                  if (!self.__ordinalOn) Object.defineProperty(self, "__ordinalOn", { value: {}, configurable: true });
+                  const old = self.__ordinalOn[name];
+                  if (old) self.removeEventListener(name, old.wrap);
+                  if (typeof fn !== "function") { delete self.__ordinalOn[name]; return; }
+                  const wrap = function (event) { const value = fn.call(this, event); if (value === false) event.preventDefault(); return value; };
+                  self.__ordinalOn[name] = { fn: fn, wrap: wrap };
+                  self.addEventListener(name, wrap);
+                }
+              });
+            } catch (error) {}
+          });
+        });
+        try {
+          const realMatchMedia = window.matchMedia;
+          if (realMatchMedia) window.matchMedia = function (query) { return realMatchMedia.call(window, touchMediaQuery(query)); };
+        } catch (error) {}
+      }
+
+      function zoomChain(el) {
+        const out = { dbl: true, pinch: true, dblBy: "", pinchBy: "", manip: false, noneAbs: false };
+        let node = el;
+        while (node && node.nodeType === 1) {
+          let st = null;
+          try { st = getComputedStyle(node); } catch (error) {}
+          const ta = st ? String(st.touchAction || "auto").toLowerCase() : "auto";
+          if (ta && ta !== "auto") {
+            const label = shortSelector(node) + " {touch-action:" + ta + "}";
+            if (ta.indexOf("manipulation") !== -1) out.manip = true;
+            if (out.dbl) { out.dbl = false; out.dblBy = label; }
+            if (ta === "none" && (st.position === "absolute" || st.position === "fixed")) out.noneAbs = true;
+            if (out.pinch && ta.indexOf("manipulation") === -1 && ta.indexOf("pinch-zoom") === -1) { out.pinch = false; out.pinchBy = label; }
+          }
+          node = node.parentElement;
+        }
+        return out;
+      }
+
+      function zoomFieldKind(el) {
+        const tag = String(el.tagName || "").toLowerCase();
+        if (tag === "textarea" || tag === "select") return tag;
+        if (tag === "input") {
+          const type = String(el.getAttribute("type") || "text").toLowerCase();
+          const noTyping = ["checkbox", "radio", "range", "button", "submit", "reset", "image", "file", "color", "hidden"];
+          return noTyping.indexOf(type) === -1 ? "input[" + type + "]" : "";
+        }
+        return el.isContentEditable ? "contenteditable" : "";
+      }
+
+      function collectZoomState() {
+        const root = document.documentElement;
+        const body = document.body || root;
+        const meta = document.querySelector("meta[name=viewport]");
+        const out = { viewport: collectViewport(), meta: meta ? String(meta.getAttribute("content") || "") : "", layoutWidth: Math.max(root.scrollWidth, body.scrollWidth), fieldCount: 0, fields: [], grid: [], controlCount: 0, openControls: [] };
+        const fields = document.querySelectorAll("input,textarea,select,[contenteditable]");
+        for (let i = 0; i < fields.length; i++) {
+          const el = fields[i];
+          const kind = zoomFieldKind(el);
+          if (!kind || el.disabled || el.readOnly) continue;
+          out.fieldCount++;
+          let st = null;
+          try { st = getComputedStyle(el); } catch (error) {}
+          const fontPx = st ? numberStyle(st.fontSize) : 0;
+          const visible = isVisible(el);
+          let ratio = 1, x = -1, y = -1;
+          if (visible) {
+            const r = el.getBoundingClientRect();
+            if (el.offsetWidth > 0 && r.width > 0) ratio = r.width / el.offsetWidth;
+            x = Math.round(r.left + r.width / 2);
+            y = Math.round(r.top + r.height / 2);
+          }
+          const chain = zoomChain(el);
+          if (out.fields.length < 40) out.fields.push({ el: shortSelector(el), kind: kind, fontPx: Math.round(fontPx * 100) / 100, renderedPx: Math.round(fontPx * ratio * 100) / 100, visible: visible, x: x, y: y, pinchHere: chain.pinch, pinchBy: chain.pinchBy });
+        }
+        const steps = [0.1, 0.3, 0.5, 0.7, 0.9];
+        steps.forEach(function (fy) {
+          steps.forEach(function (fx) {
+            const x = Math.round(innerWidth * fx), y = Math.round(innerHeight * fy);
+            const el = document.elementFromPoint(x, y);
+            const chain = el ? zoomChain(el) : { dbl: true, pinch: true, dblBy: "", pinchBy: "", manip: false, noneAbs: false };
+            out.grid.push({ x: x, y: y, el: el ? shortSelector(el) : "(nothing)", dbl: chain.dbl, pinch: chain.pinch, dblBy: chain.dblBy, pinchBy: chain.pinchBy, manip: chain.manip, noneAbs: chain.noneAbs, scriptBlocked: false, scriptBy: "" });
+          });
+        });
+        const controls = document.querySelectorAll("a[href],button,[role=button],input[type=button],input[type=submit],input[type=reset],summary,[onclick]");
+        for (let i = 0; i < controls.length; i++) {
+          const el = controls[i];
+          if (!isVisible(el) || el.disabled) continue;
+          out.controlCount++;
+          if (zoomChain(el).dbl && out.openControls.length < 12) out.openControls.push(shortSelector(el));
+        }
+        return out;
+      }
+
+      function zoomProbeList(list) {
+        const arr = list.slice();
+        arr.item = function (i) { return arr[i] || null; };
+        return arr;
+      }
+
+      function zoomProbeTouch(id, target, x, y) {
+        const init = { identifier: id, target: target, clientX: x, clientY: y, pageX: x + (window.scrollX || 0), pageY: y + (window.scrollY || 0), screenX: x, screenY: y, radiusX: 11, radiusY: 11, rotationAngle: 0, force: 0.5 };
+        try { if (typeof Touch === "function") return new Touch(init); } catch (error) {}
+        return init;
+      }
+
+      function zoomProbeFire(target, type, touches, changed, extra) {
+        let ev = null;
+        const gesture = type.indexOf("gesture") === 0;
+        try {
+          if (!gesture && typeof TouchEvent === "function" && typeof Touch === "function" && touches.concat(changed).every(function (t) { return t instanceof Touch; })) {
+            ev = new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: touches, targetTouches: touches, changedTouches: changed });
+          }
+        } catch (error) { ev = null; }
+        if (!ev) {
+          ev = new Event(type, { bubbles: true, cancelable: true, composed: true });
+          if (!gesture) {
+            try {
+              Object.defineProperty(ev, "touches", { value: zoomProbeList(touches) });
+              Object.defineProperty(ev, "targetTouches", { value: zoomProbeList(touches) });
+              Object.defineProperty(ev, "changedTouches", { value: zoomProbeList(changed) });
+            } catch (error) {}
+          }
+        }
+        if (extra) Object.keys(extra).forEach(function (key) { try { Object.defineProperty(ev, key, { value: extra[key] }); } catch (error) {} });
+        try { target.dispatchEvent(ev); } catch (error) {}
+        return ev.defaultPrevented;
+      }
+
+      function zoomPinchProbe(x, y) {
+        const target = document.elementFromPoint(x, y);
+        if (!target) return null;
+        const a = zoomProbeTouch(71, target, x - 32, y - 32), b = zoomProbeTouch(72, target, x + 32, y + 32);
+        const a2 = zoomProbeTouch(71, target, x - 18, y - 18), b2 = zoomProbeTouch(72, target, x + 18, y + 18);
+        const g = { scale: 1, rotation: 0, clientX: x, clientY: y, screenX: x, screenY: y };
+        const hits = [];
+        if (zoomProbeFire(target, "touchstart", [a], [a])) hits.push("touchstart");
+        if (zoomProbeFire(target, "touchstart", [a, b], [b])) hits.push("2nd-finger touchstart");
+        if (zoomProbeFire(target, "touchmove", [a2, b2], [a2, b2], { scale: 0.8, rotation: 0 })) hits.push("touchmove");
+        if (zoomProbeFire(target, "gesturestart", [], [], g)) hits.push("gesturestart");
+        if (zoomProbeFire(target, "gesturechange", [], [], Object.assign({}, g, { scale: 0.8 }))) hits.push("gesturechange");
+        zoomProbeFire(target, "gestureend", [], [], Object.assign({}, g, { scale: 0.8 }));
+        zoomProbeFire(target, "touchcancel", [], [a2, b2]);
+        return { el: shortSelector(target), blocked: hits.length > 0, by: hits };
+      }
+
+      function runZoomCheck() {
+        const state = collectZoomState();
+        window.__ordinalZoomProbe = true;
+        try {
+          state.grid.forEach(function (point) {
+            const probe = zoomPinchProbe(point.x, point.y);
+            point.scriptBlocked = !!(probe && probe.blocked);
+            point.scriptBy = probe && probe.blocked ? probe.el + " (" + probe.by.join(", ") + " preventDefault)" : "";
+          });
+          state.fields.forEach(function (field) {
+            if (!field.visible || field.x < 0) return;
+            const probe = zoomPinchProbe(field.x, field.y);
+            field.scriptBlocked = !!(probe && probe.blocked);
+            field.scriptBy = probe && probe.blocked ? probe.el + " (" + probe.by.join(", ") + " preventDefault)" : "";
+          });
+        } catch (error) {}
+        setTimeout(function () { window.__ordinalZoomProbe = false; }, 250);
+        state.touchEventApi = typeof TouchEvent === "function" && typeof Touch === "function";
+        send("zoom", state);
+      }
+
+      const ZOOM_FRAME_SOURCE = [touchMediaQuery, zoomTouchSetup, zoomChain, zoomFieldKind, collectZoomState, zoomProbeList, zoomProbeTouch, zoomProbeFire, zoomPinchProbe, runZoomCheck].map((fn) => fn.toString()).join("\n") + "\n";
+
+      function buildTelemetryScript(token, checkpoints, touchMode) {
         const jsonCheckpoints = JSON.stringify(checkpoints);
         return "<script data-ordinal-tester-telemetry>(function(){\n" +
           "var TOKEN=" + JSON.stringify(token) + ";\n" +
           "var CHECKPOINTS=" + jsonCheckpoints + ";\n" +
+          (touchMode ? ZOOM_FRAME_SOURCE + "zoomTouchSetup();\n" : "") +
           "function stringValue(value){try{return String(value);}catch(error){return '[unstringifiable]';}}\n" +
           "function send(type,payload){try{parent.postMessage({__ordinalTester:true,token:TOKEN,type:type,payload:payload},'*');}catch(error){}}\n" +
-          "window.addEventListener('error',function(event){send('runtime-error',{message:stringValue(event.message||'Script error'),source:stringValue(event.filename||''),lineno:event.lineno||0,colno:event.colno||0,stack:event.error&&event.error.stack?stringValue(event.error.stack):''});});\n" +
-          "window.addEventListener('unhandledrejection',function(event){var reason=event.reason;send('runtime-error',{message:'Unhandled promise rejection: '+stringValue(reason&&reason.message?reason.message:reason),stack:reason&&reason.stack?stringValue(reason.stack):''});});\n" +
-          "['error','warn'].forEach(function(level){var original=console[level];console[level]=function(){var args=[];for(var i=0;i<arguments.length&&i<8;i++){args.push(stringValue(arguments[i]));}send('console-'+level,{args:args});if(original){try{original.apply(console,arguments);}catch(error){}}};});\n" +
+          "window.addEventListener('error',function(event){send('runtime-error',{message:stringValue(event.message||'Script error'),source:stringValue(event.filename||''),lineno:event.lineno||0,colno:event.colno||0,stack:event.error&&event.error.stack?stringValue(event.error.stack):'',zoomProbe:!!window.__ordinalZoomProbe});});\n" +
+          "window.addEventListener('unhandledrejection',function(event){var reason=event.reason;send('runtime-error',{message:'Unhandled promise rejection: '+stringValue(reason&&reason.message?reason.message:reason),stack:reason&&reason.stack?stringValue(reason.stack):'',zoomProbe:!!window.__ordinalZoomProbe});});\n" +
+          "['error','warn'].forEach(function(level){var original=console[level];console[level]=function(){var args=[];for(var i=0;i<arguments.length&&i<8;i++){args.push(stringValue(arguments[i]));}send('console-'+level,{args:args,zoomProbe:!!window.__ordinalZoomProbe});if(original){try{original.apply(console,arguments);}catch(error){}}};});\n" +
           "var EP_PATH=/^\\/(?:content|r|preview|inscription|blockheight|blockhash|blocktime)(?:[\\/?#]|$)/i;\n" +
           "var missSeen={};\n" +
           "function endpointPath(u){try{var raw=String(u||'').trim();if(!raw||/^(?:data|blob|javascript|about):/i.test(raw))return '';if(EP_PATH.test(raw))return raw;var base=document.baseURI;var a=new URL(raw,base);var hostOk=/(^|\\.)ordinals\\.com$/i.test(a.hostname);try{var b=new URL(base);if(a.protocol===b.protocol&&a.host===b.host)hostOk=true;}catch(error){}if(hostOk&&EP_PATH.test(a.pathname))return a.pathname+a.search;return '';}catch(error){return '';}}\n" +
@@ -1692,7 +1907,7 @@
           "window.addEventListener('load',function(){send('lifecycle',{name:'load'});});\n" +
           "window.addEventListener('resize',function(){clearTimeout(window.__ordinalResizeTimer);window.__ordinalResizeTimer=setTimeout(function(){collectCheckpoint('resize-auto');},90);});\n" +
           "if(window.visualViewport){window.visualViewport.addEventListener('resize',function(){clearTimeout(window.__ordinalVVTimer);window.__ordinalVVTimer=setTimeout(function(){collectCheckpoint('visual-viewport-resize');},90);});}\n" +
-          "window.addEventListener('message',function(event){var data=event.data;if(!data||data.__ordinalTesterCommand!==true||data.token!==TOKEN)return;if(data.command==='checkpoint')collectCheckpoint(data.phase||'command');if(data.command==='orientationchange'){try{window.dispatchEvent(new Event('orientationchange'));}catch(error){}setTimeout(function(){collectCheckpoint(data.phase||'orientationchange');},80);}});\n" +
+          "window.addEventListener('message',function(event){var data=event.data;if(!data||data.__ordinalTesterCommand!==true||data.token!==TOKEN)return;if(data.command==='checkpoint')collectCheckpoint(data.phase||'command');if(data.command==='orientationchange'){try{window.dispatchEvent(new Event('orientationchange'));}catch(error){}setTimeout(function(){collectCheckpoint(data.phase||'orientationchange');},80);}if(data.command==='zoomprobe'){try{runZoomCheck();}catch(error){send('zoom-failed',{message:stringValue(error&&error.message?error.message:error)});}}});\n" +
           "send('lifecycle',{name:'telemetry-installed'});\n" +
           "CHECKPOINTS.forEach(function(delay){setTimeout(function(){collectCheckpoint(delay);},delay);});\n" +
           "})();<\/script>";
@@ -2347,6 +2562,160 @@
         return evaluateMobileStressResult(pair, currentMessages.slice());
       }
 
+      async function runIphoneZoomTarget(target, index, total) {
+        currentToken = makeToken();
+        currentMessages = [];
+        setProgress(index, total, target.label + " / iPhone zoom check");
+        setStatus("iPhone zoom check " + target.label);
+        renderTarget(target, ZOOM_MODE, currentToken);
+        // Heavy pages can take seconds to start, so wait for the page to load and settle, then wait for its answer.
+        await waitForFrameMessage((item) => item.type === "lifecycle" && item.payload && item.payload.name === "load", 12000);
+        await sleep(1500);
+        if (activeFrame && activeFrame.contentWindow) {
+          try {
+            activeFrame.contentWindow.postMessage({ __ordinalTesterCommand: true, token: currentToken, command: "zoomprobe" }, "*");
+          } catch (error) {}
+        }
+        await waitForFrameMessage((item) => item.type === "zoom" || item.type === "zoom-failed", 10000);
+        await sleep(300);
+        return evaluateZoomResult(target, currentMessages.slice());
+      }
+
+      async function waitForFrameMessage(test, timeoutMs) {
+        const token = currentToken;
+        const end = performance.now() + timeoutMs;
+        while (performance.now() < end) {
+          if (token !== currentToken) return false;
+          if (currentMessages.some(test)) return true;
+          await sleep(100);
+        }
+        return false;
+      }
+
+      function evaluateZoomResult(target, messages) {
+        const zoomMessages = messages.filter((item) => item.type === "zoom");
+        const failed = messages.filter((item) => item.type === "zoom-failed");
+        const fromProbe = (item) => !!(item.payload && item.payload.zoomProbe);
+        const result = {
+          target,
+          mode: ZOOM_MODE,
+          messages,
+          zoom: zoomMessages.length ? zoomMessages[zoomMessages.length - 1].payload : null,
+          failure: failed.length ? String(failed[0].payload.message || "") : "",
+          errors: messages.filter((item) => item.type === "runtime-error" && !fromProbe(item)),
+          consoleErrors: messages.filter((item) => item.type === "console-error" && !fromProbe(item)),
+          probeErrors: messages.filter((item) => (item.type === "runtime-error" || item.type === "console-error") && fromProbe(item))
+        };
+        splitOffChain(result);
+        const zoom = result.zoom;
+        if (!zoom) return result;
+        const grid = zoom.grid || [];
+        const fields = zoom.fields || [];
+        const share = (list) => (grid.length ? list.length / grid.length : 0);
+        result.smallFields = fields.filter((field) => field.renderedPx > 0 && field.renderedPx < ZOOM_FIELD_MIN_PX - 0.05);
+        result.pinchBlocked = grid.filter((point) => !point.pinch || point.scriptBlocked);
+        result.pinchBlockedShare = share(result.pinchBlocked);
+        result.cssBlockedCount = grid.filter((point) => !point.pinch).length;
+        result.scriptBlockedCount = grid.filter((point) => point.scriptBlocked).length;
+        result.dblOpenShare = share(grid.filter((point) => point.dbl));
+        result.bugPoints = grid.filter((point) => !point.dbl && !point.manip && point.noneAbs && (!point.pinch || point.scriptBlocked));
+        result.bugShare = share(result.bugPoints);
+        result.deviceWidth = /width\s*=\s*device-width/i.test(zoom.meta || "");
+        result.tooWide = !!(zoom.viewport && zoom.layoutWidth > zoom.viewport.innerWidth * 1.1);
+        result.blockers = Array.from(new Set(result.pinchBlocked.map((point) => point.pinchBy || point.scriptBy).filter(Boolean))).slice(0, 4);
+        return result;
+      }
+
+      function zoomPercent(value) {
+        return Math.round(value * 100) + "%";
+      }
+
+      function buildZoomChecks(zoomResults) {
+        const checks = [];
+        if (!zoomResults.length) return checks;
+        const ran = zoomResults.filter((result) => result.zoom);
+        if (!ran.length) {
+          const why = zoomResults.map((result) => result.failure).filter(Boolean)[0];
+          checks.push({ level: "warn", area: "iPhone Zoom", message: "The iPhone zoom check got no answer from the page, so it could not check for zoom traps.", detail: why ? "Check stopped with: " + why : "The page may have crashed or stopped scripts in iPhone touch mode." });
+          return checks;
+        }
+
+        const fieldMap = new Map();
+        ran.forEach((result) => {
+          result.smallFields.forEach((field) => {
+            const entry = fieldMap.get(field.el) || { el: field.el, kind: field.kind, px: field.renderedPx, visible: false, stuck: false };
+            entry.px = Math.min(entry.px, field.renderedPx);
+            entry.visible = entry.visible || field.visible;
+            entry.stuck = entry.stuck || !field.pinchHere || !!field.scriptBlocked;
+            fieldMap.set(field.el, entry);
+          });
+        });
+        const small = Array.from(fieldMap.values());
+        const worst = ran.reduce((a, b) => (b.pinchBlockedShare > a.pinchBlockedShare ? b : a));
+        const worstPinch = worst.pinchBlockedShare;
+        const meta = ran[0].zoom.meta || "";
+        const fieldList = small.slice(0, 5).map((field) => field.el + " " + field.px + "px" + (field.visible ? "" : " (hidden at start)")).join(", ") + (small.length > 5 ? ", +" + (small.length - 5) + " more" : "");
+        const blockerText = worst.blockers.length ? " (blocked by " + worst.blockers.join("; ") + ")" : "";
+        const maxScaleNote = /maximum-scale\s*=\s*1(?:\.0*)?(?![\d.])/i.test(meta) ? " Your viewport tag has maximum-scale=1: that stops this only when the file opens as the whole page, not inside a viewer's frame." : "";
+        const fieldFix = "Fix: make every text box (input, textarea, select, contenteditable) 16px or bigger. iPhone Safari zooms into any text box under 16px when it is tapped, and stays zoomed after.";
+
+        const fieldTrap = small.length > 0 && (worstPinch >= ZOOM_TRAP_SHARE || small.some((field) => field.stuck));
+        if (fieldTrap) {
+          checks.push({ level: "bad", area: "iPhone Zoom Trap", message: "Tapping a text box zooms the iPhone in, and pinch to zoom back out is blocked, so the player gets stuck zoomed in. Text boxes under 16px: " + fieldList + ". Pinch is blocked on " + zoomPercent(worstPinch) + " of the screen" + blockerText + ".", detail: fieldFix + maxScaleNote });
+        } else if (small.length) {
+          checks.push({ level: "warn", area: "iPhone Zoom", message: "Tapping a text box zooms the iPhone in, and it stays zoomed until the player pinches out. Text boxes under 16px: " + fieldList + ".", detail: fieldFix + maxScaleNote });
+        }
+
+        const doubleTap = ran.filter((result) => (!result.deviceWidth || result.tooWide) && result.dblOpenShare > 0.25);
+        if (doubleTap.length) {
+          const result = doubleTap[0];
+          const why = !result.deviceWidth ? "there is no width=device-width viewport tag" : "the page is wider than the screen";
+          const stuck = worstPinch >= ZOOM_TRAP_SHARE;
+          checks.push({ level: stuck ? "bad" : "warn", area: stuck ? "iPhone Zoom Trap" : "iPhone Zoom", message: "Double-tap zooms the iPhone in on " + zoomPercent(result.dblOpenShare) + " of the screen, because " + why + (stuck ? ", and pinch to zoom back out is blocked on " + zoomPercent(worstPinch) + " of the screen" + blockerText + "." : "."), detail: "Fix: add touch-action: manipulation to html and body (stops double-tap zoom, keeps pinch). iPhone only switches double-tap zoom off by itself on width=device-width pages at normal size." });
+        }
+
+        const bugResult = ran.reduce((a, b) => (b.bugShare > a.bugShare ? b : a));
+        if (bugResult.bugShare >= 0.25 && !(doubleTap.length && worstPinch >= ZOOM_TRAP_SHARE)) {
+          const examples = Array.from(new Set(bugResult.bugPoints.map((point) => point.dblBy).filter(Boolean))).slice(0, 2).join("; ");
+          checks.push({ level: "warn", area: "iPhone Zoom", message: "Double-tap may still zoom the iPhone in on " + zoomPercent(bugResult.bugShare) + " of the screen, where pinch is blocked. Those parts stop zoom with touch-action:none on an absolute/fixed element (" + examples + "), and an open WebKit bug (218015, reproduced on iOS 13.5.1 and 14.0) lets double-tap zoom through in that case.", detail: "Check on a real iPhone: double-tap the game area. If it zooms in, the player can't pinch back out there." });
+        }
+
+        const errorViews = ran.filter((result) => result.errors.length || result.consoleErrors.length);
+        if (errorViews.length) {
+          const first = errorViews[0].errors[0] || errorViews[0].consoleErrors[0];
+          const text = first.type === "runtime-error" ? (first.payload.message || "unknown") : (first.payload.args || []).join(" | ");
+          checks.push({ level: "warn", area: "iPhone Zoom", message: "The page threw error(s) in iPhone touch mode in " + errorViews.length + " of " + ran.length + " sizes. First: " + text, detail: "Seen with touch screen styles on, on a computer. Check it on a real iPhone." });
+        }
+
+        if (!checks.length) {
+          const fields = ran[0].zoom.fieldCount;
+          const pinchText = worstPinch > 0 ? "pinch is blocked on " + zoomPercent(worstPinch) + " of the screen, but nothing was found that zooms it in" : "pinch to zoom works everywhere";
+          checks.push({ level: "good", area: "iPhone Zoom", message: "No iPhone zoom trap found: " + (fields ? "all " + fields + " text box(es) are 16px or bigger" : "no text boxes") + "; " + pinchText + "." });
+        }
+        return checks;
+      }
+
+      function zoomReportLines(scan) {
+        const results = scan.zoomResults || [];
+        if (!results.length) return [];
+        const lines = ["iPhone Zoom Check (page loaded as a touch phone: (pointer:coarse)/(hover:none) styles and touch events on):"];
+        (scan.zoomChecks || []).forEach((item) => {
+          lines.push("- [" + levelLabel(item.level) + "] " + item.area + " — " + item.message + (item.detail ? " " + item.detail : ""));
+        });
+        results.forEach((result) => {
+          const label = "  " + result.target.label + " " + result.target.width + "×" + result.target.height + ": ";
+          if (!result.zoom) {
+            lines.push(label + "no answer from the page" + (result.failure ? " (" + result.failure + ")" : "") + ".");
+            return;
+          }
+          const zoom = result.zoom;
+          const grid = (zoom.grid || []).length;
+          lines.push(label + "text boxes " + zoom.fieldCount + " (" + result.smallFields.length + " under 16px" + (result.smallFields.length ? ": " + result.smallFields.slice(0, 4).map((field) => field.el + " " + field.renderedPx + "px").join(", ") : "") + "); pinch blocked at " + result.pinchBlocked.length + "/" + grid + " screen points (CSS " + result.cssBlockedCount + ", script " + result.scriptBlockedCount + "); double-tap zoom not switched off at " + Math.round(result.dblOpenShare * grid) + "/" + grid + "; viewport \"" + (zoom.meta || "none") + "\"" + (result.tooWide ? "; page wider than screen (" + zoom.layoutWidth + "px)" : "") + (result.probeErrors.length ? "; " + result.probeErrors.length + " error(s) thrown by the page's own touch code during the test pinch (not counted)" : "") + ".");
+        });
+        lines.push("");
+        return lines;
+      }
+
       async function runFullScan() {
         if (isScanning) return;
         const html = getSource();
@@ -2376,8 +2745,10 @@
         });
 
         const mobileStressPlan = mobileStressToggle.checked ? MOBILE_STRESS_PAIRS.slice() : [];
-        const totalRuntimeRuns = runtimePlan.length + mobileStressPlan.length;
+        const totalRuntimeRuns = runtimePlan.length + mobileStressPlan.length + IPHONE_ZOOM_TARGETS.length;
         const runtimeResults = [];
+        const zoomResults = [];
+        let zoomChecks = [];
         setProgress(0, totalRuntimeRuns, "Runtime scan starting");
         for (let i = 0; i < runtimePlan.length; i += 1) {
           const item = runtimePlan[i];
@@ -2393,6 +2764,13 @@
           renderInterimResults(staticResult.checks, runtimeResults, staticResult.dependencies);
           await sleep(120);
         }
+        for (let i = 0; i < IPHONE_ZOOM_TARGETS.length; i += 1) {
+          const result = await runIphoneZoomTarget(IPHONE_ZOOM_TARGETS[i], runtimePlan.length + mobileStressPlan.length + i + 1, totalRuntimeRuns);
+          zoomResults.push(result);
+          zoomChecks = buildZoomChecks(zoomResults);
+          renderInterimResults(staticResult.checks, runtimeResults, staticResult.dependencies, zoomChecks, zoomResults.length);
+          await sleep(120);
+        }
 
         const scan = {
           generatedAt: new Date().toISOString(),
@@ -2403,7 +2781,9 @@
             checkpoints: CHECKPOINTS.slice()
           },
           staticResult,
-          runtimeResults
+          runtimeResults,
+          zoomResults,
+          zoomChecks
         };
         lastScan = scan;
         lastReportText = buildFullReport(scan);
@@ -2421,22 +2801,23 @@
         mobileStressToggle.disabled = false;
       }
 
-      function summarizeLevels(staticChecks, runtimeResults) {
+      function summarizeLevels(staticChecks, runtimeResults, zoomChecks) {
         const totals = { good: 0, warn: 0, bad: 0, chain: 0 };
         staticChecks.forEach((item) => { totals[item.level] += 1; });
         runtimeResults.forEach((result) => {
           result.issues.forEach((issue) => { totals[issue.level] += 1; });
         });
+        (zoomChecks || []).forEach((item) => { totals[item.level] += 1; });
         return totals;
       }
 
-      function renderInterimResults(staticChecks, runtimeResults, dependencies) {
-        const totals = summarizeLevels(staticChecks, runtimeResults);
+      function renderInterimResults(staticChecks, runtimeResults, dependencies, zoomChecks, zoomViews) {
+        const totals = summarizeLevels(staticChecks, runtimeResults, zoomChecks);
         const offChain = offChainEndpointCount(staticChecks, runtimeResults, dependencies);
         badCount.textContent = String(totals.bad);
         warnCount.textContent = String(totals.warn);
         goodCount.textContent = String(totals.good);
-        runtimeCount.textContent = String(runtimeResults.length);
+        runtimeCount.textContent = String(runtimeResults.length + (zoomViews || 0));
         chainCount.textContent = String(offChain);
         checkSummary.textContent = totals.bad + " critical / " + totals.warn + " warnings / " + totals.good + " clear" + (offChain ? " / " + offChain + " off-chain" : "");
       }
@@ -2444,12 +2825,15 @@
       function renderFinalResults(scan) {
         const staticChecks = scan.staticResult.checks;
         const runtimeResults = scan.runtimeResults;
-        renderInterimResults(staticChecks, runtimeResults, scan.staticResult.dependencies);
+        renderInterimResults(staticChecks, runtimeResults, scan.staticResult.dependencies, scan.zoomChecks, (scan.zoomResults || []).length);
         analysisList.textContent = "";
         renderChainNote(scan);
 
         const priorityItems = [];
         staticChecks.filter((item) => item.level !== "good").forEach((item) => {
+          priorityItems.push({ level: item.level, area: item.area, message: item.message, detail: item.detail });
+        });
+        (scan.zoomChecks || []).filter((item) => item.level !== "good").forEach((item) => {
           priorityItems.push({ level: item.level, area: item.area, message: item.message, detail: item.detail });
         });
         const misses = allEndpointMisses(runtimeResults);
@@ -2540,7 +2924,7 @@
       function buildFullReport(scan) {
         const staticChecks = scan.staticResult.checks;
         const runtimeResults = scan.runtimeResults;
-        const totals = summarizeLevels(staticChecks, runtimeResults);
+        const totals = summarizeLevels(staticChecks, runtimeResults, scan.zoomChecks);
         const size = scan.staticResult.size;
         const deps = scan.staticResult.dependencies;
         const lines = [];
@@ -2577,6 +2961,9 @@
           lines.push("- Live portrait → shortened portrait → landscape → shortened landscape → portrait-return without iframe reload");
           lines.push("- Touch target, edge-zone, scroll-lock, nested-scroll, visualViewport, canvas/DPR and long-press text-selection telemetry during mobile stress");
         }
+        if ((scan.zoomResults || []).length) {
+          lines.push("- iPhone zoom check (" + scan.zoomResults.map((result) => result.target.label + " " + result.target.width + "×" + result.target.height).join(", ") + "): text boxes under 16px, double-tap zoom, and whether pinch can zoom back out (CSS touch-action and a test two-finger pinch at 25 screen points)");
+        }
         lines.push("");
 
         lines.push("Static Checks:");
@@ -2584,6 +2971,8 @@
           lines.push((index + 1) + ". [" + levelLabel(item.level) + "] " + item.area + " — " + item.message + (item.detail ? " " + item.detail : ""));
         });
         lines.push("");
+
+        lines.push(...zoomReportLines(scan));
 
         lines.push("Dependency Map:");
         if (deps.length === 0) {
@@ -2634,7 +3023,7 @@
         lines.push("");
 
         lines.push("Request:");
-        lines.push("Fix the critical and warning items in my ordinal HTML without stripping existing working code. Preserve the artwork and behavior. Make it fit every tested ordinal tile, mobile portrait/landscape, tablet, desktop and viewer-iframe size. It must survive live portrait↔landscape rotation without reload, reduced mobile viewport height, touch scrolling, safe-area/notch conditions, high-DPR canvas rendering, and app-style long-press behavior. Ordinary non-editable app text must not highlight/select on hold; use user-select:none, -webkit-user-select:none and -webkit-touch-callout:none where appropriate while preserving normal selection/editing in input, textarea, select and contenteditable fields. Ensure interactive activations do not depend on parent-frame control and review ordinals.com activations for direct preview behavior where appropriate. Keep the file self-contained unless a /content/ dependency is intentionally required.");
+        lines.push("Fix the critical and warning items in my ordinal HTML without stripping existing working code. Preserve the artwork and behavior. Make it fit every tested ordinal tile, mobile portrait/landscape, tablet, desktop and viewer-iframe size. It must survive live portrait↔landscape rotation without reload, reduced mobile viewport height, touch scrolling, safe-area/notch conditions, high-DPR canvas rendering, and app-style long-press behavior. Ordinary non-editable app text must not highlight/select on hold; use user-select:none, -webkit-user-select:none and -webkit-touch-callout:none where appropriate while preserving normal selection/editing in input, textarea, select and contenteditable fields. On iPhone the page must never zoom in where the player can't pinch back out: text boxes (input, textarea, select, contenteditable) 16px or bigger, and no double-tap zoom where pinch is blocked. Ensure interactive activations do not depend on parent-frame control and review ordinals.com activations for direct preview behavior where appropriate. Keep the file self-contained unless a /content/ dependency is intentionally required.");
         if (offChainCount) lines.push("Items marked OFF-CHAIN are not bugs: this tester is not on chain, so on-chain endpoints (/content/, /r/…) can't answer during the test. Keep those endpoint calls; do not remove or replace them.");
 
         return lines.join("\n");
@@ -2646,6 +3035,7 @@
         const offChainLines = offChainReportLines(scan);
         lines.push(...offChainLines);
         scan.staticResult.checks.filter((item) => item.level !== "good").forEach((item) => lines.push("[" + levelLabel(item.level) + "] STATIC / " + item.area + " — " + item.message + (item.detail ? " " + item.detail : "")));
+        (scan.zoomChecks || []).filter((item) => item.level !== "good").forEach((item) => lines.push("[" + levelLabel(item.level) + "] IPHONE ZOOM / " + item.area + " — " + item.message + (item.detail ? " " + item.detail : "")));
         scan.runtimeResults.forEach((result) => {
           const problems = result.issues.filter((issue) => issue.level !== "good" && issue.level !== "chain");
           if (!problems.length && !result.errors.length && !result.consoleErrors.length) return;
@@ -2654,7 +3044,7 @@
           result.errors.slice(0,8).forEach((error) => { const payload=error.payload||{}; lines.push("- [RUNTIME] " + (payload.message||"unknown") + " at " + (payload.lineno||0) + ":" + (payload.colno||0)); });
           result.consoleErrors.slice(0,8).forEach((error) => { const payload=error.payload||{}; lines.push("- [CONSOLE] " + (payload.args||[]).join(" | ")); });
         });
-        lines.push("", "Request: Fix these items in my ordinal HTML without stripping working code. Preserve appearance and behavior. Make it fit all tested viewports and remain usable in direct/preview-style viewers. On mobile, ordinary non-editable app text must not highlight/select on long-press; preserve selection/editing only for real editable fields.");
+        lines.push("", "Request: Fix these items in my ordinal HTML without stripping working code. Preserve appearance and behavior. Make it fit all tested viewports and remain usable in direct/preview-style viewers. On mobile, ordinary non-editable app text must not highlight/select on long-press; preserve selection/editing only for real editable fields. On iPhone the page must never zoom in where the player can't pinch back out (text boxes 16px or bigger, no double-tap zoom where pinch is blocked).");
         if (offChainLines.length) lines.push("Items marked OFF-CHAIN are not bugs: this tester is not on chain, so on-chain endpoints (/content/, /r/…) can't answer during the test. Keep those endpoint calls; do not remove or replace them.");
         return lines.join("\n");
       }
