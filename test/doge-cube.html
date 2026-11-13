@@ -298,7 +298,8 @@ body.room.holding #rx{display:none}
 body.room #rl{display:block;position:fixed;left:50%;top:calc(50% + 16px);transform:translateX(-50%);max-width:88vw;overflow:hidden;text-overflow:ellipsis;font:600 12px/1.3 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;color:#f7efe3;background:rgba(14,9,5,.78);border:1px solid rgba(227,179,65,.35);border-radius:9px;padding:6px 10px;opacity:0;transition:opacity .15s;pointer-events:none;white-space:nowrap;z-index:5}
 body.room #rl.on{opacity:1} body.room #rl.sip{top:auto;bottom:calc(29% + 4px);left:auto;right:3%;transform:none}@media (max-aspect-ratio:7/10){body.room #rl.sip{left:57%;right:auto;transform:translateX(-50%)}}
 body.room #top{transform:scale(.72);transform-origin:0 0;opacity:.82}
-@media (max-width:760px){body.crewpage.room #top{top:98px}}   /* (inside the together page on a phone: below the players strip and the crew's buttons) */body.room #st,body.room #mn{display:none}body.room.holding #rl{opacity:0}
+@media (max-width:760px){body.crewpage.room #top{top:98px}}   /* (inside the together page on a phone: below the players strip and the crew's buttons) */body.room #st,body.room #mn{display:none}
+#rmb{display:none;margin-top:4px;font-size:11px;line-height:1.4;color:#cdbca3}body.room.rmbusy #rmb{display:block}body.room.holding #rl{opacity:0}
 body.room #rh{display:none;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:max-content;max-width:92vw;text-align:center;font:500 11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#cbb9a0;background:rgba(14,9,5,.6);border:1px solid rgba(227,179,65,.18);border-radius:10px;padding:6px 12px;pointer-events:none;z-index:4}
 #rh .t,#rh .hd,#rh .hdt,body.coarse #rh .d,body.room.holding #rh .d,body.room.holding #rh .t{display:none}body.coarse #rh .t,body.room.holding #rh .hd{display:inline}body.coarse.room.holding #rh .hd{display:none}body.coarse.room.holding #rh .hdt{display:inline}
 body.room.holding #rh{bottom:auto;top:14px}
@@ -345,7 +346,7 @@ body.room #card::before{content:'';order:-2;align-self:center;width:38px;height:
 <body>
 <canvas id="c"></canvas>
 <div id="strip"><div id="fut"></div><div id="sep"></div><div id="past"></div></div>
-<div id="top"><div id="tg" class="m"><i></i><span id="tgt">&nbsp;</span></div><input id="h" class="m" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="block"><div id="st" class="m">&nbsp;</div><div id="ot" class="m"></div><div id="mn" class="m"></div><div id="fs" class="m"></div></div>
+<div id="top"><div id="tg" class="m"><i></i><span id="tgt">&nbsp;</span></div><input id="h" class="m" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="block"><div id="st" class="m">&nbsp;</div><div id="rmb" class="m" aria-live="polite"></div><div id="ot" class="m"></div><div id="mn" class="m"></div><div id="fs" class="m"></div></div>
 <div id="nav"><button id="pv" aria-label="previous block">&lsaquo;</button><button id="lv" class="on" aria-label="live next block"><i></i>LIVE</button><button id="nx" aria-label="next block">&rsaquo;</button><button id="ln" class="m" aria-label="switch between fees and ordinals">FEES</button><button id="xr" aria-label="x-ray: see inside the cube"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 10s3.2-6 8.5-6 8.5 6 8.5 6-3.2 6-8.5 6-8.5-6-8.5-6z"/><circle cx="10" cy="10" r="2.6"/></svg></button><button id="op" aria-label="open the layers"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="14" height="4" rx="1"/><rect x="3" y="8" width="14" height="4" rx="1"/><rect x="3" y="14" width="14" height="4" rx="1"/></svg></button></div>
 <div id="kinds" class="m"><div id="kh">PARCEL TYPES<button class="ktab on" data-g="0">INSCRIPTIONS</button><button class="ktab" data-g="1">TOKENS</button><button class="ktab" data-g="2">TRANSACTIONS</button><span></span></div><div id="kl"><i id="kn">none in this block</i></div></div>
 <div id="card" class="m"><button id="cvw" type="button">VIEW BIG &#x26F6; <i>V</i></button><button id="cgal" type="button">OPEN GALLERY <i>G</i></button><div id="cgl"></div><button id="cshw" type="button">SHOW IN COMMON ROOM <i>C</i></button><button id="cfol" type="button">FOLLOW IT BACK &#9664; <i>F</i></button><button id="cunt" type="button">UNTETHER &times; <i>U</i></button><div id="cs"><button id="csp" aria-label="previous parcel of this type">&lsaquo;</button><span id="csl"></span><button id="csn" aria-label="next parcel of this type">&rsaquo;</button></div><div id="cn"></div><div id="cr"></div><div id="ct"></div><div id="cp"></div><div id="cf"><button id="cm">more &#9662;</button><button id="cx">close &times;</button></div></div>
@@ -1305,7 +1306,9 @@ async function dxContent(B) {
   return B.contP = (async () => {
     let bytes = 0;
     const list = B.txs.filter(t => t.dxi && t.scC == null && !t.art && /^(text|application\/json|image)\//.test(String(t.dxi.contentType || '')) && !t.dxi.delegate).slice(0, 800);
+    B.cont.n = 0; B.cont.of = list.length;   // (how far it has got: shown while a hall is being built)
     await poolMap(list, 4, async t => {
+      B.cont.n++;
       if (bytes > 40e6 || (cur !== B && !room)) return;
       const img = /^image\//.test(t.dxi.contentType);
       try { const c = await contentOf(t.dxi.id, img ? 400000 : 8000); bytes += c.u.length; classifyBody(t, t.dxi.contentType, c.u); } catch (e) { if (t.scC == null) t.scC = 0; }
@@ -3786,8 +3789,10 @@ let rmCache = new Map();
 const rmSlots = [null, null, null];
 function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept for a few blocks)
   if (rmCache.has(h)) return rmCache.get(h);
+  const prog = {read: 0, of: 1, blocks: []};
   const p = (async () => {
     const B = cur && cur.height === h && cur.txs && !cur.hall ? cur : await viaSources((s, b) => s.block(b, h));
+    prog.blocks[0] = B; prog.read = 1;
     if (B.txs.length > 120) { await bitcoreFill(B); await loadTags(B); dgFill(B); await Promise.allSettled([dxContent(B), loadEtch(B)]); dgFill(B); }
     else for (let k = 0; k < 4; k++) {
       await Promise.allSettled([loadTags(B), scanBlock(B)]);
@@ -3801,6 +3806,7 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
     const ht = B.fees ? heatOf(medianRate(B.txs)) : null; if (ht != null) { blockHeat.set(h, ht); if (room) rmSigns(); }   // (door signs show how warm the block behind them is)
     return B;
   })();
+  p.prog = prog;
   rmCache.set(h, p); p.catch(() => rmCache.delete(h));
   if (rmCache.size > 7) rmCache.delete(rmCache.keys().next().value);
   return p;
@@ -3811,12 +3817,13 @@ function rmLoadHall(s, e) {
   if (e <= s) return rmLoad(s);
   const key = s + '-' + e;
   if (rmCache.has(key)) return rmCache.get(key);
+  const prog = {read: 0, of: e - s + 1, blocks: []};
   const p = (async () => {
     const hs = []; for (let h = s; h <= e; h++) hs.push(h);
-    const blocks = new Array(hs.length);
+    const blocks = prog.blocks = new Array(hs.length);
     await poolMap(hs.map((h, i) => [h, i]), 4, async ([h, i]) => {
       const B = cur && cur.height === h && cur.txs && !cur.hall ? cur : await viaSources((src, b) => src.block(b, h));
-      await bitcoreFill(B); await loadTags(B); dgFill(B); blocks[i] = B;
+      await bitcoreFill(B); await loadTags(B); dgFill(B); blocks[i] = B; prog.read++;
     });
     for (const B of blocks) await dxContent(B).catch(() => {});   // (one block at a time, four files at once: the explorer is never flooded)
     await Promise.allSettled(blocks.map(B => loadEtch(B)));
@@ -3826,6 +3833,7 @@ function rmLoadHall(s, e) {
     HB.weight = HB.size * 4;
     return HB;
   })();
+  p.prog = prog;
   rmCache.set(key, p); p.catch(() => rmCache.delete(key));
   if (rmCache.size > 7) rmCache.delete(rmCache.keys().next().value);
   return p;
@@ -3840,7 +3848,7 @@ function rmMake(h, of, side) {
   if (side === 'front') R.back.to = of.h; else if (side === 'back') R.front.to = of.h;
   folLink(R, side);
   R.slot = rmSlots.indexOf(null); if (R.slot < 0) R.slot = 0; rmSlots[R.slot] = R;
-  rmLoadHall(h, e).then(async B => {   // built a step at a time, so walking never stutters while the next room goes up
+  (R.lp = rmLoadHall(h, e)).then(async B => {   // built a step at a time, so walking never stutters while the next room goes up
     const gone = () => !room || !room.rooms.includes(R);
     if (!room || !room.rooms.includes(R)) return;
     R.B = B; R.plan = roomPlan(B);
@@ -3866,6 +3874,20 @@ function rmMake(h, of, side) {
   return R;
 }
 function rmFree(R) { if (R && rmSlots[R.slot] === R) rmSlots[R.slot] = null; }
+// while the hall you are in is being built: how far it has got, under the block number (a busy block's hall can take minutes:
+// its blocks come from the explorer, then the files of its inscriptions, a few at a time within the explorer's 300 units a minute)
+function hallProgText(R) {
+  const P = R && R.lp && R.lp.prog;
+  if (!P) return 'building the hall…';
+  if (P.read < P.of) return P.of > 1 ? 'building the hall · reading its blocks: ' + fmt(P.read) + ' of ' + fmt(P.of) : 'building the hall · reading the block…';
+  const Bs = P.blocks.filter(Boolean), one = Bs.length === 1 ? Bs[0] : null;
+  if (one && one.txs.length <= 120 && one.scan && one.scan.loading) return 'building the hall · reading ' + fmt(one.scan.n) + ' of ' + fmt(one.scan.of) + ' transactions';
+  let n = 0, of = 0; for (const B of Bs) if (B.cont && B.cont.loading && B.cont.of != null) { n += B.cont.n; of += B.cont.of; } else if (B.cont && B.cont.ok) { n += 0; }
+  if (of) return 'building the hall · reading ' + fmt(n) + ' of ' + fmt(of) + ' inscription files';
+  return 'building the hall · putting it together…';
+}
+const $rmb = document.getElementById('rmb');
+setInterval(() => { const R = room && room.at, on = !!(R && !R.ready && !R.common && !R.gal && !R.failed); document.body.classList.toggle('rmbusy', on); if (on) { const t = hallProgText(R); if ($rmb.textContent !== t) $rmb.textContent = t; } }, 500);
 // the room you are in becomes the block on screen: header, tiles and pictures follow it
 function rmCurrent(R) {
   room.at = R;
@@ -8580,7 +8602,7 @@ window.AgentKit = window.AgentKit || (() => {
   const cardText = () => { const c = $('card'); if (!c || !c.classList.contains('on')) return null; const L = [text($('cn'))]; for (const r of $('cr').children) { const p = [...r.children].map(text).filter(Boolean); L.push(p.length === 2 ? p[0] + ': ' + p[1] : p.join(' ') || text(r)); } L.push(text($('ct'))); return L.filter(Boolean).join('\n') || null; };
   function roomInfo() {
     if (!inRoom()) return null;
-    const C = room.at, p = room.p, o = {in: C.gal ? 'a gallery' : cmOn(C) ? 'the common room' : hallName(C), ready: roomReady(), x: r1(p.x), y: p.y != null ? r1(p.y) : 0, z: r1(p.z), facing: deg(p.yaw), pitch: deg(p.pitch) > 180 ? deg(p.pitch) - 360 : deg(p.pitch), sitting: !!p.sit};
+    const C = room.at, p = room.p, o = {in: C.gal ? 'a gallery' : cmOn(C) ? 'the common room' : hallName(C), ready: roomReady(), building: !C.ready && !C.common && !C.gal && !C.failed ? hallProgText(C) : undefined, x: r1(p.x), y: p.y != null ? r1(p.y) : 0, z: r1(p.z), facing: deg(p.yaw), pitch: deg(p.pitch) > 180 ? deg(p.pitch) - 360 : deg(p.pitch), sitting: !!p.sit};
     if (cmOn(C) && C.ready) { const [x, d] = cmL(C, p.x, p.z); o.roomX = r1(x); o.roomD = r1(d); o.area = zoneOf(x, d); try { const A = cmAct(null, null); if (A && A.label) o.inFront = A.label; } catch (e) {} if (cm.pint) o.holdingPint = true; }
     if (room.held && !room.held.back) { const t = room.held.it.t; o.holding = t ? parcelInfo(t, true) : 'a parcel'; o.card = {untrusted: cardText()}; }
     if (typeof fol !== 'undefined' && fol) o.followingBack = text($fol);
@@ -8797,7 +8819,7 @@ window.AgentKit = window.AgentKit || (() => {
     await roomEnter(want0 != null ? want0 : undefined);
     await until(() => roomReady() && !cmOn(room.at) && (want0 == null || inHall(room.at, want0)), 60000);
     const o = {ok: roomReady(), where: roomInfo() && roomInfo().in, ready: roomReady()};
-    if (!o.ready) { const S = room.at && room.at.B && room.at.B.scan; o.error = 'the hall is not built yet'; if (S && S.loading) o.building = {transactionsRead: S.n, of: S.of, note: 'a hall is built once every transaction in it has been read (2 explorer units each: about 135 a minute at most, fewer while other things are asked), so a busy block takes minutes: call walkIn() again, or see(), to check'}; }
+    if (!o.ready) { o.error = 'the hall is not built yet'; o.building = {says: hallProgText(room.at), note: 'what players see under the block number while they wait: a busy block\'s hall takes minutes (its blocks, then its inscriptions\' files, within the explorer\'s 300 units a minute). Call walkIn() again, or see(), to check'}; }
     if (wasLive) o.note = 'the block on show was the next one, not mined yet: only mined blocks have halls, so you walked into the newest one; its front door leads to the common room';
     return o;
   }
