@@ -8265,7 +8265,7 @@ const rmUp = e => {
   if (!tap) return;
   if (rmBoxOpen()) return;   // (a box is open: the mouse stays free for it)
   if (room.held) { rmPut(); return; }
-  if (room.at && room.at.gd) { const gx = room.lock ? null : e.clientX, gy = room.lock ? null : e.clientY; let GA; if (!room.p.sit && gdAim(gx, gy)) gdBack(); else if ((coarse || room.lock) && (GA = gdAct(gx, gy))) gdDo(GA); else if (!coarse && !room.lock && cv.requestPointerLock) { try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (er) {} } return; }
+  if (room.at && room.at.gd) { const gx = room.lock ? null : e.clientX, gy = room.lock ? null : e.clientY; let GA; if (!room.p.sit && gdAim(gx, gy)) gdBack(); else if ((GA = gdAct(gx, gy)) && GA.a !== 'hint' && (coarse || room.lock || GA.ray)) gdDo(GA); else if (!coarse && !room.lock && cv.requestPointerLock) { try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (er) {} } return; }
   const h = rmPick(room.lock ? null : e.clientX, room.lock ? null : e.clientY); let A;
   if (h && h.it) rmHold(h.it);
   else if (h && h.sign) rmSign(h.sign);
@@ -10018,7 +10018,7 @@ function ppPose(M, H, R, dt) {
   const u = M.pv || (M.pv = {lp: R.p.slice(), vx: 0, vz: 0});
   const wx = dt > 0 ? (R.p[0] - u.lp[0]) / dt : 0, wz = dt > 0 ? (R.p[2] - u.lp[2]) / dt : 0; u.lp = R.p.slice();
   if (Math.hypot(wx, wz) > 12) u.vx = u.vz = 0; else { u.vx = ease(u.vx, wx, 8, dt); u.vz = ease(u.vz, wz, 8, dt); }
-  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit ? (R.sitHigh ? 'high' : R.sitWay || true) : false, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null, emoteN: R.emoteN, emoteAt: R.emoteAt, reach: R.cheer > .01 ? {R: {body: true, p: [-.1, R.sit ? 1.3 : 1.66, .56], fd: [0, .35, .94], pn: [.94, 0, 0], pole: [-.5, -1, -.3], w: R.cheer, rate: 14}} : null});   // (a cheers: the glass raised out in front)
+  BCH.pose(H, dt, {at: R.p, yaw: R.yaw, vel: [u.vx, u.vz], pitch: R.pitch, sit: R.sit ? (R.sitHigh ? 'high' : R.sitWay || true) : false, held: R.held, pint: R.pint, talk: R.talk, emote: R.emote || null, emoteN: R.emoteN, emoteAt: R.emoteAt, reach: R.hp ? {L: {body: true, p: [.2, 1.02, .34], fd: [0, 0, 1], pn: [-1, 0, 0], pole: [.6, -.8, -.2], w: 1, rate: 10}, R: {body: true, p: [-.2, 1.02, .34], fd: [0, 0, 1], pn: [1, 0, 0], pole: [-.6, -.8, -.2], w: 1, rate: 10}} : R.cheer > .01 ? {R: {body: true, p: [-.1, R.sit ? 1.3 : 1.66, .56], fd: [0, .35, .94], pn: [.94, 0, 0], pole: [-.5, -1, -.3], w: R.cheer, rate: 14}} : null});   // (a chess piece hugged in both arms; a cheers: the glass raised out in front)   // (a cheers: the glass raised out in front)
   const out = [];
   // the pint: in the hand that is round it (the glass goes wherever the hand takes it, and tips as the hand tips it), drawn the
   // size of a real pint glass so the fingers can close round it; the tablet: where the hands have it, in front of the chest
@@ -10187,7 +10187,7 @@ addEventListener('message', e => {
     if (!crew.on || m.id === crew.me || typeof m.id !== 'string') return;
     const M = mate(m.id), s = m.s || {};
     if (m.name) M.name = cleanS(m.name, 20);
-    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && (TYPES[s.hk] || s.hk === 60) ? s.hk : -1, in: !!s.in, lv: s.lv ? 1 : 0, sit: s.sit ? 1 : 0, t: performance.now(), em: typeof s.em === 'string' && EM_NAME[s.em] ? s.em : '', en: s.en | 0, ea: Math.max(0, Math.min(60, +s.ea || 0)), sp: s.sp | 0, pf: s.pf === undefined ? -1 : Math.max(0, Math.min(1, +s.pf || 0)), ai: s.ai ? 1 : 0, hid: typeof s.hid === 'string' && OWN_ID.test(s.hid) ? s.hid : '', bm: Number.isInteger(s.bm) && s.bm >= 0 && s.bm < 1e8 ? s.bm : -1, ch: Math.max(0, s.ch | 0), st: Number.isInteger(s.st) && s.st >= 0 && s.st < 99 ? s.st : -1};
+    M.s = {h: s.h | 0, x: +s.x || 0, z: +s.z || 0, y: +s.y || 0, p: +s.p || 0, hk: Number.isInteger(s.hk) && (TYPES[s.hk] || s.hk === 60) ? s.hk : -1, in: !!s.in, lv: s.lv ? 1 : 0, sit: s.sit ? 1 : 0, t: performance.now(), em: typeof s.em === 'string' && EM_NAME[s.em] ? s.em : '', en: s.en | 0, ea: Math.max(0, Math.min(60, +s.ea || 0)), sp: s.sp | 0, pf: s.pf === undefined ? -1 : Math.max(0, Math.min(1, +s.pf || 0)), ai: s.ai ? 1 : 0, hid: typeof s.hid === 'string' && OWN_ID.test(s.hid) ? s.hid : '', bm: Number.isInteger(s.bm) && s.bm >= 0 && s.bm < 1e8 ? s.bm : -1, ch: Math.max(0, s.ch | 0), st: Number.isInteger(s.st) && s.st >= 0 && s.st < 99 ? s.st : -1, cb: typeof s.cb === 'string' && /^[.prnbqkPRNBQK]{64}$/.test(s.cb) ? s.cb : '', cx: typeof s.cx === 'string' && /^[prnbqkPRNBQK]{0,32}$/.test(s.cx) ? s.cx : '', cv: Number.isFinite(s.cv) ? s.cv : 0, hp: typeof s.hp === 'string' && /^[prnbqkPRNBQK]$/.test(s.hp) ? s.hp : ''};
     if (Array.isArray(s.look)) M.look = chLook(s.look);
     return;
   }
@@ -10234,7 +10234,7 @@ function crewSend(tn) {
   if (room && cmOn(room.at) && room.at.ready) { const p = room.p, [x, d] = cmL(room.at, p.x, p.z), y = p.yaw - cmYaw(room.at); s = {in: 1, h: COMMON, x: +x.toFixed(2), z: +(-d).toFixed(2), y: +Math.atan2(Math.sin(y), Math.cos(y)).toFixed(3), p: +p.pitch.toFixed(2), hk: cm.pint ? 60 : -1, lv: p.lv ? 1 : 0, sit: p.sit ? 1 : 0}; }
   else if (room && room.at && room.at.ready && !room.at.gal) { const p = room.p, H = room.held; s = {in: 1, h: room.at.h, x: +p.x.toFixed(2), z: +(p.z - room.at.z0).toFixed(2), y: +Math.atan2(Math.sin(p.yaw), Math.cos(p.yaw)).toFixed(3), p: +p.pitch.toFixed(2), hk: H && !H.back ? H.it.k : -1}; }
   else s = {in: 0, h: cur && cur.height >= 0 ? cur.height : -1, x: 0, z: 0, y: 0, p: 0, hk: -1};
-  s.look = crew.look; emState(s); if (window.__agentOn) s.ai = 1; if (room && room.at && room.at.gd && s.in) { s.bm = room.at.gd.bm; if (room.p.sit) { s.sit = 1; if (room.p.seat) s.st = GD_SEATS.indexOf(room.p.seat); } if (cm.pint) s.hk = 60; if (gd.chN) s.ch = gd.chN; }
+  s.look = crew.look; emState(s); if (window.__agentOn) s.ai = 1; if (room && room.at && room.at.gd && s.in) { s.bm = room.at.gd.bm; if (room.p.sit) { s.sit = 1; if (room.p.seat) s.st = GD_SEATS.indexOf(room.p.seat); } if (cm.pint) s.hk = 60; if (gd.chN) s.ch = gd.chN; if (gd.board.v) { s.cb = gd.board.b; s.cx = gd.board.x; s.cv = gd.board.v; } if (gd.hold) s.hp = gd.hold.c; }
   if (s.in && s.hk >= 0 && own.share && room && room.held) { const hid = ownIdsOf(room.held.it.t).find(x => own.ids.has(x)); if (hid) s.hid = hid; }
   const k = JSON.stringify(s), moving = k !== crew.last;
   if (tn - crew.sent < (moving ? 1 / 12 : .5)) return;
@@ -10257,7 +10257,7 @@ function crewPose(tn, dt, VP, W, H) {
     else if (far > 4) { const k = Math.min(1, 9 * Math.min(dt, .1) / far); R.p = [R.p[0] + (tx - R.p[0]) * k, ease(R.p[1], ty, 12, dt), R.p[2] + (tz - R.p[2]) * k]; }
     else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true; R.ch = C.h;
-    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn); gdMateCh(M, R, s, pn);
+    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn); gdMateCh(M, R, s, pn); if (C.gd) gdMateBoard(M, R, s); else R.hp = '';
     const H = ppSafe(() => ppMate(M), null);
     if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; R.pintS = 0; }   // (a Node Runner until their person has arrived)
     const wait = !H && ppWait(M), pose = H ? ppSafe(() => ppPose(M, H, R, dt), []) : wait ? [] : chPose(R, tn, dt);
@@ -10948,7 +10948,7 @@ function gdChessBuild(B) {
   shapes.k = (v => { base(v); lathe(v, [[.22, .2], [.14, .9], [.21, .95], [.15, 1.0], [.2, 1.22], [0, 1.25]], 18, () => W, 0, 0); box(v, 0, 1.38, 0, .06, .26, .06, W); box(v, 0, 1.4, 0, .2, .06, .06, W); return v; })([]);
   const G = GD_CHESS, back = 'rnbqkbnr', inst = {p: [], r: [], n: [], b: [], q: [], k: []}, put = (t, i, j, white) => inst[t].push(G.x + (i - 3.5) * G.s, .05, G.z + (j - 3.5) * G.s, white ? 0 : Math.PI, 1, ...(white ? [1, 1, 1] : [.07, .06, .06]));
   for (let i = 0; i < 8; i++) { put(back[i], i, 7, true); put('p', i, 6, true); put('p', i, 1, false); put(back[i], i, 0, false); }
-  B.chess = Object.keys(shapes).map(k => gdVAO(shapes[k], inst[k]));
+  B.chess = Object.keys(shapes).map(k => { const o = gdVAOdyn(shapes[k], 16); o.k = k; o.ni = 0; return o; });   // (where each piece stands is set every frame: the board can change, and pieces get carried)
 }
 function gdSwingMesh(a) {   // the rope swing at angle a (radians, out and back along x)
   const S = GD_SWING, v = [], top = [S.bx, S.y + .2, S.z], L = 2.95, d = [Math.sin(a), -Math.cos(a)], at = (r, s) => [top[0] + s, top[1] + d[1] * r, top[2] + d[0] * r];
@@ -11143,9 +11143,11 @@ function gdAct(sx, sy) {
   const p = room && room.p, C = room && room.rooms[1]; if (!p || !C || !C.gd || !C.ready || room.held) return null;
   if (gd.pour) return null;
   const ray = rmRay(sx, sy);
+  if (gd.hold) return gdChessAct(p, C, ray);   // (carrying a chess piece: your arms are full)
   if (cm.pint) { const M = gdCheersWho(p, ray); if (M) return {a: 'cheers', M, label: 'cheers with ' + (M.name || 'your crewmate')}; }
   if (p.sit) return {a: 'stand', label: cm.pint ? 'sip your pint · move to stand up' : 'stand up (or just walk)'};
   if (!cm.pint && gdTapNear(p, C, ray)) return {a: 'pour', label: 'pour a pint'};
+  { const Q = gdChessAct(p, C, ray); if (Q) return Q; }
   let best = null, bd = 9;
   for (const s of GD_SEATS) { const dx = s.x - p.x, dz = C.z0 + s.z - p.z, e = Math.hypot(dx, dz); if (e > s.r || e >= bd) continue;
     if (ray && e > .5) { const h = Math.hypot(ray.d[0], ray.d[2]) || 1; if ((dx * ray.d[0] + dz * ray.d[2]) / (h * e) < .5) continue; }   // (only a seat you are facing)
@@ -11158,6 +11160,7 @@ function gdDo(A) {
   const p = room && room.p, C = room && room.rooms[1]; if (!A || !p || !C || !C.gd) return;
   if (A.a === 'stand') { if (cm.pint) { cmSip(); return; } gdStand(C, p); return; }
   if (A.a === 'sip') { cmSip(); return; }
+  if (A.a === 'lift' || A.a === 'put' || A.a === 'reset') { gdChessDo(A); return; }
   if (A.a === 'pour') { const t0 = performance.now() + 300; gd.pour = {t0}; setTimeout(() => { if (gd.pour && gd.pour.t0 === t0) cmNoise(1.6, 900, .05); }, 300); setTimeout(() => { if (!gd.pour || gd.pour.t0 !== t0) return; gd.pour = null; cm.pint = {fill: 1, sipT: 0}; crew.last = ''; }, 2050); return; }
   if (A.a === 'cheers') { const n = performance.now(); if (gd.chAt && n - gd.chAt < 1300) return; gd.chAt = n; gd.chN = (gd.chN || 0) + 1; setTimeout(() => gdClink(1), 380); gdToast('Cheers, ' + (A.M.name || 'mate') + '!'); return; }
   if (A.a === 'seat') { const s = A.s; p.x = s.x; p.z = C.z0 + s.z; p.y = s.y - .43; p.sit = true; p.seat = s; p.vx = p.vz = 0; p.yaw = Math.atan2(-s.f[0], -s.f[1]); p.pitch = Math.min(p.pitch, .1); p.seatOut = s.o; }
@@ -11207,6 +11210,52 @@ function gdPints(G, eye, zo, tn) {
   const up = (o, a) => { gl.bindBuffer(gl.ARRAY_BUFFER, o.buf); const d = new Float32Array(a.slice(0, 13 * 3600)); gl.bufferSubData(gl.ARRAY_BUFFER, 0, d); return d.length / 13; };
   return {nb: up(G.pintB, be), ng: up(G.pintG, gs)};
 }
+// ---- the giant chess: pick a piece up, carry it, put it on a square (taking whatever stands there); your crew sees the same board ----
+// the board is 64 letters (white PRNBQK, black prnbqk, . empty) from black's back row to white's; the taken pieces stand beside it
+const GD_CB0 = 'rnbqkbnrpppppppp' + '.'.repeat(32) + 'PPPPPPPPRNBQKBNR', GD_PN = {p: 'pawn', r: 'rook', n: 'knight', b: 'bishop', q: 'queen', k: 'king'}, GD_PH = {p: .75, r: 1.05, n: 1.1, b: 1.2, q: 1.35, k: 1.5};
+gd.board = {b: GD_CB0, x: '', v: 0}; gd.hold = null;
+const gdWhite = c => c === c.toUpperCase();
+function gdSqAt(k) { const G = GD_CHESS; return [G.x + (k % 8 - 3.5) * G.s, G.z + ((k >> 3) - 3.5) * G.s]; }
+const gdSqName = k => 'abcdefgh'[k % 8] + (8 - (k >> 3)), gdPcName = c => (gdWhite(c) ? 'white ' : 'black ') + GD_PN[c.toLowerCase()];
+function gdTakenAt(n, white) { const G = GD_CHESS; return [G.x + 4 * G.s + .7 + (white ? 0 : 1.3) + (n >> 3) * .65, G.z + ((n % 8) - 3.5) * G.s]; }   // (in rows on the board's east side: white's, then black's)
+function gdTakenList() { const L = [], n = {w: 0, b: 0}; for (let i = 0; i < gd.board.x.length; i++) { const c = gd.board.x[i], w = gdWhite(c), [x, z] = gdTakenAt(n[w ? 'w' : 'b']++, w); L.push({c, i, x, z}); } return L; }
+function gdChessSet(b, x) { gd.board = {b, x: x.slice(0, 32), v: Math.max(Date.now(), gd.board.v + 1)}; crew.last = ''; }
+// what you point at: a piece (to pick up), a square (to put the one you carry on), the taken pieces (to set the board up again)
+function gdChessAim(ray, zo) {
+  if (!ray) return null; const e = ray.e, d = ray.d, h = Math.hypot(d[0], d[2]) || 1e-6;
+  if (gd.hold) { if (d[1] > -.02) return null; const t = (.06 - e[1]) / d[1]; if (t > 9) return null; const G = GD_CHESS, x = e[0] + d[0] * t, z = e[2] + d[2] * t - zo, i = Math.floor((x - G.x) / G.s + 4), j = Math.floor((z - G.z) / G.s + 4); return i >= 0 && i < 8 && j >= 0 && j < 8 ? {sq: j * 8 + i} : null; }
+  let best = null, bt = 7;
+  const hit = (x, z, c, o) => { const px = x - e[0], pz = z + zo - e[2], t = (px * d[0] + pz * d[2]) / (h * h); if (t <= 0 || t >= bt) return; const y = e[1] + d[1] * t, dx = e[0] + d[0] * t - x, dz = e[2] + d[2] * t - z - zo; if (y < 0 || y > GD_PH[c.toLowerCase()] || Math.hypot(dx, dz) > .32) return; bt = t; best = o; };
+  const B = gd.board.b; for (let k = 0; k < 64; k++) if (B[k] !== '.') { const [x, z] = gdSqAt(k); hit(x, z, B[k], {c: B[k], k}); }
+  for (const q of gdTakenList()) hit(q.x, q.z, q.c, {c: q.c, k: -1, ti: q.i, taken: true});
+  return best;
+}
+function gdChessAct(p, C, ray) {
+  if (gd.hold) { const A = gdChessAim(ray, C.z0), c = gd.hold.c, nm = gdPcName(c);
+    if (!A) return {a: 'hint', label: 'look at a square to put the ' + nm + ' on it'};
+    const there = gd.board.b[A.sq]; return {a: 'put', sq: A.sq, ray: true, label: there !== '.' ? 'take the ' + gdPcName(there) + ' on ' + gdSqName(A.sq) : (gd.hold.k === A.sq ? 'put the ' + nm + ' back' : 'put the ' + nm + ' on ' + gdSqName(A.sq))}; }
+  if (cm.pint) return null;
+  const A = gdChessAim(ray, C.z0); if (A) return A.taken && (gd.board.b !== GD_CB0 || gd.board.x) && Math.hypot(p.x - GD_CHESS.x, p.z - C.z0 - GD_CHESS.z) > 4.6 ? {a: 'reset', ray: true, label: 'set the chess board up again'} : {a: 'lift', P: A, ray: true, label: 'pick up the ' + gdPcName(A.c) + (A.k >= 0 ? ' (' + gdSqName(A.k) + ')' : '')};
+  return null;
+}
+function gdChessDo(A) {
+  const b = gd.board.b.split(''); let x = gd.board.x;
+  if (A.a === 'lift') { const P = A.P; if (P.k >= 0) { if (b[P.k] !== P.c) return; b[P.k] = '.'; } else { if (x[P.ti] !== P.c) return; x = x.slice(0, P.ti) + x.slice(P.ti + 1); } gd.hold = {c: P.c, k: P.k}; gdChessSet(b.join(''), x); gdClack(.5); return; }
+  if (A.a === 'put' && gd.hold) { const there = b[A.sq]; if (there !== '.') x += there; b[A.sq] = gd.hold.c; gd.hold = null; gdChessSet(b.join(''), x); gdClack(1); return; }
+  if (A.a === 'reset') { gdChessSet(GD_CB0, ''); gdClack(1); }
+}
+function gdClack(v) { if (!sndOn) return; const a = audio(); if (!a) return; const t = a.currentTime, o = a.createOscillator(), G = a.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(420, t); o.frequency.exponentialRampToValueAtTime(160, t + .09); G.gain.setValueAtTime(.12 * v, t); G.gain.exponentialRampToValueAtTime(.0001, t + .14); o.connect(G); G.connect(a.destination); o.start(t); o.stop(t + .16); }
+// a crewmate's board: the newest change wins (theirs or yours); the piece they carry
+function gdMateBoard(M, R, s) { if (s.cb && s.cv > gd.board.v) gd.board = {b: s.cb, x: s.cx || '', v: s.cv}; R.hp = s.hp || ''; }
+// where every piece stands this moment (on the board, beside it, in someone's arms)
+function gdChessInst(G, zo) {
+  const L = {p: [], r: [], n: [], b: [], q: [], k: []}, add = (c, x, y, z, rot) => L[c.toLowerCase()].push([x, y, zo + z, rot, 1, ...(gdWhite(c) ? [1, 1, 1] : [.07, .06, .06])]);
+  const B = gd.board.b; for (let k = 0; k < 64; k++) if (B[k] !== '.') { const [x, z] = gdSqAt(k); add(B[k], x, .05, z, gdWhite(B[k]) ? 0 : Math.PI); }
+  for (const q of gdTakenList()) add(q.c, q.x, 0, q.z, gdWhite(q.c) ? 0 : Math.PI);
+  if (gd.hold && room.p) { const p = room.p; add(gd.hold.c, p.x - Math.sin(p.yaw) * .62, (p.y || 0) + .28, p.z - zo - Math.cos(p.yaw) * .62, p.yaw); }
+  for (const M of crew.mates.values()) { const R = M.R; if (M.shown && R.hp && R.ch === GARDEN) add(R.hp, R.p[0] + Math.sin(R.yaw) * .4, R.p[1] + .3, R.p[2] - zo + Math.cos(R.yaw) * .4, R.yaw + Math.PI); }
+  for (const o of G.chess) { const l = L[o.k].slice(0, 16); o.data.fill(0); l.forEach((v, i) => o.data.set(v, i * 8)); o.ni = l.length; gdDyn(o); }
+}
 // ---- going in, and back ----
 async function gdTravel() {
   const B = gdHeldBitmap(); if (!B || !room || !room.at) return;
@@ -11226,7 +11275,7 @@ async function gdTravel() {
 }
 // back where you came from: the block (with the arrow over your bitmap), or the common room
 function gdBack() {
-  const C = room && room.at; if (!C || !C.gd || C.gd.leaving) return; C.gd.leaving = true; const f = C.gd.from; gd.pour = null; cm.pint = null;   // (your glass stays in the garden)
+  const C = room && room.at; if (!C || !C.gd || C.gd.leaving) return; C.gd.leaving = true; const f = C.gd.from; gd.pour = null; cm.pint = null; if (gd.hold) { const H = gd.hold, b = gd.board.b.split(''); gd.hold = null; if (H.k >= 0 && b[H.k] === '.') b[H.k] = H.c; else { const k = b.indexOf('.'); if (k >= 0) b[k] = H.c; } gdChessSet(b.join(''), gd.board.x); }   // (your glass stays in the garden; a chess piece you carry goes back)
   (async () => { if (f.h === COMMON) { await srTravel(COMMON); return; } await roomEnter(f.h, {x: f.x, z: f.z}, {wait: true}); if (room && room.at && room.at.h === f.h) srT = {R: null, it: null, h: f.h, id: f.id.slice(0, 64), label: 'your bitmap'}; })();
 }
 $cbg.onclick = () => gdTravel();
@@ -11238,10 +11287,11 @@ function gdFrame(W, H, tn, dpr) {
   const eye = [p.x, EYE + p.bob + (p.y || 0) - (p.sit ? .62 : 0), p.z], asp = W / H, fov = asp < 1 ? 1.3 : 1.12;
   const VP = mul(persp(fov, asp, .05, 700), look(eye, [eye[0] + dir[0], eye[1] + dir[1], eye[2] + dir[2]]));
   room.view = {eye, dir, fov, asp};
-  if (performance.now() - (gd.hovAt || 0) > 90) { gd.hovAt = performance.now(); const mid = room.lock || coarse, sx = mid ? null : room.mx, sy = mid ? null : room.my, on = !room.held && !room.p.sit && gdAim(sx, sy), A = on ? null : gdAct(sx, sy), s = on ? 'your bitmap · ' + C.gd.bm + '.bitmap · ' + (coarse ? 'tap' : 'click') + ' to go back' : A ? A.label + ' · ' + (coarse ? 'tap' : room.lock ? 'click or E' : 'E') : '';
+  if (performance.now() - (gd.hovAt || 0) > 90) { gd.hovAt = performance.now(); const mid = room.lock || coarse, sx = mid ? null : room.mx, sy = mid ? null : room.my, on = !room.held && !room.p.sit && gdAim(sx, sy), A = on ? null : gdAct(sx, sy), s = on ? 'your bitmap · ' + C.gd.bm + '.bitmap · ' + (coarse ? 'tap' : 'click') + ' to go back' : A ? A.label + (A.a === 'hint' ? '' : ' · ' + (coarse ? 'tap' : room.lock || A.ray ? 'click or E' : 'E')) : '';
     if (s !== room.hov) { room.hov = s; $rl.textContent = s; $rl.classList.toggle('on', !!s); } $rl.classList.toggle('sip', !!(A && cm.pint && (A.a === 'sip' || A.a === 'stand'))); }
   const crewList = crew.on && crew.mates.size ? crewPose(tn, dt, VP, W, H) : (crew.hum = [], []); crewSend(tn); ownTick(VP);
   const Lt = gdLight(tn), zo = C.z0;
+  gdChessInst(G, zo);
   // the sun's (or moon's) view of the garden, for shadows (every frame on a computer, every third on a phone)
   const ld = Lt.ld, ctr = [0, 2, zo - 50], LV = mul(gdOrtho(-76, 76, -76, 76, 40, 280), gdLook([ctr[0] + ld[0] * 160, ctr[1] + ld[1] * 160, ctr[2] + ld[2] * 160], ctr, Math.abs(ld[1]) > .98 ? [0, 0, 1] : [0, 1, 0]));
   const P = PR.P, u = P.u, D = PR.D;
