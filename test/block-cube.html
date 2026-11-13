@@ -6848,7 +6848,7 @@ function rmHold(it) {
   it.f = it.w; it.c = hand; it.m = 0; it.t0 = now(); room.dirty = true;
   room.held = {it};
   if (document.pointerLockElement) document.exitPointerLock();
-  setTimeout(() => { if (!room || !room.held || room.held.it !== it || room.held.back) return; it.gone = true; room.dirty = true; select(it.t); document.body.classList.add('holding'); vwMarks(it.t, heldInfo(it.t)); galCheck(it.t); if (folOn(it)) it.t._folId = fol.id; document.body.classList.toggle('folok', folIds(it.t).length > 0); document.body.classList.toggle('untok', folOn(it)); }, 480);
+  setTimeout(() => { if (!room || !room.held || room.held.it !== it || room.held.back) return; it.gone = true; room.dirty = true; select(it.t); document.body.classList.add('holding'); { const hp = heldInfo(it.t), mp = vwMarks(it.t, hp); if (!it.t._heldAll) it.t._heldAll = Promise.all([hp, mp]).catch(() => {}); }   /* (_heldAll: done when all of its card has come back) */ galCheck(it.t); if (folOn(it)) it.t._folId = fol.id; document.body.classList.toggle('folok', folIds(it.t).length > 0); document.body.classList.toggle('untok', folOn(it)); }, 480);
 }
 function rmPut() {
   const H = room && room.held; if (!H || H.back) return;
@@ -10491,6 +10491,7 @@ window.AgentKit = window.AgentKit || (() => {
   const K = window.AgentKit, {wait, until, text, r1, r2, deg, rad} = K;   // (not K.shown: the game's own 'shown' is its list of parcels)
   const $ = id => document.getElementById(id);
   const fmtN = v => v == null ? null : Number(v).toLocaleString('en-GB');
+  const rf = v => v == null || !isFinite(v) ? null : v < 10 ? r2(v) : r1(v);   // (a fee in sat/vB: two decimals under 10, as 0.12 is not 0.1)
   const iso = s => s ? new Date(s * 1000).toISOString().replace('.000', '') : null;
   const inRoom = () => !!(room && room.at);
   const inCommon = () => inRoom() && cmOn(room.at);
@@ -10515,8 +10516,8 @@ window.AgentKit = window.AgentKit || (() => {
 
   // ---------- reading ----------
   function chain() {
-    const fut = (futBlocks || []).slice(0, 4).map((b, i) => ({which: i ? '+' + (i + 1) : 'next', txs: b.nTx, vsizeMB: r1((b.blockVSize || 0) / 1e6), medianFee: r1(b.medianFee), feeRange: b.feeRange && b.feeRange.length ? [r1(b.feeRange[0]), r1(b.feeRange[b.feeRange.length - 1])] : null}));
-    const past = (pastBlocks || []).slice(0, 6).map(b => ({height: b.height, minedAt: iso(b.timestamp), txs: b.tx_count, sizeMB: r1((b.size || 0) / 1e6), pool: b.extras && b.extras.pool ? b.extras.pool.name : undefined, medianFee: b.extras ? r1(b.extras.medianFee) : undefined}));
+    const fut = (futBlocks || []).slice(0, 4).map((b, i) => ({which: i ? '+' + (i + 1) : 'next', txs: b.nTx, vsizeMB: r1((b.blockVSize || 0) / 1e6), medianFee: rf(b.medianFee), feeRange: b.feeRange && b.feeRange.length ? [rf(b.feeRange[0]), rf(b.feeRange[b.feeRange.length - 1])] : null}));
+    const past = (pastBlocks || []).slice(0, 6).map(b => ({height: b.height, minedAt: iso(b.timestamp), txs: b.tx_count, sizeMB: r1((b.size || 0) / 1e6), pool: b.extras && b.extras.pool ? b.extras.pool.name : undefined, medianFee: b.extras ? rf(b.extras.medianFee) : undefined}));
     const tip = tipH >= 0 ? tipH : null;
     return {newestBlock: tip, nextHalving: tip == null ? null : {atBlock: 210000 * (Math.floor(tip / 210000) + 1), blocksToGo: 210000 * (Math.floor(tip / 210000) + 1) - tip}, waiting: fut, justMined: past, feeWeather: feeWeather()};
   }
@@ -10533,14 +10534,20 @@ window.AgentKit = window.AgentKit || (() => {
   function typeCounts() {
     const n = new Array(TYPES.length).fill(0);
     for (const t of shown) for (let i = 0; i < TYPES.length; i++) { try { if (hasType(t, i)) n[i]++; } catch (e) {} }
-    const G = ['inscriptions', 'tokens', 'transactions'], out = {};
+    const G = CATS.map(c => c[0].toLowerCase()), out = {};   // (each group by the game's own name: inscriptions, tokens, transactions, rune etchings)
     TYPES.forEach((T, i) => { if (n[i]) (out[G[T.g]] = out[G[T.g]] || {})[T.name] = n[i]; });
     return out;
   }
   function parcelInfo(t, full) {
-    const o = {n: t.idx, txid: t.id, feeRate: r1(t.rate), fee: t.fee, vsize: t.vsize, types: typesOf(t)};
+    const o = {n: t.idx, txid: t.id, feeRate: rf(t.rate), fee: t.fee, vsize: t.vsize, types: typesOf(t)};
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
-    const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.rune = t.rn; if (t.op) u.op = t.op; if (t.word) u.word = t.word; if (t.txt) u.text = String(t.txt).slice(0, 300);
+    o.kindsReadFrom = typeof t.op === 'bigint' ? 'ordpool.space' : t.sc != null ? (t.live ? 'the transaction itself' : 'the block itself') : 'mempool.space tags';   // (where its kinds were read, as its card says)
+    if (o.types.includes('runes') && !o.types.some(k => /^runes (etched|minted|moved)$/.test(k)))   // a runestone that made, minted and moved nothing: what it is, as its card says
+      o.runestone = t.rnLost ? 'it tried to make a new rune, which never came into being (ordinals.com): the name it tried for is untrusted.runeTried' : 'a runestone with no new rune, no mint and no move';
+    const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.rune = t.rn; if (t.rnLost) u.runeTried = t.rnLost;
+    if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a CRC-20 token's own word: deploy, mint…)
+    const lab = t.word ? [t.word.a, t.word.b].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box)
+    if (t.txt) u.text = String(t.txt).slice(0, 300);
     if (Object.keys(u).length) o.untrusted = u;
     if (full) { try { const ids = folIds(t); if (ids && ids.length) o.inscriptionIds = ids; } catch (e) {} }
     return o;
@@ -10568,6 +10575,17 @@ window.AgentKit = window.AgentKit || (() => {
   function crewInfo() {
     if (!crew.on && !crew.page) return {on: false, note: PEOPLE_NOTE};
     return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: mateName(M), is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
+  }
+  // the whole journey of the inscription being followed, oldest first, each step in full (the bar shows them one at a time, cut short)
+  function trail() {
+    if (typeof fol === 'undefined' || !fol || !fol.steps || fol.busy) return null;
+    const S = fol.steps, K = S.length - 1, c = fol.lost ? S.findIndex(x => x.miner) : -1;   // (the same words as the bar)
+    const what = (s, i) => (s.made ? (K ? 'made' : 'made, never moved') : s.miner ? 'paid to a miner' : c > 0 ? 'move ' + (i - c) + ' of ' + (K - c) + ' after that' : fol.more ? 'one of its last ' + K + ' moves' : 'move ' + i + ' of ' + K) + (!s.made && i === K ? ' (where it is now)' : '');
+    const o = {inscription: fol.id, number: fol.number != null ? fol.number : undefined,
+      steps: S.map((s, i) => ({step: i, what: what(s, i), block: s.h != null ? s.h : 'waiting to be mined', at: s.time ? iso(s.time) : undefined, txid: s.txid, to: s.to || undefined}))};
+    if (fol.more) o.note = 'only its last ' + FOL_MAX + ' moves were read: it moved more times between being made and these';
+    else if (fol.lost) o.note = 'it was once paid to a miner in a fee: before that, its moves cannot be followed';
+    return o;
   }
   const PEOPLE_NOTE = 'People in Agent Blockhall are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   function state() {
@@ -10788,7 +10806,11 @@ window.AgentKit = window.AgentKit || (() => {
     if (!h || !h.it) return {ok: false, error: 'nothing to pick in the middle of the view'};
     if (h.it !== it) return {ok: false, error: 'something else is in the way', inTheWay: h.it.t ? parcelInfo(h.it.t) : 'a sign or door'};
     rmHold(it); await until(() => room.held && room.held.it === it, 4000); await wait(700);
-    return {ok: !!room.held, holding: parcelInfo(it.t, true), card: {untrusted: cardText()}};
+    // its card fills in as the answers come back (fetched as it is picked up): wait for all of them, as a player waits to read it
+    let all = false; if (await until(() => it.t._heldAll, 3000)) all = await Promise.race([it.t._heldAll.then(() => true), wait(30000).then(() => false)]);
+    const o = {ok: !!room.held, holding: parcelInfo(it.t, true), card: {untrusted: cardText()}};
+    if (!all) o.note = 'some of its card is still coming: state() shows the rest once it has come';
+    return o;
   }
 
   const N = {name: 'n', type: 'number', does: 'the parcel number in the block (its place, from parcels())'}, TX = {name: 'txid', does: 'or the transaction ID'};
@@ -10825,7 +10847,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'layers', does: 'Pull the cube\'s layers apart, or close them again (the layers button).', args: [{name: 'open', type: 'boolean', does: 'true to pull apart', req: true}], run: async ({open}) => { if (!!openD !== !!open) $('op').click(); await wait(800); return camInfo(); }},
     {name: 'tab', does: 'Show a tab of parcel types: inscriptions, tokens or transactions (as the tabs under PARCEL TYPES).', args: [{name: 'name', enum: ['inscriptions', 'tokens', 'transactions'], does: 'which tab', req: true}],
       run: async ({name}) => { const g = {inscriptions: 0, tokens: 1, transactions: 2}[String(name).toLowerCase()]; const t = document.querySelector('.ktab[data-g="' + g + '"]'); if (!t) return {ok: false, error: 'inscriptions, tokens or transactions'}; t.click(); await wait(200); return {tab: name, types: kChips.filter(c => TYPES[c.i].g === g).map(c => ({type: TYPES[c.i].name, count: +(c.el.querySelector('b') || {}).textContent || 0, lit: pinK === c.i}))}; }},
-    {name: 'types', ro: true, does: 'Every parcel type in all three tabs, with how many are in this block and which one is lit.', run: () => { const G = ['inscriptions', 'tokens', 'transactions'], out = {}; for (const c of kChips) { const T = TYPES[c.i]; (out[G[T.g]] = out[G[T.g]] || []).push({type: T.name, count: +((c.el.querySelector('b') || {}).textContent || '0').replace(/[^0-9]/g, '') || 0, lit: pinK === c.i || undefined}); } return out; }},
+    {name: 'types', ro: true, does: 'Every parcel type in all three tabs, with how many are in this block and which one is lit.', run: () => { const G = CATS.map(c => c[0].toLowerCase()), out = {}; for (const c of kChips) { const T = TYPES[c.i]; (out[G[T.g]] = out[G[T.g]] || []).push({type: T.name, count: +((c.el.querySelector('b') || {}).textContent || '0').replace(/[^0-9]/g, '') || 0, lit: pinK === c.i || undefined}); } return out; }},
     {name: 'clickAt', untrusted: true, does: 'Click a point on the screen, as a player clicks: outside, on a box of the cube (opens its card); inside, on a parcel (holds it). x and y go from 0,0 (top left) to 1,1 (bottom right). look() says what is where.', args: [{name: 'x', type: 'number', does: '0 (left) to 1 (right)'}, {name: 'y', type: 'number', does: '0 (top) to 1 (bottom)'}, {name: 'n', type: 'number', does: 'or a parcel number: clicks that box wherever it is on screen now, if you can see it'}],
       run: async ({x, y, n}) => {
         if (n != null && (x == null || y == null)) { const want = +n; let at = null; for (let j = 1; j < 24 && !at; j++) for (let i = 1; i < 40 && !at; i++) { const h = probe(i / 40, j / 24); if (h && h.parcel === want) at = [i / 40, j / 24]; } if (!at) return {ok: false, error: 'parcel ' + want + ' is not in sight right now (it may be hidden behind others: turnCube(), layers() or xray() can help)'}; x = at[0]; y = at[1]; }
@@ -10852,8 +10874,8 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'putBack', does: 'Put the parcel you hold back on its shelf.', run: async () => { if (inRoom() && room.held) rmPut(); await wait(800); return {ok: true}; }},
     {name: 'viewBig', untrusted: true, does: 'See the parcel you hold large (VIEW BIG).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; vwOpen(); await wait(600); await until(() => !/READING|LOADING|…$/m.test(text($('vw'))), 12000); return {untrusted: text($('vw'))}; }},
     {name: 'showInCommonRoom', does: 'Put the parcel you hold on show over the Forum in the common room (and go there).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; showGo(); await until(() => inCommon() && room.at.ready, 25000); return {ok: inCommon()}; }},
-    {name: 'followBack', does: 'Follow the inscription you hold back to where it was made and each place it moved.', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; folStart(); await until(() => typeof fol !== 'undefined' && fol && fol.steps && !fol.busy, 30000); return {steps: fol && fol.steps ? fol.steps.length : 0, now: fol ? fol.i : null, bar: text($fol)}; }},
-    {name: 'followStep', does: 'Go to a step of the follow-it-back line.', args: [{name: 'to', type: 'number', does: 'step number, 0 = where it was made', req: true}], run: async ({to}) => { if (typeof fol === 'undefined' || !fol) return {ok: false, error: 'followBack() first'}; folGo(+to); await wait(1500); return {now: fol && fol.i, bar: text($fol)}; }},
+    {name: 'followBack', does: 'Follow the inscription you hold back to where it was made and each place it moved. Gives the whole trail at once (trail.steps, oldest first: each with its block, time, transaction ID and the address it went to).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; folStart(); await until(() => typeof fol !== 'undefined' && fol && fol.steps && !fol.busy, 30000); return {steps: fol && fol.steps ? fol.steps.length : 0, now: fol ? fol.i : null, bar: text($fol), trail: trail()}; }},
+    {name: 'followStep', does: 'Go to a step of the follow-it-back line (you travel to its block).', args: [{name: 'to', type: 'number', does: 'step number, 0 = where it was made', req: true}], run: async ({to}) => { if (typeof fol === 'undefined' || !fol) return {ok: false, error: 'followBack() first'}; folGo(+to); await wait(1500); const T = trail(); return {now: fol && fol.i, bar: text($fol), step: T && fol ? T.steps[fol.i] : null}; }},
     {name: 'stopFollow', does: 'End the follow-it-back line.', run: () => { folStop(); return {ok: true}; }},
     {name: 'search', untrusted: true, does: 'Search with the tablet: a block (840000 or 840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID, an address, or a name (satoshi.sats).', args: [{name: 'query', does: 'what to find', req: true}],
       run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading/i.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
@@ -10894,6 +10916,27 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'toBlockPaint', does: 'Go through the warehouse door to Block Paint City.', run: async () => { if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; } cmToPaint(); return {ok: true}; }},
   ];
   const intro = 'AGENT BLOCKHALL agent kit (once called AI Agent Bitcoin Block Explorer, and first Block\u0020Cube, so its tools start cube_). It is a 3D Bitcoin block explorer world for players and agents: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room. You play by the same rules as a player: you walk at a player\'s speed, walls stop you, you pick what is in the middle of your view, and you see what a player would. Once you use this kit, your crewmates see you marked as an AI agent. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives.';
+  // the game moves on only in the frames the browser gives the page to draw. A hidden tab, a tab in the background or a closed panel
+  // gets none, so a walk there never starts and ends as "blocked". While a command runs and no frame has come for a moment, the kit
+  // moves the game on itself, at the same pace: the same walking speed, walls and doors as ever (only the picture waits to be seen)
+  let keepN = 0;
+  const keepTick = () => {
+    if (!keepN) return;
+    try {
+      if (room && !cmPaintShown && !crewAway) {
+        const tn = now(), gap = tn - (rmLast || tn);
+        if (gap > .15) {
+          let left = Math.min(1, gap) - .05; while (left > 1e-3) { const d = Math.min(.05, left); rmStep(d); left -= d; }   // (a long gap, as a background tab's slow timers give: small steps, so walls still stop you)
+          rmLast = tn - .05;
+          const dpr = Math.min(devicePixelRatio || 1, 3), W = Math.max(1, Math.round(innerWidth * dpr)), H = Math.max(1, Math.round(innerHeight * dpr));
+          if (cv.width !== W || cv.height !== H || !RT) { cv.width = W; cv.height = H; targets(W, H); }
+          roomFrame(W, H, tn, dpr);
+        }
+      }
+    } catch (e) {}
+    setTimeout(keepTick, 33);
+  };
+  for (const c of cmds) { const run = c.run; c.run = async a => { if (!keepN++) setTimeout(keepTick, 33); try { return await run(a); } finally { keepN--; } }; }
   const api = K.make('Agent Blockhall', intro, cmds);
   window.agent = window.blockCubeAgent = api;
   if (window.top === window) {
