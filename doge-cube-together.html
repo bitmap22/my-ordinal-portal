@@ -1366,14 +1366,18 @@ window.AgentKit = window.AgentKit || (() => {
     const cx = parseFloat(r.style.left), cy = parseFloat(r.style.top), inside = isFinite(cx) && isFinite(cy) && cx >= 0 && cy >= 0 && cx + bw <= TW && cy + bh <= TH;
     if (!must) {   // (the quick look every few seconds: it stays while its spot still covers no words or buttons, and never moves while someone types in it)
       const H = []; obstacles(d, 0, 0, TW, TH, H, null, 0);
-      if (inside && !area(H, cx, cy)) return true;
+      const edge = cx <= 9 || cy <= 9 || cx >= TW - bw - 9 || cy >= TH - bh - 9;   // (it keeps to the edges, so the middle of the screen stays clear)
+      if (inside && edge && !area(H, cx, cy)) return true;
       if (d.activeElement && r.contains(d.activeElement)) return false;
     }
     const H = [], S = []; obstacles(d, 0, 0, TW, TH, H, S, 0);
-    // the best spot: covers no words or buttons if it can, then as little of any panel as it can, then the sides before the middle, then higher up
-    let best = null; const xs = [TW - bw - 8, 8, (TW - bw) / 2].map(Math.round);
-    xs.forEach((x, k) => { for (let y = 8; y <= TH - bh - 8; y += 12) { const c = area(H, x, y) * 1000 + area(S, x, y), q = c + k * .5 + y / 1e4; if (!best || q < best.q) best = {x, y, q, hard: area(H, x, y)}; } });
-    if (!best) best = {x: Math.max(0, xs[2]), y: 8, hard: 1};
+    // the best spot, always along an edge (the middle of the screen stays clear for the game): covers no words or buttons if it can,
+    // then as little of any panel as it can, then the right side before the left, then the top and bottom edges, then higher up
+    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8), spots = [];
+    for (let y = 8; y <= B0; y += 12) spots.push([R0, y, 0], [8, y, .5]);
+    for (let x = 8; x <= R0; x += 24) spots.push([x, 8, 1], [x, B0, 1]);
+    for (const [x, y, k] of spots) { const hd = area(H, x, y), q = hd * 1000 + area(S, x, y) + k + y / 1e4; if (!best || q < best.q) best = {x, y, q, hard: hd}; }
+    if (!best) best = {x: Math.max(0, R0), y: 8, hard: 1};
     r.style.left = best.x + 'px'; r.style.top = best.y + 'px';
     return !best.hard;
   }
