@@ -11325,7 +11325,7 @@ function gdPPAim() { const ray = rmRay(null, null), T = GD_PP; if (ray && ray.d[
 // a hit (or a serve) by `side`: the ball flies to land on the other half, where you aimed across it
 function gdPPLaunch(from, side, aimZ, mine) {
   const T = GD_PP, tx = T.x - side * (.35 + Math.random() * .75), tz = Math.max(T.z - T.hw + .12, Math.min(T.z + T.hw - .12, aimZ)), fl = .55 + Math.random() * .12;
-  gd.ball = {p: from.slice(), v: [(tx - from[0]) / fl, (T.y + .02 - from[1] + 4.9 * fl * fl) / fl, (tz - from[2]) / fl], by: side, b: 0, live: true, mine, n: Date.now()};
+  gd.ball = {p: from.slice(), v: [(tx - from[0]) / fl, (T.y + .02 - from[1] + 4.9 * fl * fl) / fl, (tz - from[2]) / fl], by: side, b: 0, live: true, mine, n: Date.now(), t0: performance.now()};
   gdPPSend(); gdTock(1.2);
 }
 function gdPPPoint(win) {
@@ -11336,7 +11336,8 @@ function gdPPPoint(win) {
 function gdPPStep(dt) {
   const T = GD_PP, p = room.p;
   if (gd.pp && Math.hypot(p.x - T.x, p.z - T.z) > 7) gd.pp = null;   // (walk off and you leave the bat on the table)
-  const B = gd.ball; if (!B || B.hide) return;
+  const B = gd.ball; if (B && B.live && B.hide && performance.now() - (B.t0 || 0) > 4000) B.live = false;   // (no word from the other end: you can serve again)
+  if (!B || B.hide) return;
   for (let k = 0; k < 3; k++) { const h = dt / 3, ox = B.p[0]; B.v[1] -= 9.8 * h; B.p[0] += B.v[0] * h; B.p[1] += B.v[1] * h; B.p[2] += B.v[2] * h;
     if ((ox - T.x) * (B.p[0] - T.x) < 0 && B.p[1] < T.y + .153 && Math.abs(B.p[2] - T.z) < T.hw + .15) { B.v[0] *= -.2; B.v[2] *= .3; gdTock(.3, 1); }   // (into the net)
     if (B.p[1] < T.y + .02 && B.v[1] < 0 && Math.abs(B.p[0] - T.x) < T.hl && Math.abs(B.p[2] - T.z) < T.hw) { B.p[1] = T.y + .02; B.v[1] *= -.88; B.v[0] *= .97; if (Math.sign(B.p[0] - T.x) === -B.by) B.b++; gdTock(.6, 1); } }
@@ -11364,7 +11365,7 @@ function gdPPDo(A) {
 }
 // a crewmate's bat and their hits and points
 function gdMatePP(M, R, s) { R.pb = s.pb || 0; const g = s.pg; if (!g || g[0] === M.lpg) return; const first = M.lpg === undefined; M.lpg = g[0]; if (first && !g[8]) { gd.psc = [g[9], g[10]]; return; }
-  gd.ball = {p: [g[1], g[2], g[3]], v: [g[4], g[5], g[6]], by: g[7], b: 0, live: !!g[8], hide: !g[8], mine: false, n: g[0]}; if (gd.ball.live) gdTock(1.1); else { const ch = gd.psc[0] !== g[9] || gd.psc[1] !== g[10]; gd.psc = [g[9], g[10]]; if (ch) gdToast('Red ' + g[9] + ' · ' + g[10] + ' Black'); } }
+  gd.ball = {p: [g[1], g[2], g[3]], v: [g[4], g[5], g[6]], by: g[7], b: 0, live: !!g[8], hide: !g[8], mine: false, n: g[0], t0: performance.now()}; if (gd.ball.live) gdTock(1.1); else { const ch = gd.psc[0] !== g[9] || gd.psc[1] !== g[10]; gd.psc = [g[9], g[10]]; if (ch) gdToast('Red ' + g[9] + ' · ' + g[10] + ' Black'); } }
 // the bats (on the table, or in a hand) and the ball, this moment
 function gdPPInst(G) {
   if (!G.pong) { const {C, lathe, box, TR} = GDM, wd = C(0x9c6b3f), mk = (col, flat) => { const v = []; if (flat) { lathe(v, [[0, 0], [.08, 0], [.08, .012], [0, .012]], 14, () => col, 0, 0); box(v, 0, .005, .13, .03, .01, .1, wd); } else { lathe(v, [[0, -.012], [.08, -.006], [.08, .006], [0, .012]], 14, () => col, 0, 0, TR([1, 1, 1], [Math.PI / 2, 0, 0], [0, 0, 0])); box(v, 0, -.12, 0, .028, .1, .02, wd); } return gdVAOdyn(v, 1); };
