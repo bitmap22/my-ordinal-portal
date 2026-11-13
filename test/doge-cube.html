@@ -8562,6 +8562,7 @@ window.AgentKit = window.AgentKit || (() => {
     return out;
   }
   function parcelInfo(t, full) {
+    if (t.gal) return {piece: t.gi, is: t.par ? (t.gid ? 'the parent' : 'the collection\'s own sign (its name and picture)') : room.at && room.at.gal && /^c:/.test(room.at.gal.pid || '') ? 'a piece' : 'a child', inscription: t.gid || undefined, number: t.n || undefined, madeInBlock: t.h != null ? t.h : undefined};   // (a piece on a stand in a collection's hall: its card says the rest)
     const o = {n: t.idx, block: blockOf(t), txid: t.id, feeRateDogePerKB: rf(ownRate(t)), feeKoinu: t.fee, bytes: t.vsize, types: typesOf(t)};
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
     o.kindsReadFrom = t.live ? 'the explorer\'s inscription pool (thedoginalsexplorer.com)' : t.sc != null ? 'thedoginalsexplorer.com' : !inRoom() && cur && cur.scan && cur.scan.loading ? 'not read yet: the block is being read now, so its kinds come in as it goes' : 'not read for its kinds: only its size and fee are known (picking it up reads it for its card)';   // (where its kinds were read, as its card says)
@@ -8729,10 +8730,11 @@ window.AgentKit = window.AgentKit || (() => {
     return L.join('\n');
   }
   // a collection room (gallery): its parent and its children, each a piece on the stands
-  const galPieces = () => { const C = room.at, p = room.p; return C.plan.items.filter(i => i.t && i.t.gal && !i.cp).map(i => { const t = i.t, dx = i.w[0] - p.x, dz = i.w[2] - p.z; return {n: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid, number: t.n, madeInBlock: t.h, metres: r1(Math.hypot(dx, dz)), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.n - b.n); };
+  const galPieces = () => { const C = room.at, p = room.p; return C.plan.items.filter(i => i.t && i.t.gal && !i.cp).map(i => { const t = i.t, dx = i.w[0] - p.x, dz = i.w[2] - p.z; return {n: t.gi, is: t.par ? (t.gid ? 'the parent' : 'the collection\'s own sign (its name and picture)') : /^c:/.test(C.gal.pid || '') ? 'a piece' : 'a child', inscription: t.gid || undefined, number: t.n || undefined, madeInBlock: t.h != null ? t.h : undefined, metres: r1(Math.hypot(dx, dz)), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.n - b.n); };
   function galleryInfo() {
     const C = room.at, G = C.gal;
-    return {gallery: {parent: G.pid, parentNumber: G.num, children: G.n, shown: G.loaded, allShown: !!G.done}, pieces: galPieces(), door: 'the door you came in by takes you back to ' + (G.from === COMMON ? 'the common room' : 'block ' + fmtN(G.from)) + ': its middle is at x 0, z ' + r1(C.z0) + ', so walkTo({x: 0, z: ' + r1(C.z0 + 1.6) + '}) walks you out through it; the far end has no door', how: 'hold({n}) walks to a piece (n as listed: the parent is -1) and picks it up; or hold({txid}) with its inscription ID'};
+    const col = /^c:/.test(G.pid || '');   // (a collection from the explorer's list: pieces, no parent inscription)
+    return {gallery: col ? {collection: G.pid.slice(2), pieces: G.n, shown: G.loaded, allShown: !!G.done} : {parent: G.pid, parentNumber: G.num, children: G.n, shown: G.loaded, allShown: !!G.done}, pieces: galPieces(), door: 'the door you came in by takes you back to ' + (G.from === COMMON ? 'the common room' : 'block ' + fmtN(G.from)) + ': its middle is at x 0, z ' + r1(C.z0) + ', so walkTo({x: 0, z: ' + r1(C.z0 + 1.6) + '}) walks you out through it; the far end has no door', how: 'hold({n}) walks to a piece (n as listed: ' + (col ? 'the collection\'s own sign' : 'the parent') + ' is -1) and picks it up; or hold({txid}) with its inscription ID'};
   }
   function contents() {
     if (inRoom() && room.at.gal) return galleryInfo();
