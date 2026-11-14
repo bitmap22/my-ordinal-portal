@@ -8652,12 +8652,24 @@ const showName = s => s.g ? (s.par ? 'the parent of a collection' : 'piece ' + f
 // the floor's own state: your block (kept on this computer, with the wallet it came from) and each crewmate's, as they shared it
 const trade = {mine: undefined, mates: new Map(), sent: 'off', on: -1, crew: new Set(), at: 0, list: [], seed: null, pool: [], heard: new Map(), seen: new Map(), names: new Map()};
 try { const v = JSON.parse(sessionStorage.getItem('bc.tradeSeen') || 'null'); if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v.s || {})) if (typeof x === 'string') trade.seen.set(k, x); for (const [k, x] of Object.entries(v.h || {})) if (typeof x === 'string') trade.heard.set(k, x); } } catch (e) {}
-const tradeLoad = () => { try { const v = JSON.parse(localStorage.getItem('bc.trade') || 'null'), s = v && showOk(v.s); return s && typeof v.addr === 'string' && v.addr ? {s, to: typeof v.to === 'string' ? v.to.slice(0, 80) : '', addr: v.addr, w: v.w === 'sale' ? 'sale' : 'trade'} : null; } catch (e) { return null; } };
-const tradeSave = () => { try { const m = trade.mine; if (m) { const {key, ...s} = m.s; localStorage.setItem('bc.trade', JSON.stringify({s, to: m.to, addr: m.addr, w: m.w === 'sale' ? 'sale' : 'trade'})); } else localStorage.removeItem('bc.trade'); } catch (e) {} };
+const tradeLoad = () => { try { const v = JSON.parse(localStorage.getItem('bc.trade') || 'null'), s = v && showOk(v.s); return s && typeof v.addr === 'string' && v.addr ? {s, to: typeof v.to === 'string' ? v.to.slice(0, 80) : '', addr: v.addr, w: v.w === 'sale' ? 'sale' : 'trade', pr: tradePrOk(v.pr)} : null; } catch (e) { return null; } };
+const tradeSave = () => { try { const m = trade.mine; if (m) { const {key, ...s} = m.s; localStorage.setItem('bc.trade', JSON.stringify({s, to: m.to, addr: m.addr, w: m.w === 'sale' ? 'sale' : 'trade', pr: m.pr || 0})); } else localStorage.removeItem('bc.trade'); } catch (e) {} };
 function tradeSet(m) { trade.mine = m; tradeSave(); trade.at = 0; tradeSync(true); }
 // for sale or for trade (nothing is sold or traded here: a deal is taken to another app); the last choice is kept for next time
 const tradeWord = w => w === 'sale' ? 'for sale' : 'for trade';
 const tradeWPref = () => { try { return localStorage.getItem('bc.tradeW') === 'sale' ? 'sale' : 'trade'; } catch (e) { return 'trade'; } };
+// an asking price: whole sats, up to 10,000 BTC (what the crew's messages can carry); 0 is none
+const TRADE_PR_MAX = 1e12, tradePrOk = v => Number.isSafeInteger(v) && v > 0 && v <= TRADE_PR_MAX ? v : 0;
+const tradePrWords = p => fmt(p) + ' sats (' + btc(p) + ')';
+function tradePrice(v) {
+  if (!tradeMineOk()) return {ok: false, error: 'put a block your wallet holds on your trade base first'};
+  const raw = typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v)) : String(v == null ? '' : v).replace(/[\s,._]/g, '');
+  if (raw && !/^\d+$/.test(raw)) return {ok: false, error: 'type the price in whole sats, digits only (like 50000)'};   // (never cleared by a typing slip)
+  const p = raw ? parseInt(raw, 10) : 0;
+  if (p && !tradePrOk(p)) return {ok: false, error: 'a price in whole sats, from 1 up to ' + fmt(TRADE_PR_MAX) + ' (10,000 BTC)'};
+  trade.mine.pr = p; tradeSave(); trade.at = 0; tradeSync(false);
+  return {ok: true, askingSats: p || undefined, price: p ? tradePrWords(p) : 'no price', note: trade.mine.w === 'sale' ? undefined : 'the price shows once your block is FOR SALE'};
+}
 function tradeOffer(w) {
   if (!tradeMineOk()) return {ok: false, error: 'put a block your wallet holds on your trade base first'};
   w = w === 'sale' ? 'sale' : 'trade'; trade.mine.w = w; try { localStorage.setItem('bc.tradeW', w); } catch (e) {}
@@ -8692,7 +8704,7 @@ function tradeList() {
   for (let k = 0; k < TRADE.N; k++) {
     const who = tradeWho(k); if (!who) { L.push(null); continue; }
     const st = who.me ? trade.mine : trade.mates.get(who.id), s = st ? st.s : null, ok = !s ? 0 : who.me ? (tradeMineOk() ? 1 : 0) : tradeMateOk(who.id, s);
-    L.push({k, who, s: ok === 1 ? s : null, wait: ok === -1 ? s : null, want: st && st.to ? st.to : '', w: st && st.w === 'sale' ? 'sale' : 'trade'});
+    L.push({k, who, s: ok === 1 ? s : null, wait: ok === -1 ? s : null, want: st && st.to ? st.to : '', w: st && st.w === 'sale' ? 'sale' : 'trade', pr: st && st.w === 'sale' ? st.pr || 0 : 0});
   }
   // (and only to a crewmate who has a block on their base too: first a block each, then the colour)
   for (const o of L) { if (!o) continue; let to = o.s && o.want ? tradeOf(o.want) : null; if (to && (to.id === o.who.id || !L.some(q => q && q.who.id === to.id && q.s))) to = null; o.to = to; o.col = (to || o.who).c; delete o.want; }
@@ -8706,10 +8718,10 @@ function tradeSync(force) {
   const ok = tradeMineOk(), m = trade.mine;
   if (trade.on !== +ok) { trade.on = +ok; toPage({type: 'trade', on: ok ? 1 : 0}); }
   const ids = [...crew.mates.keys()]; if (ids.some(id => !trade.crew.has(id))) force = true; trade.crew = new Set(ids);
-  const key = ok ? m.s.key + '>' + (m.to || '') + '>' + (m.w === 'sale' ? 'sale' : 'trade') : 'off';
+  const key = ok ? m.s.key + '>' + (m.to || '') + '>' + (m.w === 'sale' ? 'sale>' + (m.pr || 0) : 'trade') : 'off';
   if (key === trade.sent && (!force || key === 'off')) return;
   trade.sent = key;
-  if (ok) cmShare(Object.assign({k: 'trade', to: m.to || '', w: m.w === 'sale' ? 'sale' : 'trade'}, (({key, ...x}) => x)(m.s))); else cmShare({k: 'trade', off: 1});
+  if (ok) cmShare(Object.assign({k: 'trade', to: m.to || '', w: m.w === 'sale' ? 'sale' : 'trade'}, m.w === 'sale' && m.pr ? {pr: m.pr} : {}, (({key, ...x}) => x)(m.s))); else cmShare({k: 'trade', off: 1});
 }
 // a crewmate's block or signal (or from before you joined)
 function tradeGot(ev, id) {
@@ -8717,7 +8729,7 @@ function tradeGot(ev, id) {
   if (ev.off) { trade.mates.delete(id); trade.at = 0; return; }
   const s = showOk(ev); if (!s) return;
   delete s.wa; delete s.wk; delete s.sc; if (s.g) { s.gi = 0; s.par = false; s.n = 0; s.ts = 0; }   // (what a crewmate's block shows comes from the chain and the inscription, not from them)
-  trade.mates.set(id, {s, to: typeof ev.to === 'string' ? ev.to.slice(0, 80) : '', w: ev.w === 'sale' ? 'sale' : 'trade'}); trade.at = 0;
+  trade.mates.set(id, {s, to: typeof ev.to === 'string' ? ev.to.slice(0, 80) : '', w: ev.w === 'sale' ? 'sale' : 'trade', pr: ev.w === 'sale' ? tradePrOk(ev.pr) : 0}); trade.at = 0;
 }
 // LET'S MAKE A DEAL or NOT INTERESTED, at a crewmate's base: each player sends all their answers at once (the newest replaces the
 // last), and an answer counts only for the block it was given for (its time on the base). The swap itself happens on another
@@ -8754,8 +8766,8 @@ const dealMine = o => { const x = o && o.s && trade.myDeals.get(o.who.id); retur
 function tradeHeard() {
   for (const o of trade.list) {
     if (!o || o.who.me) continue;
-    const b = o.s ? o.s.key + '|' + o.w : '', wasB = trade.seen.get(o.who.id) || '';
-    if (b && b !== wasB && !crewMuted.has(o.who.id)) note(o.who.p + ' · ' + o.who.name + ' has a block ' + tradeWord(o.w) + ' on their trade base in the Forum' + (o.w === 'sale' ? '' : ' · bring a block of yours to trade'), 10);
+    const b = o.s ? o.s.key + '|' + o.w + (o.pr ? '|' + o.pr : '') : '', wasB = trade.seen.get(o.who.id) || '';
+    if (b && b !== wasB && !crewMuted.has(o.who.id)) note(o.who.p + ' · ' + o.who.name + ' has a block ' + tradeWord(o.w) + (o.pr ? ' (asking ' + tradePrWords(o.pr) + ')' : '') + ' on their trade base in the Forum' + (o.w === 'sale' ? '' : ' · bring a block of yours to trade'), 10);
     trade.seen.set(o.who.id, b);
     const v = o.s && o.to && o.to.me ? o.s.key : '', was = trade.heard.get(o.who.id) || '';
     if (v && v !== was && !crewMuted.has(o.who.id)) note(o.who.p + ' · ' + o.who.name + ' would like to trade with you: their base in the Forum shows your colour', 10);
@@ -8789,14 +8801,14 @@ function tradeItems(R) {
   let ch = false;
   for (let k = 0; k < TRADE.N; k++) {
     const o = trade.list[k], s = o && o.s, key = s ? s.key + '|' + o.who.id : '', had = R.trdIt[k];
-    if ((had ? had.key : '') === key) { if (had) { had.it.t.who = o.who; had.it.t.to = o.to; had.it.t.w = o.w; } continue; }
+    if ((had ? had.key : '') === key) { if (had) { had.it.t.who = o.who; had.it.t.to = o.to; had.it.t.w = o.w; had.it.t.pr = o.pr; } continue; }
     if (had) {
       const H = room.held; if (H && (H.it === had.it || H.it === had.cp)) { room.held = null; vwClose(); select(null); document.body.classList.remove('holding', 'galok', 'showcp'); }
       R.plan.items = R.plan.items.filter(i => i !== had.it && i !== had.cp); R.trdIt[k] = null; ch = true;
     }
     if (s) {
       const t = showT(s), [bx, bd] = tradeAt(k), [px, pz] = cmW(R, bx, bd), e = s.e, w = [px, TRADE_FLOOR + TRADE.H + e / 2 + .004, R.z0 + pz];
-      t.slot = k; t.who = o.who; t.to = o.to; t.w = o.w; if (o.who.me) ownAsk(s.o[0]);
+      t.slot = k; t.who = o.who; t.to = o.to; t.w = o.w; t.pr = o.pr; if (o.who.me) ownAsk(s.o[0]);
       if (!o.who.me) { const r = own.chk.get(s.o[0]) || {}; t.mate = true; t.n = r.n; t.ch = r.h; }   // (a crewmate's: only what the chain said)
       if (o.who.me && trade.seed && trade.seed.key === s.key) { if (trade.seed.art) t.art = trade.seed.art; if (trade.seed.word) t.word = trade.seed.word; if (trade.seed.art || trade.seed.word) t.sTry = 1; }
       const it = {t, k: s.kk, e, w, c: w.slice(), t0: now() + .15, m: 1, show: true}, cp = {t, k: s.kk, e: .2, w: w.slice(), t0: -9, m: 1, cp: true, gone: true};
@@ -8830,10 +8842,10 @@ function tradeTags(R, VP) {
     const dd = Math.hypot(P[0] - eye[0], P[1] - eye[1], P[2] - eye[2]); if (dd > 22 || Math.hypot(P[0] - eye[0], P[2] - eye[2]) < 2.2) continue;   // (right beside a base, what you point at says enough)
     const cx = VP[0] * P[0] + VP[4] * P[1] + VP[8] * P[2] + VP[12], cy = VP[1] * P[0] + VP[5] * P[1] + VP[9] * P[2] + VP[13], cw = VP[3] * P[0] + VP[7] * P[1] + VP[11] * P[2] + VP[15];
     if (cw < .2) continue; const sx = (cx / cw * .5 + .5) * innerWidth, sy = (.5 - cy / cw * .5) * innerHeight; if (sx < -60 || sx > innerWidth + 60 || sy < -40 || sy > innerHeight + 60) continue;
-    const e = tradeTag(n++), key = tradeChip(o.who) + o.who.c + (o.s ? o.w : 0) + (o.to ? tradeChip(o.to) + o.to.c : '');
+    const e = tradeTag(n++), key = tradeChip(o.who) + o.who.c + (o.s ? o.w + (o.pr || '') : 0) + (o.to ? tradeChip(o.to) + o.to.c : '');
     if (e._k !== key) {
       e._k = key; e.textContent = ''; e.classList.toggle('e', !o.s);
-      const b = document.createElement('b'); b.textContent = tradeChip(o.who) + (o.s ? ' · ' + tradeWord(o.w).toUpperCase() : ''); b.style.setProperty('--g', o.who.c); e.append(b);
+      const b = document.createElement('b'); b.textContent = tradeChip(o.who) + (o.s ? ' · ' + tradeWord(o.w).toUpperCase() + (o.pr ? ' · ' + fmt(o.pr) + ' SATS' : '') : ''); b.style.setProperty('--g', o.who.c); e.append(b);
       if (o.to) { const i = document.createElement('i'); i.textContent = '→'; const c = document.createElement('b'); c.textContent = tradeChip(o.to); c.style.setProperty('--g', o.to.c); e.append(i, c); }
     }
     e.style.display = ''; e.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-100%) scale(${Math.max(.6, Math.min(1.1, 6 / Math.max(dd, 1))).toFixed(2)})`;
@@ -8939,7 +8951,7 @@ function tradeAsk(k) {
     // the block: its picture (or model), and everything the chain says about it
     const s = sec((mine ? 'YOUR BLOCK' : String(nm(who)).toUpperCase() + '’S BLOCK') + ' · ' + tradeWord(o.w).toUpperCase());
     if (t && t.art && t.art.bytes && /^image\//.test(t.art.ct || '')) { if (trade.picUrl) URL.revokeObjectURL(trade.picUrl); trade.picUrl = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct})); const im = el('img', 'pic'); im.alt = ''; im.src = trade.picUrl; s.append(im); }
-    kv(s, [['inscription', r.n != null ? '#' + fmt(r.n) : b.n ? '#' + fmt(b.n) : ''], ['inscription id', X],
+    kv(s, [['asking price', o.w === 'sale' && o.pr ? tradePrWords(o.pr) : ''], ['inscription', r.n != null ? '#' + fmt(r.n) : b.n ? '#' + fmt(b.n) : ''], ['inscription id', X],
       ['what it is', t && t.art && t.art.mdl ? '3D model (' + (r.ct || 'glTF') + '), drawn here from the model' : r.ct ? r.ct.split(';')[0] : ''], ['size', r.len ? fmt(r.len) + ' bytes' : ''],
       ['made', (r.ts ? new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' · ' : '') + (r.h != null ? 'block ' + fmt(r.h) : '')],
       ['inscription fee', c ? fmt(c.fee) + ' sats · what inscribing it cost (as ordinals.com lists it)' : 'being read…'], ['sits on', c && c.v != null ? fmt(c.v) + ' sats' : ''],
@@ -8950,7 +8962,13 @@ function tradeAsk(k) {
       const D = dealsToMe(), dw = D.filter(x => x.a === 'deal').map(x => nm(x.w)), dn = D.filter(x => x.a === 'no').map(x => nm(x.w));
       const s2 = sec('YOUR OFFER');
       row(s2, [btn('FOR TRADE', () => { tradeOffer('trade'); tradeAsk(k); }, o.w !== 'sale'), btn('FOR SALE', () => { tradeOffer('sale'); tradeAsk(k); }, o.w === 'sale')]);
-      s2.append(el('p', '', 'Your crew sees ' + tradeWord(o.w).toUpperCase() + ' over your base.'));
+      if (o.w === 'sale') {   // (the asking price: typed here; the game's keys are left alone while you type)
+        const inp = el('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.autocomplete = 'off'; inp.placeholder = 'asking price in sats'; inp.value = trade.mine && trade.mine.pr ? fmt(trade.mine.pr) : ''; inp.style.maxWidth = '230px';
+        const say = el('p', 'fine'), set = () => { const r = tradePrice(inp.value); if (!r.ok) { say.textContent = r.error; return; } tradeAsk(k); };
+        inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') set(); }); inp.addEventListener('keyup', e => e.stopPropagation());
+        const r2 = el('div', 'r'); r2.append(inp, btn('SET PRICE', set)); if (trade.mine && trade.mine.pr) r2.append(btn('NO PRICE', () => { tradePrice(0); tradeAsk(k); })); s2.append(r2, say);
+      }
+      s2.append(el('p', '', 'Your crew sees ' + tradeWord(o.w).toUpperCase() + (o.pr ? ' · ' + fmt(o.pr) + ' SATS' : '') + ' over your base.' + (o.w === 'sale' && !o.pr ? ' A price is up to you: leave it empty for offers.' : '')));
       const s3 = sec('ANSWERS FROM YOUR CREW');
       s3.append(el('p', '', dw.length || dn.length ? (dw.length ? 'Would like to make a deal: ' + dw.join(', ') + '.' : '') + (dn.length ? (dw.length ? ' ' : '') + 'Not interested: ' + dn.join(', ') + '.' : '') : 'No answers yet.'));
       const s4 = sec('SIGNAL A CREWMATE'), chips = row(s4, []);
@@ -8982,7 +9000,7 @@ function tradeExplain(k) {
   L.push('Please help me with the trade floor in Agent Blockhall, a Bitcoin game. Explain it in plain words, in easy steps.', '');
   L.push('What I am looking at: ' + (who.me ? 'my own trade base (' + p + ')' : 'trade base ' + p + ', belonging to the player named "' + who.name + '" (players type their own names)') + '.');
   if (b) {
-    L.push('The block on it is ' + tradeWord(o.w).toUpperCase() + '.');
+    L.push('The block on it is ' + tradeWord(o.w).toUpperCase() + '.' + (o.w === 'sale' && o.pr ? ' Asking price: ' + tradePrWords(o.pr) + '.' : ''));
     if (r.n != null || b.n) L.push('- inscription #' + fmt(r.n != null ? r.n : b.n) + (r.h != null ? ', made in block ' + fmt(r.h) : ''));
     L.push('- inscription id: ' + x);
     if (c) L.push('- inscription fee: ' + fmt(c.fee) + ' sats (as ordinals.com lists it)' + (c.v != null ? '; it sits on ' + fmt(c.v) + ' sats' : ''));
@@ -9027,7 +9045,7 @@ async function showArtTick(R, it) {
   finally { showArt.busy = false; }
 }
 // pointing at a block on a base, and its tablet
-const showHover = it => { const t = it.t, w = t.who; return (w ? (w.me ? 'your trade base' : w.p + ' · ' + w.name + '’s trade base') : 'a trade base') + ' · ' + (t.mate ? 'inscription' + (t.n != null ? ' #' + fmt(t.n) : '') + (t.ch != null ? ' · made in block ' + fmt(t.ch) : '') : t.gal ? (t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)) + ' · #' + fmt(t.n) : TYPES[it.k].name + ' · parcel ' + fmt(t.idx) + ' of block ' + fmt(t.h)) + (t.w ? ' · ' + tradeWord(t.w) : '') + (t.to ? ' · would like to trade with ' + (t.to.me ? 'you' : t.to.p) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to see it on your tablet'; };
+const showHover = it => { const t = it.t, w = t.who; return (w ? (w.me ? 'your trade base' : w.p + ' · ' + w.name + '’s trade base') : 'a trade base') + ' · ' + (t.mate ? 'inscription' + (t.n != null ? ' #' + fmt(t.n) : '') + (t.ch != null ? ' · made in block ' + fmt(t.ch) : '') : t.gal ? (t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)) + ' · #' + fmt(t.n) : TYPES[it.k].name + ' · parcel ' + fmt(t.idx) + ' of block ' + fmt(t.h)) + (t.w ? ' · ' + tradeWord(t.w) + (t.w === 'sale' && t.pr ? ' · asking ' + fmt(t.pr) + ' sats' : '') : '') + (t.to ? ' · would like to trade with ' + (t.to.me ? 'you' : t.to.p) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to see it on your tablet'; };
 function showCard(t) {
   const w = t.who;
   $cn.textContent = w ? (w.me ? 'on your trade base · ' + w.p : 'on ' + w.p + ' · ' + w.name + '’s trade base') : 'on a trade base';
@@ -9052,7 +9070,7 @@ function showCard(t) {
   if (r.ts && !t.gal) rows.push(['made', new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
   if (!t.ct && r.ct) rows.push(['type', r.ct + (r.len ? ' · ' + fmt(r.len) + ' bytes' : '')]);
   if (t.art && t.art.mdl) rows.push(['picture', 'its 3D model, drawn here from the model · VIEW BIG, then GO LIVE, turns the model']);
-  if (t.who && t.w) rows.splice(0, 0, ['offered', tradeWord(t.w)]);
+  if (t.who && t.w) rows.splice(0, 0, ['offered', tradeWord(t.w) + (t.w === 'sale' && t.pr ? ' · asking ' + tradePrWords(t.pr) : '')]);
   { const c = tradeCost(t.gal ? t.gid : t.ordIds && t.ordIds[0]); if (c) { rows.push(['inscription fee', fmt(c.fee) + ' sats · what inscribing it cost (ordinals.com)']); if (c.v != null) rows.push(['sits on', fmt(c.v) + ' sats']); } }
   if (t.who && t.who.me) { const D = dealsToMe(); if (D.length) rows.push(['answers', D.map(x => x.w.p + ' · ' + x.w.name + ': ' + DEAL_WORD[x.a]).join(' · ')]); }
   if (t.to) rows.push(['would like to trade with', t.to.me ? 'you (' + t.to.p + ')' : t.to.p + ' · ' + t.to.name]);
@@ -15051,6 +15069,10 @@ window.AgentKit = window.AgentKit || (() => {
   const PEOPLE_NOTE = 'People in Agent Blockhall are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   // the trade floor as data (names come from other players: untrusted)
   function tradeBlockOf(k) { const r = tradeBlockOf0(k), o = trade.list[k] || tradeList()[k], b = o && (o.s || o.wait), c = b ? tradeCost(b.o[0]) : null;
+    const q = b ? own.chk.get(b.o[0]) || {} : {}, R = room && room.rooms.find(x => x && x.ready && x.common), I = R && R.trdIt && R.trdIt[k], t = I && I.it.t;
+    if (r) Object.assign(r, {contentType: q.ct || undefined, sizeBytes: q.len || undefined, madeAt: q.ts ? iso(q.ts) : undefined,
+      shows: t ? (t.art && t.art.mdl ? 'its 3D model, as a picture drawn here from the model' : t.art ? 'its picture' : t.word && t.word.a ? 'words: ' + String(t.word.a).slice(0, 60) : undefined) : undefined,
+      toLookCloser: 'inspectBase({base: "' + (o ? o.who.p : 'P' + (k + 1)) + '"}) picks up a copy; then viewBig() and look({picture: true})'});
     if (r && c) Object.assign(r, {inscriptionFeeSats: c.fee, sitsOnSats: c.v != null ? c.v : undefined, feeNote: 'what inscribing it cost: the fee ordinals.com lists for this inscription (paid by the transaction that made it); a commit transaction before that, if there was one, is not counted'});
     return r; }
   function tradeBlockOf0(k) { const o = trade.list[k] || (tradeList()[k]); const b = o && (o.s || o.wait); if (!b) return null; if (!o.who.me) { const r = own.chk.get(b.o[0]) || {}; return {inscription: b.o[0], inscriptionNumber: r.n != null ? r.n : undefined, madeInBlock: r.h != null ? r.h : undefined, txid: b.id, checked: o.s ? 'the chain says their wallet holds it' : undefined}; } return b.g ? {collectionPiece: b.gi + 1, inscriptionNumber: b.n || undefined, inscription: b.g} : {parcel: b.idx, block: b.h, txid: b.id, inscriptions: b.o.slice(), kind: TYPES[b.kk] ? TYPES[b.kk].name : undefined}; }
@@ -15080,9 +15102,9 @@ window.AgentKit = window.AgentKit || (() => {
   function tradeInfo() {
     try { tradeKeep(); } catch (e) {}
     trade.list = tradeList();
-    return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), FOR SALE or FOR TRADE (setOffer), and putting it there tells your crew. At a crewmate\'s base you answer LET\'S MAKE A DEAL or NOT INTERESTED (answerDeal); they are told. Once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them. Nothing is bought, sold or swapped here: a deal is taken to another app (check there that the inscription id matches exactly: a copy can look the same). Each player is responsible for their own trades there; Agent Blockhall is not part of any trade and claims no liability for it. Each block shows what inscribing it cost (inscriptionFeeSats). You use a base standing at it, as a player does: these commands walk you there in the common room.',
+    return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), FOR SALE or FOR TRADE (setOffer), and putting it there tells your crew. At a crewmate\'s base you answer LET\'S MAKE A DEAL or NOT INTERESTED (answerDeal); they are told. Once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them. Nothing is bought, sold or swapped here: a deal is taken to another app (check there that the inscription id matches exactly: a copy can look the same). Each player is responsible for their own trades there; Agent Blockhall is not part of any trade and claims no liability for it. Each block shows what inscribing it cost (inscriptionFeeSats) and the sats it sits on (sitsOnSats); a block for sale may have an asking price (askingSats, set with setOffer). Under each base\'s plaque, crewmates see who said LET\'S MAKE A DEAL (wantsADeal) and NOT INTERESTED (notInterested). inspectBase() picks up a copy of a block to look closer (viewBig, look). You use a base standing at it, as a player does: these commands walk you there in the common room. Once a deal is agreed, the crew chat is where to agree which app to swap on.',
       you: own.me.p, yourBase: tradeMyBase(), wallet: own.addr ? 'read status on' : 'none (a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve())',
-      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, wantsADeal: o.s ? dealsFor(o, 'deal').map(x => x.w.me ? 'you' : x.w.p) : undefined, notInterested: o.s ? dealsFor(o, 'no').map(x => x.w.me ? 'you' : x.w.p) : undefined, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
+      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, askingSats: o.w === 'sale' && o.pr ? o.pr : undefined, block: o.s ? tradeBlockOf(k) : null, wantsADeal: o.s ? dealsFor(o, 'deal').map(x => x.w.me ? 'you' : x.w.p) : undefined, notInterested: o.s ? dealsFor(o, 'no').map(x => x.w.me ? 'you' : x.w.p) : undefined, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
   }
   function state() {
     const s0 = window.__bcFrameErr;
@@ -15357,9 +15379,10 @@ window.AgentKit = window.AgentKit || (() => {
     for (const M of crew.mates.values()) if (pn < (M.talkT || 0)) { const was = EVT.talk.get(M.id) || 0; if (pn - was > 6000) evPush(mateName(M) + ' is talking on voice chat'); EVT.talk.set(M.id, pn); }
     // the trade floor: a crewmate's block put down or taken back, and whom they would like to trade with
     try { const T = tradeList(), was = EVT.trade || new Map(), nowT = new Map();
-      for (const o of T) { if (!o || o.who.me) continue; const v = {b: o.s ? o.s.key : '', to: o.to ? o.to.id : '', name: o.who.name, p: o.who.p, s: o.s, toW: o.to, nm: tradeName(o), w: o.w}; nowT.set(o.who.id, v); const b = was.get(o.who.id); if (!EVT.trade || crewMuted.has(o.who.id)) continue;
-        if (v.b && (!b || b.b !== v.b)) evPush(v.name + ' (' + v.p + ') has a block ' + tradeWord(v.w) + ' on their trade base in the Forum (' + v.nm + '). ' + (v.w === 'sale' ? 'answerDeal() answers it.' : 'Bring a block of yours to your base to trade, or answerDeal() answers it.'));
-        else if (v.b && b && b.b === v.b && b.w !== v.w) evPush(v.name + ' (' + v.p + ') now has their block ' + tradeWord(v.w));
+      for (const o of T) { if (!o || o.who.me) continue; const v = {b: o.s ? o.s.key : '', to: o.to ? o.to.id : '', name: o.who.name, p: o.who.p, s: o.s, toW: o.to, nm: tradeName(o), w: o.w, pr: o.pr || 0}; nowT.set(o.who.id, v); const b = was.get(o.who.id); if (!EVT.trade || crewMuted.has(o.who.id)) continue;
+        if (v.b && (!b || b.b !== v.b)) evPush(v.name + ' (' + v.p + ') has a block ' + tradeWord(v.w) + (v.pr ? ', asking ' + tradePrWords(v.pr) : '') + ' on their trade base in the Forum (' + v.nm + '). ' + (v.w === 'sale' ? 'answerDeal() answers it.' : 'Bring a block of yours to your base to trade, or answerDeal() answers it.'));
+        else if (v.b && b && b.b === v.b && b.w !== v.w) evPush(v.name + ' (' + v.p + ') now has their block ' + tradeWord(v.w) + (v.pr ? ', asking ' + tradePrWords(v.pr) : ''));
+        else if (v.b && b && b.b === v.b && (b.pr || 0) !== v.pr) evPush(v.name + ' (' + v.p + ') ' + (v.pr ? 'asks ' + tradePrWords(v.pr) + ' for their block' : 'took the price off their block'));
         else if (!v.b && b && b.b) evPush(v.name + ' (' + v.p + ') took their block off their trade base');
         if (v.b && v.to !== (b ? b.to : '')) evPush(v.to ? v.name + ' (' + v.p + ') would like to trade with ' + (v.toW.me ? 'you' : v.toW.p) + ': their base shows that player\'s colour' : v.name + ' (' + v.p + ') turned their base back to their own colour'); }
       EVT.trade = nowT;
@@ -15724,11 +15747,18 @@ window.AgentKit = window.AgentKit || (() => {
       }},
     {name: 'mute', does: 'Mute a crewmate for you only (their voice, their chat and their trade messages), as clicking the name over their head does; on: false unmutes. people() and crew() say whom you muted. In a crew, on the play together page.', args: [{name: 'who', does: 'their name or their number (P1 to P6)', req: true}, {name: 'on', type: 'boolean', does: 'true to mute (the default), false to unmute'}],
       run: ({who, on}) => { const q = String(who == null ? '' : who).trim().toLowerCase(); let id = null; for (const M of crew.mates.values()) if (String(M.name).toLowerCase() === q) id = M.id; if (!id) for (const [k, v] of Object.entries(own.nums)) if (v && String(v.p).toLowerCase() === q && crew.mates.has(k)) id = k; if (!id) return {ok: false, error: 'no crewmate with that name or number here'}; if (!mateMute(id, on !== false)) return {ok: false, error: 'only in a crew, on the play together page'}; return {ok: true, muted: on !== false}; }},
-    {name: 'setOffer', does: 'Mark the block on your trade base FOR SALE or FOR TRADE (your crew sees it over your base and is told), as the buttons at your base do. Nothing is sold or traded here: a deal is taken to another app. You do it standing at your base, as a player does: in the common room this walks you there first.', args: [{name: 'for', enum: ['sale', 'trade'], does: 'sale or trade', req: true}],
-      run: async (a) => { if (!tradeMineOk()) return {ok: false, error: 'put a block your wallet holds on your trade base first (putOnTradeBase)'}; const g = await tradeWalkTo(tradeMyK(), 'you mark your block'); if (!g.ok) return g; const r = tradeOffer(a.for); return r.ok ? Object.assign(r, {walkedToYourBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r; }},
+    {name: 'setOffer', does: 'Mark the block on your trade base FOR SALE (with an asking price in sats, if you like) or FOR TRADE (your crew sees it over your base and is told), as the buttons at your base do. Nothing is sold or traded here: a deal is taken to another app. You do it standing at your base, as a player does: in the common room this walks you there first.', args: [{name: 'for', enum: ['sale', 'trade'], does: 'sale or trade', req: true}, {name: 'price', type: 'number', does: 'for sale: an asking price in whole sats (0 for none; leave it out to keep the one set)'}],
+      run: async (a) => { if (!tradeMineOk()) return {ok: false, error: 'put a block your wallet holds on your trade base first (putOnTradeBase)'}; const g = await tradeWalkTo(tradeMyK(), 'you mark your block'); if (!g.ok) return g; const r = tradeOffer(a.for); if (r.ok && a.price != null) { const p = tradePrice(a.price); if (!p.ok) return p; r.price = p.price; } return r.ok ? Object.assign(r, {walkedToYourBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r; }},
     {name: 'answerDeal', does: 'At a crewmate\'s trade base with a block on it: LET\'S MAKE A DEAL or NOT INTERESTED, as the buttons there do ("none" takes your answer back). They are told. A deal is taken to another app to swap (nothing is swapped here): there, check the inscription id matches exactly (a copy can look the same), and prefer a swap where both sides go in one transaction. A deal also asks the chain again whether their wallet still holds it. You answer standing at their base, as a player does: in the common room this walks you there first.', args: [{name: 'base', does: 'their base (P1 to P6) or their name', req: true}, {name: 'answer', enum: ['deal', 'not interested', 'none'], does: 'your answer', req: true}],
       run: async ({base, answer}) => { const k = tradeBaseK(base); if (k < 0) return {ok: false, error: 'no crewmate with that base or name: tradeFloor() lists the bases'}; trade.list = tradeList(); const o = trade.list[k]; if (!o || o.who.me || !o.s) { const r = tradeDeal(k, 'deal'); if (!r.ok) return r; }
         const g = await tradeWalkTo(k, 'you answer'); if (!g.ok) return g; const r = tradeDeal(k, answer === 'deal' ? 'deal' : answer === 'not interested' ? 'no' : ''); return r.ok ? Object.assign(r, {walkedToTheirBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r; }},
+    {name: 'inspectBase', untrusted: true, does: 'Look closely at the block on a trade base (yours or a crewmate\'s), as a player does by clicking it: walks you to that base in the common room (as a player walks) and picks up a copy into your hands; the block stays on the base. Then viewBig() shows it full size, look({picture: true}) gives you its picture (a 3D model shows as a picture drawn from the model; viewBig with live: true turns the model in ordinals.com\'s own viewer), and putBack() puts the copy down. Returns everything the chain says about it.', args: [{name: 'base', does: 'the base (P1 to P6) or the player\'s name', req: true}],
+      run: async ({base}) => { const k = tradeBaseK(base); if (k < 0) return {ok: false, error: 'no base or player by that name: tradeFloor() lists the bases'}; trade.list = tradeList(); const o = trade.list[k]; if (!o || !o.s) return {ok: false, error: (o ? o.who.p : 'P' + (k + 1)) + ' has no checked block on it right now'};
+        const g = await tradeWalkTo(k, 'you look at a block'); if (!g.ok) return g;
+        if (room.held && !room.held.back) { rmPut(); await wait(800); }
+        const R = room.rooms.find(q => q && q.ready && q.common), I = R && R.trdIt && R.trdIt[k]; if (!I) return {ok: false, error: 'the block is not in the room yet: ask again in a moment'};
+        rmHold(I.it); await until(() => room.held && room.held.it.t === I.it.t, 3000);
+        return {ok: !!(room.held && room.held.it.t === I.it.t), holding: 'a copy of ' + o.who.p + '\'s block', walked: g.walked || undefined, offer: tradeWord(o.w), askingSats: o.w === 'sale' && o.pr ? o.pr : undefined, block: tradeBlockOf(k), next: 'viewBig() to see it full size; look({picture: true}) for its picture; putBack() to put the copy down'}; }},
     {name: 'takeBackFromTradeBase', does: 'Take your block back off your trade base (it stays in your wallet: nothing moves on the chain).', run: () => { if (!trade.mine) return {ok: false, error: 'nothing on your trade base'}; tradeSet(null); return {ok: true, tradeFloor: tradeInfo()}; }},
     {name: 'followBack', does: 'Follow the inscription you hold back to where it was made and each place it moved. Gives the whole trail at once (trail.steps, oldest first: each with its block, time, transaction ID and the address it went to).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; folStart(); await until(() => typeof fol !== 'undefined' && fol && fol.steps && !fol.busy, 30000); return {steps: fol && fol.steps ? fol.steps.length : 0, now: fol ? fol.i : null, bar: text($fol), trail: trail()}; }},
     {name: 'followStep', does: 'Go to a step of the follow-it-back line (you travel to its block).', args: [{name: 'to', type: 'number', does: 'step number, 0 = where it was made', req: true}], run: async ({to}) => { if (typeof fol === 'undefined' || !fol) return {ok: false, error: 'followBack() first'}; const T0 = trail(), s = T0 && T0.steps[+to]; folGo(+to); await wait(400);
