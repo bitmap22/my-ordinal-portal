@@ -1680,6 +1680,9 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
+      for (const d of c.args || []) { const v = args[d.name]; if (v === undefined || v === null) continue;   // (a number or a yes/no given as words works; anything else gets a clear answer, never a broken game)
+        if (d.type === 'number') { const x = typeof v === 'string' ? (/^\s*\d+\.bitmap\s*$/i.test(v) ? parseInt(v, 10) : v.trim() === '' ? NaN : +v) : v; if (typeof x !== 'number' || !isFinite(x)) return {ok: false, error: d.name + ' must be a number: ' + d.does}; args[d.name] = x; }
+        else if (d.type === 'boolean' && typeof v !== 'boolean') { if (v === 'true' || v === 1) args[d.name] = true; else if (v === 'false' || v === 0) args[d.name] = false; else return {ok: false, error: d.name + ' must be true or false: ' + d.does}; } }
       try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
