@@ -11504,7 +11504,7 @@ function gdNews(t, world) { gd.news.push({t, world: !!world}); if (gd.news.lengt
 const GD_GAMES = ['chess', 'ping-pong', 'cornhole'], GD_MEET = ['chess board', 'ping-pong table', 'cornhole boards'], GD_ASK_MS = 60000, GD_COOL_MS = 120000;
 gd.ask = null; gd.asked = []; gd.ans = []; gd.cool = new Map(); gd.pick = null; gd.askRes = null; gd.askKey = '';
 const gdInGarden = M => typeof clIn === 'function' && clIn() ? clHere(M) : !!(M && M.shown && M.s && M.s.in && M.s.h === GARDEN);
-const gdAskG = () => typeof clIn === 'function' && clIn() ? CL_GAMES : GD_GAMES, gdAskMeet = () => typeof clIn === 'function' && clIn() ? CL_MEET : GD_MEET, gdAskGo = () => typeof clIn === 'function' && clIn() ? CL_GOTO_OF : GD_GOTO_OF, gdAskWhere = () => typeof clIn === 'function' && clIn() ? 'the club' : 'the bitmap garden';
+const gdAskG = () => typeof clIn === 'function' && clIn() ? CL_GAMES : GD_GAMES, gdAskMeet = () => typeof clIn === 'function' && clIn() ? CL_MEET : GD_MEET, gdAskGo = () => typeof clIn === 'function' && clIn() ? CL_GOTO_OF : GD_GOTO_OF, gdAskGoMine = () => typeof clIn === 'function' && clIn() ? CL_GOTO_ASKER : GD_GOTO_OF, gdAskWhere = () => typeof clIn === 'function' && clIn() ? 'the club' : 'the bitmap garden';
 function gdAskWho(p, ray) {   // the crewmate in the garden you are looking at (near: roughly; further off: right at them), within 10 m
   if (!crew.on) return null; let best = null, bd = 10;
   for (const M of crew.mates.values()) { if (!gdInGarden(M)) continue; const e = Math.hypot(M.R.p[0] - p.x, M.R.p[2] - p.z); if (e < bd && gdFacing(p, M.R.p[0], M.R.p[2], ray, e, e < 3 ? .6 : .93)) { bd = e; best = M; } }
@@ -11527,7 +11527,7 @@ function gdAskStart(M, g) {   // returns '' when asked, else why not
 function gdAskEnd(res) {   // your ask is over: yes, no, no answer, or they left
   const A = gd.ask; if (!A) return; gd.ask = null; gd.askKey = null; crew.last = ''; if (res === 'no' || res === 'no answer') gd.cool.set(A.to, performance.now() + GD_COOL_MS);
   const G = gdAskG(), say = res === 'yes' ? A.name + ' said yes to ' + G[A.g] + ': meet at the ' + gdAskMeet()[A.g] : res === 'no' ? A.name + ' said no to ' + G[A.g] : res === 'left' ? A.name + ' left ' + gdAskWhere() + ', so your ask is off' : A.name + ' did not answer in 60 seconds';
-  gd.askRes = {st: A.st, to: A.to, name: A.name, g: A.g, res, say}; gdToast(say); gdNews(say + (res === 'yes' ? ' (goTo({place: "' + gdAskGo()[A.g] + '"}))' : res === 'left' ? '' : ' (you can ask them again in 2 minutes, or ask someone else)'));
+  gd.askRes = {st: A.st, to: A.to, name: A.name, g: A.g, res, say}; gdToast(say); gdNews(say + (res === 'yes' ? ' (goTo({place: "' + gdAskGoMine()[A.g] + '"}))' : res === 'left' ? '' : ' (you can ask them again in 2 minutes, or ask someone else)'));
 }
 const GD_GOTO_OF = ['chess board', 'ping-pong red end', 'cornhole'];
 function gdAnswer(yes, fromId) {   // your answer to an ask (the oldest, unless you say whose); returns '' or why not
@@ -12581,7 +12581,7 @@ function clClack() { if (!sndOn) return; const a = audio(); if (!a) return; cons
 function clClick() { if (!sndOn) return; const a = audio(); if (!a) return; const t = a.currentTime, o = a.createOscillator(), G = a.createGain(); o.type = 'square'; o.frequency.value = 2400; G.gain.setValueAtTime(0, t); G.gain.linearRampToValueAtTime(.04, t + .001); G.gain.exponentialRampToValueAtTime(.001, t + .03); o.connect(G); G.connect(a.destination); o.start(t); o.stop(t + .04); }
 function clCheer() { cl.pulse = performance.now(); gdClink(.6); }
 // club news, for an agent's events() and the terminal (read and cleared by the kit, as the garden's are)
-function clNews(t, world) { gdNews(t, world); cl.news.push({t, at: Date.now()}); if (cl.news.length > 12) cl.news.shift(); }
+function clNews(t, world) { gdNews(t, /^On the chain:/.test(t)); cl.news.push({t, at: Date.now()}); if (cl.news.length > 12) cl.news.shift(); }   // (crewmates' names come from them: shown as theirs, not the game's)
 // ---- the club's jukebox: tunes made here from scratch (nothing downloaded), the same for everyone in the club from the moment
 //      one was chosen: NEON NIGHTS (an 80s synth track: gated drums, an octave bass, an arpeggio, warm pads, a lead) and
 //      RAVE 92 (a 90s rave track: a four-to-the-floor kick, piano stabs, an acid bass line, a hoover); and the common room's
@@ -13009,7 +13009,7 @@ function clDraw(B, VP, eye, Lt, tn, crewList, photo) {
   gl.depthMask(true); gl.disable(gl.BLEND); gl.bindVertexArray(null);
 }
 // ---- for the agent kit: the club as an agent reads it (the same things a player sees, as words and numbers) ----
-const CL_GAMES = ['darts', 'draughts', 'four in a row'], CL_MEET = ['throwing line', 'draughts table', 'four-in-a-row table'], CL_GOTO_OF = ['darts', 'draughts black side', 'four in a row red side'];
+const CL_GAMES = ['darts', 'draughts', 'four in a row'], CL_MEET = ['throwing line', 'draughts table', 'four-in-a-row table'], CL_GOTO_OF = ['darts', 'draughts black side', 'four in a row red side'], CL_GOTO_ASKER = ['darts', 'draughts red side', 'four in a row yellow side'];   // (at a table, the one who asked takes the other side)
 function clAgentInfo() {
   const C = room && room.at; if (!C || !C.cl) return null; const K = C.cl, p = room.p, r1 = v => Math.round(v * 10) / 10, D = cl.darts, G = cl.dr, F = cl.fr;
   const board = []; for (let r = 7; r >= 0; r--) { let row = (r + 1) + ' '; for (let f = 0; f < 8; f++) { const k = clDrK(r, f); row += (k < 0 ? ' ' : G.b[k] === '.' ? '.' : G.b[k]) + ' '; } board.push(row.trimEnd()); }
@@ -14339,7 +14339,7 @@ window.AgentKit = window.AgentKit || (() => {
         const why = gdAskStart(part[0], g); if (why) return {ok: false, error: why};
         if (w === false) return {ok: true, asked: {untrusted: mateName(part[0])}, game: gdAskG()[g], answer: 'it comes in events() within 60 seconds'};
         const st = gd.ask.st; await until(() => gd.askRes && gd.askRes.st === st, GD_ASK_MS + 4000); const R = gd.askRes && gd.askRes.st === st ? gd.askRes : null;
-        return R ? {ok: true, answer: R.res, said: {untrusted: R.say}, then: R.res === 'yes' ? 'goTo({place: "' + gdAskGo()[g] + '"})' : 'ask someone else, or wait 2 minutes before asking them again'} : {ok: false, error: 'no answer came back'}; }},
+        return R ? {ok: true, answer: R.res, said: {untrusted: R.say}, then: R.res === 'yes' ? 'goTo({place: "' + gdAskGoMine()[g] + '"})' : 'ask someone else, or wait 2 minutes before asking them again'} : {ok: false, error: 'no answer came back'}; }},
     {name: 'answerAsk', untrusted: true, does: 'In the bitmap garden or a club: answer a crewmate who asked you to play (events() tells you when one does; garden().asks or club().asks lists them). Answer yes or no rather than leaving it: after 60 seconds an ask runs out.', args: [{name: 'yes', type: 'boolean', does: 'true to play, false for no', req: true}, {name: 'crewmate', does: 'whose ask, by name (leave out for the oldest)'}],
       run: ({yes, crewmate}) => { if (!(inRoom() && (room.at.gd || room.at.cl))) return {ok: false, error: 'you are not in the bitmap garden or a club'}; let id;
         if (crewmate) { const want = String(crewmate).trim().toLowerCase(), a = gd.asked.find(x => { const M = crew.mates.get(x.from); return M && mateName(M).toLowerCase() === want; }); if (!a) return {ok: false, error: 'no ask from a crewmate called that', asks: gdAskInfo().toYou}; id = a.from; }
@@ -14366,8 +14366,8 @@ window.AgentKit = window.AgentKit || (() => {
         const D = cl.darts; return {ok: true, aimedAt: String(at).toUpperCase(), landed: q.name, scored: q.s, left: D.sc[i], bust: !!D.bust, won: D.win === clMe(), dartsLeftThisTurn: D.win || D.bust ? 0 : 3 - D.d.length}; }},
     {name: 'draughtsMove', does: 'In a club, sitting on your side of the draughts table: move one of your pieces, as a player does (English rules are kept for everyone: men move and take forward, kings both ways; taking is a must; a piece that can take again goes on taking). One step: from and to; a run of takes: path.', args: [{name: 'from', does: 'a square, e.g. "c3"'}, {name: 'to', does: 'a square, e.g. "d4"'}, {name: 'path', type: 'array', does: 'a run of takes, e.g. ["c3", "e5", "c7"]'}],
       run: async ({from, to, path}) => { if (!clIn()) return {ok: false, error: 'you are not in a club'}; const L = Array.isArray(path) && path.length > 1 ? path : [from, to]; const ks = L.map(clDrIx); if (ks.some(k => k < 0)) return {ok: false, error: 'dark squares only, like "c3" (a1 is dark)'};
-        for (let i = 0; i + 1 < ks.length; i++) { const w = clDrMove(ks[i], ks[i + 1]); if (w) return {ok: false, error: w, draughts: clAgentInfo().draughts}; await wait(450); }
-        const G = cl.dr; return {ok: true, moved: L.join(G.c >= 0 ? '×' : '-'), mustGoOnTaking: G.c >= 0 ? clDrName(G.c) : null, winner: G.w >= 0 ? CL_DRS[G.w] : null, draughts: clAgentInfo().draughts}; }},
+        const pc = () => cl.dr.b.replace(/\./g, '').length, n0 = pc(); for (let i = 0; i + 1 < ks.length; i++) { const w = clDrMove(ks[i], ks[i + 1]); if (w) return {ok: false, error: w, draughts: clAgentInfo().draughts}; await wait(450); } const took = pc() < n0;
+        const G = cl.dr; return {ok: true, moved: L.join(took ? '×' : '-'), mustGoOnTaking: G.c >= 0 ? clDrName(G.c) : null, winner: G.w >= 0 ? CL_DRS[G.w] : null, draughts: clAgentInfo().draughts}; }},
     {name: 'fourInARow', does: 'In a club, sitting on your side of the four-in-a-row table: drop a disc in a column, as a player does (red goes first; four in a line wins).', args: [{name: 'column', type: 'number', does: 'the column, 1 to 7 from west to east', req: true}],
       run: async ({column}) => { if (!clIn()) return {ok: false, error: 'you are not in a club'}; const w = clFrDrop(Math.round(+column) - 1); if (w) return {ok: false, error: w, fourInARow: clAgentInfo().fourInARow}; await wait(700); return {ok: true, dropped: +column, fourInARow: clAgentInfo().fourInARow}; }},
     {name: 'clubTerminal', ro: true, untrusted: true, does: 'In a club: read the chain data terminal (the same pages a player reads on its green screen). Pages: summary, kinds, rare sats (worked out from each sat\'s number by ord\'s rules), holders, your pieces, on the move (pieces being sent right now, from the mempool), newest. Read from the chain while you are in, a few pieces at a time: "read" says how far it has got.', args: [{name: 'page', enum: ['summary', 'kinds', 'rare sats', 'holders', 'your pieces', 'on the move', 'newest'], does: 'which page (default summary)'}],
