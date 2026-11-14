@@ -4053,7 +4053,7 @@ function rmFix(R) {
     box(0, .55, zc, .6, .94, .6, WH);
     box(0, 1.05, zc, .7, .06, .7, BK);
     for (const sd of [-1, 1]) { box(0, 1.016, zc + sd * .352, .7, .012, .012, LW0, 2); box(sd * .352, 1.016, zc, .012, .012, .7, LW0, 2); }
-    if (R.ins0lab) for (const sd of [-1, 1]) tiles(0, .72, zc + sd * .305, 0, sd, .14, R.ins0lab.x, R.ins0lab.y, 128, 4);
+    if (R.ins0lab) for (const sd of [-1, 1]) for (let r = 0; r < 2; r++) tiles(0, .79 - r * .14, zc + sd * .305, 0, sd, .14, R.ins0lab.x, R.ins0lab.y + r * 128, 128, 4);
     for (let k = 0; k < 64; k++) { const a = k / 64 * 6.2832; box(Math.cos(a) * .8, .006, zc + Math.sin(a) * .8, .05, .008, .05, LW0, 2); }
     box(0, (RH - .3 + 4.2) / 2, zc, .015, RH - .3 - 4.2, .015, BK);
     box(0, 4.12, zc, .3, .16, .3, BK); box(0, 4.034, zc, .22, .012, .22, LW0, 2);
@@ -4114,8 +4114,7 @@ function* rmLabelsG(R) {
   }
   R.ins0lab = null;
   if (R.ins0) {   // inscription 0's plaque (on two sides of its stand)
-    const [x, y] = place(512, 128); R.ins0lab = {x, y};
-    labPaint(x, y, 512, 128, 'INSCRIPTION 0', '#f4f1ea', null, 'the first inscription · made by Casey Rodarmor · ' + utc(B.time), '#ffffff');
+    const [x, y] = place(512, 256); R.ins0lab = {x, y}; labIns0(x, y, utc(B.time));
   }
   R.gen = null;
   if (G0) {
@@ -7353,7 +7352,7 @@ function folDraw(VP, eye, tn) {
    soft cone of white light from the lamp to the floor, drawn as a sheet that always turns to face you ---- */
 const I0_TX = '6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799', I0_H = 767430;
 let i0P = null; try { i0P = prog('#version 300 es\nprecision highp float;\nlayout(location=0) in vec3 aP;layout(location=1) in vec3 aS;uniform mat4 uVP;out vec3 vS;void main(){vS=aS;gl_Position=uVP*vec4(aP,1.);}',
-  '#version 300 es\nprecision highp float;\nin vec3 vS;out vec4 o;void main(){float x=vS.x,v=vS.y,a=pow(max(1.-x*x,0.),.9);float al=clamp(a*mix(.2,.08,v)*smoothstep(0.,.03,v)*smoothstep(1.,.96,v),0.,1.);o=vec4(vec3(1.,.97,.92)*al,al);}'); } catch (e) { console.warn('beam', e); }
+  '#version 300 es\nprecision highp float;\nin vec3 vS;out vec4 o;void main(){float x=vS.x,v=vS.y,a=1.-pow(abs(x),4.);float al=clamp(a*mix(.3,.22,v)*smoothstep(0.,.03,v)*(1.-smoothstep(.97,1.,v)),0.,1.);o=vec4(vec3(.97,.98,1.)*al,al);}'); } catch (e) { console.warn('beam', e); }
 const i0VB = gl.createBuffer(), i0VA = gl.createVertexArray(), i0Buf = new Float32Array(3 * 25 * 2 * 6);
 gl.bindVertexArray(i0VA); gl.bindBuffer(gl.ARRAY_BUFFER, i0VB);
 gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
@@ -7375,6 +7374,19 @@ function i0Draw(VP, eye) {
   gl.bindVertexArray(i0VA); gl.bindBuffer(gl.ARRAY_BUFFER, i0VB); gl.bufferData(gl.ARRAY_BUFFER, i0Buf.subarray(0, n), gl.DYNAMIC_DRAW);
   for (const [f, c] of firsts) gl.drawArrays(gl.TRIANGLE_STRIP, f, c);
   gl.bindVertexArray(null); gl.depthMask(true); gl.disable(gl.BLEND);
+}
+// its plaque: two rows of tiles on the stand, big enough to read from where you stand
+function labIns0(x, y, when) {
+  const c = labCx, w = 512, h = 256, F = (wt, sz) => wt + ' ' + sz + 'px ui-monospace,Menlo,Consolas,monospace';
+  const fit = (t, sz, wt) => { let f = sz; c.font = F(wt, f); while (f > 8 && c.measureText(t).width > w - 48) c.font = F(wt, --f); };
+  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#0d0805'; c.fillRect(x, y, w, h);
+  c.strokeStyle = '#ffffff'; c.lineWidth = 8; c.strokeRect(x + 4, y + 4, w - 8, h - 8);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = '#f4f1ea'; fit('INSCRIPTION 0', 66, 800); c.fillText('INSCRIPTION 0', x + w / 2, y + 62);
+  c.fillStyle = '#ffffff'; fit('THE FIRST INSCRIPTION', 34, 700); c.fillText('THE FIRST INSCRIPTION', x + w / 2, y + 126);
+  c.fillStyle = '#cdbca3'; fit('made by Casey Rodarmor', 32, 600); c.fillText('made by Casey Rodarmor', x + w / 2, y + 172);
+  fit(when, 28, 600); c.fillText(when, x + w / 2, y + 214);
+  c.restore();
 }
 // it rises and falls a little, slowly (only its own place in the list of parcels is rewritten)
 function i0Bob(tn) {
