@@ -6,7 +6,7 @@ const OUT = process.argv[2], HS = process.argv.slice(3).map(Number);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function get(url, bin) {
   for (let k = 0; k < 4; k++) {
-    try { const r = await fetch(url, {headers: {'User-Agent': 'agent-blockhall-manifest-test'}}); if (r.ok) return bin ? Buffer.from(await r.arrayBuffer()) : await r.text(); console.log('http', r.status, url); }
+    try { const r = await fetch(url, {headers: {'User-Agent': 'agent-blockhall-mcp/1.1.0'}}); if (r.ok) return bin ? Buffer.from(await r.arrayBuffer()) : await r.text(); console.log('http', r.status, url); }
     catch (e) { console.log('err', String(e), url); }
     await sleep(3000 * (k + 1));
   }
@@ -23,18 +23,22 @@ async function get(url, bin) {
     const mp = await get('https://mempool.space/api/v1/block/' + hash + '/summary'); await sleep(500);
     const op = await get('https://ordpool.space/api/v1/block/' + hash + '/summary'); await sleep(500);
     const meta = await get('https://mempool.space/api/block/' + hash); await sleep(500);
-    const ids = new Set();
-    for (let page = 0; page < 400; page++) {
-      const html = await get('https://ordinals.com/inscriptions/block/' + h + (page ? '/' + page : ''));
-      for (const m of html.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)) ids.add(m[1]);
-      if (!html.includes('/inscriptions/block/' + h + '/' + (page + 1))) break;
-      await sleep(400);
-    }
-    const ordHash = (await get('https://ordinals.com/r/blockhash/' + h)).trim().replace(/^"|"$/g, '');
+    let ids = new Set(), ordHash = null, runesHtml = null;
+    try {
+      for (let page = 0; page < 400; page++) {
+        const html = await get('https://ordinals.com/inscriptions/block/' + h + (page ? '/' + page : ''));
+        for (const m of html.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)) ids.add(m[1]);
+        if (!html.includes('/inscriptions/block/' + h + '/' + (page + 1))) break;
+        await sleep(400);
+      }
+    } catch (e) { console.log('no ordinals.com list for', h); ids = null; }
+    try { ordHash = (await get('https://ordinals.com/r/blockhash/' + h)).trim().replace(/^"|"$/g, ''); } catch (e) {}
+    try { runesHtml = await get('https://ordinals.com/block/' + h); } catch (e) {}
+    if (runesHtml) fs.writeFileSync(path.join(dir, 'ord-block.html.gz'), zlib.gzipSync(runesHtml));
     fs.writeFileSync(path.join(dir, 'raw.bin.gz'), zlib.gzipSync(raw));
     fs.writeFileSync(path.join(dir, 'mempool-summary.json.gz'), zlib.gzipSync(mp));
     fs.writeFileSync(path.join(dir, 'ordpool-summary.json.gz'), zlib.gzipSync(op));
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({height: h, hash, ordHash, meta: JSON.parse(meta), ordIds: [...ids]}));
-    console.log(h, hash, 'raw', raw.length, 'ids', ids.size);
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({height: h, hash, ordHash, meta: JSON.parse(meta), ordIds: ids ? [...ids] : null}));
+    console.log(h, hash, 'raw', raw.length, 'ids', ids ? ids.size : 'none');
   }
 })().catch(e => { console.error(e); process.exit(1); });
