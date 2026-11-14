@@ -1852,9 +1852,23 @@ async function mdlShrink(T) {
         if (build) { S[c * 4] += x; S[c * 4 + 1] += y; S[c * 4 + 2] += z; S[c * 4 + 3]++; }
         cid[i] = c;
       }
-      const keep = [];
-      for (let t = 0; t < nv; t += 3) { const a = cid[t], b = cid[t + 1], c = cid[t + 2]; if (a !== b && b !== c && a !== c) { kept++; if (build) keep.push(t); } }
-      if (build) out.set(key, {cid, keep});
+      out.set(key, {cid, keep: []});
+    }
+    // the triangles kept: not shrunk to nothing, and (in the copy itself) not turned over by the joining, which would show dark
+    for (const [key, G] of T.groups) {
+      const {cid, keep} = out.get(key), P = G.p;
+      for (let t = 0; t < cid.length; t += 3) {
+        if (!(++v % 45000)) await rest();
+        const a = cid[t], b = cid[t + 1], c = cid[t + 2]; if (a === b || b === c || a === c) continue;
+        if (build) {
+          const o = t * 3, ux = P[o + 3] - P[o], uy = P[o + 4] - P[o + 1], uz = P[o + 5] - P[o + 2], vx = P[o + 6] - P[o], vy = P[o + 7] - P[o + 1], vz = P[o + 8] - P[o + 2];
+          const wa = S[a * 4 + 3], wb = S[b * 4 + 3], wc = S[c * 4 + 3], ax = S[a * 4] / wa, ay = S[a * 4 + 1] / wa, az = S[a * 4 + 2] / wa;
+          const sx = S[b * 4] / wb - ax, sy = S[b * 4 + 1] / wb - ay, sz = S[b * 4 + 2] / wb - az, tx = S[c * 4] / wc - ax, ty = S[c * 4 + 1] / wc - ay, tz = S[c * 4 + 2] / wc - az;
+          if ((uy * vz - uz * vy) * (sy * tz - sz * ty) + (uz * vx - ux * vz) * (sz * tx - sx * tz) + (ux * vy - uy * vx) * (sx * ty - sy * tx) <= 0) continue;
+          keep.push(t);
+        }
+        kept++;
+      }
     }
     if (!build) return kept;
     const groups = new Map();
