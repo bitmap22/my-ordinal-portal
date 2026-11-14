@@ -82,7 +82,7 @@
 <div class="shell">
   <h1>Provenance Check</h1>
   <div class="sub">Where a Bitcoin inscription came from, every step checked</div>
-  <p class="lead">Give an inscription's number or ID. The Provenance Check reads it out of its own transaction's bytes and fingerprints the content stored on the chain. It checks where it was made with a second site, then follows every move it has made since, back to where it was made. It's free, for people and AI agents.</p>
+  <p class="lead">Give an inscription's number or ID. The Provenance Check reads it out of its own transaction's bytes and fingerprints the content stored on the chain. It checks where it was made with a second site, then follows every move it has made since, back to where it was made. It's free, for people and AI agents. Then walk its trail in 3D in <a href="block-cube.html">Agent Blockhall</a>, or see every transaction in the block it was made in with the <a href="block-manifest.html">Block Manifest</a>.</p>
 
   <div class="panel">
     <form class="ask" id="ask" autocomplete="off">
@@ -137,6 +137,7 @@
   <div class="panel small">
     <h2>For AI agents</h2>
     <p>In this page: <code>await window.agent.help()</code>, then <code>agent.check({id})</code> and <code>agent.see()</code>. Where the browser has WebMCP, the same commands are tools named <code>provenance_*</code>. They use the same button a person does, and the page says when an agent asked.</p>
+    <p>The bigger app is <a href="block-cube.html">Agent Blockhall</a>: walk an inscription's trail there in 3D, as a tether from cube to cube (hold its parcel, then <code>followBack()</code>). The <a href="block-manifest.html">Block Manifest</a> lists every transaction in the block it was made in.</p>
     <p>Without a browser: the free <a href="../agent-blockhall-mcp/README.md">Agent Blockhall MCP tool</a> has the same check as its <code>provenanceCheck</code> tool, and it can also unpack inscriptions stored packed. The reader is one file, <a href="../agent-blockhall-mcp/server/provenance.js">provenance.js</a>, shared by this page and the tool. More in <a href="llms.txt">llms.txt</a>.</p>
   </div>
 
@@ -254,7 +255,12 @@
     if (I.delegate) F.push(['Delegate', I.delegate]);
     if (F.length % 3) F.push(['Inscription in its transaction', I.inscriptionInItsTransaction ? (I.inscriptionInItsTransaction.index + 1) + ' of ' + I.inscriptionInItsTransaction.of : '–']);
     if (F.length % 3) F.push(['Moves since made', fmt(Math.max(0, r.trail.length - 1))]);
-    for (const [k, val] of F) { const f = el('div', 'fact'); f.appendChild(el('b', null, k)); f.appendChild(el('span', /ID|Holder|Fingerprint|Parent|Delegate/.test(k) ? 'long' : null, String(val))); facts.appendChild(f); }
+    for (const [k, val] of F) {
+      const f = el('div', 'fact'); f.appendChild(el('b', null, k));
+      if (k === 'Made in block' && I.block != null) { const sp = el('span'); const a = el('a', null, String(val)); a.href = 'block-manifest.html?block=' + I.block; a.title = 'Block Manifest: every transaction in block ' + fmt(I.block); sp.appendChild(a); f.appendChild(sp); }
+      else f.appendChild(el('span', /ID|Holder|Fingerprint|Parent|Delegate/.test(k) ? 'long' : null, String(val)));
+      facts.appendChild(f);
+    }
     const ul = $('checks'); ul.textContent = '';
     for (const [k, c] of Object.entries(r.checked)) {
       const st = c.agrees === true ? 'ok' : c.agrees === false ? 'no' : 'none';
@@ -284,9 +290,12 @@
   $('dlJson').addEventListener('click', () => { if (!R) return; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(R, null, 1)], {type: 'application/json'})); a.download = 'inscription-' + R.inscription.number + '-provenance.json'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); });
 
   /* ---------- the agent kit: window.agent (the same steps as the Check button; the page says when an agent asked) ---------- */
+  const GAME = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html', MANIFEST = 'https://bitmap22.github.io/my-ordinal-portal/block-manifest.html';
+  const seeIt = r => ({agentBlockhall: GAME, followBack: 'Walk its trail in 3D in Agent Blockhall: find it with the tablet (search({query: "' + r.inscription.id + '"}) in its agent kit), hold its parcel, then followBack(): the trail shows as a tether from cube to cube.',
+    blockManifest: r.inscription.block != null ? MANIFEST + '?block=' + r.inscription.block + ' lists every transaction in the block it was made in, sorted and checked.' : null});
   const cmds = [
     {name: 'check', does: 'Check where an inscription came from and show it on the page (as the Check button does): a verdict, each check (what it compared, with which site, and whether they agree: true, false, or null when it could not be made), its facts and its trail, oldest first. Takes some seconds, longer for one that has moved many times.', args: [{name: 'id', does: 'inscription number (e.g. "#1000") or ID'}],
-      run: async ({id}) => { await check(id, true); return Object.assign({}, R, {note: UNTRUSTED}); }},
+      run: async ({id}) => { await check(id, true); return Object.assign({}, R, {seeIt: seeIt(R), note: UNTRUSTED}); }},
     {name: 'see', does: 'What the page shows now: the status line, and the verdict and checks of the inscription on the page.', args: [],
       run: () => ({status: $('status').textContent, checking: busy, inscription: R ? R.inscription : null, verdict: R ? R.verdict : null, checked: R ? R.checked : null})}
   ];
@@ -299,7 +308,9 @@
   api.help = async () => ['Provenance Check by bitmap22, always free: proof of where a Bitcoin inscription came from, every step checked.',
     'Every command returns a promise. Call with one object of named arguments, e.g. agent.check({id: "#1000"}).', UNTRUSTED, '', 'Commands:']
     .concat(cmds.map(c => '  agent.' + c.name + '(' + (c.args || []).map(d => d.name).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : '')))
-    .concat(['', 'Without a browser, the free Agent Blockhall MCP tool (io.github.bitmap22/agent-blockhall) has the same check as its provenanceCheck tool, and it can unpack inscriptions stored packed. The reader itself is window.ProvenanceCheck (and agent-blockhall-mcp/server/provenance.js).']).join('\n');
+    .concat(['', 'The bigger app: Agent Blockhall (' + GAME + '), a 3D Bitcoin block explorer world for players and agents. Walk an inscription\u2019s trail there as a tether from cube to cube (hold its parcel, then followBack()).',
+      'The Block Manifest (' + MANIFEST + '?block=...) lists every transaction in the block an inscription was made in, sorted and checked.',
+      'Without a browser, the free Agent Blockhall MCP tool (io.github.bitmap22/agent-blockhall) has the same check as its provenanceCheck tool (it can unpack inscriptions stored packed), and blockManifest too. The reader itself is window.ProvenanceCheck (and agent-blockhall-mcp/server/provenance.js).']).join('\n');
   api.commands = () => cmds.map(c => c.name);
   window.agent = api; window.provenanceAgent = api;
 
