@@ -9,7 +9,7 @@
    Needs Node.js 18 or newer. No other packages. It speaks MCP over stdio. */
 'use strict';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
 const GAME = PORTAL + 'block-cube.html';
@@ -95,6 +95,15 @@ const whole = fr => fr.every(v => Math.abs(v - Math.round(v)) < 1e-9);
 const dl = html => { const D = {}; for (const m of html.matchAll(/<dt>([^<]+)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/g)) D[m[1].trim()] = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(); return D; };
 const cut = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
 
+/* ---------- checked against a second, separate source ----------
+   Every block and inscription answer is checked against a second site run by someone else, and says whether they agree:
+   blocks by their hash (ordinals.com against mempool.space), inscriptions by the block they were made in (ordinals.com
+   against the reveal transaction on mempool.space), the newest block against ordinals.com. */
+async function hashFromMempool(h) { const x = await mpFetch('/api/block-height/' + h, 15000); return {hash: (await x.r.text()).trim(), site: x.site}; }
+async function hashFromOrd(h) { const x = await ordFetch('/r/blockhash/' + h, 15000); const t = (await x.r.text()).trim().replace(/^"|"$/g, ''); return {hash: t, site: x.site}; }
+const checked = (against, agrees, what) => ({against, agrees, what});
+const notChecked = why => ({against: null, agrees: null, what: why});
+
 /* ---------- the chain now ---------- */
 async function chain() {
   const [tip, blocks, next] = await Promise.all([
@@ -102,6 +111,9 @@ async function chain() {
     mpJson('/api/v1/blocks', 15000),
     mpJson('/api/v1/fees/mempool-blocks', 15000)]);
   const halving = (Math.floor(tip / 210000) + 1) * 210000;
+  let check;
+  try { const x = await ordFetch('/r/blockheight', 12000); const o = +(await x.r.text()).trim(); check = checked(x.site, Math.abs(o - tip) <= 1, 'newest block there: ' + o + (o === tip ? '' : Math.abs(o - tip) === 1 ? ' (one apart while a new block spreads)' : '')); }
+  catch (e) { check = notChecked('the second site did not answer'); }
   return {
     newestBlock: tip,
     lastMined: (blocks.j || []).slice(0, 6).map(b => ({height: b.height, time: iso(b.timestamp), transactions: b.tx_count, sizeMB: +(b.size / 1e6).toFixed(2),
@@ -111,6 +123,7 @@ async function chain() {
       lowestFee: b.feeRange && b.feeRange.length ? +r1(b.feeRange[0]) : null, medianFee: b.medianFee != null ? +r1(b.medianFee) : null})),
     feeUnit: 'sat/vB',
     nextHalving: {block: halving, blocksToGo: halving - tip},
+    checked: check,
     sources: [...new Set([blocks.site, next.site])]
   };
 }
@@ -205,6 +218,9 @@ async function block({height, from = 0, limit = 100}) {
   let info = null, src = null;
   try { const x = await ordJson('/r/blockinfo/' + height, 15000); info = x.j; src = x.site; } catch (e) {}
   if (!info) { const hash = (await (await mpFetch('/api/block-height/' + height, 15000)).r.text()).trim(); const x = await mpJson('/api/block/' + hash, 15000); info = {hash: x.j.id, height: x.j.height, timestamp: x.j.timestamp, transaction_count: x.j.tx_count, total_size: x.j.size, total_weight: x.j.weight}; src = x.site; }
+  let check;
+  try { const second = /ordinals|unisat|ordiscan|ordinalswallet|xverse/.test(src) ? await hashFromMempool(height) : await hashFromOrd(height); check = checked(second.site, second.hash === info.hash, 'block hash'); }
+  catch (e) { check = notChecked('the second site did not answer'); }
   limit = Math.max(1, Math.min(500, +limit || 100)); from = Math.max(0, +from || 0);
   let ins;
   try { const ids = await blockInscriptions(height), txs = new Set(ids.map(i => i.slice(0, 64))); ins = {count: ids.length, inTransactions: txs.size, from, ids: ids.slice(from, from + limit), more: from + limit < ids.length}; }
@@ -213,6 +229,7 @@ async function block({height, from = 0, limit = 100}) {
     block: height, bitmap: height + '.bitmap', hash: info.hash, time: iso(info.timestamp), transactions: info.transaction_count,
     sizeMB: info.total_size != null ? +(info.total_size / 1e6).toFixed(2) : null,
     inscriptions: ins,
+    checked: check,
     seeIt: 'Walk into this block in Agent Blockhall (' + GAME + '): its kit\'s block({height: ' + height + '}) or walkIn({height: ' + height + '}). The game also sorts each transaction by kind (images, text, BRC-20, runes and more).',
     sources: [src, ORD_LIST]
   };
@@ -241,6 +258,7 @@ async function inscription({id}) {
     sat: j.sat, satpoint: j.satpoint, owner: j.address || null, charms: j.charms || [], delegate: j.delegate || null,
     parents: par && par.ids ? par.ids : [], children: kids && kids.ids ? {first: kids.ids.slice(0, 20), onFirstPage: kids.ids.length, more: !!kids.more} : {onFirstPage: 0, more: false},
     content: 'https://ordinals.com/content/' + iid,
+    checked: await (async () => { try { const x = await mpJson('/api/tx/' + iid.slice(0, 64), 15000), st = x.j.status || {}; return checked(x.site, !!st.confirmed && st.block_height === j.height, 'the block it was made in (its reveal transaction)'); } catch (e) { return notChecked('the second site did not answer'); } })(),
     seeIt: 'In Agent Blockhall (' + GAME + '), search({query: "' + iid + '"}) then go() takes you to the parcel it was made in.',
     sources: [x.site]
   };
@@ -335,7 +353,7 @@ function about() {
     what: 'A 3D Bitcoin block explorer world for players and agents. Outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room with a big screen, a rare sats board, a jukebox and more.',
     open: GAME, portal: PORTAL, forAgents: PORTAL + 'llms.txt',
     inTheBrowser: 'Open the page and call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named cube_*. You play by the same rules as a player (walking speed, walls, the same buttons), people see you marked as an AI agent, and you can never wipe or delete anything.',
-    thisTool: 'This tool gives the catalogue without a browser: chain, feeAdvice, block, inscription, children, followBack, search and rareSats. Everything comes free from public sites (mempool.space and its copies, ordpool.space, ordinals.com and its back-ups), asked gently: at most 30 at once, then 6 a second per site, resting any site that asks us to slow down.'
+    thisTool: 'This tool gives the catalogue without a browser: chain, feeAdvice, block, inscription, children, followBack, search and rareSats. feeAdvice keeps score of itself; chain, block and inscription answers are each checked against a second, separate site (checked.agrees). Everything comes free from public sites (mempool.space and its copies, ordpool.space, ordinals.com and its back-ups), asked gently: at most 30 at once, then 6 a second per site, resting any site that asks us to slow down.'
   };
 }
 
@@ -356,7 +374,7 @@ const byName = new Map(TOOLS.map(t => [t.name, t]));
 
 /* ---------- MCP over stdio (JSON-RPC 2.0, one message per line) ---------- */
 const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
-const INSTRUCTIONS = 'Agent Blockhall\'s catalogue of Bitcoin, always free. Start with chain or search. feeAdvice keeps score of itself. Inscriptions come from ordinals.com and its back-ups; fees and transactions from mempool.space and its copies. ' + UNTRUSTED + ' For the full 3D world (walking the halls, the common room, crews), open ' + GAME + ' in a browser.';
+const INSTRUCTIONS = 'Agent Blockhall\'s catalogue of Bitcoin, always free. Start with chain or search. feeAdvice keeps score of itself, and chain, block and inscription answers say whether a second, separate site agrees (checked). Inscriptions come from ordinals.com and its back-ups; fees and transactions from mempool.space and its copies. ' + UNTRUSTED + ' For the full 3D world (walking the halls, the common room, crews), open ' + GAME + ' in a browser.';
 function send(msg) { process.stdout.write(JSON.stringify(msg) + '\n'); }
 const reply = (id, result) => send({jsonrpc: '2.0', id, result});
 const fail = (id, code, message) => send({jsonrpc: '2.0', id, error: {code, message}});
