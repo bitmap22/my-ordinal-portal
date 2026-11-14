@@ -1788,18 +1788,18 @@ function mdlParse(bytes) {
 // Magics (COLOR= and red, green, blue, alpha in the header for the whole part; a face whose bit 15 is 0 has its own red, green, blue
 // in bits 0-4, 5-9 and 10-14) and VisCAM / SolidView (bit 15 is 1: blue, green, red in bits 0-4, 5-9 and 10-14). A face whose two
 // attribute bytes are 0, as in any plain STL, has the part's colour. At most 300,000 triangles, as for a glTF model.
-function stlTris(u) {
+async function stlTris(u) {
   const dv = new DataView(u.buffer, u.byteOffset, u.byteLength), n0 = u.length >= 84 ? dv.getUint32(80, true) : 0, exact = n0 > 0 && 84 + 50 * n0 === u.length;
   const head = String.fromCharCode(...u.subarray(0, Math.min(80, u.length))), base = [1, 1, 1, 1];
   let V = null, A = null, nt = 0, magics = false;
-  const bin = () => {
+  const bin = async () => {
     nt = Math.min(n0, Math.floor((u.length - 84) / 50)); if (!(nt > 0) || nt > 3e5) return false;
     const ci = head.indexOf('COLOR='); if (ci >= 0 && ci + 10 <= 80) { magics = true; for (let a = 0; a < 4; a++) base[a] = u[ci + 6 + a] / 255; }
     V = new Float32Array(nt * 9); A = new Uint16Array(nt);
-    for (let t = 0; t < nt; t++) { const o = 84 + t * 50 + 12; for (let q = 0; q < 9; q++) V[t * 9 + q] = dv.getFloat32(o + q * 4, true); A[t] = dv.getUint16(o + 36, true); }
+    for (let t = 0; t < nt; t++) { if (t && !(t % 10000)) await new Promise(r => setTimeout(r)); const o = 84 + t * 50 + 12; for (let q = 0; q < 9; q++) V[t * 9 + q] = dv.getFloat32(o + q * 4, true); A[t] = dv.getUint16(o + 36, true); }
     return true;
   };
-  if (exact || !/^\s*solid\b/i.test(head)) { if (u.length < 84 || !bin()) return null; }
+  if (exact || !/^\s*solid\b/i.test(head)) { if (u.length < 84 || !(await bin())) return null; }
   else {
     const L = [];
     for (const m of new TextDecoder().decode(u).matchAll(/outer\s+loop([\s\S]*?)endloop/gi)) {
@@ -1807,24 +1807,28 @@ function stlTris(u) {
       for (let q = 1; q + 1 < P.length; q++) L.push(...P[0], ...P[q], ...P[q + 1]);
       if (L.length > 27e5) return null;
     }
-    if (L.length) { V = Float32Array.from(L); nt = L.length / 9; } else if (!(u.length >= 84 && bin())) return null;
+    if (L.length) { V = Float32Array.from(L); nt = L.length / 9; } else if (!(u.length >= 84 && await bin())) return null;
   }
-  const p = new Float32Array(nt * 9), n = new Float32Array(nt * 9), uv = new Float32Array(nt * 6), k = new Float32Array(nt * 12), lo = [1e30, 1e30, 1e30], hi = [-1e30, -1e30, -1e30];
-  let m = 0;
+  const p = new Float32Array(nt * 9), n = new Float32Array(nt * 9), uv = new Float32Array(nt * 6), k = new Float32Array(nt * 12);
+  let m = 0, lx = 1e30, ly = 1e30, lz = 1e30, hx = -1e30, hy = -1e30, hz = -1e30;
   for (let t = 0; t < nt; t++) {
-    const b = t * 9; let ok = true; for (let q = 0; q < 9; q++) if (!isFinite(V[b + q])) { ok = false; break; } if (!ok) continue;
-    const w = []; for (let c = 0; c < 3; c++) w.push(V[b + c * 3], V[b + c * 3 + 2], -V[b + c * 3 + 1]);   // (x, y, z) to (x, z, -y): Z up becomes Y up
-    const e1 = [w[3] - w[0], w[4] - w[1], w[5] - w[2]], e2 = [w[6] - w[0], w[7] - w[1], w[8] - w[2]];
-    let f = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]; const fl = Math.hypot(...f) || 1; f = f.map(e => e / fl);
-    const a = A ? A[t] : 0; let col = base;
-    if (a && magics && !(a & 0x8000)) col = [(a & 31) / 31, (a >> 5 & 31) / 31, (a >> 10 & 31) / 31, 1];
-    else if (a && !magics && (a & 0x8000)) col = [(a >> 10 & 31) / 31, (a >> 5 & 31) / 31, (a & 31) / 31, 1];
-    for (let c = 0; c < 3; c++) {
-      for (let x = 0; x < 3; x++) { const v = w[c * 3 + x]; p[m * 9 + c * 3 + x] = v; n[m * 9 + c * 3 + x] = f[x]; if (v < lo[x]) lo[x] = v; if (v > hi[x]) hi[x] = v; }
-      for (let x = 0; x < 4; x++) k[m * 12 + c * 4 + x] = col[x];
-    }
+    if (t && !(t % 10000)) await new Promise(r => setTimeout(r));   // (a short rest every 10,000 triangles, so nothing else has to wait)
+    const b = t * 9, x0 = V[b], y0 = V[b + 2], z0 = -V[b + 1], x1 = V[b + 3], y1 = V[b + 5], z1 = -V[b + 4], x2 = V[b + 6], y2 = V[b + 8], z2 = -V[b + 7];   // (x, y, z) to (x, z, -y): Z up becomes Y up
+    if (!isFinite(x0 + y0 + z0 + x1 + y1 + z1 + x2 + y2 + z2)) continue;
+    const ax = x1 - x0, ay = y1 - y0, az = z1 - z0, bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
+    let fx = ay * bz - az * by, fy = az * bx - ax * bz, fz = ax * by - ay * bx; const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+    const a = A ? A[t] : 0; let cr = base[0], cg = base[1], cb = base[2], ca = base[3];
+    if (a && magics && !(a & 0x8000)) { cr = (a & 31) / 31; cg = (a >> 5 & 31) / 31; cb = (a >> 10 & 31) / 31; ca = 1; }
+    else if (a && !magics && (a & 0x8000)) { cr = (a >> 10 & 31) / 31; cg = (a >> 5 & 31) / 31; cb = (a & 31) / 31; ca = 1; }
+    const o = m * 9; p[o] = x0; p[o + 1] = y0; p[o + 2] = z0; p[o + 3] = x1; p[o + 4] = y1; p[o + 5] = z1; p[o + 6] = x2; p[o + 7] = y2; p[o + 8] = z2;
+    for (let c = 0; c < 9; c += 3) { n[o + c] = fx; n[o + c + 1] = fy; n[o + c + 2] = fz; }
+    const q = m * 12; for (let c = 0; c < 12; c += 4) { k[q + c] = cr; k[q + c + 1] = cg; k[q + c + 2] = cb; k[q + c + 3] = ca; }
+    if (x0 < lx) lx = x0; if (x1 < lx) lx = x1; if (x2 < lx) lx = x2; if (x0 > hx) hx = x0; if (x1 > hx) hx = x1; if (x2 > hx) hx = x2;
+    if (y0 < ly) ly = y0; if (y1 < ly) ly = y1; if (y2 < ly) ly = y2; if (y0 > hy) hy = y0; if (y1 > hy) hy = y1; if (y2 > hy) hy = y2;
+    if (z0 < lz) lz = z0; if (z1 < lz) lz = z1; if (z2 < lz) lz = z2; if (z0 > hz) hz = z0; if (z1 > hz) hz = z1; if (z2 > hz) hz = z2;
     m++;
   }
+  const lo = [lx, ly, lz], hi = [hx, hy, hz];
   if (!m || !(hi[0] >= lo[0])) return null;
   return {groups: new Map([[-1, {p: p.subarray(0, m * 9), n: n.subarray(0, m * 9), u: uv.subarray(0, m * 6), k: k.subarray(0, m * 12)}]]), lo, hi};
 }
@@ -1905,7 +1909,7 @@ function mdlPng(bytes, S = 256, o) { const p = mdl.busy.then(() => mdlDraw(bytes
 async function mdlDraw(bytes, S, o = {}) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), gltf = u8.length >= 4 && new DataView(u8.buffer, u8.byteOffset, 4).getUint32(0, true) === 0x46546c67 || /^\s*\{/.test(String.fromCharCode(...u8.subarray(0, 16)));
   const M = gltf ? mdlParse(bytes) : {j: {}}; if (!M) return null;
-  let T; if (gltf) T = mdlTris(M); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = stlTris(u8); mdl.stl = T ? {b: bytes, T} : null; }
+  let T; if (gltf) T = mdlTris(M); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = await stlTris(u8); mdl.stl = T ? {b: bytes, T} : null; }
   if (!T) return null;
   const mats = M.j.materials || [], texs = new Map();
   for (const key of T.groups.keys()) { const m = mats[key], ti = m && m.pbrMetallicRoughness && m.pbrMetallicRoughness.baseColorTexture; if (ti && ti.index != null && !texs.has(ti.index)) texs.set(ti.index, await mdlTex(M, ti.index)); }
@@ -1932,7 +1936,7 @@ async function mdlDraw(bytes, S, o = {}) {
   for (const key of order) {
     const G = T.groups.get(key), m = mats[key] || {}, pb = m.pbrMetallicRoughness || {}, bc = pb.baseColorFactor || [1, 1, 1, 1], blend = m.alphaMode === 'BLEND';
     const ti = pb.baseColorTexture && pb.baseColorTexture.index, img = ti != null ? texs.get(ti) : null;
-    for (const [a, arr, n] of [['p', G.p, 3], ['n', G.n, 3], ['u', G.u, 2], ['k', G.k, 4]]) { if (L[a] < 0) continue; const b = g.createBuffer(); bufs.push(b); g.bindBuffer(g.ARRAY_BUFFER, b); g.bufferData(g.ARRAY_BUFFER, new Float32Array(arr), g.STATIC_DRAW); g.enableVertexAttribArray(L[a]); g.vertexAttribPointer(L[a], n, g.FLOAT, false, 0, 0); }
+    for (const [a, arr, n] of [['p', G.p, 3], ['n', G.n, 3], ['u', G.u, 2], ['k', G.k, 4]]) { if (L[a] < 0) continue; const b = g.createBuffer(); bufs.push(b); g.bindBuffer(g.ARRAY_BUFFER, b); g.bufferData(g.ARRAY_BUFFER, arr instanceof Float32Array ? arr : new Float32Array(arr), g.STATIC_DRAW); g.enableVertexAttribArray(L[a]); g.vertexAttribPointer(L[a], n, g.FLOAT, false, 0, 0); }
     g.uniform4fv(L.col, bc); g.uniform3fv(L.em, m.emissiveTexture ? [0, 0, 0] : m.emissiveFactor || [0, 0, 0]); g.uniform1f(L.cut, m.alphaMode === 'MASK' ? (m.alphaCutoff == null ? .5 : m.alphaCutoff) : 0);
     if (img) { const t = g.createTexture(); tex.push(t); g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, t); g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, img);
       for (const [p, v] of [[g.TEXTURE_MIN_FILTER, g.LINEAR], [g.TEXTURE_MAG_FILTER, g.LINEAR], [g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE], [g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE]]) g.texParameteri(g.TEXTURE_2D, p, v); g.uniform1i(L.tx, 0); g.uniform1f(L.ut, 1); }
@@ -7379,7 +7383,8 @@ const vwEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;
 function vwFrame(attrs) { const f = document.createElement('iframe'); for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
 function vwStl(it) {
   const cv = document.createElement('canvas'), w = document.createElement('div'); cv.className = 'stl'; w.className = 'wait'; w.textContent = 'DRAWING ITS 3D MODEL\u2026';
-  $vwc.append(w, cv); it.turn = it.turn || {yaw: 0, pitch: 0};
+  const hn = document.createElement('div'); hn.className = 'vh'; hn.textContent = 'Drag it to turn it';
+  $vwc.append(w, cv, hn); it.turn = it.turn || {yaw: 0, pitch: 0};
   const draw = it.draw = async () => {
     if (it.busy) { it.again = true; return; } it.busy = true;
     try { const b = await stlBytes(it.id); if (!vw || vw.items[vw.i] !== it) return; const ok = b && await mdlPng(b, 768, {yaw: it.turn.yaw, pitch: it.turn.pitch, to: cv});
@@ -7388,7 +7393,7 @@ function vwStl(it) {
   };
   let d = null;
   cv.onpointerdown = e => { d = {x: e.clientX, y: e.clientY}; try { cv.setPointerCapture(e.pointerId); } catch (er) {} cv.style.cursor = 'grabbing'; };
-  cv.onpointermove = e => { if (!d) return; it.turn.yaw -= (e.clientX - d.x) * .01; it.turn.pitch = Math.max(-1.6, Math.min(1.6, it.turn.pitch + (e.clientY - d.y) * .01)); d = {x: e.clientX, y: e.clientY}; draw(); };
+  cv.onpointermove = e => { if (!d) return; hn.remove(); it.turn.yaw -= (e.clientX - d.x) * .01; it.turn.pitch = Math.max(-1.6, Math.min(1.6, it.turn.pitch + (e.clientY - d.y) * .01)); d = {x: e.clientX, y: e.clientY}; draw(); };
   cv.onpointerup = cv.onpointercancel = () => { d = null; cv.style.cursor = ''; };
   draw();
 }
