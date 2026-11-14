@@ -34,7 +34,7 @@
     [new RegExp('^block\\s+([\\d,]+)\\s+(?:has|had|holds|contains)\\s+([\\d,]+)\\s+inscriptions?$'), m => ({kind: 'block.inscriptions', subject: num(m[1]), value: num(m[2])})],
     [new RegExp('^block\\s+([\\d,]+)\\s+(?:has|had|holds|contains)\\s+([\\d,]+)\\s+(?:transactions?|txs?)$'), m => ({kind: 'block.transactions', subject: num(m[1]), value: num(m[2])})],
     [new RegExp('^block\\s+([\\d,]+)(?:\'s)?\\s+hash\\s+(?:is\\s+)?([0-9a-f]{64})$'), m => ({kind: 'block.hash', subject: num(m[1]), value: m[2]})],
-    [new RegExp('^block\\s+([\\d,]+)\\s+(?:paid|has|had|took|earned)\\s+([\\d,.]+)\\s*(sats?|btc)\\s+(?:in\\s+)?fees?$'), m => ({kind: 'block.fees', subject: num(m[1]), value: /btc/.test(m[3]) ? Math.round(num(m[2]) * 1e8) : num(m[2])})],
+    [new RegExp('^block\\s+([\\d,]+)\\s+(?:paid|has|had|took|earned)\\s+([\\d,.]+)\\s*(sats?|btc)\\s+(?:in\\s+)?fees?$'), m => ({kind: 'block.fees', subject: num(m[1]), value: /btc/i.test(m[3]) ? Math.round(num(m[2]) * 1e8) : num(m[2])})],
     [new RegExp('^block\\s+([\\d,]+)\\s+(?:was\\s+)?mined\\s+by\\s+(.{2,60})$'), m => ({kind: 'block.miner', subject: num(m[1]), value: m[2].trim()})],
     [new RegExp('^(?:inscription\\s+)?' + ID + '\\s+(?:was\\s+)?(?:made|inscribed|created|minted)\\s+in\\s+block\\s+([\\d,]+)$'), m => ({kind: 'ins.block', subject: m[1], value: num(m[2])})],
     [new RegExp('^(?:inscription\\s+)?([0-9a-f]{64}i\\d+)\\s+is\\s+(?:inscription\\s+)?(?:number\\s+)?#?(-?[\\d,]+)$'), m => ({kind: 'ins.number', subject: m[1], value: num(m[2])})],
