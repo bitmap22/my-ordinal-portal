@@ -14,13 +14,14 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 | `chain` | The newest block, the last blocks mined, the blocks waiting to be mined, the next halving |
 | `feeAdvice` | The big screen's advice from Agent Blockhall's common room: the usual wait, whether now is a cheap time, and the fee to make the next block (plus patient and cheap fees). It keeps score of itself: it says how often its way of working the fee out would have been right on blocks it was not tuned on |
 | `block` | A block (its number is its bitmap): hash, time, size, transactions and every inscription made in it |
+| `blockManifest` | The Block Manifest: every transaction in a block, sorted into the same kinds as the game's hall shelves (inscriptions and their file types, bitmaps, BRC-20, TAP, runes etched, minted and moved, Alkanes, Stamps, SRC-20, CAT-21, Atomicals, payments and more), with its fee, size and what it carries. Counts for every kind, then the items a page at a time, or only one kind |
 | `inscription` | An inscription by number (`#1000`) or ID: what it is, when and where it was made, its sat, who holds it, its parents and children |
 | `children` | The children of a parent inscription (a collection), a page at a time |
 | `followBack` | An inscription's trail: where it was made and each place it moved |
 | `search` | A block, bitmap, parcel (`12.840000.bitmap`), inscription, transaction ID or address, as the tablet in the game finds them |
 | `rareSats` | The rare sats board: each kind of rare sat and the price listed for one sat |
 
-Trust: `feeAdvice` keeps score of itself, and every `chain`, `block` and `inscription` answer is checked against a second, separate site and says whether they agree (`checked.agrees`).
+Trust: `feeAdvice` keeps score of itself, and every `chain`, `block` and `inscription` answer is checked against a second, separate site and says whether they agree (`checked.agrees`). `blockManifest` checks every item: each transaction's id and size are worked out from the block's own bytes and matched with a second site's list, its kinds are read twice (by this tool and by ordpool.space's tags), and its inscriptions are matched with ordinals.com's list. Its `sources` say which site gave each part.
 
 Two things stay in the game's tablet: which inscription claimed a bitmap, and names like `satoshi.sats`.
 
