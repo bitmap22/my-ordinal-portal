@@ -3924,10 +3924,12 @@ function picTick(ts) {
 }
 function frame(ts) {
   if (document.hidden || cmPaintShown || crewAway) { paused = true; return; }   // (hidden, or resting while you are in Block Paint)
+  requestAnimationFrame(frame);   // (asked for first: an error while drawing one frame must never stop the game)
   picTick(ts);
-  const c0 = performance.now(); drawFrame(); PIC.cpu = performance.now() - c0;
-  requestAnimationFrame(frame);
+  const c0 = performance.now(); try { drawFrame(); } catch (e) { frameErr(e); } PIC.cpu = performance.now() - c0;
 }
+// an error while drawing a frame: kept for agents and for finding it (window.__bcFrameErr), told once in the console; the game goes on
+function frameErr(e) { const m = String(e && e.message || e).slice(0, 300), o = window.__bcFrameErr; window.__bcFrameErr = {at: new Date().toISOString(), error: m, times: (o && o.error === m ? o.times : 0) + 1}; if (frameErr.last !== m) { frameErr.last = m; console.error('frame:', e); } }
 // one whole frame, drawn now (the frame loop's own drawing; an agent's picture can ask for one when the browser gives no frames)
 let lastDrawn = 0;
 setInterval(() => { try { if (now() - lastDrawn > 1) { if (crew.on) crewSend(now()); tradeKeep(); } } catch (e) {} }, 1000);
@@ -12843,7 +12845,7 @@ function gdFrame(W, H, tn, dpr) {
 const CLUB = -5;
 const CL = {W: 18, L: 16, HT: 3.6, DOOR: 1.7};   // across, deep, ceiling height, door width
 const $ccl = document.getElementById('ccl');
-const cl = {mem: new Map(), par: new Map(), parBusy: new Set(), built: null, news: [], walOn: false, light: {m: 0, v: 0}, mu: {k: -1, t0: 0, v: 0}, show: {id: '', by: '', v: 0}, pulse: 0, cardK: ''};
+const cl = {pics: [], picAt: 0, mem: new Map(), par: new Map(), parBusy: new Set(), built: null, news: [], walOn: false, light: {m: 0, v: 0}, mu: {k: -1, t0: 0, v: 0}, show: {id: '', by: '', v: 0}, pulse: 0, cardK: ''};
 const clIn = () => !!(room && room.at && room.at.cl);
 const clShort = id => id ? id.slice(0, 6) + '…' + id.slice(-4) : '';
 // ---- which collection: the parent in your hands (on its pedestal in its gallery, or a parent you picked up anywhere) ----
@@ -13827,7 +13829,7 @@ function clFrame(W, H, tn, dpr) {
     if (s !== room.hov) { room.hov = s; $rl.textContent = s; $rl.classList.toggle('on', !!s); } $rl.classList.toggle('sip', true); }   // (in the club the words sit low: what you look at stays clear)
   const crewList = crew.on && crew.mates.size ? crewPose(tn, dt, VP, W, H) : (crew.hum = [], []); crewSend(tn); ownTick(VP);
   gdAskTick(performance.now()); clDartsTick(); clNewTick();
-  if (performance.now() - (cl.tvAt || 0) > 6000 && cl.pics.length) { cl.tvAt = performance.now(); cl.picAt++; clPaintTV0(); }
+  if (performance.now() - (cl.tvAt || 0) > 6000 && cl.pics && cl.pics.length) { cl.tvAt = performance.now(); cl.picAt++; clPaintTV0(); }
   const Lt = clLights(tn); clInst(B, tn);
   if (cl.snap) { cl.snap = false; try { const cvp = clSnapPass(B, W, H, Lt, tn, crewList); clPhotoShow(cvp, clPhotoWho()); } catch (e) { gdToast('the photo did not work this time'); } cl.snapT = 0; }
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
@@ -15083,7 +15085,8 @@ window.AgentKit = window.AgentKit || (() => {
       bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, wantsADeal: o.s ? dealsFor(o, 'deal').map(x => x.w.me ? 'you' : x.w.p) : undefined, notInterested: o.s ? dealsFor(o, 'no').map(x => x.w.me ? 'you' : x.w.p) : undefined, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
   }
   function state() {
-    const s = {page: 'Agent Blockhall', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
+    const s0 = window.__bcFrameErr;
+    const s = {frameError: s0 ? Object.assign({note: 'the game met an error while drawing and carried on'}, s0) : undefined, page: 'Agent Blockhall', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
     if (cmPaintShown) { s.where = 'Block Paint City (through the common room\'s warehouse door)'; s.blockPaint = 'you are in Block Paint City: paint({command: "see"}) sees it and paint({command: "help"}) lists its commands; leave() comes back to the common room'; }
     if (!inRoom()) { s.block = block(); s.parcelTypes = typeCounts(); const c = cardText(); if (c) s.card = {untrusted: c}; }
     else s.room = roomInfo();
