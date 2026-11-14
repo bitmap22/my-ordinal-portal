@@ -3854,22 +3854,25 @@ const CRED = {
   dg: {rows: [['DOGINALS', 58, 800, '#ffd36b'], ['made by apezord', 30, 700, '#f7efe3'], ['the first Doginal · block 4,609,723', 22, 600, '#cdbca3'], ['THE DOGINALS CODE · CLICK TO OPEN', 22, 700, '#ffb04a']],
     says: 'DOGINALS · made by apezord · the first Doginal · block 4,609,723', where: 'in the middle of the hall'}
 };
-// its plaque: two rows of tiles on each face of the stand's board, big enough to read from where you stand
-function labCred(x, y, k) {
-  const c = labCx, w = 512, h = 256, F = (wt, sz) => wt + ' ' + sz + 'px ui-monospace,Menlo,Consolas,monospace';
+// its plaque, painted whole and kept as two strips of the label sheet (so it fits in the room's share of the sheet): two rows of
+// tiles on each face of the stand's board, big enough to read from where you stand
+let credCv = null;
+function labCred(k, a, b) {
+  if (!credCv) { credCv = document.createElement('canvas'); credCv.width = 512; credCv.height = 256; }
+  const c = credCv.getContext('2d'), w = 512, h = 256, F = (wt, sz) => wt + ' ' + sz + 'px ui-monospace,Menlo,Consolas,monospace';
   const fit = (t, sz, wt) => { let f = sz; c.font = F(wt, f); while (f > 8 && c.measureText(t).width > w - 48) c.font = F(wt, --f); };
-  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#0d0805'; c.fillRect(x, y, w, h);
-  c.strokeStyle = '#ffc94a'; c.lineWidth = 8; c.strokeRect(x + 4, y + 4, w - 8, h - 8);
+  c.clearRect(0, 0, w, h); c.fillStyle = '#0d0805'; c.fillRect(0, 0, w, h);
+  c.strokeStyle = '#ffc94a'; c.lineWidth = 8; c.strokeRect(4, 4, w - 8, h - 8);
   c.textAlign = 'center'; c.textBaseline = 'middle';
-  CRED[k].rows.forEach(([t, sz, wt, col], i) => { const s = coarse ? t.replace('CLICK', 'TAP') : t; c.fillStyle = col; fit(s, sz, wt); c.fillText(s, x + w / 2, y + [58, 118, 164, 210][i]); });
-  c.restore();
+  CRED[k].rows.forEach(([t, sz, wt, col], i) => { const s = coarse ? t.replace('CLICK', 'TAP') : t; c.fillStyle = col; fit(s, sz, wt); c.fillText(s, w / 2, [58, 118, 164, 210][i]); });
+  for (const [[x, y], r] of [[a, 0], [b, 1]]) { labCx.clearRect(x, y, 512, 128); labCx.drawImage(credCv, 0, r * 128, 512, 128, x, y, 512, 128); }
 }
-// where its stand is, along the hall (block 0: 2.25 m in front of the case, toward the end you arrive at; else the middle)
-const credZ = R => R.credit && R.credit.k === 'gen' ? -R.L / 2 + 2.25 : -R.L / 2;
+// where its stand is, along the hall (block 0: 1.8 m in front of the case, toward the end you arrive at; else the middle)
+const credZ = R => R.credit && R.credit.k === 'gen' ? -R.L / 2 + 1.8 : -R.L / 2;
 function credHit(sx, sy) {
   const R = room && room.at; if (!R || !R.ready || !R.credit || R.common || R.gal) return -1;
   const ray = rmRay(sx, sy); if (!ray) return -1;
-  return rmHit([0, .95, R.z0 + credZ(R)], [.46, .25, .07], ray, 4.5);
+  return rmHit([0, .85, R.z0 + credZ(R)], [.37, .21, .07], ray, 4.5);
 }
 const credAim = (sx, sy) => room && room.at && room.at.credit && room.at.credit.k === 'dg' ? credHit(sx, sy) : -1;   // (only the Doginals plaque opens something)
 function credOpen() {
@@ -4120,10 +4123,10 @@ function rmFix(R) {
   }
   if (R.credit) {   // a credit plaque on a small black stand with a gold frame, on the hall's middle line: the same words on both faces
     const GD = LC('#ffc94a'), ST = LC('#15110c'), zs = credZ(R), c = R.credit;
-    box(0, .03, zs, .6, .06, .36, ST); box(0, .41, zs, .08, .72, .08, ST); box(0, .95, zs, .9, .48, .05, ST);
+    box(0, .03, zs, .5, .06, .3, ST); box(0, .35, zs, .07, .6, .07, ST); box(0, .85, zs, .72, .4, .05, ST);
     for (const sd of [-1, 1]) {
-      for (let r = 0; r < 2; r++) tiles(0, 1.05 - r * .2, zs + sd * .031, 0, sd, .2, c.x, c.y + r * 128, 128, 4);
-      const zf = zs + sd * .04; for (const yy of [1.162, .738]) box(0, yy, zf, .84, .016, .02, GD, 2); for (const sx of [-1, 1]) box(sx * .412, .95, zf, .016, .44, .02, GD, 2);
+      for (let r = 0; r < 2; r++) tiles(0, .93 - r * .16, zs + sd * .031, 0, sd, .16, c.rows[r][0], c.rows[r][1], 128, 4);
+      const zf = zs + sd * .04; for (const yy of [1.018, .682]) box(0, yy, zf, .68, .014, .02, GD, 2); for (const sx of [-1, 1]) box(sx * .333, .85, zf, .014, .35, .02, GD, 2);
     }
   }
   const G = R.gen;
@@ -4204,6 +4207,8 @@ function* rmLabelsG(R) {
   for (const end of ['back', 'front']) { const [x, y] = place(512, 128); R.signs[end] = {x, y}; }
   { const [x, y] = place(512, 128); R.title = {x, y}; labPaint(x, y, 512, 128, hallName(R.h, R.h1), '#f0c75e', null, fmt(R.B.count || R.B.txs.length) + ((R.B.count || R.B.txs.length) === 1 ? ' transaction' : ' transactions'), heatCol(R.B.fees ? heatOf(medianRate(R.B.txs)) : null)); }
   for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
+  R.credit = null;   // (a credit plaque: block 0's, for who made Dogecoin; the first Doginal's hall's, for who made Doginals: two strips, after the shelf signs)
+  { const k = R.h === 0 ? 'gen' : hallHas(R, DG0_H) ? 'dg' : null; if (k) { const a = place(512, 128), b = place(512, 128); R.credit = {k, rows: [a, b]}; labCred(k, a, b); } }
   yield;
   px = LT;
   R.facts = rmFacts(R.B);
@@ -4225,8 +4230,6 @@ function* rmLabelsG(R) {
     g.plq = {x: LT - 512, y: y0 + 768}; labPaint(LT - 512, y0 + 768, 512, 128, '88 DOGE · THE FIRST REWARD', '#ffd36b', null, 'can never be spent: it was never added to the coins that can be', '#ffd36b');
     tribPaint(R);
   }
-  R.credit = null;   // (a credit plaque: block 0's, for who made Dogecoin; the first Doginal's hall's, for who made Doginals)
-  { const k = R.h === 0 ? 'gen' : hallHas(R, DG0_H) ? 'dg' : null; if (k) { px = LT; const [x, y] = place(512, 256); R.credit = {k, x, y}; labCred(x, y, k); } }
   px = LT;
   R.cs = rmCaseSigns(P);
   const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (lim / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (lim / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (lim / 320)) * 80 <= left ? 320 : 256;
@@ -4448,7 +4451,7 @@ function rmStep(dt) {
     if (dd < rad) { const k = dd > 1e-4 ? rad / dd : 0; nx = k ? dx * k : 0; nz = zc + (k ? dz * k : rad); }
   }
   if (C && C.ready && C.credit) {   // (a credit plaque's stand: you walk round it)
-    const zs = C.z0 + credZ(C), rad = .55, dx = nx, dz = nz - zs, dd = Math.hypot(dx, dz);
+    const zs = C.z0 + credZ(C), rad = .45, dx = nx, dz = nz - zs, dd = Math.hypot(dx, dz);
     if (dd < rad) { const k = dd > 1e-4 ? rad / dd : 0; nx = k ? dx * k : 0; nz = zs + (k ? dz * k : rad); }
   }
   if (C && C.ready) {
