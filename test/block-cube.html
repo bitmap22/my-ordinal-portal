@@ -6793,6 +6793,7 @@ function cmGot(ev, id) {   // from your crew (or from before you joined): id is 
   if (ev.k === 'screen' && ev.m === 'live') { cm.media = {k: 'live'}; cmScreen(); }
   if (ev.k === 'trade') tradeGot(ev, id);
   if (ev.k === 'deal') dealGot(ev, id);
+  if (ev.k === 'hi' && id !== crew.me) tradeHi();
   if (ev.k === 'music' && (ev.m === 'off' || (ev.m === 'tune' && CM_TUNES[ev.v | 0]))) { cm.music = {k: ev.m, v: ev.m === 'tune' ? ev.v | 0 : ev.v, t0: +ev.t0 || Date.now()}; cmMusic(); }
 }
 // the page laid over the screen: YouTube (from the time it was started, so everyone is at the same moment), or an inscription
@@ -8740,6 +8741,9 @@ function tradeSync(force) {
   if (ok) cmShare(Object.assign({k: 'trade', to: m.to || '', w: m.w === 'sale' ? 'sale' : 'trade'}, m.w === 'sale' && m.pr ? {pr: m.pr} : {}, (({key, ...x}) => x)(m.s))); else cmShare({k: 'trade', off: 1});
 }
 // a crewmate's block or signal (or from before you joined)
+// a crewmate's game has just started in the crew (joined, reloaded, or a phone back from Block Paint): what is on your base,
+// and your deal answers, sent again for it (a burst of them answered once)
+function tradeHi() { if (trade.hiT) return; trade.hiT = setTimeout(() => { trade.hiT = 0; tradeSync(true); if (trade.myDeals.size) dealSend(); }, 800); }
 function tradeGot(ev, id) {
   if (typeof id !== 'string' || !id || id === crew.me) return;
   if (ev.off) { trade.mates.delete(id); trade.at = 0; return; }
@@ -11186,7 +11190,7 @@ addEventListener('message', e => {
   if (e.source !== parent || parent === window) return;
   const m = e.data; if (!m || m.app !== 'blockcube-host') return;
   if (m.type === 'page') { if (!crew.page) { crew.page = true; document.body.classList.add('crewpage'); } toPage({type: 'hello'}); return; }
-  if (m.type === 'ready') { crew.on = true; document.body.classList.add('crewon'); crew.me = typeof (m.me && m.me.id) === 'string' ? m.me.id : ''; crew.myName = cleanS(m.me && m.me.name, 20); const self = crew.mates.get(crew.me); if (self) { crew.look = self.look; mateGone(crew.me); } if (!crew.inYet) { crew.inYet = true; crewIn(); } return; }
+  if (m.type === 'ready') { crew.on = true; document.body.classList.add('crewon'); crew.me = typeof (m.me && m.me.id) === 'string' ? m.me.id : ''; crew.myName = cleanS(m.me && m.me.name, 20); const self = crew.mates.get(crew.me); if (self) { crew.look = self.look; mateGone(crew.me); } if (!crew.inYet) { crew.inYet = true; crewIn(); setTimeout(() => { if (crew.on) cmShare({k: 'hi'}); }, 1500); } return; }
   if (m.type === 'look') { const l = chLook(m.look); if (m.id === crew.me || m.id === 'me') crew.look = l; else mate(m.id).look = l; return; }
   if (m.type === 'state') {
     if (!crew.on || m.id === crew.me || typeof m.id !== 'string') return;
