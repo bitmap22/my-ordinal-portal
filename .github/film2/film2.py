@@ -11,7 +11,7 @@ DOGEF = 'true' if DOGE and SC in ('forum', 'common2') else 'false'
 VT = open(os.path.join(HERE, 'vt.js')).read()
 HIDE = "const DOGEFORUM = " + DOGEF + "; addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '[data-agentbox]{display:none!important}' + (DOGEFORUM ? '#rl{display:none!important}' : ''); document.head.appendChild(s); });"
 NAMES = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia']; TONES = [0, 3, 1, 1, 0, 0, 4, 1, 1, 1]
-N = {'title': 240, 'next': 240, 'help': 150, 'hall': 210, 'hold': 210, 'genesis': 240, 'ins0': 180, 'common': 300, 'common2': 300, 'forum': 420}[SC]
+N = {'title': 240, 'next': 240, 'help': 150, 'hall': 210, 'hold': 210, 'genesis': 240, 'ins0': 180, 'common': 300, 'common2': 300, 'forum': 420, 'gallery': 210}[SC]
 if DOGE and SC == 'forum': N = 270
 LOG = []
 def log(*a):
@@ -53,8 +53,26 @@ async def main():
             await A(f"agent.block({{height: {HT}}})", 20000)
         elif SC == 'next':
             await A("agent.live()", 8000); await A("agent.view({name: 'fees'})", 10000)
-        elif SC in ('hall', 'hold'):
-            await A(f"agent.block({{height: {HT}}})", 10000); await A(f"agent.walkIn({{height: {HT}}})", 30000); await roomReady()
+        elif DOGE and SC == 'hall':   # (a full hall of blocks, walked from its first block down its length)
+            await A(f"agent.block({{height: {HT - 45}}})", 10000); r = await A(f"agent.walkIn({{height: {HT - 45}}})", 30000); await roomReady()
+            m = re.search(r'hall of blocks ([0-9,]+) to ([0-9,]+)', r or '')
+            if m:
+                a0 = int(m.group(1).replace(',', '')); await A(f"agent.walkIn({{height: {a0}}})", 30000); await roomReady()
+            log('at', await g.evaluate("JSON.stringify({x: room.p.x, z: room.p.z, yaw: room.p.yaw})"))
+        elif SC == 'gallery':   # (a collection's own room, found by name on the tablet, as a player does)
+            try: rows = json.loads(await g.evaluate("agent.search ? (async () => JSON.stringify((await agent.search({query: '" + os.environ.get('COLLECTION', 'Dogebirds') + "'})).results))() : '[]'"))
+            except Exception as e: rows = []; log('search rows failed', e)
+            for row in rows: log('result', row.get('n'), str(row.get('untrusted'))[:160])
+            pick = [i for i, row in enumerate(rows) if 'GALLERY' in str(row.get('untrusted', '')).upper()]
+            log('gallery pick', pick[:3])
+            if pick:
+                await A(f"agent.go({{n: {pick[0]}}})", 5000); await roomReady()
+                for i in range(40):
+                    gi = await g.evaluate("(() => { try { const G = room.at.gal; return G ? {name: G.name, n: G.n, loaded: G.loaded, done: G.done} : null; } catch (e) { return null; } })()")
+                    if gi and gi.get('n') and gi.get('loaded', 0) >= min(gi['n'], 60): break
+                    await pg.wait_for_timeout(3000)
+                log('gallery', gi)
+                await A("agent.clearArrow()", 1500); await pg.wait_for_timeout(15000)
             if SC == 'hold':
                 for ty in (('DRC-20', 'dunes', 'text', 'inscriptions') if DOGE else ('BRC-20', 'runes', 'text', 'inscriptions')):
                     r = await A("agent.hold({type: '" + ty + "'})", 20000)
@@ -96,7 +114,7 @@ async def main():
             await A("agent.turn({pitch: -12})", 2000)
             st['states'] = states
         # ---- film: the page's clocks move one frame at a time from here
-        if DOGE:
+        if DOGE and SC in ('common2', 'forum'):
             async def hold(route):
                 h = route.request.url.split('/')[2] if '://' in route.request.url else ''
                 if route.request.resource_type in ('fetch', 'xhr') and h not in ('127.0.0.1:8000', 'bitmap22.github.io'): await route.abort()
@@ -129,6 +147,8 @@ async def main():
                 if f > 100: await g.evaluate("(() => { const d = document.querySelector('#cinf>div'); if (d) d.scrollTop += 3; })()")
             elif SC == 'hall':
                 if f == 15: await go("agent.walk({direction: 'forward', seconds: 6})")
+            elif SC == 'gallery':
+                if f == 15: await go("agent.walk({direction: 'forward', seconds: 5.5})")
             elif SC in ('genesis', 'ins0'):
                 z0, z1 = st['z']; k = f / (N - 1); k = k * k * (3 - 2 * k)
                 await g.evaluate("z => { room.p.z = z; }", z0 + (z1 - z0) * k)
