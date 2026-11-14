@@ -1832,6 +1832,50 @@ async function stlTris(u) {
   if (!m || !(hi[0] >= lo[0])) return null;
   return {groups: new Map([[-1, {p: p.subarray(0, m * 9), n: n.subarray(0, m * 9), u: uv.subarray(0, m * 6), k: k.subarray(0, m * 12)}]]), lo, hi};
 }
+// every 3D model is drawn from at most MDL_MAXT triangles, so a big one never pauses the game. A bigger model is drawn from a lighter
+// copy: its corners that fall in the same small cube of space are joined into one, at their middle, and a triangle left with no
+// size goes. Its shape stays (only details smaller than one of those cubes are lost); each corner keeps its own normal, colour and
+// texture place. The cubes are made as small as they can be while the copy stays within MDL_MAXT.
+const MDL_MAXT = 20000;
+async function mdlShrink(T) {
+  if (!T) return T;
+  let tot = 0; for (const G of T.groups.values()) tot += G.p.length / 9; if (tot <= MDL_MAXT) return T;
+  const ex = Math.max(T.hi[0] - T.lo[0], T.hi[1] - T.lo[1], T.hi[2] - T.lo[2]) || 1, rest = () => new Promise(r => setTimeout(r));
+  const cluster = async (R, build) => {   // (each corner's cube; with build, the lighter copy itself)
+    const inv = R / ex, id = new Map(), S = []; let kept = 0, v = 0; const out = new Map();
+    for (const [key, G] of T.groups) {
+      const P = G.p, nv = P.length / 3, cid = new Int32Array(nv);
+      for (let i = 0; i < nv; i++) {
+        if (!(++v % 15000)) await rest();
+        const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2], k = Math.min(R - 1, Math.floor((x - T.lo[0]) * inv)) + R * (Math.min(R - 1, Math.floor((y - T.lo[1]) * inv)) + R * Math.min(R - 1, Math.floor((z - T.lo[2]) * inv)));
+        let c = id.get(k); if (c === undefined) { c = id.size; id.set(k, c); if (build) S.push(0, 0, 0, 0); }
+        if (build) { S[c * 4] += x; S[c * 4 + 1] += y; S[c * 4 + 2] += z; S[c * 4 + 3]++; }
+        cid[i] = c;
+      }
+      const keep = [];
+      for (let t = 0; t < nv; t += 3) { const a = cid[t], b = cid[t + 1], c = cid[t + 2]; if (a !== b && b !== c && a !== c) { kept++; if (build) keep.push(t); } }
+      if (build) out.set(key, {cid, keep});
+    }
+    if (!build) return kept;
+    const groups = new Map();
+    for (const [key, G] of T.groups) {
+      const {cid, keep} = out.get(key), m = keep.length; if (!m) continue;
+      const p = new Float32Array(m * 9), n = new Float32Array(m * 9), u = new Float32Array(m * 6), kk = new Float32Array(m * 12);
+      for (let j = 0; j < m; j++) for (let c = 0; c < 3; c++) {
+        const i = keep[j] + c, q = cid[i], w = S[q * 4 + 3];
+        for (let a = 0; a < 3; a++) { p[j * 9 + c * 3 + a] = S[q * 4 + a] / w; n[j * 9 + c * 3 + a] = G.n[i * 3 + a]; }
+        u[j * 6 + c * 2] = G.u[i * 2]; u[j * 6 + c * 2 + 1] = G.u[i * 2 + 1];
+        for (let a = 0; a < 4; a++) kk[j * 12 + c * 4 + a] = G.k[i * 4 + a];
+      }
+      groups.set(key, {p, n, u, k: kk});
+    }
+    return {groups, lo: T.lo, hi: T.hi, shrunk: {from: tot, to: kept}};
+  };
+  let R = 512, kept = await cluster(R);
+  for (let tries = 0; kept > MDL_MAXT && R > 6 && tries < 12; tries++) { R = Math.max(6, Math.floor(R * Math.min(.9, Math.sqrt(MDL_MAXT / kept) * .97))); kept = await cluster(R); }
+  if (kept > MDL_MAXT || !kept) return null;
+  return cluster(R, true);
+}
 // which way the camera looks: from the front, a little from the right and above (as always), turned by o.yaw and o.pitch when a player turns it
 function mdlDir(o) {
   if (!o || !(o.yaw || o.pitch)) return [.5, .36, 1];
@@ -1859,11 +1903,11 @@ function mdlLocal(nd) {
     2 * (x * z + y * w) * sz, 2 * (y * z - x * w) * sz, (1 - 2 * (x * x + y * y)) * sz, 0, tx, ty, tz, 1]);
 }
 // every triangle of the model in world space, gathered by material: positions, normals (its own, or each face's), texture places, colours
-function mdlTris(M) {
+async function mdlTris(M) {
   const j = M.j, nodes = j.nodes || [], groups = new Map(), lo = [1e30, 1e30, 1e30], hi = [-1e30, -1e30, -1e30]; let total = 0;
   const sc = j.scenes && j.scenes[j.scene || 0], kids = new Set(); for (const n of nodes) for (const c of n.children || []) kids.add(c);
   const roots = sc && sc.nodes ? sc.nodes : nodes.map((_, i) => i).filter(i => !kids.has(i)), seen = new Set();
-  const walk = (i, P, depth) => {
+  let tc = 0; const walk = async (i, P, depth) => {
     const nd = nodes[i]; if (!nd || seen.has(i) || depth > 64) return; seen.add(i);
     const W = mdlMul(P, mdlLocal(nd)), me = nd.mesh != null && j.meshes && j.meshes[nd.mesh];
     if (me) for (const pr of me.primitives || []) {
@@ -1878,6 +1922,7 @@ function mdlTris(M) {
       const wp = q => { const x = P0.d[q * 3], y = P0.d[q * 3 + 1], z = P0.d[q * 3 + 2]; return [W[0] * x + W[4] * y + W[8] * z + W[12], W[1] * x + W[5] * y + W[9] * z + W[13], W[2] * x + W[6] * y + W[10] * z + W[14]]; };
       const wn = q => { const x = N0.d[q * 3], y = N0.d[q * 3 + 1], z = N0.d[q * 3 + 2], v = [W[0] * x + W[4] * y + W[8] * z, W[1] * x + W[5] * y + W[9] * z, W[2] * x + W[6] * y + W[10] * z], l = Math.hypot(...v) || 1; return v.map(e => e / l); };
       for (let q = 0; q + 2 < ix.length; q += 3) {
+        if (!(++tc % 8000)) await new Promise(r => setTimeout(r));   // (a short rest every 8,000 triangles, so nothing else has to wait)
         const t = [ix[q], ix[q + 1], ix[q + 2]]; if (t.some(e => !(e >= 0 && e < P0.n))) continue;
         const v = t.map(wp), e1 = [v[1][0] - v[0][0], v[1][1] - v[0][1], v[1][2] - v[0][2]], e2 = [v[2][0] - v[0][0], v[2][1] - v[0][1], v[2][2] - v[0][2]];
         let fn = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]; const fl = Math.hypot(...fn) || 1; fn = fn.map(e => e / fl);
@@ -1889,10 +1934,10 @@ function mdlTris(M) {
         }
       }
     }
-    for (const c of nd.children || []) walk(c, W, depth + 1);
+    for (const c of nd.children || []) await walk(c, W, depth + 1);
   };
   const I = Float32Array.from([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-  for (const r of roots) walk(r, I, 0);
+  for (const r of roots) await walk(r, I, 0);
   return total && total <= 9e5 && hi[0] >= lo[0] ? {groups, lo, hi} : null;
 }
 // a material's colour picture (when it has one), decoded off the main thread
@@ -1909,7 +1954,7 @@ function mdlPng(bytes, S = 256, o) { const p = mdl.busy.then(() => mdlDraw(bytes
 async function mdlDraw(bytes, S, o = {}) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), gltf = u8.length >= 4 && new DataView(u8.buffer, u8.byteOffset, 4).getUint32(0, true) === 0x46546c67 || /^(\xef\xbb\xbf)?\s*\{/.test(String.fromCharCode(...u8.subarray(0, 16)));   // (glTF: its binary mark, or JSON; anything else is read as an STL)
   const M = gltf ? mdlParse(bytes) : {j: {}}; if (!M) return null;
-  let T; if (gltf) T = mdlTris(M); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = await stlTris(u8); mdl.stl = T ? {b: bytes, T} : null; }
+  let T; if (gltf) T = await mdlShrink(await mdlTris(M)); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = await mdlShrink(await stlTris(u8)); mdl.stl = T ? {b: bytes, T} : null; }
   if (!T) return null;
   const mats = M.j.materials || [], texs = new Map();
   for (const key of T.groups.keys()) { const m = mats[key], ti = m && m.pbrMetallicRoughness && m.pbrMetallicRoughness.baseColorTexture; if (ti && ti.index != null && !texs.has(ti.index)) texs.set(ti.index, await mdlTex(M, ti.index)); }
@@ -7388,7 +7433,7 @@ function vwStl(it) {
   const draw = it.draw = async () => {
     if (it.busy) { it.again = true; return; } it.busy = true;
     try { const b = await stlBytes(it.id); if (!vw || vw.items[vw.i] !== it) return; const ok = b && await mdlPng(b, 768, {yaw: it.turn.yaw, pitch: it.turn.pitch, to: cv});
-      if (vw && vw.items[vw.i] === it) { if (ok) { it.drawn = true; w.remove(); } else w.textContent = 'ITS 3D MODEL (STL) COULD NOT BE DRAWN HERE'; } }
+      if (vw && vw.items[vw.i] === it) { if (ok) { it.drawn = true; w.remove(); const z = mdl.stl && mdl.stl.T && mdl.stl.T.shrunk; if (z && !it.lite) { it.lite = 'drawn from a lighter copy: ' + fmt(z.to) + ' of its ' + fmt(z.from) + ' triangles'; $vwn.textContent += ' \u00b7 ' + it.lite; } } else w.textContent = 'ITS 3D MODEL (STL) COULD NOT BE DRAWN HERE'; } }
     finally { it.busy = false; if (it.again) { it.again = false; draw(); } }
   };
   let d = null;
@@ -15382,7 +15427,7 @@ window.AgentKit = window.AgentKit || (() => {
     const it = vw.items[vw.i], o = {what: text($('vwn')) || 'still reading the transaction', mode: vw.live ? 'LIVE VIEW: it runs' : 'SAFE VIEW: nothing runs'};
     if (!it) return o;
     if (it.k === 'info') { o.words = text($('vwc')).slice(0, 1500); return o; }
-    if (it.k === 'ins' && STL_RE.test(it.type || '') && !it.del) { o.why = 'an STL 3D model, drawn here from its file (nothing of it runs): turnBig({right, up}) turns it, as a player drags it'; const cv = $vwc.querySelector('canvas.stl');
+    if (it.k === 'ins' && STL_RE.test(it.type || '') && !it.del) { o.why = 'an STL 3D model, drawn here from its file (nothing of it runs' + (it.lite ? '; ' + it.lite : '') + '): turnBig({right, up}) turns it, as a player drags it'; const cv = $vwc.querySelector('canvas.stl');
       if (it.drawn && cv) { const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const x = c.getContext('2d'); x.fillStyle = '#8a8a8a'; x.fillRect(0, 0, c.width, c.height); x.drawImage(cv, 0, 0); o.picture = {type: 'image/jpeg', width: c.width, height: c.height, dataUrl: c.toDataURL('image/jpeg', .85)}; } else o.why += ' (it is still being drawn)';
       return o; }
     let g = SEEN.get(it); if (!g) { g = seeFile(it).catch(e => ({why: 'its file could not be read just now: ' + (e && e.message || e)})); SEEN.set(it, g); }
