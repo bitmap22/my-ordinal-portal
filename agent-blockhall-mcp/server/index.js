@@ -8,7 +8,8 @@
    same free public sites Agent Blockhall reads (with the same back-ups), and asks them gently.
    blockManifest lists every transaction in a block, sorted into the same kinds as the halls' shelves, each one checked
    (the block reader is server/manifest.js, the same file the portal's Block Manifest page uses).
-   Needs Node.js 18 or newer. No other packages. It speaks MCP over stdio. */
+   Needs Node.js 18 or newer. No other packages. It speaks MCP over stdio.
+   © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
 const VERSION = '1.1.0';
