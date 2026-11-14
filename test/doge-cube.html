@@ -9077,12 +9077,13 @@ window.AgentKit = window.AgentKit || (() => {
   // walk as a player does: face the way, push the pad forward (walking speed; running = Shift's speed), the game's walls stop you
   async function walkPoint(x, z, opt = {}) {
     const p = room.p, within = opt.within || .5, t0 = performance.now(), maxMs = (opt.seconds || 120) * 1000;
-    let last = [p.x, p.z], lastT = performance.now(), side = 1, tries = 0;
+    let last = [p.x, p.z], lastT = performance.now(), side = 1, tries = 0, best = Infinity, bestT = performance.now();
     try {
       while (true) {
         if (!inRoom()) return {ok: false, error: 'left the room'};
         const dx = x - p.x, dz = z - p.z, dist = Math.hypot(dx, dz);
         if (dist < within || (opt.stopWhen && opt.stopWhen())) return {ok: true};
+        if (dist < best - .2) { best = dist; bestT = performance.now(); } else if (performance.now() - bestT > 8000) return {ok: false, error: 'blocked: something stands on that spot or in the way (8 seconds without getting nearer)', at: {x: r1(p.x), z: r1(p.z)}, left: r1(dist)};
         if (performance.now() - t0 > maxMs) return {ok: false, error: 'took too long', left: r1(dist)};
         p.yaw = Math.atan2(-dx, -dz); room.dirty = true;
         rmPad.x = 0; rmPad.y = -Math.min(1, .35 + dist / 1.2); rmKeys.shift = !!opt.run && dist > 2;
