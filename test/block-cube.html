@@ -4242,11 +4242,13 @@ const rmVAO = (buf) => {
 const rmParBuf = gl.createBuffer(), rmFixBuf = gl.createBuffer(), rmDoorBuf = gl.createBuffer();
 const rmParVAO = rmVAO(rmParBuf), rmFixVAO = rmVAO(rmFixBuf), rmDoorVAO = rmVAO(rmDoorBuf);
 // drawing only what can be seen. A hall's shelves and parcels are laid out in order, so each run of neighbours in the list
-// sits in one place: a run is drawn only when it is in front of you, and nearer than 120 m (where the hall's haze has
-// already hidden it: 98 in 100 of it is haze). Walls and other big pieces, and the common room (its haze is thinner),
-// are never left out for being far. A huge collection's room (thousands of bookcases) then costs little more than a
-// small one, and the pictures keep up.
-const CULL = {D: 120, RUN: 96, GAP: 24, on: true, n: [0, 0, 0, 0], ATTR: [[2, 3, 0], [3, 3, 12], [4, 4, 24], [5, 4, 40], [6, 1, 56], [7, 4, 60]]};
+// sits in one place: a run is drawn only when it is in front of you (or its reflection is), and nearer than 120 m (where
+// the hall's haze has already hidden it: 98 in 100 of it is haze). Walls and other big pieces, and the common room (its
+// haze is thinner), are never left out for being far. The runs in view are copied into one short list and drawn in one go
+// (many small drawings cost more than they save); the list is made a little wider than the view, and made again the
+// moment anything in view is not in it, so nothing you could see is ever missing. A huge collection's room (thousands of
+// bookcases) then costs little more than a small one, and the pictures keep up.
+const CULL = {D: 120, RUN: 96, on: true, n: [0, 0, 0, 0], made: 0, F: {}, P: {}};
 // the runs of one drawing list: segs are [first, end, how far it may be seen] for each room's part of the list
 function cullRuns(d, segs, par) {
   const out = [];
@@ -4272,28 +4274,46 @@ function cullPlanes(m) {
   for (let j = 0; j < 6; j++) { const i = j >> 1, sg = j & 1 ? -1 : 1; for (let k = 0; k < 4; k++) P[j * 4 + k] = m[k * 4 + 3] + sg * m[k * 4 + i]; }
   return P;
 }
-function cullAt(vao, buf, s) {
-  if (vao._s === s) return; vao._s = s;
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf); for (const [loc, sz, off] of CULL.ATTR) gl.vertexAttribPointer(loc, sz, gl.FLOAT, false, IST, off + s * IST);
+const cpFixBuf = gl.createBuffer(), cpParBuf = gl.createBuffer(), cpFixVAO = rmVAO(cpFixBuf), cpParVAO = rmVAO(cpParBuf);
+// is a run in a view (its box, together with its reflection's box when it is in the room you are in)
+function cullSees(r, P, eye, cur, pad) {
+  const ya = cur ? Math.min(r.a[1], -r.b[1]) : r.a[1], yb = cur ? Math.max(r.b[1], -r.a[1]) : r.b[1];
+  if (!r.big && r.far < 1e9) { const f = r.far + pad, dx = Math.max(r.a[0] - eye[0], 0, eye[0] - r.b[0]), dy = Math.max(ya - eye[1], 0, eye[1] - yb), dz = Math.max(r.a[2] - eye[2], 0, eye[2] - r.b[2]); if (dx * dx + dy * dy + dz * dz > f * f) return false; }
+  for (let k = 0; k < 24; k += 4) { const px = P[k] > 0 ? r.b[0] : r.a[0], py = P[k + 1] > 0 ? yb : ya, pz = P[k + 2] > 0 ? r.b[2] : r.a[2]; if (P[k] * px + P[k + 1] * py + P[k + 2] * pz + P[k + 3] < 0) return false; }
+  return true;
 }
-// draw the first n of a list: only the runs in view (mir: the reflection in the floor, upside down); answers how many were drawn
-function cullDraw(vao, buf, runs, n, VP, eye, mir) {
-  gl.bindVertexArray(vao);
-  if (!runs || !CULL.on) { cullAt(vao, buf, 0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, n); return n; }
-  const P = cullPlanes(VP); let s = -1, e = -1, drawn = 0;
-  const go = () => { cullAt(vao, buf, s); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, e - s); drawn += e - s; };
-  for (const r of runs) {
-    if (r.s >= n) break;
-    const ya = mir ? -r.b[1] : r.a[1], yb = mir ? -r.a[1] : r.b[1];
-    if (!r.big && r.far < 1e9) { const dx = Math.max(r.a[0] - eye[0], 0, eye[0] - r.b[0]), dy = Math.max(ya - eye[1], 0, eye[1] - yb), dz = Math.max(r.a[2] - eye[2], 0, eye[2] - r.b[2]); if (dx * dx + dy * dy + dz * dz > r.far * r.far) continue; }
-    let vis = true;
-    for (let k = 0; k < 24; k += 4) { const px = P[k] > 0 ? r.b[0] : r.a[0], py = P[k + 1] > 0 ? yb : ya, pz = P[k + 2] > 0 ? r.b[2] : r.a[2]; if (P[k] * px + P[k + 1] * py + P[k + 2] * pz + P[k + 3] < 0) { vis = false; break; } }
-    if (!vis) continue;
-    const rs = r.s, re = Math.min(n, r.s + r.n);
-    if (s >= 0 && rs - e <= CULL.GAP) e = re; else { if (s >= 0) go(); s = rs; e = re; }
+// the packed list for this picture: kept while it holds everything in view, made again (from the wider view) when not
+function cullPick(L, runs, src, n, nCur, VP, VPw, eye, buf) {
+  if (L.runs !== runs || L.src !== src) {   // (a new list: the old arrays are kept when they are big enough)
+    L.runs = runs; L.src = src; L.dirty = true;
+    if (!L.set || L.set.length < runs.length) L.set = new Uint8Array(runs.length + 256); else L.set.fill(0);
+    if (!L.arr || L.arr.length < n * NF) { const m = Math.ceil(Math.max(1, n) * 1.25); L.arr = new Float32Array(m * NF); L.map = new Int32Array(m); }
+    L.cap = L.cap || 0;
   }
-  if (s >= 0) go();
-  return drawn;
+  const P = cullPlanes(VP); let need = 0, miss = L.dirty;
+  for (let i = 0; i < runs.length; i++) { const r = runs[i]; if (r.s >= n) break; if (cullSees(r, P, eye, r.s < nCur, 0)) { need += r.n; if (!L.set[i]) miss = true; } }
+  L.need = need;
+  if (!miss && !(L.cnt > need * 3 + 2000 && now() - L.t > .5)) return;
+  const W = cullPlanes(VPw), A = L.arr, M = L.map; let c = 0, cur = 0;
+  M.fill(-1);
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i]; L.set[i] = 0; if (r.s >= n) continue;
+    if (!cullSees(r, W, eye, r.s < nCur, 10)) continue;
+    const e = Math.min(n, r.s + r.n); L.set[i] = 1;
+    A.set(src.subarray(r.s * NF, e * NF), c * NF); for (let j = r.s; j < e; j++) M[j] = c + j - r.s;
+    c += e - r.s; if (r.s < nCur) cur = c;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  if (L.cap < c) { L.cap = Math.max(c, n); gl.bufferData(gl.ARRAY_BUFFER, L.cap * IST, gl.DYNAMIC_DRAW); }
+  if (c) gl.bufferSubData(gl.ARRAY_BUFFER, 0, A, 0, c * NF);
+  L.cnt = c; L.cur = cur; L.dirty = false; L.t = now(); CULL.made++;
+}
+// draw the first n of a list (mir: the reflection in the floor, upside down, only the room you are in); answers how many
+function cullDraw(L, vao, buf, cvao, cbuf, runs, src, n, nCur, VP, VPw, eye, mir, tn) {
+  if (!runs || !src || !CULL.on) { gl.bindVertexArray(vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, mir ? nCur : n); return mir ? nCur : n; }
+  if (L.tn !== tn) { L.tn = tn; cullPick(L, runs, src, n, nCur, VP, VPw, eye, cbuf); }
+  const k = mir ? L.cur : L.cnt; if (k) { gl.bindVertexArray(cvao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, k); }
+  return k;
 }
 // only the pictures changed: each parcel's picture corner is rewritten where it is (measured: remaking the whole list took up to 42 ms)
 function rmArt(tn) {
@@ -4305,7 +4325,7 @@ function rmArt(tn) {
     const v0 = a ? a[0] : 0, v1 = a ? a[1] : 0, v2 = a ? a[2] : 0, v3 = a ? (t.nearR ? a[3] : t.artS || 1) : 0;
     if (d[o] !== v0 || d[o + 1] !== v1 || d[o + 2] !== v2 || d[o + 3] !== v3) { d[o] = v0; d[o + 1] = v1; d[o + 2] = v2; d[o + 3] = v3; if (lo < 0) lo = i; hi = i; }
   }
-  if (lo >= 0) { gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * NF * 4, d, lo * NF, (hi - lo + 1) * NF); }
+  if (lo >= 0) { gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * NF * 4, d, lo * NF, (hi - lo + 1) * NF); CULL.P.dirty = true; }
 }
 function rmFill(tn) {
   room.dirty = room.artDirty = false; room.filled = tn;
@@ -4329,7 +4349,7 @@ function rmFill(tn) {
     const C = room.rooms[1], Rs = [C, room.rooms[0], room.rooms[2]].filter(R => R && R.ready), fs = Rs.map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
     room.nFixCur = C && C.ready && !C.common ? C.fix.length / NF : 0;   // (the common room's carpet shows no reflection)
     let o = 0; const segs = []; fs.forEach((f, k) => { all.set(f, o); segs.push([o / NF, (o + f.length) / NF, Rs[k].common ? 1e9 : CULL.D]); o += f.length; });
-    room.cuF = cullRuns(all, segs, false);
+    room.cuF = cullRuns(all, segs, false); room.fxa = all;
     gl.bindBuffer(gl.ARRAY_BUFFER, rmFixBuf); gl.bufferData(gl.ARRAY_BUFFER, all, gl.STATIC_DRAW); room.nFix = n / NF;
   }
 }
@@ -4477,6 +4497,7 @@ function roomFrame(W, H, tn, dpr) {
   const p = room.p, cp = Math.cos(p.pitch), dir = [-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp];
   const eye = [p.x, EYE + p.bob + (p.y || 0) - (p.sit ? .62 : 0), p.z], asp = W / H, fov = asp < 1 ? 1.3 : 1.12;
   const VP = mul(persp(fov, asp, .05, 400), look(eye, [eye[0] + dir[0], eye[1] + dir[1], eye[2] + dir[2]]));
+  const VPw = mul(persp(Math.min(2.6, fov * 1.6), asp, .05, 400), look(eye, [eye[0] + dir[0], eye[1] + dir[1], eye[2] + dir[2]]));   // (a little wider than you see: the list of what to draw lasts while you turn)
   room.view = {eye, dir, fov, asp};
   rmDoors(dt);
   if (room.dirty && tn - (room.filled || 0) > .2) rmFill(tn); else if (room.artDirty && tn - (room.filled || 0) > .2) rmArt(tn);
@@ -4503,11 +4524,10 @@ function roomFrame(W, H, tn, dpr) {
     gl.uniform1f(parP.u.uNow, tn); gl.uniform1f(parP.u.uOpen, 0); gl.uniform1f(parP.u.uMir, mir); gl.uniform1f(parP.u.uRf, rf); gl.uniform1f(parP.u.uXr, 0);
     gl.uniform1f(parP.u.uGa, 1); gl.uniform1i(parP.u.uSel, -1); gl.uniform1f(parP.u.uAmb, .3); cmLU(parP, tn, !mir);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, labTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
-    const nf = mir ? room.nFixCur || 0 : room.nFix, np = mir ? room.nParCur || 0 : room.nPar;
-    if (nf) { const k = cullDraw(rmFixVAO, rmFixBuf, room.cuF, nf, VP, eye, mir); if (!mir) { CULL.n[0] = k; CULL.n[1] = nf; } }
+    if (room.nFix) { const k = cullDraw(CULL.F, rmFixVAO, rmFixBuf, cpFixVAO, cpFixBuf, room.cuF, room.fxa, room.nFix, room.nFixCur || 0, VP, VPw, eye, mir, tn); if (!mir) { CULL.n[0] = k; CULL.n[1] = room.nFix; } }
     if (room.nDoor) { gl.bindVertexArray(rmDoorVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nDoor); }
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.activeTexture(gl.TEXTURE0);
-    if (np) { const k = cullDraw(rmParVAO, rmParBuf, room.cuP, np, VP, eye, mir); if (!mir) { CULL.n[2] = k; CULL.n[3] = np; } }
+    if (room.nPar) { const k = cullDraw(CULL.P, rmParVAO, rmParBuf, cpParVAO, cpParBuf, room.cuP, room.fa, room.nPar, room.nParCur || 0, VP, VPw, eye, mir, tn); if (!mir) { CULL.n[2] = k; CULL.n[3] = room.nPar; } }
     gl.uniform1f(parP.u.uAmb, 0); gl.uniform1f(parP.u.uMir, 0); cmLU(parP, tn, false);
     if (crewList.length) { chDraw(crewList, VP, eye, mir, rf); if (mir) gl.cullFace(gl.BACK); }
     if (crew.hum && crew.hum.length) ppSafe(() => BCH.draw(crew.hum, VP, eye, {mir, rf}));
@@ -7502,6 +7522,7 @@ function i0Bob(tn) {
     const q = room.fl[i], it = q && q[1]; if (!it || it.gone || it.c || it.m !== 1 || tn - it.t0 < 1) continue;
     const o = i * NF + 1; d[o] = it.w[1] + .045 * Math.sin(tn * 1.1);
     gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferSubData(gl.ARRAY_BUFFER, o * 4, d, o, 1);
+    const j = CULL.P.src === d && CULL.P.map ? CULL.P.map[i] : -1; if (j >= 0) { CULL.P.arr[j * NF + 1] = d[o]; gl.bindBuffer(gl.ARRAY_BUFFER, cpParBuf); gl.bufferSubData(gl.ARRAY_BUFFER, (j * NF + 1) * 4, d, o, 1); }   // (and in the list being drawn)
   }
 }
 const $sraB = $sra.querySelector('b'), $sraS = $sra.querySelector('svg');
@@ -8436,7 +8457,7 @@ function tradePaint(R) {
     idx.forEach((i, j) => { const col = v || TRADE_NONE[j ? 1 : 0], q = i * NF + 6; R.fix[q] = col[0]; R.fix[q + 1] = col[1]; R.fix[q + 2] = col[2]; lo = Math.min(lo, i); hi = Math.max(hi, i); });
   });
   if (hi < 0) return;
-  if (room.rooms[1] === R && !room.fixDirty && room.nFix) { gl.bindBuffer(gl.ARRAY_BUFFER, rmFixBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * NF * 4, R.fix, lo * NF, (hi - lo + 1) * NF); }
+  if (room.rooms[1] === R && !room.fixDirty && room.nFix) { gl.bindBuffer(gl.ARRAY_BUFFER, rmFixBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * NF * 4, R.fix, lo * NF, (hi - lo + 1) * NF); if (room.fxa) room.fxa.set(R.fix.subarray(lo * NF, (hi + 1) * NF), lo * NF); CULL.F.dirty = true; }
   else room.fixDirty = true;
 }
 // over each player's base: their number and name in their colour, and an arrow to the one they would like to trade with
