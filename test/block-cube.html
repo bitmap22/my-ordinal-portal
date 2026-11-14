@@ -3007,6 +3007,14 @@ function mvPlay(cv, id, o) {
     requestAnimationFrame(step);
   })();
 }
+// a crewmate doing a move from a file on Bitcoin: it is read only if it is a small VRM move (checked as when a parcel is picked
+// up: 400,000 bytes at most), one at a time and only so many, so no crewmate can make your game fetch big or endless files
+const MVM = {n: 0, busy: false};
+function mvMate(id) {
+  if (MVC.has(id) || MVM.busy || MVM.n >= 24) return;
+  MVM.busy = true; MVM.n++;
+  mdlKind(id).then(K => K && K.empty && K.vrm && K.moves ? mvClip(id) : (MVC.set(id, Promise.resolve(null)), null)).catch(() => null).then(() => { MVM.busy = false; });
+}
 // TRY THIS MOVE: you do it yourself, as an emote (your crew sees it; it goes on until you move or pick something else)
 function mvTry(id) { return mvClip(id).then(c => { if (c && crew.on) { emPlay(c); return true; } return false; }); }
 const mvName = n => /^ins:/.test(n) ? 'a move from inscription ' + (typeof srShort === 'function' ? srShort(n.slice(4)) : n.slice(4, 14)) : EM_NAME[n];
@@ -11687,7 +11695,7 @@ function crewPose(tn, dt, VP, W, H) {
     else if (far > 4) { const k = Math.min(1, 9 * Math.min(dt, .1) / far); R.p = [R.p[0] + (tx - R.p[0]) * k, ease(R.p[1], ty, 12, dt), R.p[2] + (tz - R.p[2]) * k]; }
     else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true; R.ch = C.h;
-    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em && /^ins:/.test(s.em) && !BCH.clip(s.em) ? (mvClip(s.em.slice(4)), null) : s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn); gdMateCh(M, R, s, pn); if (C.cl || C.gd) guMate(M, s); if (C.cl) { clMateGames(M, s); gdMateAsk(M, s, pn); } if (C.gd) { gdMateBoard(M, R, s); gdMatePP(M, R, s); gdMateCh2(M, R, s); gdMateAsk(M, s, pn); } else { R.hp = ''; R.pb = 0; R.hb = -1; }
+    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em && /^ins:/.test(s.em) && !BCH.clip(s.em) ? (mvMate(s.em.slice(4)), null) : s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn); gdMateCh(M, R, s, pn); if (C.cl || C.gd) guMate(M, s); if (C.cl) { clMateGames(M, s); gdMateAsk(M, s, pn); } if (C.gd) { gdMateBoard(M, R, s); gdMatePP(M, R, s); gdMateCh2(M, R, s); gdMateAsk(M, s, pn); } else { R.hp = ''; R.pb = 0; R.hb = -1; }
     const H = ppSafe(() => ppMate(M), null);
     if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; R.pintS = 0; }   // (a Node Runner until their person has arrived)
     const wait = !H && ppWait(M), pose = H ? ppSafe(() => ppPose(M, H, R, dt), []) : wait ? [] : chPose(R, tn, dt);
