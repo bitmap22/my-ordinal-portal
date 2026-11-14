@@ -17,7 +17,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
 const GAME = PORTAL + 'block-cube.html';
@@ -467,6 +467,7 @@ async function dailyJson(p) {
   for (const b of DAILY) { try { const r = await fetchT(b + p, null, 30000); return {j: await r.json(), site: b}; } catch (e) { err = e; if (/http 404/.test(String(e)) && b === DAILY[0]) break; } }
   throw err || new Error('the day files could not be had right now');
 }
+const DAILY_NULL = 'In checked, [matched, of] pairs say how many agreed. null means that check could not be made because a site did not answer: it is not a disagreement. Each day\'s totals.notes say it in plain words.';
 async function dailyData({day, block}) {
   const I = (await dailyJson('index.json')).j;
   if (!day && block == null) return {days: I.days, updated: I.updated, licence: I.licence, next: 'dailyData({day: "YYYY-MM-DD"}) gives that day\'s blocks; add block (a height) for one block.', page: PORTAL + 'daily.html'};
@@ -476,9 +477,9 @@ async function dailyData({day, block}) {
   const x = await dailyJson('days/' + day + '.json'), D = x.j;
   if (block != null) {
     const b = D.blocks.find(y => y.height === +block); if (!b) throw new Error('block ' + block + ' is not in ' + day + ' (' + D.totals.firstBlock + ' to ' + D.totals.lastBlock + ')');
-    return Object.assign({day}, b, {walkIn: 'In Agent Blockhall (' + GAME + '): walkIn({height: ' + b.height + '}) in its agent kit, or type it into the tablet. blockManifest({height: ' + b.height + '}) lists every transaction in it.', licence: D.licence, source: x.site});
+    return Object.assign({day}, b, {walkIn: 'In Agent Blockhall (' + GAME + '): walkIn({height: ' + b.height + '}) in its agent kit, or type it into the tablet. blockManifest({height: ' + b.height + '}) lists every transaction in it.', dayNotes: D.totals.notes || [], note: DAILY_NULL, licence: D.licence, source: x.site});
   }
-  return {day: D.day, utc: D.utc, made: D.made, totals: D.totals, blocks: D.blocks, what: D.what, links: D.links, licence: D.licence, source: x.site,
+  return {day: D.day, notes: D.totals.notes || [], note: DAILY_NULL, utc: D.utc, made: D.made, totals: D.totals, blocks: D.blocks, what: D.what, links: D.links, licence: D.licence, source: x.site,
     next: 'blockManifest({height}) lists every transaction in any of these blocks; watch({what: "block"}) says when the next one comes.'};
 }
 
