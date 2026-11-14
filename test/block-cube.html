@@ -4227,6 +4227,60 @@ const rmVAO = (buf) => {
 };
 const rmParBuf = gl.createBuffer(), rmFixBuf = gl.createBuffer(), rmDoorBuf = gl.createBuffer();
 const rmParVAO = rmVAO(rmParBuf), rmFixVAO = rmVAO(rmFixBuf), rmDoorVAO = rmVAO(rmDoorBuf);
+// drawing only what can be seen. A hall's shelves and parcels are laid out in order, so each run of neighbours in the list
+// sits in one place: a run is drawn only when it is in front of you, and nearer than 120 m (where the hall's haze has
+// already hidden it: 98 in 100 of it is haze). Walls and other big pieces, and the common room (its haze is thinner),
+// are never left out for being far. A huge collection's room (thousands of bookcases) then costs little more than a
+// small one, and the pictures keep up.
+const CULL = {D: 120, RUN: 96, GAP: 24, on: true, n: [0, 0, 0, 0], ATTR: [[2, 3, 0], [3, 3, 12], [4, 4, 24], [5, 4, 40], [6, 1, 56], [7, 4, 60]]};
+// the runs of one drawing list: segs are [first, end, how far it may be seen] for each room's part of the list
+function cullRuns(d, segs, par) {
+  const out = [];
+  for (const [s0, s1, far] of segs) {
+    let r = null;
+    for (let i = s0; i < s1; i++) {
+      const o = i * NF, sx = Math.abs(d[o + 3]), sy = Math.abs(d[o + 4]), sz = Math.abs(d[o + 5]), big = Math.max(sx, sy, sz) > 5 && (sy >= 3 || (sx >= 3 && sz >= 3));   // (a wall or a floor)
+      if (!r || r.big !== big || r.n >= CULL.RUN) { r = {s: i, n: 0, big, far, a: [1e9, 1e9, 1e9], b: [-1e9, -1e9, -1e9]}; out.push(r); }
+      r.n++;
+      for (let k = 0; k < 3; k++) {
+        const h = Math.abs(d[o + 3 + k]) * .5 + .15, c = d[o + k], f = d[o + 10 + k];   // (where it stands, and where it flies in from)
+        const lo = Math.min(c, f) - h, hi = Math.max(c, f) + h;
+        if (lo < r.a[k]) r.a[k] = lo; if (hi > r.b[k]) r.b[k] = hi;
+      }
+      if (par) { const top = Math.max(d[o + 1], d[o + 11]) + (d[o + 13] > 3.5 ? S * 2.2 : S * .5) + .5; if (top > r.b[1]) r.b[1] = top; }   // (a parcel drops in from above)
+    }
+  }
+  return out;
+}
+// the six sides of what the camera sees
+function cullPlanes(m) {
+  const P = new Float32Array(24);
+  for (let j = 0; j < 6; j++) { const i = j >> 1, sg = j & 1 ? -1 : 1; for (let k = 0; k < 4; k++) P[j * 4 + k] = m[k * 4 + 3] + sg * m[k * 4 + i]; }
+  return P;
+}
+function cullAt(vao, buf, s) {
+  if (vao._s === s) return; vao._s = s;
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf); for (const [loc, sz, off] of CULL.ATTR) gl.vertexAttribPointer(loc, sz, gl.FLOAT, false, IST, off + s * IST);
+}
+// draw the first n of a list: only the runs in view (mir: the reflection in the floor, upside down); answers how many were drawn
+function cullDraw(vao, buf, runs, n, VP, eye, mir) {
+  gl.bindVertexArray(vao);
+  if (!runs || !CULL.on) { cullAt(vao, buf, 0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, n); return n; }
+  const P = cullPlanes(VP); let s = -1, e = -1, drawn = 0;
+  const go = () => { cullAt(vao, buf, s); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, e - s); drawn += e - s; };
+  for (const r of runs) {
+    if (r.s >= n) break;
+    const ya = mir ? -r.b[1] : r.a[1], yb = mir ? -r.a[1] : r.b[1];
+    if (!r.big && r.far < 1e9) { const dx = Math.max(r.a[0] - eye[0], 0, eye[0] - r.b[0]), dy = Math.max(ya - eye[1], 0, eye[1] - yb), dz = Math.max(r.a[2] - eye[2], 0, eye[2] - r.b[2]); if (dx * dx + dy * dy + dz * dz > r.far * r.far) continue; }
+    let vis = true;
+    for (let k = 0; k < 24; k += 4) { const px = P[k] > 0 ? r.b[0] : r.a[0], py = P[k + 1] > 0 ? yb : ya, pz = P[k + 2] > 0 ? r.b[2] : r.a[2]; if (P[k] * px + P[k + 1] * py + P[k + 2] * pz + P[k + 3] < 0) { vis = false; break; } }
+    if (!vis) continue;
+    const rs = r.s, re = Math.min(n, r.s + r.n);
+    if (s >= 0 && rs - e <= CULL.GAP) e = re; else { if (s >= 0) go(); s = rs; e = re; }
+  }
+  if (s >= 0) go();
+  return drawn;
+}
 // only the pictures changed: each parcel's picture corner is rewritten where it is (measured: remaking the whole list took up to 42 ms)
 function rmArt(tn) {
   room.artDirty = false; room.filled = tn;
@@ -4254,12 +4308,14 @@ function rmFill(tn) {
     else if (R.B === cur && t.artR && t.artG === artGen) { d[o + 15] = t.artR[0]; d[o + 16] = t.artR[1]; d[o + 17] = t.artR[2]; d[o + 18] = t.artS || 1; }
   });
   gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferData(gl.ARRAY_BUFFER, d, gl.DYNAMIC_DRAW); room.nPar = its.length; room.fl = its; room.fa = d;
+  { const segs = []; for (let i = 0; i < its.length; ) { const R = its[i][0]; let j = i; while (j < its.length && its[j][0] === R) j++; segs.push([i, j, R.common ? 1e9 : CULL.D]); i = j; } room.cuP = cullRuns(d, segs, true); }
   room.ins0 = []; its.forEach(([, it], i) => { if (it.ins0) room.ins0.push(i); });
   if (room.fixDirty) {
     room.fixDirty = false;
-    const C = room.rooms[1], fs = [C, room.rooms[0], room.rooms[2]].filter(R => R && R.ready).map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
+    const C = room.rooms[1], Rs = [C, room.rooms[0], room.rooms[2]].filter(R => R && R.ready), fs = Rs.map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
     room.nFixCur = C && C.ready && !C.common ? C.fix.length / NF : 0;   // (the common room's carpet shows no reflection)
-    let o = 0; for (const f of fs) { all.set(f, o); o += f.length; }
+    let o = 0; const segs = []; fs.forEach((f, k) => { all.set(f, o); segs.push([o / NF, (o + f.length) / NF, Rs[k].common ? 1e9 : CULL.D]); o += f.length; });
+    room.cuF = cullRuns(all, segs, false);
     gl.bindBuffer(gl.ARRAY_BUFFER, rmFixBuf); gl.bufferData(gl.ARRAY_BUFFER, all, gl.STATIC_DRAW); room.nFix = n / NF;
   }
 }
@@ -4434,10 +4490,10 @@ function roomFrame(W, H, tn, dpr) {
     gl.uniform1f(parP.u.uGa, 1); gl.uniform1i(parP.u.uSel, -1); gl.uniform1f(parP.u.uAmb, .3); cmLU(parP, tn, !mir);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, labTex); gl.uniform1i(parP.u.uArt, 2); gl.activeTexture(gl.TEXTURE0);
     const nf = mir ? room.nFixCur || 0 : room.nFix, np = mir ? room.nParCur || 0 : room.nPar;
-    if (nf) { gl.bindVertexArray(rmFixVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, nf); }
+    if (nf) { const k = cullDraw(rmFixVAO, rmFixBuf, room.cuF, nf, VP, eye, mir); if (!mir) { CULL.n[0] = k; CULL.n[1] = nf; } }
     if (room.nDoor) { gl.bindVertexArray(rmDoorVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, room.nDoor); }
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, artTex); gl.activeTexture(gl.TEXTURE0);
-    if (np) { gl.bindVertexArray(rmParVAO); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, np); }
+    if (np) { const k = cullDraw(rmParVAO, rmParBuf, room.cuP, np, VP, eye, mir); if (!mir) { CULL.n[2] = k; CULL.n[3] = np; } }
     gl.uniform1f(parP.u.uAmb, 0); gl.uniform1f(parP.u.uMir, 0); cmLU(parP, tn, false);
     if (crewList.length) { chDraw(crewList, VP, eye, mir, rf); if (mir) gl.cullFace(gl.BACK); }
     if (crew.hum && crew.hum.length) ppSafe(() => BCH.draw(crew.hum, VP, eye, {mir, rf}));
