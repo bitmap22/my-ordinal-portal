@@ -3844,6 +3844,53 @@ function tribPaint(R) {
   labPaint(g.trib.x, g.trib.y, 1024, 128, T && T.n >= 0 && !T.fail ? fmt(T.n) + ' GIFTS TO BLOCK 0' : 'GIFTS TO BLOCK 0', '#ffd36b', null, sub, '#ffd36b');
 }
 
+/* ---- credit where it is due (14 Nov 2026): a plaque on a small stand in two halls, as Agent Blockhall credits Satoshi in block
+   0's hall and Casey Rodarmor at inscription 0. Block 0: Dogecoin, made by Billy Markus and Jackson Palmer (launched 6 December
+   2013: dogecoin.com's history of Dogecoin). The hall with block 4,609,723, which holds the first Doginal (inscription #0, read
+   from the explorer): Doginals, made by apezord. Click that plaque (or E) for the Doginals code, apezord's own work, so a link to
+   GitHub (it opens in a new tab), not a copy ---- */
+const DG0_H = 4609723, CRED_DG_ID = '15f3b73df7e5c072becb1d84191843ba080734805addfccb650929719080f62ei0', CRED_URL = 'https://github.com/apezord/doginals';
+const CRED = {
+  gen: {rows: [['DOGECOIN', 58, 800, '#ffd36b'], ['made by Billy Markus', 30, 700, '#f7efe3'], ['and Jackson Palmer', 30, 700, '#f7efe3'], ['launched 6 December 2013', 22, 600, '#cdbca3']],
+    says: 'DOGECOIN · made by Billy Markus and Jackson Palmer · launched 6 December 2013', where: "in front of the 88 DOGE case"},
+  dg: {rows: [['DOGINALS', 58, 800, '#ffd36b'], ['made by apezord', 30, 700, '#f7efe3'], ['the first Doginal · block 4,609,723', 22, 600, '#cdbca3'], ['THE DOGINALS CODE · CLICK TO OPEN', 22, 700, '#ffb04a']],
+    says: 'DOGINALS · made by apezord · the first Doginal · block 4,609,723', where: 'in the middle of the hall'}
+};
+// its plaque, painted whole and kept as two strips of the label sheet (so it fits in the room's share of the sheet): two rows of
+// tiles on each face of the stand's board, big enough to read from where you stand
+let credCv = null;
+function labCred(k, a, b) {
+  if (!credCv) { credCv = document.createElement('canvas'); credCv.width = 512; credCv.height = 256; }
+  const c = credCv.getContext('2d'), w = 512, h = 256, F = (wt, sz) => wt + ' ' + sz + 'px ui-monospace,Menlo,Consolas,monospace';
+  const fit = (t, sz, wt) => { let f = sz; c.font = F(wt, f); while (f > 8 && c.measureText(t).width > w - 48) c.font = F(wt, --f); };
+  c.clearRect(0, 0, w, h); c.fillStyle = '#0d0805'; c.fillRect(0, 0, w, h);
+  c.strokeStyle = '#ffc94a'; c.lineWidth = 8; c.strokeRect(4, 4, w - 8, h - 8);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  CRED[k].rows.forEach(([t, sz, wt, col], i) => { const s = coarse ? t.replace('CLICK', 'TAP') : t; c.fillStyle = col; fit(s, sz, wt); c.fillText(s, w / 2, [58, 118, 164, 210][i]); });
+  for (const [[x, y], r] of [[a, 0], [b, 1]]) { labCx.clearRect(x, y, 512, 128); labCx.drawImage(credCv, 0, r * 128, 512, 128, x, y, 512, 128); }
+}
+// where its stand is, along the hall (block 0: 2 m in front of the case, toward the end you arrive at; else the middle)
+const credZ = R => R.credit && R.credit.k === 'gen' ? -R.L / 2 + 2.0 : -R.L / 2;
+function credHit(sx, sy) {
+  const R = room && room.at; if (!R || !R.ready || !R.credit || R.common || R.gal) return -1;
+  const ray = rmRay(sx, sy); if (!ray) return -1;
+  return rmHit([0, .85, R.z0 + credZ(R)], [.37, .21, .07], ray, 4.5);
+}
+const credAim = (sx, sy) => room && room.at && room.at.credit && room.at.credit.k === 'dg' ? credHit(sx, sy) : -1;   // (only the Doginals plaque opens something)
+function credOpen() {
+  if (document.pointerLockElement) document.exitPointerLock();
+  $cmd.innerHTML = '<div class="t"></div><div class="cp"></div><div class="cp"></div><div class="r b"></div>';
+  $cmd.querySelector('.t').textContent = 'DOGINALS · MADE BY APEZORD';
+  const [p1, p2] = $cmd.querySelectorAll('.cp'), row = $cmd.querySelector('.b');
+  p1.textContent = 'apezord made Doginals, which brought inscriptions to Dogecoin in February 2023, and released the first Doginal, inscription #0, in block 4,609,723.';
+  p2.textContent = 'The Doginals code is apezord’s own work, so it opens on GitHub, in a new tab.';
+  const a = document.createElement('a'); a.className = 'go'; a.href = CRED_URL; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'OPEN IT ON GITHUB ↗';
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = 'CLOSE (Esc)'; b.onclick = () => $cmd.classList.remove('on');
+  row.append(a, b); $cmd.classList.add('on');
+}
+document.head.insertAdjacentHTML('beforeend', '<style>#cmd .cp{margin:10px 4px 0;font:500 13px/1.55 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;color:#f7efe3;text-align:left}' +
+  '#cmd a.go{display:inline-block;padding:8px 12px;font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;color:#140c05;background:rgba(227,179,65,.85);border:1px solid rgba(227,179,65,.4);border-radius:10px;text-decoration:none}</style>');
+addEventListener('keydown', e => { if ((e.key === 'e' || e.key === 'E') && !e.repeat && room && !$cmd.classList.contains('on') && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable && credAim(room.lock ? null : room.mx, room.lock ? null : room.my) >= 0) credOpen(); });
 /* how warm a block is (its median fee, the same scale as the floor): a colour for its signs */
 const HEATC = ['#9fe8ff', '#2f8bff', '#6fdc4b', '#f2c26b', '#ff7a1a', '#ff3b1f', '#ff4fd8'];   // ice, water, grass, desert, fire, lava storm, plasma
 function heatCol(h) {
@@ -4076,6 +4123,14 @@ function rmFix(R) {
       for (const yy of [6.15, 6.85]) box(0, yy, zf, 2.52, .035, .03, GD, 2);
     }
   }
+  if (R.credit) {   // a credit plaque on a small black stand with a gold frame, on the hall's middle line: the same words on both faces
+    const GD = LC('#ffc94a'), ST = LC('#15110c'), zs = credZ(R), c = R.credit;
+    box(0, .03, zs, .5, .06, .3, ST); box(0, .35, zs, .07, .6, .07, ST); box(0, .85, zs, .72, .4, .05, ST);
+    for (const sd of [-1, 1]) {
+      for (let r = 0; r < 2; r++) tiles(0, .93 - r * .16, zs + sd * .031, 0, sd, .16, c.rows[r][0], c.rows[r][1], 128, 4);
+      const zf = zs + sd * .04; for (const yy of [1.018, .682]) box(0, yy, zf, .68, .014, .02, GD, 2); for (const sx of [-1, 1]) box(sx * .333, .85, zf, .014, .35, .02, GD, 2);
+    }
+  }
   const G = R.gen;
   if (G) {
     const GD = LC('#ffc94a'), GB = LC('#9a6f12'), ST = LC('#15110c'), zc = -L / 2;
@@ -4154,6 +4209,8 @@ function* rmLabelsG(R) {
   for (const end of ['back', 'front']) { const [x, y] = place(512, 128); R.signs[end] = {x, y}; }
   { const [x, y] = place(512, 128); R.title = {x, y}; labPaint(x, y, 512, 128, hallName(R.h, R.h1), '#f0c75e', null, fmt(R.B.count || R.B.txs.length) + ((R.B.count || R.B.txs.length) === 1 ? ' transaction' : ' transactions'), heatCol(R.B.fees ? heatOf(medianRate(R.B.txs)) : null)); }
   for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
+  R.credit = null;   // (a credit plaque: block 0's, for who made Dogecoin; the first Doginal's hall's, for who made Doginals: two strips, after the shelf signs)
+  { const k = R.h === 0 ? 'gen' : hallHas(R, DG0_H) ? 'dg' : null; if (k) { const a = place(512, 128), b = place(512, 128); R.credit = {k, rows: [a, b]}; labCred(k, a, b); } }
   yield;
   px = LT;
   R.facts = rmFacts(R.B);
@@ -4394,6 +4451,10 @@ function rmStep(dt) {
   if (C && C.ready && C.h === 0) {
     const zc = C.z0 - C.L / 2, rad = trib && trib.gifts && trib.gifts.length ? 1.48 : .78, dx = nx, dz = nz - zc, dd = Math.hypot(dx, dz);
     if (dd < rad) { const k = dd > 1e-4 ? rad / dd : 0; nx = k ? dx * k : 0; nz = zc + (k ? dz * k : rad); }
+  }
+  if (C && C.ready && C.credit) {   // (a credit plaque's stand: you walk round it)
+    const zs = C.z0 + credZ(C), rad = .4, dx = nx, dz = nz - zs, dd = Math.hypot(dx, dz);
+    if (dd < rad) { const k = dd > 1e-4 ? rad / dd : 0; nx = k ? dx * k : 0; nz = zs + (k ? dz * k : rad); }
   }
   if (C && C.ready) {
     const xi = RW / 2 - DEEP - .3, xd = DOOR / 2 - .3, zb = C.z0, zf = C.z0 - C.L;
@@ -6558,7 +6619,8 @@ function rmHover() {
   rmHovAt = performance.now();
   const mid = room.lock || coarse, h = rmPick(mid ? null : room.mx, mid ? null : room.my);
   let s = '', sip = false;
-  if (h && h.it && h.it.show) s = showHover(h.it);
+  if (!$cmd.classList.contains('on') && credAim(mid ? null : room.mx, mid ? null : room.my) >= 0) s = 'read about apezord’s Doginals · ' + (coarse ? 'tap' : 'click or E');   // (the Doginals plaque)
+  else if (h && h.it && h.it.show) s = showHover(h.it);
   else if (h && h.it && h.it.t.gal) s = galHover(h.it);
   else if (h && h.it) { const t = h.it.t, w = t.word && t.word.a; s = (folOn(h.it) ? 'ON THE TETHER · ' : '') + TYPES[h.it.k].name + (t.bh != null && room.at && room.at.h1 > room.at.h ? ' · block ' + fmt(t.bh) : '') + (w ? ' · ' + w.slice(0, 24) : '') + (t.fee >= 0 ? ' · ' + rateWords(ownRate(t)) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to hold'; }
   else if (h && h.sign) s = 'change where this door goes';
@@ -8005,6 +8067,7 @@ const rmUp = e => {
   if (!tap) return;
   if (rmBoxOpen()) return;   // (a box is open: the mouse stays free for it)
   if (room.held) { rmPut(); return; }
+  if (credAim(room.lock ? null : e.clientX, room.lock ? null : e.clientY) >= 0) { credOpen(); return; }   // (the Doginals plaque)
   const h = rmPick(room.lock ? null : e.clientX, room.lock ? null : e.clientY); let A;
   if (h && h.it) rmHold(h.it);
   else if (h && h.sign) rmSign(h.sign);
@@ -8850,6 +8913,7 @@ window.AgentKit = window.AgentKit || (() => {
   function probe(fx, fy) {
     const x = innerWidth * fx, y = innerHeight * fy;
     if (!inRoom()) { const real = window.select; let got = null; try { window.select = t => { got = t; }; pick(x, y); } finally { window.select = real; } return got ? (got.idx != null ? {parcel: got.idx, types: typesOf(got).slice(0, 3)} : {waiting: got.id, types: typesOf(got).slice(0, 3)}) : null; }
+    if (credHit(x, y) >= 0) return {thing: 'the plaque on the small stand: "' + CRED[room.at.credit.k].says + '"' + (room.at.credit.k === 'dg' ? ' (clicking it opens the link to the Doginals code)' : '')};
     const h = rmPick(x, y); if (!h) return null; if (h.sign) return {thing: 'the sign over the ' + h.sign + ' door'}; if (h.it && h.it.show) return {thing: 'the parcel on show'};
     if (h.it && h.it.t && h.it.t.gal) { const t = h.it.t; return {thing: (t.par ? 'the parent' : 'piece ' + t.gi + ' (a child)') + (t.n != null ? ', inscription #' + fmtN(t.n) : '')}; }   // (a piece on a stand in a collection room)
     if (h.it && h.it.t) return {parcel: h.it.t.idx, types: typesOf(h.it.t).slice(0, 3)}; return {thing: 'something'};
@@ -8950,6 +9014,7 @@ window.AgentKit = window.AgentKit || (() => {
           const dx = -p.x, dz = zz - p.z, off = Math.abs(p.x) >= .4 ? 'its middle is ' + r1(Math.abs(p.x)) + ' m ' + K.bearing(deg(Math.atan2(-dx, 0)) - deg(p.yaw)).replace(' (out of view)', '') + ': ' : '';
           return 'the door to ' + (to === COMMON ? 'the common room' : to >= 0 ? 'block ' + fmtN(to) : 'nowhere yet') + ' ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m (' + off + 'walkTo({x: 0, z: ' + r1(zz + out) + '}) walks you through it)'; };
         if (C.back && C.front) L.push(C.h === 0 ? 'Doors: ' + door(C.z0 - (R.plan.L || 30), C.front.to, -1.6) + '. The hall has no back door: nothing comes before the genesis block (that wall shows the newspaper headline the block carries).' : 'Doors: ' + door(C.z0, C.back.to, 1.6) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to, -1.6) + '.');
+        if (C.credit) { const g = C.credit.k === 'gen', dx = -p.x, dz = C.z0 + credZ(C) - p.z; L.push((g ? 'In front of the 88 DOGE case' : 'In the middle of the hall') + ': a plaque on a small stand reads "' + CRED[C.credit.k].says + '"' + (g ? '' : ' (click it, or press E, for apezord\'s Doginals code on GitHub; credits() gives the link)') + ', ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m.'); }
         // 5. the floor: players see the block's fee heat underfoot
         const fr = medianRate(R.plan.items.filter(i => i.t && !i.cp && blockOf(i.t) === C.h).map(i => i.t)), hv = blockHeat.has(C.h) ? blockHeat.get(C.h) : heatOf(fr), many = C.h1 != null && C.h1 !== C.h;
         const th = tetherHere(); if (th) L.push('The follow-back line (a glowing tether) is fastened to parcel ' + th.n + ' here (step ' + th.step + ': ' + th.what + '), ' + th.where + ', ' + Math.round(th.metres) + ' m: ' + th.how + '.');
@@ -9284,6 +9349,8 @@ window.AgentKit = window.AgentKit || (() => {
         await until(() => (room && room.at !== from) || fresh(), 25000); await until(() => roomReady(), 60000); await until(fresh, 8000);   // (answers once you are there, with the new arrow)
         const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
+    {name: 'credits', ro: true, does: 'Who Doge Cube credits on its two plaques, as a player reads them: in block 0\'s hall (in front of the 88 DOGE case), Dogecoin, made by Billy Markus and Jackson Palmer; in the hall with block 4,609,723 (the first Doginal, inscription #0), Doginals, made by apezord, with the link to the Doginals code on GitHub (apezord\'s own work, so a link, not a copy).',
+      run: () => ({ok: true, plaques: [{where: "block 0's hall, on a small stand " + CRED.gen.where, says: CRED.gen.says}, {where: 'the hall with block ' + fmtN(DG0_H) + ', on a small stand ' + CRED.dg.where, says: CRED.dg.says, firstDoginal: {inscription: CRED_DG_ID, number: 0, block: DG0_H}, link: CRED_URL, note: 'a person clicks it, or presses E, for the link: the Doginals code is apezord\'s own work, so read it on GitHub'}]})},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
       run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
     {name: 'bigScreen', ro: true, does: 'Read the Forum\'s big screen (live from the blockchain), and open it up close if you are in the common room.', args: [{name: 'open', type: 'boolean', does: 'also open it up close on screen'}],
