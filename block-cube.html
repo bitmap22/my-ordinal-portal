@@ -635,8 +635,8 @@ function feeCol(t) {
 // Highest fee rate goes in first; every box takes the lowest space it fits (small ones fill gaps),
 // turning on its side if that sits lower. The very biggest boxes settle first so they don't stick out the top.
 const R = 64, HM = R * 2, LL = R * R, VPU = BLOCK_VB / Math.pow(R / 1.06, 3);
-function dimsOf(vsize) {
-  const v = Math.max(1, vsize / VPU), s = Math.max(1, Math.floor(Math.cbrt(v) + 1e-9));
+function dimsOf(vsize, k = 1) {   // (k: how much bigger each unit is, only for a block that would not fit in its cube otherwise)
+  const v = Math.max(1, vsize / (VPU * k)), s = Math.max(1, Math.floor(Math.cbrt(v) + 1e-9));
   let best = [s, s, s], be = 1e9;
   for (const o of [[s, s, s], [s + 1, s, s], [s + 1, s + 1, s], [s + 1, s + 1, s + 1]]) {
     const e = Math.abs(Math.log(o[0] * o[1] * o[2] / v)); if (e < be) { be = e; best = o; }
@@ -644,7 +644,7 @@ function dimsOf(vsize) {
   return best.map(x => Math.min(R, x));
 }
 class Grid {
-  constructor() { this.occ = new Uint8Array(LL * HM); this.free = new Int32Array(HM).fill(LL); this.lo = new Map(); }
+  constructor() { this.occ = new Uint8Array(LL * HM); this.free = new Int32Array(HM).fill(LL); this.lo = new Map(); this.k = 1; }
   fits(x, y, z, a, h, c) {
     const o = this.occ;
     for (let yy = y; yy < y + h; yy++) { const b = yy * LL; for (let zz = z; zz < z + c; zz++) { const r = b + zz * R; for (let xx = x; xx < x + a; xx++) if (o[r + xx]) return false; } }
@@ -667,7 +667,7 @@ class Grid {
     }
   }
   place(t, y0) {
-    const [p, q, r] = t.d || (t.d = dimsOf(t.vsize)), seen = new Set();
+    const [p, q, r] = t.d || (t.d = dimsOf(t.vsize, this.k)), seen = new Set();
     let best = null, bo = [p, q, r];
     for (const o of [[p, q, r], [p, r, q], [q, p, r], [r, p, q], [q, r, p], [r, q, p]]) {
       const k = o.join(); if (seen.has(k)) continue; seen.add(k);
@@ -703,24 +703,38 @@ const yieldNow = () => new Promise(r => { const t = performance.now(), c = new M
 // If a block has many very big transactions, near-cube boxes can't stack inside (e.g. nine 59,000 vB boxes, 24 units a
 // side: only four fit across, so a third layer pokes out of the top). Then it is packed again with those big boxes
 // (14+ units) as flatter or taller blocks on a 16 or 32 square base, which tile the floor; their volume still matches.
-function flexDims(vsize) {
-  const d = dimsOf(vsize); if (Math.max(d[0], d[1], d[2]) < 14) return d;
-  const v = vsize / VPU; let best = d, be = 1e9;
-  for (const a of [16, 32]) { const h = Math.max(1, Math.min(R, Math.round(v / (a * a)))), e = Math.abs(Math.log(h / a)) + 4 * Math.abs(Math.log(a * a * h / v)); if (e < be) { be = e; best = [a, h, a]; } }
+function flexDims(vsize, k = 1) {
+  const d = dimsOf(vsize, k); if (Math.max(d[0], d[1], d[2]) < 14) return d;
+  const v = vsize / (VPU * k); let best = d, be = 1e9;
+  for (const a of [16, 32, 64]) { const h = Math.max(1, Math.min(R, Math.round(v / (a * a)))), e = Math.abs(Math.log(h / a)) + 4 * Math.abs(Math.log(a * a * h / v)); if (e < be) { be = e; best = [a, h, a]; } }
   return best;
 }
+// a very big box as a whole floor layer (64 x h x 64), where that keeps its volume within 8%
+function slabDims(vsize, k = 1) {
+  const d = flexDims(vsize, k); if (Math.max(d[0], d[1], d[2]) < 14) return d;
+  const v = vsize / (VPU * k), h = Math.max(1, Math.min(R, Math.round(v / LL)));
+  return Math.abs(Math.log(LL * h / v)) <= .08 ? [R, h, R] : d;
+}
+// Every block sits inside its cube: nothing ever pokes out of the top. The ways are tried in turn until one fits:
+//  0. every box near-cube, the big ones first (by fee), then the rest by fee;
+//  1. the very big ones as flatter or taller blocks on a 16, 32 or 64 square base, which tile the floor (their volume still matches);
+//  2. those big ones placed biggest first;
+//  3. the very big ones as whole floor layers where their volume still matches, biggest first;
+//  4 on. every box made a little smaller, 5% a step and all alike (so they keep their sizes to each other), until it fits.
+//     (This always ends: at the smallest, every transaction is one unit, and a block never holds more than 64 x 64 x 64 of them.)
 async function layoutAll(txs, alive) {
-  for (let flex = 0; flex < 2; flex++) {
-    const g = new Grid();
-    for (const t of txs) t.d = flex ? flexDims(t.vsize) : dimsOf(t.vsize);
-    const big = t => Math.max(t.d[0], t.d[1], t.d[2]) >= 6 ? 1 : 0;
-    const order = txs.slice().sort((u, v) => (big(v) - big(u)) || (rateKey(v) - rateKey(u)) || ((u.idx || 0) - (v.idx || 0)));
+  for (let pass = 0; ; pass++) {
+    const flex = pass > 0, bySize = pass > 1, slab = pass === 3, k = pass > 3 ? Math.pow(1.05, pass - 3) : 1, g = new Grid(); g.k = k;
+    for (const t of txs) t.d = slab ? slabDims(t.vsize, k) : flex ? flexDims(t.vsize, k) : dimsOf(t.vsize, k);
+    const vol = t => t.d[0] * t.d[1] * t.d[2], big = t => Math.max(t.d[0], t.d[1], t.d[2]) >= 6 ? 1 : 0;
+    const order = txs.slice().sort((u, v) => (big(v) - big(u)) || (bySize && big(u) ? vol(v) - vol(u) : 0) || (rateKey(v) - rateKey(u)) || ((u.idx || 0) - (v.idx || 0)));
     let t0 = performance.now(), top = 0;
-    for (let i = 0; i < order.length; i++) {
+    for (let i = 0; i < order.length && top <= R; i++) {   // (a way that pokes out of the top is dropped straight away)
       g.place(order[i], 0); const t = order[i]; if (t.y + t.h > top) top = t.y + t.h;
       if ((i & 15) === 15 && performance.now() - t0 > burst) { await yieldNow(); if (!alive()) return null; t0 = performance.now(); }
     }
-    if (top <= R || flex) return {g, order};
+    if (top <= R) { layoutAll.last = {pass, k, top}; return {g, order, k}; }
+    await yieldNow(); if (!alive()) return null;
   }
 }
 const centerOf = t => [((t.x + t.a / 2) / R - .5) * S, (t.y + t.h / 2) / R * S, ((t.z + t.c / 2) / R - .5) * S];
@@ -1859,7 +1873,7 @@ function liveDelta(dl) {
   if (top > R) repack();
   if (mode === 'live' && !(now() < sealUntil)) {
     if (sel && !liveMap.has(sel.id) && !room) select(null);
-    leaving.push(...out); shown = [...liveMap.values()]; rebuild(); head();
+    leaving.push(...out); shown = [...liveMap.values()].filter(t => t.y + t.h <= R); rebuild(); head();   // (one that landed above the top waits, unseen, for the re-sort)
   }
 }
 function placeLive(g, t, among) {
@@ -1890,7 +1904,7 @@ async function repack() {
     const c = centerOf(t);
     if (o[0] !== c[0] || o[1] !== c[1] || o[2] !== c[2]) anim(t, 0, tn, o);
   }
-  if (mode === 'live' && !(now() < sealUntil)) { shown = [...liveMap.values()]; rebuild(); }
+  if (mode === 'live' && !(now() < sealUntil)) { shown = [...liveMap.values()].filter(t => t.y + t.h <= R); rebuild(); }
   if (packAgain) { packAgain = false; let top = 0; for (const t of liveMap.values()) if (t.y + t.h > top) top = t.y + t.h; if (top > R) repack(); }
 }
 let minedMsg = null, sealUntil = -1;
