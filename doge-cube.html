@@ -486,8 +486,20 @@ async function ordFetch() { throw new Error('not on Dogecoin'); }
 function fetchT(url, opt, ms) {
   const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms || 25000);
   return fetch(url, Object.assign({signal: ac.signal}, opt || {})).then(r => {
-    clearTimeout(t); if (!r.ok) throw new Error('http ' + r.status); return r;
-  }, e => { clearTimeout(t); throw e; });
+    clearTimeout(t); hMark(url, r.ok || (r.status >= 400 && r.status < 500 && ![402, 429, 430].includes(r.status)));   // (a 'not found' is still an answer)
+    if (!r.ok) throw new Error('http ' + r.status); return r;
+  }, e => { clearTimeout(t); hMark(url, false); throw e; });
+}
+
+// (14 Nov 2026) how each data site answered last time, for the kit's health(): answering, or not (and since when); nothing is guessed
+const HEALTH_D = {};
+const HEALTH_WHAT = {'https://thedoginalsexplorer.com': 'blocks, transactions, inscriptions and their files (the first site asked)',
+  'https://api.blockchair.com': 'blocks (a back-up)', 'https://api.blockcypher.com': 'blocks (a back-up)',
+  'https://api.bitcore.io': 'the newest block, and every transaction\'s size and fee', 'https://sandbox-api.3xpl.com': 'the newest block and block hashes (a last word)',
+  'https://cdn.doggy.market': 'copies of inscription files (when the explorer does not have one)'};
+function hMark(url, ok) {
+  const h = (/^https?:\/\/[^/]+/.exec(String(url)) || [''])[0]; if (!HEALTH_WHAT[h]) return;
+  const H = HEALTH_D[h] || (HEALTH_D[h] = {}); if (H.ok !== ok) { H.ok = ok; H.since = Date.now(); } H.last = Date.now();
 }
 // a job for each item, a few at a time
 async function poolMap(list, n, fn) {
@@ -6323,10 +6335,12 @@ function cmAct(sx, sy) {
     const tb = (bx, by, bd, hx, hy, hd, o, max) => { const [wx, wz] = cmW(C, bx, bd); consider(rmHit([wx, by, C.z0 + wz], [hx, hy, hd], ray), o, max); };
     if (!cm.pint) tb(CM.TAP[0], 3.26, CM.TAP[1], .4, .35, .4, {a: 'pour', label: 'pour a pint'}, 4);
     tb(CM.JB[0], 2.82, CM.JB[1], .7, 1.0, .45, {a: 'music', label: 'choose the music'}, 6);
+    tb(14.72, 2.2, 7.95, .15, 2.2, 2.2, {a: 'shutter', label: 'the shutter: where is Block Paint City?'}, 8);   // (14 Nov 2026: it says where)
     if (best) return best;
   }
   if (!cm.pint && !H.lv && Math.hypot(H.x - (CM.TAP[0] + 1.6), H.d - CM.TAP[1]) < 1.4) return {a: 'pour', label: 'pour a pint'};
   if (!H.lv && Math.hypot(H.x - CM.JB[0], H.d - (CM.JB[1] + 1.25)) < 1.3) return {a: 'music', label: 'choose the music'};
+  if (!H.lv && H.x > 11.5 && H.d > 5.2 && H.d < 10.7) return {a: 'shutter', label: 'the shutter: where is Block Paint City?'};   // (standing right by it)
   let seat = null, sd = 9;
   for (const s of CM_SEATS) { const e = Math.hypot(H.x - s[0], H.d - s[1]); if (e < (s[8] || 1.25) && e < sd && Math.abs((p.y || 0) - s[2]) < .5) { sd = e; seat = s; } }
   if (seat) return {a: 'seat', s: seat, label: 'sit down'};
@@ -6356,6 +6370,7 @@ function cmDo(A) {
   if (A.a === 'music') { cmAsk('music'); return; }
   if (A.a === 'board') { cmBigOpen(); return; }
   if (A.a === 'play') { cmSelect(A.L); return; }
+  if (A.a === 'shutter') { shutOpen(); return; }
 }
 function cmSip() {
   const P = cm.pint; if (!P || P.sipT && performance.now() - P.sipT < 950) return;
@@ -6952,8 +6967,10 @@ document.getElementById('src').onclick = () => { srT = null; $sra.style.display 
 const $rfx = document.getElementById('rf');
 async function srTravel(h) {
   const say = h === COMMON ? 'FAST TRAVEL · THE COMMON ROOM' : 'FAST TRAVEL · BLOCK ' + fmt(h);
-  $rfx.dataset.say = say;
-  try { await roomEnter(h, undefined, {wait: true}); } finally { setTimeout(() => { if ($rfx.dataset.say === say && !$rfx.classList.contains('on')) delete $rfx.dataset.say; }, 450); }
+  $rfx.dataset.say = say; $rfx.classList.add('on');   // (the black cover at once: working out the hall can take a few seconds)
+  try { await roomEnter(h, undefined, {wait: true}); } finally {
+    if ($rfx.dataset.say === say && $rfx.classList.contains('on') && !(room && room.at && !room.at.ready && !room.at.failed)) $rfx.classList.remove('on');   // (a trip that stopped before it began)
+    setTimeout(() => { if ($rfx.dataset.say === say && !$rfx.classList.contains('on')) delete $rfx.dataset.say; }, 450); }
 }
 // places to go
 document.getElementById('tsr').onclick = () => { if (room) srOpen(); };
@@ -8515,6 +8532,163 @@ $pt.onclick = () => { location.href = /github\.io$/.test(location.hostname) ? 'd
 // (the warehouse shutter stays shut: Doge Cube has no Block Paint. In Block Cube it opens into Block Paint City)
 if (BC_COMMON) { document.body.classList.add('bc-common'); (async () => { for (let i = 0; i < 300 && !(tipH >= 0); i++) await new Promise(r => setTimeout(r, 100)); if (!room) roomEnter(COMMON); })(); }   // (the common-room download opens straight in it)
 
+/* ================= THE i BUTTON: the buttons, the keys, and how things work =================
+   (14 Nov 2026) the i button, as in Agent Blockhall: on a computer, next to the house (top left), a list of the buttons and keys for where you
+   are now (the cube, a hall, the common room, a gallery), and how the main things work. Esc, the button again, or a click outside
+   the list closes it. An agent reads the same list with the kit's controls(). */
+const ciCss = document.createElement('style');
+ciCss.textContent = `#ti{display:none}
+@media (pointer:fine) and (min-width:601px){#ti{display:flex;position:fixed;left:calc(66px + env(safe-area-inset-left));top:calc(18px + env(safe-area-inset-top));width:40px;height:40px;border-radius:20px;z-index:20;font:italic 700 19px Georgia,'Times New Roman',serif}body.room:not(.crewpage) #ti{left:calc(114px + env(safe-area-inset-left))}}
+body.tiny #ti{display:none!important}
+#ti.on{background:rgba(227,179,65,.85);color:#140c05}
+#cinf{position:fixed;inset:0;z-index:42;display:none;align-items:center;justify-content:center;background:rgba(4,6,8,.55)}
+#cinf.on{display:flex}
+#cinf>div{width:min(760px,calc(100vw - 32px));max-height:min(86vh,800px);overflow:auto;background:#120d08;border:2px solid #d9a441;border-radius:12px;padding:18px 22px 16px;color:#efe3cf;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+#cinf h2{margin:0;font-size:15px;letter-spacing:1.5px;color:#ffd36b}
+#cinf .w{margin:2px 0 6px;color:#bfae93}
+#cinf .tb{display:flex;gap:8px;margin:8px 0 4px}
+#cinf .tb button,#cinf .x button{background:#241a10;border:1px solid #6b5432;border-radius:6px;color:#ffe1a8;font:700 12px ui-monospace,Menlo,Consolas,monospace;padding:6px 10px;cursor:pointer;letter-spacing:.5px}
+#cinf .tb button.on{background:#d9a441;color:#140c05;border-color:#d9a441}
+#cinf h3{margin:14px 0 6px;font-size:12px;letter-spacing:1.5px;color:#ffcf7a;text-transform:uppercase}
+#cinf .r{display:grid;grid-template-columns:minmax(150px,210px) 1fr;gap:5px 14px;align-items:baseline}
+#cinf .k{color:#ffe1a8;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+#cinf .k svg{width:16px;height:16px;flex:none;color:#ffd36b}
+#cinf kbd{display:inline-block;min-width:18px;padding:0 5px;border:1px solid #6b5432;border-bottom-width:2px;border-radius:4px;background:#241a10;font:600 12px ui-monospace,Menlo,Consolas,monospace;color:#ffe1a8;text-align:center}
+#cinf p{margin:0 0 8px}
+#cinf a{color:#ffd36b}
+#cinf .warn{border-left:3px solid #ff8a3d;padding-left:9px;color:#ffd9b0}
+#cinf .x{margin-top:14px;text-align:right}`;
+document.head.appendChild(ciCss);
+const $ti = document.createElement('button'); $ti.id = 'ti'; $ti.className = 'tl'; $ti.type = 'button'; $ti.textContent = 'i';
+$ti.setAttribute('aria-label', 'buttons, keys and how to'); $ti.title = 'buttons, keys and how to';
+document.body.appendChild($ti);
+const $cinf = document.createElement('div'); $cinf.id = 'cinf'; $cinf.setAttribute('role', 'dialog'); $cinf.setAttribute('aria-label', 'buttons, keys and how to');
+document.body.appendChild($cinf);
+const ci = {tab: 'keys'};
+const CI_BLOG = 'https://bitmap22.github.io/my-ordinal-portal/doge-cube-blog.html';   // (our own blog, on the portal)
+const CI_X = 'https://x.com/BitmapPlotz';   // (bitmap22 on X)
+const CI_AB = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html', CI_PAINT = 'https://bitmap22.github.io/my-ordinal-portal/block-paint.html';   // (the Bitcoin twin, and its Block Paint City)
+// where you are now
+function ciWhere() {
+  if (!room) return 'cube';
+  const R = room.at;
+  return R && R.gal ? 'gallery' : R && (R.common || cmOn(R)) ? 'common' : 'room';
+}
+const CI_WHERE = {cube: 'the cube', room: 'a hall', common: 'the common room', gallery: 'a gallery'};
+// the list, as data: each row is [keys or button, what it does, the button's id for its picture]. Keys go in [square brackets].
+function ciData(tab) {
+  const w = ciWhere(), inR = w !== 'cube', S = [], crewOn = !!(crew && crew.on);
+  if ((tab || 'keys') === 'keys') {
+    if (!inR) {
+      S.push({t: 'buttons', rows: [['house (top left)', 'walk into the block', 'th'], ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ordinal Portal menu: the portal, the other apps, its tools and the blogs', 'tm'],
+        ['the big block number', 'click it, type a block number (or a transaction ID), then [Enter]'], ['the blocks along the top', 'click one to go to it (its arrow shows older ones)'],
+        ['BLOCK WEATHER 1D 1W 1M 3M', 'how busy Dogecoin has been: each bar\'s height is the transactions a block, its colour the middle fee; click a bar to open a block from it'],
+        ['‹   ›', 'the block before / the block after'], ['LIVE', 'the block being made right now'], ['FEES', 'switch the colours between fees and ordinals'], ['eye', 'x-ray: see inside the cube', 'xr'],
+        ['layers', 'open the cube\'s layers', 'op'], ['FEED', 'show or hide the live feed'], ['PARCEL TYPES (bottom left)', 'hover a kind to light up just those parcels, click to keep it lit; its tabs switch between inscriptions, tokens and transactions'],
+        ['play (top right)', 'flip back through the blocks', 'tp'], ['camera', 'save a picture', 'ts'], ['sound', 'sound on or off', 'tu'], ['code', 'download', 'tc']]});
+      S.push({t: 'mouse', rows: [['drag', 'turn the cube'], ['wheel', 'zoom in and out'], ['click a parcel', 'see what it is (its card)']]});
+      S.push({t: 'keys', rows: [['[←] [→]', 'the block before / the block after'], ['[↑] [↓]', 'step through the parcels of the kind you picked'],
+        ['[O]', 'open the layers'], ['[Esc]', 'close the parcel\'s card']].concat(crewOn ? [['[Enter]', 'crew chat']] : [])});
+    } else {
+      S.push({t: 'buttons', rows: [['house (top left)', 'back out to the cube', 'th'], ['people', 'play together: find a crew', 'pt'],
+        ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ordinal Portal menu: the portal, the other apps, its tools and the blogs', 'tm'], ['← BACK (top)', 'back where you came from', 'gb'],
+        ['tablet', 'search and fast travel', 'tsr'], ['camera (top right)', 'save a picture', 'ts'], ['sound', 'sound on or off', 'tu']]});
+      S.push({t: 'moving', rows: [['click the room', 'look around with the mouse ([Esc] gives the mouse back)'], ['[W] [A] [S] [D] or arrows', 'walk'], ['[Shift]', 'run']].concat(w === 'common' ? [['walk', 'stand up from a seat']] : [])});
+      S.push({t: 'doing', rows: (w === 'common' ? [['[E] (or click)', 'use what you are looking at (sit, pour a pint, the music box, the big screen): the words near the middle of the screen say what']] : [])
+        .concat([['click a parcel', 'hold it (it shows what it is, like a tablet)']])
+        .concat(w === 'room' ? [['click the number over a door', 'send that door to another block'], ['[E] (or click) the Doginals plaque', 'in the hall with block 4,609,723: the Doginals code, on GitHub']] : [])
+        .concat(w === 'common' ? [['[E] (or click) the warehouse shutter', 'where Block Paint City is']] : [])
+        .concat([['[T]', 'the tablet: search and fast travel'], ['[Esc]', 'put back what you hold, or close a box']])});
+      S.push({t: 'holding a parcel (its card shows which work)', rows: [['[V]', 'view it big'], ['[G]', 'open its collection\'s gallery'], ['[C]', 'show it in the common room'],
+        ['[F]', 'follow it back through the blocks'], ['[U]', 'untether']]});
+      if (crewOn) S.push({t: 'with a crew', rows: [['[Enter]', 'crew chat']]});
+    }
+    for (const s of S) s.rows = s.rows.filter(r => { if (!r[2] || r[2] === 'ti') return true; const el = document.getElementById(r[2]); return !!(el && el.getClientRects().length); });   // (only buttons on the screen now: some hide on a smaller screen)
+    return {where: CI_WHERE[w], sections: S};
+  }
+  // how to
+  S.push({t: 'staying safe', p: ['Never open links people post in the chat or say out loud. A link can lead to a fake site made to empty your wallet. To visit a site, type its address yourself or use a bookmark you trust.',
+    'Doge Cube never asks you to send, spend or approve anything, and never asks for seed words, private keys or passwords. If something does while you play, it is not us: say no.',
+    'A parcel\'s LIVE VIEW runs its own code, like a web page: never type seed words, private keys, passwords or wallet details into it.']});
+  S.push({t: 'who is who', rows: [['people', 'real players, each on their own screen; their name floats over their head'],
+    ['AI agents', 'players too, run by an AI; their name has "· AI" after it. They play by the same rules as people, with no extra powers'],
+    ['NPCs', 'the robots (such as the Chain Keeper and the barkeep) are part of the place, not players: they do not chat or play']]});
+  S.push({t: 'your own AI agent', p: ['Your AI agent can play too: any AI agent that can use a web browser. Send it to bitmap22.github.io/my-ordinal-portal: the guide there (llms.txt) tells it how to play.',
+    'Give it your crew\'s code and it joins you like a player. It plays by the same rules as people, with no extra powers, and everyone sees "· AI" after its name. While an agent plays on your screen, the small "AI agent" box lets you talk to it: only your screen sees that box.']});
+  S.push({t: 'muting', rows: [['all the sound', 'the sound button (top right) turns the game\'s sound on or off', 'tu'],
+    ['one person', 'press the mic next to their name in the crew list on the play together page: their voice and their chat, for you only'],
+    ['your own mic', 'it is off until you turn it on. In a crew, the Microphone button on the play together page turns it on or off (with push to talk, hold it while you talk)']]});
+  S.push({t: 'the common room', rows: [['the Forum', 'the big screen, live from the blockchain: [E] to see it up close; sit on the steps'],
+    ['the Mempool bar', 'pour a pint at the tap ([E]), then sip it'], ['the Fireside Lounge', 'the music box: [E] to choose the music, for your crew too'],
+    ['SHOW IN COMMON ROOM ([C])', 'puts the parcel you hold on show in the Forum, for your crew too'],
+    ['the warehouse', 'its shutter stays shut here: Block Paint City is in Agent Blockhall, Doge Cube\'s Bitcoin twin']]});
+  S.push({t: 'the block halls', rows: [['a hall', 'its parcels stand on shelves by kind, like a library; the sign over each bookcase says what is on it'],
+    ['blocks in a hall', 'while Dogecoin is quiet a hall holds 20, 10, 5 or 2 blocks side by side (the most that keep it to about 500 parcels); in busy times, one. Block 0 always stands alone'],
+    ['the floor', 'the middle fee picks it (in a hall of several blocks, its first block\'s): ice (under 0.01 DOGE/kB), water (0.01 to 0.015), grass (0.015 to 0.05), desert (0.05 to 0.15), fire (0.15 to 0.5), lava storm (0.5 to 2), plasma (2 and up)'],
+    ['the doors', 'one at each end: the hall before and the hall after; click the number over a door to send it to another block'],
+    ['the newest block\'s door', 'leads to the common room (until the next block is mined)'],
+    ['FOLLOW IT BACK ([F])', 'shows where a held inscription has been, block by block, on a tether; the doors follow its journey. UNTETHER ([U]) lets it go'],
+    ['block 0\'s hall', 'the 88 DOGE case, and a plaque: Dogecoin, made by Billy Markus and Jackson Palmer'],
+    ['the hall with block 4,609,723', 'the first Doginal, and a plaque: Doginals, made by apezord ([E] or click it for the Doginals code on GitHub)'],
+    ['OPEN GALLERY ([G])', 'a collection\'s own room, from any of its pieces'], ['the tablet ([T])', 'search for a block, a dogemap, an inscription, an ID or an address, and fast travel']]});
+  return {where: CI_WHERE[w], sections: S};
+}
+// the list on the screen (built from the data above: words only, no markup from anywhere else)
+function ciDraw() {
+  const D = ciData(ci.tab), box = document.createElement('div'), h = document.createElement('h2'), wh = document.createElement('div');
+  h.textContent = 'BUTTONS, KEYS AND HOW TO'; wh.className = 'w'; wh.textContent = 'You are in ' + D.where + '.';
+  const tb = document.createElement('div'); tb.className = 'tb';
+  for (const [k, l] of [['keys', 'BUTTONS & KEYS'], ['how', 'HOW TO']]) { const b = document.createElement('button'); b.type = 'button'; b.textContent = l; b.className = ci.tab === k ? 'on' : ''; b.onclick = () => { ci.tab = k; ciDraw(); }; tb.appendChild(b); }
+  box.append(h, wh, tb);
+  const words = (el, t) => { for (const [i, bit] of String(t).split(/\[([^\]]+)\]/).entries()) { if (!bit) continue; if (i % 2) { const k = document.createElement('kbd'); k.textContent = bit; el.appendChild(k); } else el.appendChild(document.createTextNode(bit)); } };
+  for (const s of D.sections) {
+    const t = document.createElement('h3'); t.textContent = s.t; box.appendChild(t);
+    if (s.rows) { const g = document.createElement('div'); g.className = 'r';
+      for (const [k, d, ic] of s.rows) { const a = document.createElement('div'); a.className = 'k'; const src = ic && document.getElementById(ic), svg = src && src.querySelector('svg');
+        if (svg) a.appendChild(svg.cloneNode(true)); words(a, k); const b = document.createElement('div'); words(b, d); g.append(a, b); }
+      box.appendChild(g); }
+    for (const t2 of s.p || []) { const p = document.createElement('p'); words(p, t2); box.appendChild(p); }
+    if (s.warn) { const p = document.createElement('p'); p.className = 'warn'; p.textContent = s.warn; box.appendChild(p); }
+  }
+  if (ci.tab === 'how') {
+    const link = (txt, href, rel) => { const p = document.createElement('p'), l = document.createElement('a'); l.textContent = txt; l.href = href; l.target = '_blank'; l.rel = rel || 'noopener'; p.appendChild(l); box.appendChild(p); return p; };
+    link('Read the Doge Cube blog ↗', CI_BLOG).style.marginTop = '14px'; link('Agent Blockhall, the Bitcoin twin ↗', CI_AB); link('Follow bitmap22 on X: @BitmapPlotz ↗', CI_X, 'me noopener');
+  }
+  const x = document.createElement('div'); x.className = 'x'; const c = document.createElement('button'); c.type = 'button'; c.textContent = 'CLOSE (Esc)'; c.onclick = () => ciShow(false); x.appendChild(c); box.appendChild(x);
+  $cinf.replaceChildren(box);
+}
+function ciShow(on) {
+  if (on && document.pointerLockElement) document.exitPointerLock();
+  if (on) ciDraw(); $cinf.classList.toggle('on', !!on); $ti.classList.toggle('on', !!on);
+  if (on && typeof rmLetGo === 'function') rmLetGo();
+}
+$ti.onclick = () => ciShow(!$cinf.classList.contains('on'));
+$cinf.addEventListener('pointerdown', e => { if (e.target === $cinf) ciShow(false); });
+// while the list is open it keeps the keyboard (nothing walks behind it); Esc closes it
+addEventListener('keydown', e => { if (!$cinf.classList.contains('on')) return; if (e.key === 'Escape') ciShow(false); e.stopImmediatePropagation(); if (e.key !== 'Tab') e.preventDefault(); }, true);
+
+/* ---- the house button says what it does now (as in Agent Blockhall) ---- */
+{ const th = document.getElementById('th'); if (th) { const say = () => { const w = th.classList.contains('on') ? 'back out to the cube' : 'walk into the block'; th.title = w; th.setAttribute('aria-label', w); }; new MutationObserver(say).observe(th, {attributes: true, attributeFilter: ['class']}); say(); } }
+
+/* ---- fast travel: how far the hall has got, on the black cover, under where you are going ---- */
+document.head.insertAdjacentHTML('beforeend', '<style>#rf::before{content:attr(data-prog);position:absolute;left:50%;top:calc(50% + 24px);transform:translateX(-50%);white-space:nowrap;max-width:calc(100vw - 24px);overflow:hidden;text-overflow:ellipsis;font:500 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;color:#bfae93}</style>');
+setInterval(() => { const R = room && room.at, on = $rf.classList.contains('on') && !!(R && !R.ready && !R.common && !R.gal && !R.failed);
+  const t = on ? hallProgText(R) : $rf.classList.contains('on') && $rf.dataset.say ? 'on the way…' : '';
+  if (t) { if ($rf.dataset.prog !== t) $rf.dataset.prog = t; } else if ($rf.dataset.prog) delete $rf.dataset.prog; }, 300);
+
+/* ---- the warehouse shutter: Block Paint City is in Agent Blockhall (Doge Cube's Bitcoin twin), so here it says where ---- */
+function shutOpen() {
+  if (document.pointerLockElement) document.exitPointerLock();
+  $cmd.innerHTML = '<div class="t"></div><div class="cp"></div><div class="cp"></div><div class="r b"></div>';
+  $cmd.querySelector('.t').textContent = 'THE WAREHOUSE · BLOCK PAINT CITY';
+  const [p1, p2] = $cmd.querySelectorAll('.cp'), row = $cmd.querySelector('.b');
+  p1.textContent = 'This shutter stays shut in Doge Cube. Block Paint City is in Agent Blockhall, Doge Cube’s Bitcoin twin: there, the warehouse shutter opens into it.';
+  p2.textContent = 'Spray-paint a city that follows the Bitcoin blockchain live, on your own or with a crew. Both open in a new tab.';
+  const go = (txt, href) => { const a = document.createElement('a'); a.className = 'go'; a.href = href; a.target = '_blank'; a.rel = 'noopener'; a.textContent = txt; return a; };
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = 'CLOSE (Esc)'; b.onclick = () => $cmd.classList.remove('on');
+  row.append(go('OPEN BLOCK PAINT CITY ↗', CI_PAINT), go('OPEN AGENT BLOCKHALL ↗', CI_AB), b); $cmd.classList.add('on');
+}
+
 /* ---------- start ---------- */
 placeTools(); head(); nav();
 requestAnimationFrame(frame);
@@ -8576,7 +8750,7 @@ window.AgentKit = window.AgentKit || (() => {
     const B = BOX(), r = B.el; if (!r) return; const d = r.ownerDocument, log = r.querySelector('[data-log]');
     log.textContent = '';
     for (const m of B.log.slice(-40)) { const p = d.createElement('p'), b = d.createElement('b'); p.style.cssText = 'margin:5px 0;overflow-wrap:anywhere'; b.textContent = m.from === 'agent' ? 'Agent: ' : 'You: '; b.style.color = m.from === 'agent' ? '#f7931a' : '#7fd8ff'; p.append(b, d.createTextNode(m.text)); log.append(p); }
-    if (!B.log.length) { const p = d.createElement('p'); p.style.cssText = 'margin:5px 0;opacity:.7'; p.textContent = 'An AI agent is playing on this screen. Type here to talk to it; it answers here. Only this screen sees this box.'; log.append(p); }
+    if (!B.log.length) { const p = d.createElement('p'); p.style.cssText = 'margin:5px 0;opacity:.7'; p.textContent = 'An AI agent is using this page. Type here to talk to it; it answers here. Only this screen sees this box.'; log.append(p); }
     log.scrollTop = log.scrollHeight;
     r.querySelector('[data-body]').style.display = B.open ? '' : 'none';
     r.style.width = B.open ? 'min(320px, calc(100vw - 16px))' : 'auto';   // (closed, it is a small tab: easier to keep clear of the screen's words)
@@ -8610,17 +8784,17 @@ window.AgentKit = window.AgentKit || (() => {
     const cx = parseFloat(r.style.left), cy = parseFloat(r.style.top), inside = isFinite(cx) && isFinite(cy) && cx >= 0 && cy >= 0 && cx + bw <= TW && cy + bh <= TH;
     if (!must) {   // (the quick look every few seconds: it stays while its spot still covers no words or buttons, and never moves while someone types in it)
       const H = []; obstacles(d, 0, 0, TW, TH, H, null, 0);
-      const edge = cx <= 9 || cy <= 9 || cx >= TW - bw - 9 || cy >= TH - bh - 9;   // (it keeps to the edges, so the middle of the screen stays clear)
+      const edge = (cx <= 9 || cx >= TW - bw - 9) && (cy <= 9 || cy >= TH - bh - 9);   // (it keeps to a corner, so the middle of the screen stays clear)
       if (inside && edge && !area(H, cx, cy)) return true;
       if (d.activeElement && r.contains(d.activeElement)) return false;
     }
     const H = [], S = []; obstacles(d, 0, 0, TW, TH, H, S, 0);
     // the best spot, always along an edge (the middle of the screen stays clear for the game): covers no words or buttons if it can,
     // then as little of any panel as it can, then the right side before the left, then the top and bottom edges, then higher up
-    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8), spots = [];
-    for (let y = 8; y <= B0; y += 12) spots.push([R0, y, 0], [8, y, .5]);
-    for (let x = 8; x <= R0; x += 24) spots.push([x, 8, 1], [x, B0, 1]);
-    for (const [x, y, k] of spots) { const hd = area(H, x, y), q = hd * 1000 + area(S, x, y) + k + y / 1e4; if (!best || q < best.q) best = {x, y, q, hard: hd}; }
+    // ((14 Nov 2026) the box keeps to a corner: bottom right first, then top right, bottom left, top left: the first that covers no words or buttons,
+    //  else the one that covers least: so it is found in the same place on every page)
+    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8);
+    for (const [x, y, k] of [[R0, B0, 0], [R0, 8, 1], [8, B0, 2], [8, 8, 3]]) { const hd = area(H, x, y), q = hd * 1e9 + k * 1e6 + area(S, x, y); if (!best || q < best.q) best = {x, y, q, hard: hd}; }
     if (!best) best = {x: Math.max(0, R0), y: 8, hard: 1};
     r.style.left = best.x + 'px'; r.style.top = best.y + 'px';
     return !best.hard;
@@ -8630,7 +8804,7 @@ window.AgentKit = window.AgentKit || (() => {
     const d = topWin().document; if (!d || !d.body) return B;
     const r = d.createElement('div'); r.setAttribute('data-agentbox', ''); r.setAttribute('role', 'region'); r.setAttribute('aria-label', 'Talk to the AI agent');
     r.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483000;width:auto;max-width:calc(100vw - 16px);box-sizing:border-box;background:rgba(14,11,22,.94);color:#eee;border:1px solid #f7931a;border-radius:10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text;touch-action:auto';
-    r.innerHTML = '<div data-h style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><b style="flex:1;color:#f7931a;font-size:13px">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
+    r.innerHTML = '<div data-h style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><b style="flex:1;color:#f7931a;font-size:13px;white-space:nowrap">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
       + '<div data-body><div data-log style="max-height:150px;overflow-y:auto;padding:0 10px"></div><form data-f style="display:flex;gap:6px;padding:6px 8px 8px"><input data-i maxlength="300" placeholder="Talk to the agent" autocomplete="off" aria-label="Talk to the agent" style="flex:1;min-width:0;background:#000;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 8px;font:14px system-ui,sans-serif"><button type="submit" style="' + BTN + '">Send</button></form></div>';
     const stop = e => e.stopPropagation();   // (typing and tapping here never reach the game: W is a letter here, not a step)
     for (const t of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'touchmove', 'wheel', 'contextmenu']) r.addEventListener(t, stop);
@@ -8697,7 +8871,7 @@ window.AgentKit = window.AgentKit || (() => {
     };
     api.help = async () => {
       window.__agentOn = true; try { boxUI(); } catch (e) {}
-      const lines = [intro, '', TALK_NOTE].concat(TIPS_ON ? [TIP_NOTE] : []).concat(['', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, '', 'Commands:']);
+      const lines = [intro, '', cmds.some(c => c.name === 'events') ? TALK_NOTE : TALK_NOTE.replace(' (new messages also come in events())', '')].concat(TIPS_ON ? [TIP_NOTE] : []).concat(['', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, 'Also: agent.commands() lists every command\'s name, agent.page names this kit and agent.version is its version.', '', 'Commands:']);
       for (const c of cmds) lines.push('  agent.' + c.name + '(' + (c.args || []).map(d => d.name + (d.req ? '' : '?')).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : ''));
       return lines.join('\n');
     };
@@ -9098,8 +9272,21 @@ window.AgentKit = window.AgentKit || (() => {
   const wentTo = w => /^inside /.test(w) ? 'went into ' + w.replace(/^inside /, '') : /^on the start page/.test(w) ? 'went back to the start page' : /^outside, looking at /.test(w) ? 'went outside to look at ' + w.replace(/^outside, looking at /, '') : /^in the crew's waiting room/.test(w) ? 'went back to the crew\'s waiting room' : 'went to ' + w;
   function evPush(t, world) { EVT.list.push(Object.assign({at: new Date().toISOString().slice(11, 19)}, world ? {happened: t} : {untrusted: t})); if (EVT.list.length > 80) { EVT.list.shift(); EVT.read = Math.max(0, EVT.read - 1); } }
   const tuneName = m => !m || m.k === 'off' ? 'nothing (the music box stopped)' : m.k === 'tune' ? (CM_TUNES[m.v] ? CM_TUNES[m.v].n : 'a tune') : 'a song inscribed on Dogecoin';
+
+  // (14 Nov 2026) health(): each data site, as it answered last time; events() says when one stops or starts answering
+  function healthInfo() {
+    const o = {note: 'Each data site the game asks. Blocks are asked of the sites in order (the explorer first); a site that does not answer is passed over for the next. Nothing is guessed: what no site answers is not shown. limits() has how often each is asked.'};
+    for (const [h, what] of Object.entries(HEALTH_WHAT)) { const H = HEALTH_D[h]; o[h.replace(/^https?:\/\/(api\.|sandbox-api\.|cdn\.)?/, '')] = {what, now: !H ? 'not needed yet' : H.ok ? 'answering' : 'not answering', since: H ? new Date(H.since).toISOString().slice(11, 19) + ' UTC' : undefined, resting: restUntil[h] > performance.now() ? 'for ' + Math.ceil((restUntil[h] - performance.now()) / 1000) + ' s (it asked us to slow down)' : undefined}; }
+    return o;
+  }
+  const HTOLD = {};
+  function healthNews() {   // a site that stops or starts answering (once it has stayed that way for 15 seconds)
+    for (const [h, H] of Object.entries(HEALTH_D)) { if (HTOLD[h] === H.ok || Date.now() - H.since < 15000) continue; const first = HTOLD[h] === undefined; HTOLD[h] = H.ok; if (first && H.ok) continue;
+      evPush('System health: ' + h.replace(/^https?:\/\/(api\.|sandbox-api\.|cdn\.)?/, '') + (H.ok ? ' answers again (' + HEALTH_WHAT[h] + ')' : ' is not answering (' + HEALTH_WHAT[h] + '): the next site is asked'), true); }
+  }
   function evTick() {
     if (!window.__agentOn) return;
+    healthNews();
     const now = new Map();
     for (const M of crew.mates.values()) { const o = mateInfo(M); now.set(M.id, {name: o.untrusted.name, is: o.is, where: o.where, doing: o.doing}); }
     for (const [id, n] of now) { const b = EVT.last.get(id); if (!b) { evPush(n.name + ' (' + n.is + ') joined, ' + n.where); continue; } if (b.where !== n.where) evPush(n.name + ' ' + wentTo(n.where)); if (b.doing !== n.doing) evPush(n.name + ' is now ' + n.doing); }
@@ -9273,6 +9460,7 @@ window.AgentKit = window.AgentKit || (() => {
   const cmds = [
     {name: 'see', ro: true, untrusted: true, does: 'Describe everything on screen now, in plain text: the chain, the block or room you are in, open cards, screens, crew.', run: () => see()},
     {name: 'state', ro: true, untrusted: true, does: 'Everything on screen now as data (the same as see(), as an object).', run: () => state()},
+    {name: 'health', ro: true, does: 'System health: each data site the game reads (blocks, transactions, inscriptions and their files), whether it answered last time and since when, and any site resting after asking us to slow down. Nothing is guessed. events() tells you when one stops or starts answering.', run: () => healthInfo()},
     {name: 'limits', ro: true, does: 'The data sites this page asks (all free and public): the explorer\'s budget and what is left of it, how many asks each site got in the last hour, the gaps every player and agent keeps, and any site resting after asking us to slow down.', run: () => limits()},
     {name: 'chain', ro: true, does: 'The chain right now: newest block, the blocks waiting to be mined (fees in DOGE per kB), the last ones mined, the block reward.', run: () => chain()},
     {name: 'parcels', ro: true, untrusted: true, does: 'List the parcels (transactions) in the block being shown, optionally only one type.', args: [{name: 'type', does: 'a parcel type, e.g. "inscriptions", "images", "text", "DRC-20", "dunes", "dogemaps", "pay to address" (see state().parcelTypes): every parcel that carries it, so it can be more than a shelf sign shows'}, {name: 'from', type: 'number', does: 'start at this many in (default 0)'}, {name: 'limit', type: 'number', does: 'how many (default 50, most 500)'}],
@@ -9355,6 +9543,8 @@ window.AgentKit = window.AgentKit || (() => {
         await until(() => (room && room.at !== from) || fresh(), 25000); await until(() => roomReady(), 60000); await until(fresh, 8000);   // (answers once you are there, with the new arrow)
         const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
+    {name: 'controls', ro: true, does: 'The list a person sees behind the i button (top left, on a computer): the buttons and keys for where you are now, and how to: staying safe, who is who (people, AI agents, NPCs), muting, the common room and the block halls. You play with these kit tools, not keys.', args: [{name: 'page', does: '"keys" (the default) or "how to"'}],
+      run: ({page}) => { const how = /how/i.test(String(page || '')), D = ciData(how ? 'how' : 'keys'); return {ok: true, where: D.where, page: how ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG, followOnX: CI_X}; }},
     {name: 'credits', ro: true, does: 'Who Doge Cube credits on its two plaques, as a player reads them: in block 0\'s hall (in front of the 88 DOGE case), Dogecoin, made by Billy Markus and Jackson Palmer; in the hall with block 4,609,723 (the first Doginal, inscription #0), Doginals, made by apezord, with the link to the Doginals code on GitHub (apezord\'s own work, so a link, not a copy).',
       run: () => ({ok: true, plaques: [{where: "block 0's hall, on a small stand " + CRED.gen.where, says: CRED.gen.says}, {where: 'the hall with block ' + fmtN(DG0_H) + ', on a small stand ' + CRED.dg.where, says: CRED.dg.says, firstDoginal: {inscription: CRED_DG_ID, number: 0, block: DG0_H}, link: CRED_URL, note: 'a person clicks it, or presses E, for the link: the Doginals code is apezord\'s own work, so read it on GitHub'}]})},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
@@ -9437,5 +9627,33 @@ window.AgentKit = window.AgentKit || (() => {
 })();
 </script>
 <!-- visitor counter: end -->
+<!-- portal-menu: start -->
+<style>#tm{position:fixed;z-index:20;width:40px;height:40px;border-radius:20px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer}#tm svg{width:19px;height:19px}#tm[aria-expanded="true"]{background:rgba(247,147,26,.85);color:#140c05}#tm{left:calc(114px + env(safe-area-inset-left));top:calc(18px + env(safe-area-inset-top))}body.room:not(.crewpage) #tm{left:calc(162px + env(safe-area-inset-left))}@media (pointer:coarse),(max-width:600px){#tm{left:auto;right:calc(4px + env(safe-area-inset-right));top:calc(4px + env(safe-area-inset-top))}html body.room #tm{right:auto;left:calc(50px + env(safe-area-inset-left))}html body.room:not(.crewpage) #tm{left:calc(96px + env(safe-area-inset-left))}}body.tiny #tm,body.bc-common #tm{display:none!important}#tmp{position:fixed;z-index:46;left:calc(14px + env(safe-area-inset-left));top:calc(64px + env(safe-area-inset-top));width:max-content;min-width:230px;max-width:calc(100vw - 28px);max-height:calc(100vh - 90px);overflow:auto;padding:8px 10px 10px;border:1px solid rgba(247,147,26,.5);border-radius:12px;background:rgba(10,8,14,.97);box-shadow:0 10px 30px rgba(0,0,0,.6);display:grid;gap:1px;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}#tmp[hidden]{display:none}#tmp b{color:#9a8a74;font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin:8px 4px 2px}#tmp b:first-child{margin-top:2px}#tmp a{color:#f0e6d6;text-decoration:none;padding:5px 8px;border-radius:7px}#tmp a:hover,#tmp a:focus{background:rgba(247,147,26,.16);color:#fff}#tmp a[aria-current]{color:#f7931a}@media (pointer:coarse),(max-width:600px){#tmp{left:calc(4px + env(safe-area-inset-left));top:calc(50px + env(safe-area-inset-top))}html body:not(.room) #tmp{left:auto;right:calc(4px + env(safe-area-inset-right))}}</style>
+<script>(() => {
+  // shown inside the portal's own viewer: the portal has its own way round, so no second menu
+  try { if (window.top !== window && /\/(index\.html)?$/.test(window.top.location.pathname)) return; } catch (e) {}
+  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = [], LOBBY = false, PAINT = false;
+  const here = decodeURIComponent(location.pathname.split('/').pop() || 'index.html'), test = /\/test\//.test(location.pathname);
+  const site = /(^|\.)github\.io$/.test(location.hostname) ? '' : 'https://bitmap22.github.io/my-ordinal-portal/';   // (a downloaded copy: the live pages)
+  const b = document.createElement('button'); b.id = 'tm'; b.className = 'tl'; b.type = 'button'; b.title = 'Ordinal Portal menu'; b.setAttribute('aria-label', 'Ordinal Portal menu'); b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-controls', 'tmp');
+  b.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h12M4 10h12M4 14h12"/></svg>';
+  const p = document.createElement('nav'); p.id = 'tmp'; p.hidden = true; p.setAttribute('aria-label', 'Ordinal Portal pages');
+  for (const [g, L] of G) { const h = document.createElement('b'); h.textContent = g; p.appendChild(h);
+    for (const [name, f] of L) { const a = document.createElement('a'); a.textContent = name; const ext = /^https?:/.test(f);
+      a.href = ext ? f : site ? site + f : test && !HAS.includes(f) ? '../' + f : f; a.target = ext ? '_blank' : '_top'; if (ext) a.rel = 'noopener noreferrer'; if (!ext && f === here) a.setAttribute('aria-current', 'page'); p.appendChild(a); } }
+  const host = LOBBY ? document.querySelector('#start nav.menu[aria-label="Play"]') : null;   // (the crew page: a line in its own Play menu)
+  if (LOBBY) { if (!host) return; b.className = 'mi'; b.id = 'tm'; b.innerHTML = 'Ordinal Portal &#9662;'; b.style.cssText = ''; }
+  const bar = PAINT ? document.getElementById('top') : null; if (PAINT) { if (!bar) return; b.className = 'tb q'; }
+  const set = on => { p.hidden = !on; b.setAttribute('aria-expanded', on ? 'true' : 'false'); if (on && document.pointerLockElement) document.exitPointerLock();
+    if (on && LOBBY) { const r = b.getBoundingClientRect(); p.style.left = Math.min(innerWidth - p.offsetWidth - 10, r.right + 8) + 'px'; p.style.top = Math.max(10, Math.min(innerHeight - p.offsetHeight - 10, r.top - 40)) + 'px'; } };
+  const stop = e => e.stopPropagation();   // (clicks and keys in the menu never reach the game behind it)
+  for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'wheel', 'keydown', 'keyup']) { p.addEventListener(t, stop); b.addEventListener(t, stop); }
+  b.addEventListener('click', () => set(p.hidden));
+  addEventListener('pointerdown', e => { if (!p.hidden && !p.contains(e.target) && e.target !== b && !b.contains(e.target)) set(false); }, true);
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !p.hidden) { set(false); e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  if (LOBBY) { const n = host.querySelector('#note'); host.insertBefore(b, n || null); document.body.append(p); }
+  else if (PAINT) { bar.insertBefore(b, document.getElementById('helpb')); document.body.append(p); } else document.body.append(b, p);
+})();</script>
+<!-- portal-menu: end -->
 </body>
 </html>

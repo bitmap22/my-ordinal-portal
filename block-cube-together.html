@@ -1792,7 +1792,7 @@ window.AgentKit = window.AgentKit || (() => {
     const B = BOX(), r = B.el; if (!r) return; const d = r.ownerDocument, log = r.querySelector('[data-log]');
     log.textContent = '';
     for (const m of B.log.slice(-40)) { const p = d.createElement('p'), b = d.createElement('b'); p.style.cssText = 'margin:5px 0;overflow-wrap:anywhere'; b.textContent = m.from === 'agent' ? 'Agent: ' : 'You: '; b.style.color = m.from === 'agent' ? '#f7931a' : '#7fd8ff'; p.append(b, d.createTextNode(m.text)); log.append(p); }
-    if (!B.log.length) { const p = d.createElement('p'); p.style.cssText = 'margin:5px 0;opacity:.7'; p.textContent = 'An AI agent is playing on this screen. Type here to talk to it; it answers here. Only this screen sees this box.'; log.append(p); }
+    if (!B.log.length) { const p = d.createElement('p'); p.style.cssText = 'margin:5px 0;opacity:.7'; p.textContent = 'An AI agent is using this page. Type here to talk to it; it answers here. Only this screen sees this box.'; log.append(p); }
     log.scrollTop = log.scrollHeight;
     r.querySelector('[data-body]').style.display = B.open ? '' : 'none';
     r.style.width = B.open ? 'min(320px, calc(100vw - 16px))' : 'auto';   // (closed, it is a small tab: easier to keep clear of the screen's words)
@@ -1826,17 +1826,17 @@ window.AgentKit = window.AgentKit || (() => {
     const cx = parseFloat(r.style.left), cy = parseFloat(r.style.top), inside = isFinite(cx) && isFinite(cy) && cx >= 0 && cy >= 0 && cx + bw <= TW && cy + bh <= TH;
     if (!must) {   // (the quick look every few seconds: it stays while its spot still covers no words or buttons, and never moves while someone types in it)
       const H = []; obstacles(d, 0, 0, TW, TH, H, null, 0);
-      const edge = cx <= 9 || cy <= 9 || cx >= TW - bw - 9 || cy >= TH - bh - 9;   // (it keeps to the edges, so the middle of the screen stays clear)
+      const edge = (cx <= 9 || cx >= TW - bw - 9) && (cy <= 9 || cy >= TH - bh - 9);   // (it keeps to a corner, so the middle of the screen stays clear)
       if (inside && edge && !area(H, cx, cy)) return true;
       if (d.activeElement && r.contains(d.activeElement)) return false;
     }
     const H = [], S = []; obstacles(d, 0, 0, TW, TH, H, S, 0);
     // the best spot, always along an edge (the middle of the screen stays clear for the game): covers no words or buttons if it can,
     // then as little of any panel as it can, then the right side before the left, then the top and bottom edges, then higher up
-    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8), spots = [];
-    for (let y = 8; y <= B0; y += 12) spots.push([R0, y, 0], [8, y, .5]);
-    for (let x = 8; x <= R0; x += 24) spots.push([x, 8, 1], [x, B0, 1]);
-    for (const [x, y, k] of spots) { const hd = area(H, x, y), q = hd * 1000 + area(S, x, y) + k + y / 1e4; if (!best || q < best.q) best = {x, y, q, hard: hd}; }
+    // ((14 Nov 2026) the box keeps to a corner: bottom right first, then top right, bottom left, top left: the first that covers no words or buttons,
+    //  else the one that covers least: so it is found in the same place on every page)
+    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8);
+    for (const [x, y, k] of [[R0, B0, 0], [R0, 8, 1], [8, B0, 2], [8, 8, 3]]) { const hd = area(H, x, y), q = hd * 1e9 + k * 1e6 + area(S, x, y); if (!best || q < best.q) best = {x, y, q, hard: hd}; }
     if (!best) best = {x: Math.max(0, R0), y: 8, hard: 1};
     r.style.left = best.x + 'px'; r.style.top = best.y + 'px';
     return !best.hard;
@@ -1846,7 +1846,7 @@ window.AgentKit = window.AgentKit || (() => {
     const d = topWin().document; if (!d || !d.body) return B;
     const r = d.createElement('div'); r.setAttribute('data-agentbox', ''); r.setAttribute('role', 'region'); r.setAttribute('aria-label', 'Talk to the AI agent');
     r.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483000;width:auto;max-width:calc(100vw - 16px);box-sizing:border-box;background:rgba(14,11,22,.94);color:#eee;border:1px solid #f7931a;border-radius:10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text;touch-action:auto';
-    r.innerHTML = '<div data-h style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><b style="flex:1;color:#f7931a;font-size:13px">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
+    r.innerHTML = '<div data-h style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><b style="flex:1;color:#f7931a;font-size:13px;white-space:nowrap">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
       + '<div data-body><div data-log style="max-height:150px;overflow-y:auto;padding:0 10px"></div><form data-f style="display:flex;gap:6px;padding:6px 8px 8px"><input data-i maxlength="300" placeholder="Talk to the agent" autocomplete="off" aria-label="Talk to the agent" style="flex:1;min-width:0;background:#000;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 8px;font:14px system-ui,sans-serif"><button type="submit" style="' + BTN + '">Send</button></form></div>';
     const stop = e => e.stopPropagation();   // (typing and tapping here never reach the game: W is a letter here, not a step)
     for (const t of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'touchmove', 'wheel', 'contextmenu']) r.addEventListener(t, stop);
@@ -1918,7 +1918,7 @@ window.AgentKit = window.AgentKit || (() => {
     };
     api.help = async () => {
       window.__agentOn = true; try { boxUI(); } catch (e) {}
-      const lines = [intro, '', TALK_NOTE].concat(TIPS_ON ? [TIP_NOTE] : []).concat(['', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, '', 'Commands:']);
+      const lines = [intro, '', cmds.some(c => c.name === 'events') ? TALK_NOTE : TALK_NOTE.replace(' (new messages also come in events())', '')].concat(TIPS_ON ? [TIP_NOTE] : []).concat(['', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, 'Also: agent.commands() lists every command\'s name, agent.page names this kit and agent.version is its version.', '', 'Commands:']);
       for (const c of cmds) lines.push('  agent.' + c.name + '(' + (c.args || []).map(d => d.name + (d.req ? '' : '?')).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : ''));
       return lines.join('\n');
     };
@@ -2067,4 +2067,32 @@ window.AgentKit = window.AgentKit || (() => {
 })();
 </script>
 <!-- visitor counter: end -->
+<!-- portal-menu: start -->
+<style>#tmp{position:fixed;z-index:46;left:calc(14px + env(safe-area-inset-left));top:calc(64px + env(safe-area-inset-top));width:max-content;min-width:230px;max-width:calc(100vw - 28px);max-height:calc(100vh - 90px);overflow:auto;padding:8px 10px 10px;border:1px solid rgba(247,147,26,.5);border-radius:12px;background:rgba(10,8,14,.97);box-shadow:0 10px 30px rgba(0,0,0,.6);display:grid;gap:1px;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}#tmp[hidden]{display:none}#tmp b{color:#9a8a74;font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin:8px 4px 2px}#tmp b:first-child{margin-top:2px}#tmp a{color:#f0e6d6;text-decoration:none;padding:5px 8px;border-radius:7px}#tmp a:hover,#tmp a:focus{background:rgba(247,147,26,.16);color:#fff}#tmp a[aria-current]{color:#f7931a}#tmp{z-index:2147483000}</style>
+<script>(() => {
+  // shown inside the portal's own viewer: the portal has its own way round, so no second menu
+  try { if (window.top !== window && /\/(index\.html)?$/.test(window.top.location.pathname)) return; } catch (e) {}
+  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = [], LOBBY = true, PAINT = false;
+  const here = decodeURIComponent(location.pathname.split('/').pop() || 'index.html'), test = /\/test\//.test(location.pathname);
+  const site = /(^|\.)github\.io$/.test(location.hostname) ? '' : 'https://bitmap22.github.io/my-ordinal-portal/';   // (a downloaded copy: the live pages)
+  const b = document.createElement('button'); b.id = 'tm'; b.className = 'tl'; b.type = 'button'; b.title = 'Ordinal Portal menu'; b.setAttribute('aria-label', 'Ordinal Portal menu'); b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-controls', 'tmp');
+  b.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h12M4 10h12M4 14h12"/></svg>';
+  const p = document.createElement('nav'); p.id = 'tmp'; p.hidden = true; p.setAttribute('aria-label', 'Ordinal Portal pages');
+  for (const [g, L] of G) { const h = document.createElement('b'); h.textContent = g; p.appendChild(h);
+    for (const [name, f] of L) { const a = document.createElement('a'); a.textContent = name; const ext = /^https?:/.test(f);
+      a.href = ext ? f : site ? site + f : test && !HAS.includes(f) ? '../' + f : f; a.target = ext ? '_blank' : '_top'; if (ext) a.rel = 'noopener noreferrer'; if (!ext && f === here) a.setAttribute('aria-current', 'page'); p.appendChild(a); } }
+  const host = LOBBY ? document.querySelector('#start nav.menu[aria-label="Play"]') : null;   // (the crew page: a line in its own Play menu)
+  if (LOBBY) { if (!host) return; b.className = 'mi'; b.id = 'tm'; b.innerHTML = 'Ordinal Portal &#9662;'; b.style.cssText = ''; }
+  const bar = PAINT ? document.getElementById('top') : null; if (PAINT) { if (!bar) return; b.className = 'tb q'; }
+  const set = on => { p.hidden = !on; b.setAttribute('aria-expanded', on ? 'true' : 'false'); if (on && document.pointerLockElement) document.exitPointerLock();
+    if (on && LOBBY) { const r = b.getBoundingClientRect(); p.style.left = Math.min(innerWidth - p.offsetWidth - 10, r.right + 8) + 'px'; p.style.top = Math.max(10, Math.min(innerHeight - p.offsetHeight - 10, r.top - 40)) + 'px'; } };
+  const stop = e => e.stopPropagation();   // (clicks and keys in the menu never reach the game behind it)
+  for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'wheel', 'keydown', 'keyup']) { p.addEventListener(t, stop); b.addEventListener(t, stop); }
+  b.addEventListener('click', () => set(p.hidden));
+  addEventListener('pointerdown', e => { if (!p.hidden && !p.contains(e.target) && e.target !== b && !b.contains(e.target)) set(false); }, true);
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !p.hidden) { set(false); e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  if (LOBBY) { const n = host.querySelector('#note'); host.insertBefore(b, n || null); document.body.append(p); }
+  else if (PAINT) { bar.insertBefore(b, document.getElementById('helpb')); document.body.append(p); } else document.body.append(b, p);
+})();</script>
+<!-- portal-menu: end -->
 </body></html>
