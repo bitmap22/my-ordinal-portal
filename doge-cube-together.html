@@ -357,8 +357,10 @@ const icon = (name, cls) => { const t = document.createElement('template'); t.in
 
 // ---------------- the game, in its frame ----------------
 const frame = $('game'); let gameReady = false, gameQueue = [];
-const newest = f => Promise.race([fetch(f, {cache: 'no-cache'}).catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
-newest(GAME).then(() => { if (!frame.getAttribute('src')) frame.src = GAME; });
+const newest = f => Promise.race([fetch(f, {cache: 'no-cache'}).then(r => r.ok ? r.headers.get('etag') || r.headers.get('last-modified') || '' : '').catch(() => ''), new Promise(r => setTimeout(() => r(''), 4000))]);
+const verOf = (f, tag) => { if (!tag) return f; let h = 0; for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0; return f + '?v=' + h.toString(36); };
+let GAMEV = GAME, PAINTV = '';
+newest(GAME).then(tag => { GAMEV = verOf(GAME, tag); if (!frame.getAttribute('src')) frame.src = GAMEV; });
 const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, '*'); else gameQueue.push(msg); };
 // ---------------- Block Paint City, through the cube's warehouse shutter ----------------
 // (not in Doge Cube: it has no Block Paint, so nothing here ever opens it. Kept, asleep, so this page stays in step with Block
@@ -404,7 +406,7 @@ addEventListener('message', e => {
   else if (m.type === 'event' && m.ev && typeof m.ev === 'object') { const c = check({ t: 'pev', ev: m.ev }); if (c) share(c); }
 });
 // Block Paint opened behind the shutter ahead of time (not on a phone), so walking through is quick
-function paintSoon() { if (PHONE || pframe.getAttribute('src') || pframe.dataset.asking) return; pframe.dataset.asking = 1; newest(PAINT).then(() => { delete pframe.dataset.asking; if (pframe.getAttribute('src')) return; paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; }); }
+function paintSoon() { if (PHONE || pframe.getAttribute('src') || pframe.dataset.asking) return; pframe.dataset.asking = 1; newest(PAINT).then(tag => { delete pframe.dataset.asking; PAINTV = verOf(PAINT, tag); if (pframe.getAttribute('src')) return; paintReady = false; paintQueue = []; pframe.src = PAINTV + '#from-cube'; }); }
 // in Block Paint with the crew: who you are, and where each crewmate already in it is
 function paintStart() {
   toPaint({ type: 'ready', me: { id: ME, name: myName() }, mode: net.mode });
@@ -420,14 +422,14 @@ async function swapTo(g) {
   (g === 'paint' ? toCube : toPaint)({ type: 'leave' });   // (the game you are leaving: dark and quiet)
   await later(340);
   if (g === 'paint') {
-    if (!pframe.getAttribute('src')) { paintReady = false; paintQueue = []; pframe.src = PAINT + '#from-cube'; fade.classList.add('wait'); }
+    if (!pframe.getAttribute('src')) { paintReady = false; paintQueue = []; pframe.src = (PAINTV || PAINT) + '#from-cube'; fade.classList.add('wait'); }
     else toPaint({ type: 'arrive' });
     for (let i = 0; i < 300 && !paintReady; i++) await later(100);
     inPaint = true; pframe.hidden = false; frame.hidden = true;
     if (net.on && net.sail && paintReady) paintStart();
     if (PHONE) { frame.dataset.closed = 1; gameReady = false; gameQueue = []; frame.src = 'about:blank'; }
   } else {
-    if (frame.dataset.closed) { delete frame.dataset.closed; gameReady = false; gameQueue = []; frame.src = GAME + '#from-paint'; fade.classList.add('wait'); }
+    if (frame.dataset.closed) { delete frame.dataset.closed; gameReady = false; gameQueue = []; frame.src = GAMEV + '#from-paint'; fade.classList.add('wait'); }
     else toCube({ type: 'arrive' });
     for (let i = 0; i < 300 && !gameReady; i++) await later(100);
     inPaint = false; frame.hidden = false; pframe.hidden = true;
