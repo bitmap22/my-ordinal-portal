@@ -215,7 +215,7 @@
   async function add(input, agent) {
     if (W.length >= MAX_WATCHES) throw new Error('at most ' + MAX_WATCHES + ' watches: remove one first');
     const w = await CW.normalise(input, io);
-    if (W.some(x => JSON.stringify(x.w) === JSON.stringify(w))) throw new Error('already watching ' + CW.describe(w));
+    if (W.some(x => JSON.stringify(x.w) === JSON.stringify(w))) { say('Already watching ' + CW.describe(w) + '.'); return {watching: CW.describe(w), already: true, n: W.findIndex(x => JSON.stringify(x.w) === JSON.stringify(w)) + 1}; }
     say((agent ? 'An AI agent started watching ' : 'Starting to watch ') + CW.describe(w) + '…');
     const s = await CW.start(w, io);
     W.push({w, s}); save(); render();
@@ -254,7 +254,7 @@
     let href = url[0].replace(/[),.]+$/, '');
     // (on the portal, its own pages open here)
     href = href.replace('https://bitmap22.github.io/my-ordinal-portal/', '');
-    const a = el('a', null, NAMES[k] || k); a.href = href; if (/^https:/.test(href)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+    const a = el('a', null, NAMES[k] || k); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';   // (a new tab, so this page keeps watching)
     return a;
   }
   function drawAlert(e, fresh) {
@@ -262,13 +262,13 @@
     const d = el('div', 'alert'); if (!fresh) d.style.animation = 'none';
     d.appendChild(el('div', 't', e.title));
     d.appendChild(el('div', 'd', new Date(e.at).toLocaleTimeString('en-GB') + ' · ' + e.watch));
-    if (e.checked) { const c = el('div', 'c'); for (const [k, v] of Object.entries(e.checked)) { if (!v) continue; const ok = v.agrees, line = el('div'); line.appendChild(el('span', ok === true ? 'y' : ok === false ? 'x' : 'z', ok === true ? '✓ ' : ok === false ? '✗ ' : '· ')); line.appendChild(document.createTextNode(v.what ? v.what.replace(/https:\/\//g, '') : k + (v.matched != null ? ': ' + fmt(v.matched) + ' of ' + fmt(v.of) : v.agreed != null ? ': ' + fmt(v.agreed) + ' of ' + fmt(v.of) : ''))); c.appendChild(line); } d.appendChild(c); }
+    if (e.checked) { const c = el('div', 'c'); for (const [k, v] of Object.entries(e.checked)) { if (!v) continue; const ok = v.agrees !== undefined ? v.agrees : v.matched != null ? v.matched === v.of : v.agreed != null ? v.agreed === v.of : null, line = el('div'); line.appendChild(el('span', ok === true ? 'y' : ok === false ? 'x' : 'z', ok === true ? '✓ ' : ok === false ? '✗ ' : '· ')); line.appendChild(document.createTextNode(v.matched != null ? 'transaction ids worked out from the block\u2019s bytes: ' + fmt(v.matched) + ' of ' + fmt(v.of) + ' match' : k === 'inscriptions' && v.agreed != null ? 'inscriptions against ordinals.com\u2019s list: ' + fmt(v.agreed) + ' of ' + fmt(v.of) + ' agree' : k === 'kinds' && v.agreed != null ? 'kinds against ordpool.space\u2019s tags: ' + fmt(v.agreed) + ' of ' + fmt(v.of) + ' agree' : v.what ? v.what.replace(/https:\/\//g, '') : k)); c.appendChild(line); } d.appendChild(c); }
     if (e.facts && e.facts.first) {
       const f = el('div', 'f'); f.textContent = 'First of them: ';
       for (const it of e.facts.first.slice(0, 5)) {
         const x = el('div'); x.appendChild(document.createTextNode('#' + it.n + ' '));
         const a = el('a', null, it.txid.slice(0, 10) + '…'); a.href = 'https://mempool.space/tx/' + it.txid; a.target = '_blank'; a.rel = 'noopener noreferrer'; x.appendChild(a);
-        if (it.inscriptions && it.inscriptions[0] && it.inscriptions[0].id) { x.appendChild(document.createTextNode(' · ')); const p = el('a', null, 'where it came from'); p.href = 'provenance-check.html?id=' + it.inscriptions[0].id; x.appendChild(p); }
+        if (it.inscriptions && it.inscriptions[0] && it.inscriptions[0].id) { x.appendChild(document.createTextNode(' · ')); const p = el('a', null, 'where it came from'); p.href = 'provenance-check.html?id=' + it.inscriptions[0].id; p.target = '_blank'; p.rel = 'noopener'; x.appendChild(p); }
         if (it.rune && it.rune.etched) x.appendChild(document.createTextNode(' · etched ' + it.rune.etched));
         if (it.message) { x.appendChild(document.createTextNode(' · ')); x.appendChild(el('span', 'u', '“' + String(it.message.untrusted).slice(0, 60) + '”')); }
         f.appendChild(x);
