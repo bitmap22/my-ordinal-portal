@@ -8141,7 +8141,8 @@ function showT(s) {
 }
 const showName = s => s.g ? (s.par ? 'the parent of a collection' : 'piece ' + fmt(s.gi + 1) + ' of a collection') + (s.n ? ' · #' + fmt(s.n) : '') : 'parcel ' + fmt(s.idx) + ' of block ' + fmt(s.h);
 // the floor's own state: your block (kept on this computer, with the wallet it came from) and each crewmate's, as they shared it
-const trade = {mine: undefined, mates: new Map(), sent: 'off', on: -1, crew: new Set(), at: 0, list: [], seed: null, pool: [], heard: new Map(), seen: new Map()};
+const trade = {mine: undefined, mates: new Map(), sent: 'off', on: -1, crew: new Set(), at: 0, list: [], seed: null, pool: [], heard: new Map(), seen: new Map(), names: new Map()};
+try { const v = JSON.parse(sessionStorage.getItem('bc.tradeSeen') || 'null'); if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v.s || {})) if (typeof x === 'string') trade.seen.set(k, x); for (const [k, x] of Object.entries(v.h || {})) if (typeof x === 'string') trade.heard.set(k, x); } } catch (e) {}
 const tradeLoad = () => { try { const v = JSON.parse(localStorage.getItem('bc.trade') || 'null'), s = v && showOk(v.s); return s && typeof v.addr === 'string' && v.addr ? {s, to: typeof v.to === 'string' ? v.to.slice(0, 80) : '', addr: v.addr} : null; } catch (e) { return null; } };
 const tradeSave = () => { try { const m = trade.mine; if (m) { const {key, ...s} = m.s; localStorage.setItem('bc.trade', JSON.stringify({s, to: m.to, addr: m.addr})); } else localStorage.removeItem('bc.trade'); } catch (e) {} };
 function tradeSet(m) { trade.mine = m; tradeSave(); trade.at = 0; tradeSync(true); }
@@ -8150,7 +8151,7 @@ const tradeCol = c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : '
 function tradeWho(k) {
   const p = 'P' + (k + 1);
   if (own.me.p === p) return {me: true, id: crew.me || 'me', p, c: tradeCol(own.me.c), name: 'you'};
-  for (const id in own.nums) { const v = own.nums[id]; if (v && v.p === p) { const M = crew.mates.get(id); return {me: false, id, p, c: tradeCol(v.c), name: M && M.name ? M.name : p, ai: !!(M && M.s && M.s.ai)}; } }
+  for (const id in own.nums) { const v = own.nums[id]; if (v && v.p === p) { const M = crew.mates.get(id); if (M && M.name) trade.names.set(id, M.name); return {me: false, id, p, c: tradeCol(v.c), name: M && M.name ? M.name : trade.names.get(id) || p, ai: !!(M && M.s && M.s.ai)}; } }
   return null;
 }
 const tradeOf = id => { for (let k = 0; k < TRADE.N; k++) { const w = tradeWho(k); if (w && w.id === id) return w; } return null; };
@@ -8209,6 +8210,7 @@ function tradeHeard() {
     if (v && v !== was && !crewMuted.has(o.who.id)) note(o.who.p + ' · ' + o.who.name + ' would like to trade with you: their base in the Forum shows your colour', 10);
     trade.heard.set(o.who.id, v);
   }
+  const sk = JSON.stringify({s: Object.fromEntries(trade.seen), h: Object.fromEntries(trade.heard)}); if (sk !== trade.sk) { trade.sk = sk; try { sessionStorage.setItem('bc.tradeSeen', sk); } catch (e) {} }
 }
 // every moment: the list (a few times a second), the blocks on the bases, the bases' colours, their pictures and tags
 function tradeTick(tn, VP) {
@@ -10423,7 +10425,8 @@ function mateMute(id, on) {
   note(M.name + (on ? ' is muted for you: their voice, chat and trade messages · click their name again to unmute' : ' is unmuted'), 6);
   return true;
 }
-function mateGone(id) { own.mates.delete(id); own.ver++; trade.mates.delete(id); trade.at = 0; const M = crew.mates.get(id); if (!M) return; M.tag.remove(); crew.mates.delete(id); if (M.H) BCH.drop(M.H); M.H = null; }
+function mateGone(id, door) { if (!door) { own.mates.delete(id); trade.mates.delete(id); } own.ver++; trade.at = 0;   // (gone through the door to Block Paint: still in the crew, so their wallet card and block stay)
+  const M = crew.mates.get(id); if (!M) return; M.tag.remove(); crew.mates.delete(id); if (M.H) BCH.drop(M.H); M.H = null; }
 const cleanS = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, n);
 addEventListener('message', e => {
   if (e.source !== parent || parent === window) return;
@@ -10440,11 +10443,12 @@ addEventListener('message', e => {
     return;
   }
   if (m.type === 'event') { if (m.ev) cmGot(m.ev, m.id); return; }
-  if (m.type === 'left') { mateGone(m.id); return; }
+  if (m.type === 'left') { mateGone(m.id, m.door === 1); return; }
   if (m.type === 'off') { crew.on = false; crew.inYet = false; document.body.classList.remove('crewon'); emShow(false); em.cur = ''; for (const id of [...crew.mates.keys()]) mateGone(id); return; }
   if (m.type === 'say') { if (m.id === crew.me) return; const M = crew.mates.get(m.id); if (M) { M.say = cleanS(m.text, 120); M.sayT = performance.now() + 7000; } return; }
   if (m.type === 'talk') { const M = crew.mates.get(m.id); if (M) M.talkT = performance.now() + 450; return; }
-  if (m.type === 'arrive') { crewAway = false; if (paused && !document.hidden) { paused = false; lastFT = 0; requestAnimationFrame(frame); } if (m.stay) rmFade(false); else cmFromPaint(); return; }   // back from Block Paint (the page kept the cube open)
+  if (m.type === 'arrive') { crewAway = false; trade.crew = new Set(); trade.at = 0;   // (back from Block Paint: your block goes to the crew again)
+    if (paused && !document.hidden) { paused = false; lastFT = 0; requestAnimationFrame(frame); } if (m.stay) rmFade(false); else cmFromPaint(); return; }   // back from Block Paint (the page kept the cube open)
   if (m.type === 'leave') { crewAway = true; rmLetGo(); rmFade(true); if (au && au.state === 'running') au.suspend(); return; }   // (the page is taking you to Block Paint)
   if (m.type === 'go') { const M = crew.mates.get(m.id); if (M && M.s) goToMate(M); return; }
   if (m.type === 'portraits') { ppPortraits(m); return; }   // pictures of the people, for the page's picker
