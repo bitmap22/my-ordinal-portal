@@ -8091,6 +8091,7 @@ function showOk(s) {
   if (Number.isInteger(s.sc)) r.sc = s.sc;
   if (typeof s.wa === 'string' && s.wa.trim()) { r.wa = s.wa.slice(0, 80); r.wk = typeof s.wk === 'string' && /^[a-z0-9-]{1,16}$/i.test(s.wk) ? s.wk : 'text'; }
   if (r.idx < 0 && !r.g) return null;
+  r.o = r.g ? [r.g] : r.o.filter(x => x.startsWith(r.id + 'i'));   // (its own inscriptions only: a collection piece is its inscription; a parcel's were made in its own transaction)
   if (!r.o.length) return null;   // (a block on a base always carries an inscription)
   r.key = r.id + ':' + r.idx + ':' + (r.g || '') + ':' + r.at;
   return r;
@@ -8130,12 +8131,14 @@ function tradeWho(k) {
 }
 const tradeOf = id => { for (let k = 0; k < TRADE.N; k++) { const w = tradeWho(k); if (w && w.id === id) return w; } return null; };
 // your block counts while your wallet (read status on) still holds it; a crewmate's once the chain says it sits at their wallet's address
-const tradeMineOk = () => { const m = trade.mine; return !!m && !!own.addr && m.addr === own.addr && m.s.o.some(x => own.ids.has(x)); };
+const tradeMineOk = () => { const m = trade.mine; return !!m && !!own.addr && m.addr === own.addr && own.ids.has(m.s.o[0]); };   // (the one shown)
 function tradeMateOk(id, s) {   // 1 yes, -1 still asking the chain (or no wallet card from them yet), 0 no
+  // (only the inscription shown counts: it must sit at their wallet's address, and have been made in the block their block says)
   const O = own.mates.get(id); if (!O || !O.addr) return -1;
-  let ok = 0, asking = false;
-  for (const x of s.o) { const r = own.chk.get(x); if (!r || performance.now() - r.t > 600000) ownAsk(x, O.addr); if (!r) asking = true; else if (r.a === O.addr) ok = 1; }
-  return ok || (asking ? -1 : 0);
+  const x = s.o[0], r = own.chk.get(x);
+  if (!r || performance.now() - r.t > 600000) ownAsk(x, O.addr);
+  if (!r) return -1;
+  return r.a === O.addr && (r.h == null || r.h === s.h) ? 1 : 0;
 }
 // each base now: whose, the block on it (once checked), and whom its player would like to trade with (a signal shows only with a block on each base)
 function tradeList() {
@@ -8149,6 +8152,8 @@ function tradeList() {
   for (const o of L) { if (!o) continue; let to = o.s && o.want ? tradeOf(o.want) : null; if (to && (to.id === o.who.id || !L.some(q => q && q.who.id === to.id && q.s))) to = null; o.to = to; o.col = (to || o.who).c; delete o.want; }
   return L;
 }
+// what a block on a base is called: yours as you know it; a crewmate's only from what the chain said
+const tradeName = o => { if (!o || !o.s) return ''; if (o.who.me) return showName(o.s); const r = own.chk.get(o.s.o[0]) || {}; return 'inscription ' + (r.n != null ? '#' + fmt(r.n) : o.s.o[0].slice(0, 10) + '\u2026') + (r.h != null ? ', made in block ' + fmt(r.h) : ''); };
 // to the crew: your block and your signal (again when someone new joins), and to your page whether it is on your base
 // (while it is, your page lets your crew check your wallet's address, and only that, even with "Let my crew see what I hold" off)
 function tradeSync(force) {
@@ -8165,6 +8170,7 @@ function tradeGot(ev, id) {
   if (typeof id !== 'string' || !id || id === crew.me) return;
   if (ev.off) { trade.mates.delete(id); trade.at = 0; return; }
   const s = showOk(ev); if (!s) return;
+  delete s.wa; delete s.wk; delete s.sc; if (s.g) { s.gi = 0; s.par = false; s.n = 0; s.ts = 0; }   // (what a crewmate's block shows comes from the chain and the inscription, not from them)
   trade.mates.set(id, {s, to: typeof ev.to === 'string' ? ev.to.slice(0, 80) : ''}); trade.at = 0;
 }
 // a crewmate put a block on their base: everyone in the crew is told they would like to trade (and to bring a block of theirs);
@@ -8207,6 +8213,7 @@ function tradeItems(R) {
     if (s) {
       const t = showT(s), [bx, bd] = tradeAt(k), [px, pz] = cmW(R, bx, bd), e = s.e, w = [px, TRADE_FLOOR + TRADE.H + e / 2 + .004, R.z0 + pz];
       t.slot = k; t.who = o.who; t.to = o.to;
+      if (!o.who.me) { const r = own.chk.get(s.o[0]) || {}; t.mate = true; t.n = r.n; t.ch = r.h; }   // (a crewmate's: only what the chain said)
       if (o.who.me && trade.seed && trade.seed.key === s.key) { if (trade.seed.art) t.art = trade.seed.art; if (trade.seed.word) t.word = trade.seed.word; t.sTry = 1; }
       const it = {t, k: s.kk, e, w, c: w.slice(), t0: now() + .15, m: 1, show: true}, cp = {t, k: s.kk, e: .2, w: w.slice(), t0: -9, m: 1, cp: true, gone: true};
       R.plan.items.push(it, cp); R.trdIt[k] = {key, it, cp}; ch = true;
@@ -8288,7 +8295,7 @@ function tradeAsk(k) {
     if (!chips.children.length) info.textContent += ' No crewmate has a block on their base yet.';
     row.append(btn('MY OWN COLOUR', () => { tradeSignal('none'); tradeAsk(k); }, !o.to), btn('TAKE MY BLOCK BACK', () => { tradeSet(null); close(); }));
   } else if (mine) info.textContent = 'Your base is empty. Only a block your own wallet holds can go on it: ' + (own.addr ? 'hold a parcel with an inscription your wallet holds (your marker shows over it), then press PUT ON MY TRADE BASE.' : 'connect your wallet (read only) on the play together page, hold a parcel with an inscription it holds, then press PUT ON MY TRADE BASE.');
-  else if (o.s) info.textContent = nm(who) + ' would like to trade. Their block: ' + showName(o.s) + (o.to ? '. They would like to trade with ' + nm(o.to) + '.' : '. It shows their own colour (no signal yet).') + ' Their wallet holds it: the chain says so.' + (trade.list.some(q => q && q.who.me && q.s) ? '' : ' Put a block of yours on your base to trade.');
+  else if (o.s) info.textContent = nm(who) + ' would like to trade. Their block: ' + tradeName(o) + (o.to ? '. They would like to trade with ' + nm(o.to) + '.' : '. It shows their own colour (no signal yet).') + ' Their wallet holds it: the chain says so.' + (trade.list.some(q => q && q.who.me && q.s) ? '' : ' Put a block of yours on your base to trade.');
   else if (o.wait) info.textContent = nm(who) + ' put a block here: checking the chain that their wallet holds it…';
   else info.textContent = nm(who) + ' has nothing on their base yet.';
   row.append(btn('CLOSE', close));
@@ -8312,12 +8319,16 @@ async function showArtTick(R, it) {
   finally { showArt.busy = false; }
 }
 // pointing at a block on a base, and its tablet
-const showHover = it => { const t = it.t, w = t.who; return (w ? (w.me ? 'your trade base' : w.p + ' · ' + w.name + '’s trade base') : 'a trade base') + ' · ' + (t.gal ? (t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)) + ' · #' + fmt(t.n) : TYPES[it.k].name + ' · parcel ' + fmt(t.idx) + ' of block ' + fmt(t.h)) + (t.to ? ' · would like to trade with ' + (t.to.me ? 'you' : t.to.p) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to see it on your tablet'; };
+const showHover = it => { const t = it.t, w = t.who; return (w ? (w.me ? 'your trade base' : w.p + ' · ' + w.name + '’s trade base') : 'a trade base') + ' · ' + (t.mate ? 'inscription' + (t.n != null ? ' #' + fmt(t.n) : '') + (t.ch != null ? ' · made in block ' + fmt(t.ch) : '') : t.gal ? (t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)) + ' · #' + fmt(t.n) : TYPES[it.k].name + ' · parcel ' + fmt(t.idx) + ' of block ' + fmt(t.h)) + (t.to ? ' · would like to trade with ' + (t.to.me ? 'you' : t.to.p) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to see it on your tablet'; };
 function showCard(t) {
   const w = t.who;
   $cn.textContent = w ? (w.me ? 'on your trade base · ' + w.p : 'on ' + w.p + ' · ' + w.name + '’s trade base') : 'on a trade base';
   const rows = [];
-  if (t.gal) {
+  if (t.mate) {   // (a crewmate's block: only what the chain said)
+    if (t.n != null) rows.push(['inscription', '#' + fmt(t.n)]);
+    if (t.ch != null) rows.push(['made in block', fmt(t.ch)]);
+    rows.push(['checked', 'their wallet holds it: the chain says so']);
+  } else if (t.gal) {
     rows.push(['collection', t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)]);
     if (t.n) rows.push(['inscription', '#' + fmt(t.n)]);
     if (t.h != null) rows.push(['made in block', fmt(t.h)]);
@@ -8331,16 +8342,17 @@ function showCard(t) {
   if (t.ct) rows.push(['type', t.ct + (t.len ? ' · ' + fmt(t.len) + ' bytes' : '')]);
   if (t.word && t.word.a && !t.art) rows.push(['it says', t.word.a.length > 64 ? t.word.a.slice(0, 63) + '…' : t.word.a]);
   $cr.innerHTML = ''; addRows(rows); if (t._held && t._held.length && room && room.held && room.held.it.t === t) addRows(t._held);
-  $ct.textContent = t.gal ? t.gid : t.id; $cp.innerHTML = ''; $cp.style.display = 'none';
+  $ct.textContent = t.mate && t.ordIds ? t.ordIds[0] : t.gal ? t.gid : t.id; $cp.innerHTML = ''; $cp.style.display = 'none';
   $card.classList.remove('st'); $card.classList.add('on'); fitCard();
 }
 // the button: put the parcel in your hands on your trade base (only one your wallet holds), then go and see it
 async function tradePut() {
   const H = room && room.held; if (!H || H.back || H.it.cp || H.it.show) return {ok: false, error: 'hold a parcel first'};
-  const it = H.it, first = ownIdsOf(it.t).filter(x => own.ids.has(x));
+  const it = H.it, held = ownIdsOf(it.t).filter(x => own.ids.has(x)), first = held.filter(x => it.t.gal ? x === it.t.gid : x.startsWith(it.t.id + 'i'));   // (made in this parcel, or this collection piece)
   const no = m => { note(m, 8); return {ok: false, error: m}; };
   if (!own.addr) return no('only a block your own wallet holds can go on your trade base: connect your wallet (read only) on the play together page first');
-  if (!first.length) return no('your wallet does not hold an inscription in this parcel, so it cannot go on your trade base');
+  if (!held.length) return no('your wallet does not hold an inscription in this parcel, so it cannot go on your trade base');
+  if (!first.length) return no('this parcel only carries your inscription on its way: the parcel where your inscription was made can go on your trade base');
   const R = room.rooms.find(q => q && q.plan && q.plan.items && q.plan.items.includes(it));
   const s = showPack(it, R, first); if (!s) return no('this one cannot go on a trade base');
   let pic = false; try { pic = artPic(it.t); } catch (e) {}
@@ -11960,10 +11972,10 @@ async function ownRun() {
   while (own.busy < 2 && own.q.length) {
     const x = own.q.shift(); own.busy++;
     (async () => {
-      let a = null;
-      try { const j = await galGet('/r/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; } catch (e) {}
-      if (a == null) try { const j = await ordJson('/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; } catch (e) {}
-      if (a != null) { own.chk.set(x, {a, t: performance.now()}); if (own.chk.size > 4000) own.chk.delete(own.chk.keys().next().value); own.ver++; }
+      let a = null, J = null;   // (whose it is, and also the block it was made in and its number)
+      try { const j = await galGet('/r/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
+      if (a == null) try { const j = await ordJson('/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
+      if (a != null) { own.chk.set(x, {a, t: performance.now(), h: Number.isInteger(J.height) ? J.height : null, n: Number.isInteger(J.number) ? J.number : null}); if (own.chk.size > 4000) own.chk.delete(own.chk.keys().next().value); own.ver++; }
     })().finally(() => { own.busy--; ownRun(); });
   }
 }
@@ -12445,7 +12457,7 @@ window.AgentKit = window.AgentKit || (() => {
   window.__paceNote = (site, sec, why) => { try { evPush(site + ' is resting for ' + sec + ' s (' + why + '): other sites with the same data are asked meanwhile. Go steadily.', true); } catch (e) {} };
   const PEOPLE_NOTE = 'People in Agent Blockhall are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   // the trade floor as data (names come from other players: untrusted)
-  function tradeBlockOf(k) { const o = trade.list[k] || (tradeList()[k]); const b = o && (o.s || o.wait); if (!b) return null; return b.g ? {collectionPiece: b.gi + 1, inscriptionNumber: b.n || undefined, inscription: b.g} : {parcel: b.idx, block: b.h, txid: b.id, inscriptions: b.o.slice(), kind: TYPES[b.kk] ? TYPES[b.kk].name : undefined}; }
+  function tradeBlockOf(k) { const o = trade.list[k] || (tradeList()[k]); const b = o && (o.s || o.wait); if (!b) return null; if (!o.who.me) { const r = own.chk.get(b.o[0]) || {}; return {inscription: b.o[0], inscriptionNumber: r.n != null ? r.n : undefined, madeInBlock: r.h != null ? r.h : undefined, txid: b.id, checked: o.s ? 'the chain says their wallet holds it' : undefined}; } return b.g ? {collectionPiece: b.gi + 1, inscriptionNumber: b.n || undefined, inscription: b.g} : {parcel: b.idx, block: b.h, txid: b.id, inscriptions: b.o.slice(), kind: TYPES[b.kk] ? TYPES[b.kk].name : undefined}; }
   function tradeInfo() {
     trade.list = tradeList();
     return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), and putting it there tells your crew you would like to trade; once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them, on another app: nothing is traded here.',
@@ -12712,8 +12724,8 @@ window.AgentKit = window.AgentKit || (() => {
     for (const M of crew.mates.values()) if (pn < (M.talkT || 0)) { const was = EVT.talk.get(M.id) || 0; if (pn - was > 6000) evPush(mateName(M) + ' is talking on voice chat'); EVT.talk.set(M.id, pn); }
     // the trade floor: a crewmate's block put down or taken back, and whom they would like to trade with
     try { const T = tradeList(), was = EVT.trade || new Map(), nowT = new Map();
-      for (const o of T) { if (!o || o.who.me) continue; const v = {b: o.s ? o.s.key : '', to: o.to ? o.to.id : '', name: o.who.name, p: o.who.p, s: o.s, toW: o.to}; nowT.set(o.who.id, v); const b = was.get(o.who.id); if (!EVT.trade || crewMuted.has(o.who.id)) continue;
-        if (v.b && (!b || b.b !== v.b)) evPush(v.name + ' (' + v.p + ') would like to trade: they put a block on their trade base in the Forum (' + showName(v.s) + '). Bring a block of yours to your base to trade.');
+      for (const o of T) { if (!o || o.who.me) continue; const v = {b: o.s ? o.s.key : '', to: o.to ? o.to.id : '', name: o.who.name, p: o.who.p, s: o.s, toW: o.to, nm: tradeName(o)}; nowT.set(o.who.id, v); const b = was.get(o.who.id); if (!EVT.trade || crewMuted.has(o.who.id)) continue;
+        if (v.b && (!b || b.b !== v.b)) evPush(v.name + ' (' + v.p + ') would like to trade: they put a block on their trade base in the Forum (' + v.nm + '). Bring a block of yours to your base to trade.');
         else if (!v.b && b && b.b) evPush(v.name + ' (' + v.p + ') took their block off their trade base');
         if (v.b && v.to !== (b ? b.to : '')) evPush(v.to ? v.name + ' (' + v.p + ') would like to trade with ' + (v.toW.me ? 'you' : v.toW.p) + ': their base shows that player\'s colour' : v.name + ' (' + v.p + ') turned their base back to their own colour'); }
       EVT.trade = nowT; } catch (e) {}
