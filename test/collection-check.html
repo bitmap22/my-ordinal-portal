@@ -264,17 +264,32 @@
     await paceWait(host);
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms || 20000);
     let r;
-    try { r = await fetch(url, {signal: ctl.signal}); } catch (e) { b.restUntil = Date.now() + PACE.rest * 1000; throw new Error('no answer from ' + host); } finally { clearTimeout(timer); }
+    try { r = await fetch(url, {signal: ctl.signal}); } catch (e) { b.restUntil = Date.now() + (e && e.name === 'AbortError' ? 120 : PACE.rest) * 1000; throw new Error('no answer from ' + host); } finally { clearTimeout(timer); }   // (a site that doesn't answer in time rests for two minutes)
     if (r.status === 429 || r.status === 503) { b.restUntil = Date.now() + (+r.headers.get('retry-after') || PACE.rest) * 1000; throw new Error('http ' + r.status + ' from ' + host); }
     if (!r.ok) throw new Error('http ' + r.status + ' from ' + host);
     return r;
   }
-  // transactions: each ask starts at the next mempool site in turn (so a big collection is spread over all of them)
+  // transactions: each ask starts at the next mempool site in turn (so a big collection is spread over all of them), skipping sites
+  // that are resting; if a site is slow to answer (2.5 s), the next one is asked too, and the first answer is taken
   let mpAt = 0;
-  async function mpFetch(path, ms) {
-    const s0 = mpAt++ % MIRRORS.length; let err = null;
-    for (let i = 0; i < MIRRORS.length; i++) { const m = MIRRORS[(s0 + i) % MIRRORS.length]; try { return {r: await fetchT(m + path, ms), site: m}; } catch (e) { err = e; if (/http 404/.test(String(e))) throw e; } }
-    throw err || new Error('no site answered');
+  function mpFetch(path, ms) {
+    const s0 = mpAt++ % MIRRORS.length, order = MIRRORS.map((m, i) => MIRRORS[(s0 + i) % MIRRORS.length]);
+    return new Promise((resolve, reject) => {
+      let i = 0, live = 0, done = false, err = null;
+      const next = () => {
+        if (done) return;
+        while (i < order.length) {
+          const m = order[i++]; if (site(new URL(m).host).restUntil > Date.now()) continue;
+          live++;
+          fetchT(m + path, ms).then(r => { if (done) return; done = true; resolve({r, site: m}); },
+            e => { live--; err = e; if (done) return; if (/http 404/.test(String(e))) { done = true; reject(e); return; } if (live === 0) next(); });
+          setTimeout(() => { if (!done && live < 3) next(); }, 2500);
+          return;
+        }
+        if (live === 0 && !done) { done = true; reject(err || new Error('no site answered')); }
+      };
+      next();
+    });
   }
   async function ordFetch(path, ms, list) {
     let err = null;
@@ -288,7 +303,7 @@
       ordJson: async p => { const x = await ordFetch(p, 15000); if (!ordAt && /^\/r\/(inscription|children)\//.test(p)) ordAt = x.site; return {j: await x.r.json(), site: x.site}; },
       ord2Json: async p => { const x = await ordFetch(p, 15000, ORD_R.filter(b => b !== (ordAt || ORD_R[0]))); return {j: await x.r.json(), site: x.site}; },
       ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
-      mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; }};
+      mpJson: async p => { const x = await mpFetch(p, 10000); return {j: await x.r.json(), site: x.site}; }};
   }
 
   /* ---------- checking a parent's collection ---------- */
@@ -383,7 +398,7 @@
     const how = $('how'); how.textContent = '';
     const all = c;   // (the counts are for the whole collection, whatever the filter)
     for (const [k, t] of [['listedTwice', 'Listed twice'], ['namesParent', 'Names the parent'], ['parentSpent', 'Parent spent']]) {
-      const d = el('div'); d.appendChild(el('b', null, t)); d.appendChild(document.createTextNode(r.howProven[k] + '. '));
+      const d = el('div'); d.appendChild(el('b', null, t)); d.appendChild(document.createTextNode(r.howProven[k].replace(/https:\/\//g, '') + '. '));
       d.appendChild(el('i', null, fmt(c.checks[k]) + ' of ' + fmt(all.listed) + ' ✓')); how.appendChild(d);
     }
     const chips = $('chips'); chips.textContent = '';
@@ -462,10 +477,11 @@
   $('exGoose').addEventListener('click', () => { $('ids').value = GOOSE.join('\n'); checkList(GOOSE).catch(() => {}); });
   $('stop').addEventListener('click', () => { stopAsked = true; lstop = true; say('Stopping…'); });
   $('carry').addEventListener('click', () => { if (!RUN || busy) return; busy = true; stopAsked = false; buttons(); follow().catch(() => {}).finally(() => { busy = false; buttons(); }); });
-  $('prev').addEventListener('click', () => { VIEW.from = Math.max(0, VIEW.from - perPage()); show(); });
-  $('next').addEventListener('click', () => { VIEW.from += perPage(); show(); });
-  $('lprev').addEventListener('click', () => { LVIEW = Math.max(0, LVIEW - perPage()); showList(); });
-  $('lnext').addEventListener('click', () => { LVIEW += perPage(); showList(); });
+  const toTop = id => { const e = $(id); if (e && e.getBoundingClientRect().top < 0) e.scrollIntoView({block: 'start'}); };   // (a new page starts at its top)
+  $('prev').addEventListener('click', () => { VIEW.from = Math.max(0, VIEW.from - perPage()); show(); toTop('chips'); });
+  $('next').addEventListener('click', () => { VIEW.from += perPage(); show(); toTop('chips'); });
+  $('lprev').addEventListener('click', () => { LVIEW = Math.max(0, LVIEW - perPage()); showList(); toTop('lrows'); });
+  $('lnext').addEventListener('click', () => { LVIEW += perPage(); showList(); toTop('lrows'); });
   const save = (data, name, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], {type})); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); };
   const LIC = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE). Bitcoin\'s own data is public.';
   $('dlJson').addEventListener('click', () => { if (!RUN) return; save(JSON.stringify(Object.assign({licence: LIC}, CC.report(RUN, {limit: 1e9})), null, 1), 'collection-' + RUN.parent.number + '.json', 'application/json'); });
