@@ -14,7 +14,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
 const GAME = PORTAL + 'block-cube.html';
@@ -395,7 +395,7 @@ async function blockManifest({height, kind, from = 0, limit = 50}) {
     items: {kind: k || 'all', total: list.length, from, limit, more: from + limit < list.length, list: list.slice(from, from + limit)},
     kinds: BM.KIND_NAMES,
     seeIt: 'Walk into this block in Agent Blockhall (' + GAME + '): its kit\'s walkIn({height: ' + height + '}). The portal\'s Block Manifest page (' + PORTAL + 'block-manifest.html?block=' + height + ') shows the same and downloads it as JSON or CSV.',
-    note: 'Each item: n (its place in the block), txid, fee (sats), vsize, feeRate (sat/vB), kinds (the hall\'s shelves it sits on), and what it carries. checked says whether its id and size, worked out from the block\'s own bytes, match the second site, whether its kinds match ordpool.space\'s tags, and whether its inscriptions match ordinals.com. ' + UNTRUSTED
+    note: 'Each item: n (its place in the block), txid, fee (sats), vsize, feeRate (sat/vB), kinds (the hall\'s shelves it sits on), and what it carries. checked says whether its id and size, worked out from the block\'s own bytes, match the second site, whether its kinds match ordpool.space\'s tags, and whether its inscriptions match ordinals.com. Any inscription id here can go into provenanceCheck({id}) (or the portal\'s Provenance Check page, ' + PORTAL + 'provenance-check.html?id=...) to prove where it came from. ' + UNTRUSTED
   };
 }
 
@@ -415,7 +415,7 @@ async function provenanceCheck({id}) {
   };
   const out = await PV.gather(iid, io);
   return Object.assign(out, {
-    seeIt: 'The portal\'s Provenance Check page (' + PORTAL + 'provenance-check.html?id=' + iid + ') shows the same, and Agent Blockhall (' + GAME + ') shows its trail as a tether from cube to cube: hold the parcel, then followBack().',
+    seeIt: 'The portal\'s Provenance Check page (' + PORTAL + 'provenance-check.html?id=' + iid + ') shows the same, and Agent Blockhall (' + GAME + ') shows its trail as a tether from cube to cube: hold the parcel, then followBack().' + (out.inscription.block != null ? ' blockManifest({height: ' + out.inscription.block + '}) (or ' + PORTAL + 'block-manifest.html?block=' + out.inscription.block + ') lists every transaction in the block it was made in, sorted and checked.' : ''),
     note: 'checked: each check says what it compared (what), with which site (against), and whether they agree (agrees: true, false, or null when it could not be made). trail is oldest first: where it was made, then each move. ' + UNTRUSTED
   });
 }
