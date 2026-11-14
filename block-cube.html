@@ -986,7 +986,7 @@ out vec3 vN;out vec3 vQ;out vec3 vS;out vec3 vK;out vec3 vW;out float vFl;out fl
 void main(){float age=uNow-iK.w,sc=1.,fl=0.;vec3 pos=iC;
 float dep=min(${(S / 2).toFixed(2)}-abs(iC.x),${(S / 2).toFixed(2)}-abs(iC.z));vAo=(1.-.34*smoothstep(${(S * 0.04).toFixed(3)},${(S * 0.22).toFixed(3)},dep))*(.86+.14*smoothstep(0.,${(S * 0.3).toFixed(3)},iC.y));
 if(iF.w>3.5){float p=clamp(age/1.35,0.,1.),e=p*p*(3.-2.*p),k=1.-.97*e;vec3 c0=vec3(0.,${(S / 2).toFixed(2)},0.);pos=c0+(iC-c0)*k+vec3(0.,${(S * 2.2).toFixed(2)},0.)*e*e*e;sc=p<1.?k:0.;fl=.5*e;}
-else if(iF.w<.5){float p=clamp(age/.7,0.,1.);p=p*p*(3.-2.*p);pos=mix(iF.xyz,iC,p);}
+else if(iF.w<.5){float p=clamp(age/.7,0.,1.);p=p*p*(3.-2.*p);pos=mix(iF.xyz,iC,p);if(iF.w<0.){float r=iF.w>-1.?-iF.w:-iF.w-1.;sc=iF.w>-1.?mix(1.,r,p):mix(r,1.,p);}}
 else if(iF.w<1.5||iF.w>2.5){float p=clamp(age/.9,0.,1.),e=1.-pow(1.-p,3.);sc=age<0.?0.:mix(.55,1.,e);pos.y+=(1.-e)*${(S * 0.5).toFixed(2)};fl=iF.w<1.5&&age>=.9?exp(-(age-.9)*6.):0.;}
 else{float p=clamp(age/.55,0.,1.);sc=1.-p;pos.y+=p*p*${(S * 0.08).toFixed(2)};}
 pos.y+=floor(iC.y/${LAYER})*${LIFT}*uOpen;
@@ -7525,11 +7525,14 @@ addEventListener('keydown', e => {
   e.preventDefault(); e.stopImmediatePropagation();
 }, true);
 // holding a parcel: it flies from its shelf into your hands and becomes a tablet showing what it is
+// a parcel in your hand is never bigger than the palm of your hand: a big one shrinks on its way to you (and grows back on its way to
+// the shelf). In the shader, m between -1 and 0 flies to the hand ending at -m of its size; m between -2 and -1, from it, starting at -m - 1.
+const PALM = .09, palmK = it => Math.min(1, PALM / Math.max(.001, it.e * .96));
 function rmHold(it) {
   if (room.held) return;
   if (it.show) { const cp = room.rooms[1] && room.rooms[1].plan.items.find(i => i.cp && i.t === it.t); if (!cp) return; cp.gone = false; cp.w = (it.c || it.w).slice(); it = cp; document.body.classList.add('showcp'); }
   const v = room.view, e = v.eye, f = v.dir, hand = [e[0] + f[0] * .55, e[1] + f[1] * .55 - .16, e[2] + f[2] * .55];
-  it.f = it.w; it.c = hand; it.m = 0; it.t0 = now(); room.dirty = true;
+  it.f = it.w; it.c = hand; it.m = palmK(it) < 1 ? -palmK(it) : 0; it.t0 = now(); room.dirty = true;
   room.held = {it};
   if (document.pointerLockElement) document.exitPointerLock();
   setTimeout(() => { if (!room || !room.held || room.held.it !== it || room.held.back) return; it.gone = true; room.dirty = true; select(it.t); document.body.classList.add('holding'); { const hp = heldInfo(it.t), mp = vwMarks(it.t, hp); if (!it.t._heldAll) it.t._heldAll = Promise.all([hp, mp]).catch(() => {}); }   /* (_heldAll: done when all of its card has come back) */ galCheck(it.t); if (folOn(it)) it.t._folId = fol.id; document.body.classList.toggle('folok', folIds(it.t).length > 0); document.body.classList.toggle('untok', folOn(it)); }, 480);
@@ -7539,7 +7542,7 @@ function rmPut() {
   vwClose();
   H.back = now() + .75; select(null); document.body.classList.remove('holding', 'galok', 'showcp', 'folok', 'untok'); $cgl.classList.remove('on');
   const v = room.view, e = v.eye, f = v.dir, it = H.it;
-  it.gone = false; it.f = [e[0] + f[0] * .55, e[1] + f[1] * .55 - .16, e[2] + f[2] * .55]; it.c = it.w; it.m = 0; it.t0 = now();
+  it.gone = false; it.f = [e[0] + f[0] * .55, e[1] + f[1] * .55 - .16, e[2] + f[2] * .55]; it.c = it.w; it.m = palmK(it) < 1 ? -1 - palmK(it) : 0; it.t0 = now();
   room.dirty = true;
 }
 // the sign over a door: type the block it should lead to
