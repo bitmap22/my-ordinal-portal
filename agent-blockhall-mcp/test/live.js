@@ -40,10 +40,27 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   if (holder) calls.push(await call('search', {query: holder.out.owner}));
   calls.push(await call('search', {query: 'satoshi.sats'}));
   calls.push(await call('rareSats', {}));
+  // the Block Manifest: the halving block's rune etchings, the next page of the same block (no new reading), inscription 0's
+  // block, a kind that is not there, a kind it does not know, and the newest block
+  calls.push(await call('blockManifest', {height: 840000, kind: 'runes etched', limit: 5}));
+  calls.push(await call('blockManifest', {height: 840000, from: 5, limit: 3}));
+  calls.push(await call('blockManifest', {height: 767430, kind: 'inscriptions'}));
+  calls.push(await call('blockManifest', {height: 767430, kind: 'runes etched'}));
+  calls.push(await call('blockManifest', {height: 767430, kind: 'shoes'}));
+  calls.push(await call('blockManifest', {height: 99999999}));
+  const tip = calls.find(c => c.name === 'chain' && c.out && c.out.newestBlock);
+  if (tip) calls.push(await call('blockManifest', {height: tip.out.newestBlock - 1, limit: 5}));
+  results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {
+    const k = c.out.checked;
+    return c.out.block.height + ' (' + c.ms + ' ms): hash ' + k.blockHash.fromItsOwnBytes + '/' + (k.blockHash.secondSite && k.blockHash.secondSite.agrees) + ', ids ' + k.transactions.matched + '/' + k.transactions.of +
+      ', sizes ' + k.sizes.matched + '/' + k.sizes.of + ', kinds ' + (k.kinds ? k.kinds.agreed + '/' + k.kinds.of : '-') + ', inscriptions ' + (k.inscriptions ? k.inscriptions.agreed + '/' + k.inscriptions.of : '-') +
+      (k.runesEtched ? ', etched ' + k.runesEtched.made + '/' + k.runesEtched.tried : '') + ', differences ' + k.differences.length + ', items ' + c.out.items.kind + ' ' + c.out.items.list.length + '/' + c.out.items.total + ', sources ' + JSON.stringify(c.out.sources);
+  });
   results.calls = calls;
   results.summary = calls.map(c => c.name + ' ' + JSON.stringify(c.args) + ': ' + (c.error ? 'PROTOCOL ERROR ' + c.error.message : c.isError ? 'ERROR ' + c.out : 'ok') + ' (' + c.ms + ' ms)');
   fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 1));
   console.log(results.summary.join('\n'));
+  if (results.manifestChecks.length) console.log('Block Manifest checks:\n' + results.manifestChecks.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });

@@ -4,7 +4,8 @@
    runes, Alkanes, Stamps, CAT-21 and more), with its fee and size, and checked: its id and size worked out from the block's
    own bytes against a second site's list, its kinds read twice (this reader and ordpool.space's tags), and its inscriptions
    against ordinals.com's list. The same file runs in the free Agent Blockhall MCP tool and on the portal's Block Manifest
-   page. It only reads and works things out: fetching is left to whoever uses it. No other packages. */
+   page. It only reads and works things out: fetching is left to whoever uses it. No other packages.
+   © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
 (function (root, make) {
   if (typeof module === 'object' && module.exports) module.exports = make();
   else root.BlockManifest = make();
