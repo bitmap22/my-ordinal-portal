@@ -12696,7 +12696,10 @@ function clScanStart(C) {
       // the pieces: page by page (number, block, sat), then each one's own record (where it sits now, its kind)
       for (let p = 0; p < S.pages && S.list.length < CL_SCAN_MAX; p++) { if (gone()) return; const j = await galQuick('/r/children/' + K.pid + '/inscriptions' + (p ? '/' + p : ''));
         for (const ch of (j && j.children) || []) if (!S.by.has(ch.id) && S.list.length < CL_SCAN_MAX && /^[0-9a-f]{64}i\d+$/.test(ch.id || '')) { const o = {id: ch.id, n: ch.number, h: ch.height, sat: ch.sat, ts: ch.timestamp, addr: null, ct: null, out: ch.output || null}; S.list.push(o); S.by.set(ch.id, o); } }
-      let i = 0; const work = async () => { while (i < S.list.length) { if (gone()) return; const o = S.list[i++]; if (o.addr != null) continue;
+      if (K.me && K.me !== K.pid && !S.by.has(K.me)) { const o = {id: K.me, n: K.meN, h: null, sat: null, ts: null, addr: null, ct: null, out: null}; S.list.push(o); S.by.set(K.me, o); }   // (the piece you came in with, even past the pages read)
+      if (!S.par) { S.par = {addr: null}; try { const d = await galGet('/r/inscription/' + K.pid); S.par.addr = typeof d.address === 'string' ? d.address : ''; } catch (e) {} }   // (the parent itself: whose wallet is it in?)
+      const Q = S.list.filter(o => own.ids.has(o.id)).concat(S.list.filter(o => !own.ids.has(o.id)));   // (yours first, so your own count is right straight away)
+      let i = 0; const work = async () => { while (i < Q.length) { if (gone()) return; const o = Q[i++]; if (o.addr != null) continue;
         try { const d = await galGet('/r/inscription/' + o.id); o.addr = typeof d.address === 'string' ? d.address : ''; o.ct = d.content_type || (d.delegate ? 'a delegate (its content is another inscription)' : 'unknown'); o.out = d.output || o.out; if (o.sat == null) o.sat = d.sat; S.read++; } catch (e) { o.addr = null; }
         if (S.read % 20 === 0) clPaintCRT(); } };
       await Promise.all([work(), work(), work()]); S.at = Date.now(); clPaintCRT(); clPaintTV();
@@ -12726,6 +12729,14 @@ async function clNewTick() {
     if (cl.scan === S && Date.now() - S.mp.at > 300000) clMempoolScan(S);
   } catch (e) {} finally { S.newBusy = false; }
 }
+// what is in your wallet, as the chain says: the parent itself and the children (the ones in your wallet are read first)
+function clYours(S, K) {
+  if (!own.addr) return 'connect your wallet to see yours';
+  const par = S && S.par && S.par.addr === own.addr, kids = S ? S.list.filter(o => o.addr === own.addr).length : 0, wait = S && S.list.some(o => o.addr == null && own.ids.has(o.id));
+  const bits = []; if (par) bits.push('the parent'); if (kids) bits.push(kids + (kids === 1 ? ' child' : ' children'));
+  if (!bits.length) return wait || !S || S.busy ? 'checking the piece you came in with…' : 'none now: the chain says your piece has left your wallet';
+  return bits.join(' and ') + (par && !kids || kids + par === 1 ? ' is' : ' are') + ' in your wallet' + (wait ? ' (still checking the rest of yours)' : '');
+}
 // the terminal's pages, as data (the screen and an agent read the same)
 function clTermData(page) {
   const C = room && room.at, K = C && C.cl, S = cl.scan; if (!K) return {error: 'you are not in a club'};
@@ -12733,13 +12744,13 @@ function clTermData(page) {
   const here = [clName(clMe())].concat([...crew.mates.values()].filter(clHere).map(M => clName(M.id)));
   const P = page || 'summary', out = {page: P, read: part};
   if (P === 'summary') Object.assign(out, {collection: K.name || null, parent: K.num != null ? '#' + fmt(K.num) : null, parentId: K.pid, parentMadeInBlock: K.parH != null ? K.parH : null, pieces: of != null ? of : K.n, membersHereNow: here,
-    holders: kn ? new Set(L.filter(o => o.addr).map(o => o.addr)).size + ' different addresses hold the pieces read' : 'not read yet', yours: own.addr ? (n => n + ' of the pieces read ' + (n === 1 ? 'is' : 'are') + ' in your wallet')(L.filter(o => o.addr === own.addr).length) : 'connect your wallet to see yours'});
+    holders: kn ? new Set(L.filter(o => o.addr).map(o => o.addr)).size + ' different addresses hold the pieces read' : 'not read yet', yours: clYours(S, K)});
   else if (P === 'kinds') { const m = {}; for (const o of L) { const k = (o.ct || 'unknown').split(';')[0]; m[k] = (m[k] || 0) + 1; } out.kinds = Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({kind: k, pieces: n})); }
   else if (P === 'rare sats') { const m = {}, tags = {}, list = []; for (const o of (S ? S.list : [])) { if (o.sat == null) continue; const q = clRarity(o.sat); m[q.r] = (m[q.r] || 0) + 1; for (const t of q.tags) { const k = t.split(' (')[0]; tags[k] = (tags[k] || 0) + 1; } if (q.r !== 'common' || q.tags.length) list.push({piece: '#' + fmt(o.n), sat: o.sat, rarity: q.r, also: q.tags}); }
     Object.assign(out, {how: 'worked out from each sat\'s number by ord\'s rules (uncommon: the first sat of a block; rare: of a difficulty period; epic: of a halving; legendary: of a cycle; mythic: the very first)', rarity: m, satributes: tags, notable: list.slice(0, 40)}); }
   else if (P === 'holders') { const m = new Map(); for (const o of L) if (o.addr) m.set(o.addr, (m.get(o.addr) || 0) + 1); const top = [...m.entries()].sort((a, b) => b[1] - a[1]);
     Object.assign(out, {addresses: m.size, top: top.slice(0, 10).map(([a, n]) => ({address: a.slice(0, 8) + '…' + a.slice(-6), pieces: n, you: a === own.addr || undefined})), holdingOne: top.filter(q => q[1] === 1).length, topTenShare: kn ? Math.round(top.slice(0, 10).reduce((s, q) => s + q[1], 0) / kn * 100) + '% of the pieces read' : null}); }
-  else if (P === 'your pieces') { const mine = (S ? S.list : []).filter(o => (own.addr && o.addr === own.addr) || (o.addr == null && own.ids.has(o.id))); out.yours = own.addr ? mine.map(o => ({piece: '#' + fmt(o.n), id: o.id, block: o.h, rarity: o.sat != null ? clRarity(o.sat).r : null, chainSays: o.addr === own.addr ? 'in your wallet' : 'not read yet'})) : 'connect your wallet (read only) on the play together page'; if (K.pid && own.ids.has(K.pid)) out.parent = 'you hold the parent itself'; }
+  else if (P === 'your pieces') { const mine = (S ? S.list : []).filter(o => (own.addr && o.addr === own.addr) || (o.addr == null && own.ids.has(o.id))); out.yours = own.addr ? mine.map(o => ({piece: '#' + fmt(o.n), id: o.id, block: o.h, rarity: o.sat != null ? clRarity(o.sat).r : null, chainSays: o.addr === own.addr ? 'in your wallet' : 'not read yet'})) : 'connect your wallet (read only) on the play together page'; if (S && S.par && S.par.addr === own.addr) out.parent = 'you hold the parent itself (the chain says it is in your wallet)'; }
   else if (P === 'on the move') { const M = S && S.mp; Object.assign(out, {beingSentNow: M && M.at ? M.sending.map(o => ({piece: '#' + fmt(o.n), transaction: o.sendTx, note: 'waiting to be mined'})) : 'checking the mempool (' + (M ? M.done : 0) + ' looked at so far)', checked: M && M.checked ? M.checked + ' pieces looked at in the mempool' : null,
     movedSinceMade: kn ? L.filter(o => o.out && o.out.split(':')[0] !== o.id.slice(0, 64)).length + ' of the pieces read have moved since they were made' : 'not read yet', stillWhereMade: kn ? L.filter(o => o.out && o.out.split(':')[0] === o.id.slice(0, 64)).length + ' are still in the output they were made in' : null}); }
   else if (P === 'newest') { out.newest = S && S.lastIds ? S.lastIds.slice(-5).reverse().map(id => ({id, piece: S.by.get(id) ? '#' + fmt(S.by.get(id).n) : null})) : 'not read yet'; out.newSinceYouCameIn = S && S.fresh.length ? S.fresh : 'none yet (looked for every two minutes)'; }
