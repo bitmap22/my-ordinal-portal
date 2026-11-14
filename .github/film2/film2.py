@@ -58,7 +58,9 @@ async def main():
             m = re.search(r'hall of blocks ([0-9,]+) to ([0-9,]+)', r or '')
             if m:
                 a0 = int(m.group(1).replace(',', '')); await A(f"agent.walkIn({{height: {a0}}})", 30000); await roomReady()
-            log('at', await g.evaluate("JSON.stringify({x: room.p.x, z: room.p.z, yaw: room.p.yaw})"))
+            hz = json.loads(await g.evaluate("JSON.stringify({x: room.p.x, z: room.p.z, yaw: room.p.yaw, L: room.at.L, z0: room.at.z0})")); log('at', hz)
+            st['z'] = (hz['z'], (hz.get('z0') or 0) - (hz.get('L') or 8) + 2.4); log('glide', st['z'])   # (a slow, straight glide down the whole hall, stopping short of its far door)
+            await g.evaluate("() => { room.p.x = 0; room.p.yaw = 0; room.p.pitch = -.04; }")
         elif SC == 'gallery':   # (a collection's own room, found by name on the tablet, as a player does)
             try: rows = json.loads(await g.evaluate("agent.search ? (async () => JSON.stringify((await agent.search({query: '" + os.environ.get('COLLECTION', 'Dogebirds') + "'})).results))() : '[]'"))
             except Exception as e: rows = []; log('search rows failed', e)
@@ -145,6 +147,9 @@ async def main():
                 if f == 10: await g.evaluate("document.getElementById('ti').click()")
                 if f == 80: await g.evaluate("(() => { const b = [...document.querySelectorAll('#cinf button')].find(b => /HOW TO/i.test(b.textContent)); if (b) b.click(); else { ci.tab = 'how'; ciDraw(); } })()")
                 if f > 100: await g.evaluate("(() => { const d = document.querySelector('#cinf>div'); if (d) d.scrollTop += 3; })()")
+            elif SC == 'hall' and DOGE:
+                z0, z1 = st['z']; k = f / (N - 1); k = k * k * (3 - 2 * k)
+                await g.evaluate("z => { room.p.z = z; room.p.x = 0; }", z0 + (z1 - z0) * k)
             elif SC == 'hall':
                 if f == 15: await go("agent.walk({direction: 'forward', seconds: 6})")
             elif SC == 'gallery':
