@@ -8095,7 +8095,7 @@ function galCard(t) {
 // a piece's picture: fetched only when you walk near it (the nearest first, one at a time, through the reader); pictures
 // far behind you are let go again, so a long walk never fills the memory
 const galArt = {busy: false, n: 0, at: 0, gc: 0};
-const galKind = ct => /^image\//.test(ct) ? GK.img : /^text\/html/.test(ct) ? GK.html : /json/.test(ct) ? GK.json : /^text\//.test(ct) ? GK.text : /^(audio|video)\//.test(ct) ? GK.av : /model|gltf/.test(ct) ? GK.m3d : ct ? GK.other : GK.ins;
+const galKind = ct => /^image\//.test(ct) ? GK.img : /model|gltf/.test(ct) ? GK.m3d : /^text\/html/.test(ct) ? GK.html : /json/.test(ct) ? GK.json : /^text\//.test(ct) ? GK.text : /^(audio|video)\//.test(ct) ? GK.av : ct ? GK.other : GK.ins;   // (a 3D model first: glTF is written as JSON)
 const galWord = ct => /html/.test(ct) ? 'HTML' : /^audio/.test(ct) ? 'AUDIO' : /^video/.test(ct) ? 'VIDEO' : /model|gltf/.test(ct) ? '3D MODEL' : /javascript/.test(ct) ? 'CODE' : /^image/.test(ct) ? 'BIG PICTURE' : ct ? (ct.split(/[;/]/)[1] || ct).toUpperCase().slice(0, 12) : 'NO CONTENT';
 
 function galWordOf(txt) {
@@ -8142,14 +8142,14 @@ async function galArtTick(tn) {
       // learning the collection: when its first pieces are all one small kind of file (pictures, text), the rest are fetched
       // straight away, without asking about each one first
       if (!t.par) { const S = G.ty || (G.ty = {n: 0, cts: new Set(), big: 0}); S.n++; S.cts.add(ct); S.big = Math.max(S.big, len);
-        if (S.n >= 4 && S.cts.size === 1 && S.big <= 400000 && /^image\/|^text\/plain|json/.test(ct)) G.uni = {ct}; }
+        if (S.n >= 4 && S.cts.size === 1 && (/model|gltf/.test(ct) || S.big <= 400000 && /^image\/|^text\/plain|json/.test(ct))) G.uni = {ct}; }
     } else if (t.ct == null) { t.ct = G.uni.ct; it.k = galKind(t.ct); }
-    const pic = /^image\//.test(t.ct), txt = /^text\/plain|json/.test(t.ct);
-    if (pic && !(t.len > 1500000) || txt && !(t.len > 4000)) {
+    const mdl = /model|gltf/.test(t.ct), pic = /^image\//.test(t.ct), txt = !mdl && /^text\/plain|json/.test(t.ct), lim = t.par ? 8000000 : 1500000;   // (the parent's picture, only one, may be up to 8 MB)
+    if (pic && !(t.len > lim) || txt && !(t.len > 4000)) {
       const b = await galBytes(t.gid);
-      if (pic) { if (b.length <= 1500000) { t.art = {bytes: b, ct: t.ct}; if (sel === t && room.held && room.held.it === it) preview(t); } else if (!t.word) t.word = {k: 'text', a: galWord(t.ct)}; }
+      if (pic) { if (b.length <= lim) { t.art = {bytes: b, ct: t.ct}; if (sel === t && room.held && room.held.it === it) preview(t); } else if (!t.word) t.word = {k: 'text', a: galWord(t.ct)}; }
       else if (!t.word) t.word = (b.length <= 4000 ? galWordOf(new TextDecoder().decode(b)) : null) || {k: 'text', a: 'TEXT'};
-    } else if (!t.word) t.word = {k: 'text', a: txt ? 'TEXT' : galWord(t.ct)};
+    } else if (!t.word) t.word = mdl && t.n != null ? {k: 'text', a: '#' + fmt(t.n), num: true} : {k: 'text', a: txt ? 'TEXT' : galWord(t.ct)};   // (a 3D model: its number)
     C.nl = null; near.rk = ''; room.dirty = true;
   } catch (e) { t.gFail = (t.gFail || 0) + 1; if (t.gFail < 2) t.gTry = 0; }
   finally { galArt.n--; }
@@ -8489,7 +8489,7 @@ function showCard(t) {
   }
   if (t.to) rows.push(['would like to trade with', t.to.me ? 'you (' + t.to.p + ')' : t.to.p + ' · ' + t.to.name]);
   if (t.ct) rows.push(['type', t.ct + (t.len ? ' · ' + fmt(t.len) + ' bytes' : '')]);
-  if (t.word && t.word.a && !t.art) rows.push(['it says', t.word.a.length > 64 ? t.word.a.slice(0, 63) + '…' : t.word.a]);
+  if (t.word && t.word.a && !t.art && !t.word.num) rows.push(['it says', t.word.a.length > 64 ? t.word.a.slice(0, 63) + '…' : t.word.a]);
   $cr.innerHTML = ''; addRows(rows); if (t._held && t._held.length && room && room.held && room.held.it.t === t) addRows(t._held);
   $ct.textContent = t.mate && t.ordIds ? t.ordIds[0] : t.gal ? t.gid : t.id; $cp.innerHTML = ''; $cp.style.display = 'none';
   $card.classList.remove('st'); $card.classList.add('on'); fitCard();
