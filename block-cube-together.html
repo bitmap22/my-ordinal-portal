@@ -535,7 +535,8 @@ addEventListener('message', e => {
   if (m.type === 'hello') { gameReady = true; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, '*'); portraits(); walSend(); for (const [id, a] of walMates) toCube({ type: 'mwal', id, addr: a }); pnLast = ''; pnSend(); if (net.on && net.sail) startGame(); return; }
   if (m.type === 'portraits') { gotPortraits(m); return; }
   if (m.type === 'mute') { if (typeof m.id === 'string' && m.id !== ME && net.players.has(m.id)) setMute(m.id, !!m.on); return; }   // (clicked the name over their head)
-  if (m.type === 'trade') { const on = !!m.on; if (on !== walTrade) { walTrade = on; walShare(); } return; }   // (your block on your trade base, or not)
+  if (m.type === 'trade') { const on = !!m.on; if (on !== walTrade) { walTrade = on; walShare(); } return; }
+  if (m.type === 'clubwal') { const on = !!m.on; if (on !== walClub) { walClub = on; walShare(); } return; }   // (in a collection's club, or not: there your crew's pages check you hold a piece of it)   // (your block on your trade base, or not)
   if (m.type === 'hear') { voice.hear(m.d); return; }   // how far away each crewmate is in the rooms (for their voices)
   if (m.type === 'chat-open') { openSay(); return; }
   if (m.type === 'go' && m.to === 'paint') { swapTo('paint'); return; }   // walked into the warehouse shutter
@@ -752,7 +753,7 @@ const small = (v, d) => v === null || typeof v === 'boolean' || (typeof v === 'n
   (d < 3 && Array.isArray(v) && v.length <= 16 && v.every(x => small(x, d + 1))) || (d < 3 && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length <= 40 && Object.values(v).every(x => small(x, d + 1)));
 // where someone is in the cube: which block's room (h), where in it (x, z, in metres), which way they face (y) and look (p), what they hold (hk: its kind)
 const num = (v, a) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= a;
-const place = s => Number.isInteger(s.h) && s.h >= -4 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
+const place = s => Number.isInteger(s.h) && s.h >= -5 && s.h < 1e8 && num(s.x, 50) && num(s.z, 2000) && num(s.y, 1e4) && num(s.p, 2) && Number.isInteger(s.hk) && s.hk >= -1 && s.hk < 64 && (s.in === 0 || s.in === 1) && (s.look === undefined || !!lookOk(s.look));
 // someone in Block Paint: where they stand and how they look, small
 const paintOk = s => { try { return JSON.stringify(s).length <= 3000 && Array.isArray(s.q) && s.q.length === 3 && s.q.every(Number.isFinite); } catch (e) { return false; } };
 function check(m) {
@@ -1404,7 +1405,7 @@ function playerRows(ul) {
     const p = net.players.get(id), mine = id === ME, host = id === net.hostId, mu = isMuted(id), nm = p.name || 'Runner', st = voice.st[id];
     const li = el('li', { class: [mine && 'me', host && 'host', p.sail && 'on', mu && 'muted'].filter(Boolean).join(' ') || null, data: { id } });
     li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), host ? el('span', { class: 'tag', text: 'Host' }) : null, (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('span', { class: 'tag', text: 'AI', title: 'an AI agent' }) : null),
-      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : st.h === -4 ? 'Bitmap garden' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
+      el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : st.h === -4 ? 'Bitmap garden' : st.h === -5 ? 'Club' : st.h === -3 ? 'Gallery' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
     // (a crewmate in another block's room: go to them)
     const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && (inPaintSt(st) ? !inPaintSt(mst) : st.in && !(mst && mst.in && !inPaintSt(mst) && mst.h === st.h))) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
     if (!mine && p.fpk && p.fpk !== fpk) li.append(isFriend(p.fpk) ? el('span', { class: 'st frt', text: 'Friend' }) : el('button', { class: 'fr', text: 'Add friend', onclick: () => { addFriend({ pk: p.fpk, name: p.name }, true); toast('Added ' + nm + ' as a friend.', [], 4000); } }));
@@ -1436,7 +1437,7 @@ function drawTop() {
     const id = ids[k];
     if (!id) { box.append(el('div', { class: 'pl empty' }, el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), 'open'), el('span', { class: 'w', text: net.mode === 'sea' ? 'anyone can join' : 'invite someone' }))); continue; }
     const p = net.players.get(id), st = voice.st[id], mine = id === ME, lk = lookOk(p.look) || [0, 0, 1];
-    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : st.h === -4 ? 'bitmap garden' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
+    const where = p.lost ? 'reconnecting…' : !p.sail ? 'waiting' : inPaintSt(st) ? 'paint' : st && st.in ? (st.h === -2 ? 'lobby' : st.h === -4 ? 'bitmap garden' : st.h === -5 ? 'a club' : st.h === -3 ? 'a gallery' : 'block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'at the cube' : 'walking in…';
     const here = !mine && st && mst && (inPaintSt(st) ? inPaintSt(mst) : st.in && mst.in && !inPaintSt(mst) && st.h === mst.h), go = !mine && st && (st.in || inPaintSt(st)) && !here;
     const b = el('div', { class: 'pl' + (mine ? ' me' : '') + (here ? ' here' : '') + (go ? ' go' : ''), data: { id }, style: '--g:' + (GLOWS[lk[0]] || GLOWS[lk[0] % GLOWS.length])[lk[1] % 3], title: go ? 'Tap to go to ' + (p.name || 'them') : '' },
       el('span', { class: 'n' }, el('b', { text: 'P' + (k + 1) }), (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('i', { class: 'ai', text: 'AI', title: 'an AI agent' }) : null, (p.name || 'Runner') + (mine ? ' (you)' : '')), el('span', { class: 'w', text: here ? where + ' · here' : where }));
@@ -1603,14 +1604,14 @@ const walSend = () => toCube({ type: 'wallet', addr: wal.addr, ids: wal.ids, sha
 // the crew: your card (address, the wallet's signature, and your friend key signing this session's key, so no one else can
 // pass your card off as theirs), or "nothing to see" when the switch is off. While your block is on your trade base in the
 // Forum, the card goes too, so your crew can check your block is yours (your address only: what you hold stays private)
-let walTrade = false;
+let walTrade = false, walClub = false;
 function walCard() {
-  if (!wal.addr || !(wal.share || walTrade)) return { t: 'wal', sh: 0 };
+  if (!wal.addr || !(wal.share || walTrade || walClub)) return { t: 'wal', sh: 0 };
   return { t: 'wal', sh: 1, a: wal.addr, s: wal.sig, f: fpk, ps: bytesToHex(schnorr.sign(sha256(enc.encode('blockhall-wallet|' + pk + '|' + wal.addr)), fsk)) };
 }
 let walSent = 0;
 function walShare() { if (!net.on) return; walSent = Date.now(); share(walCard()); }
-setInterval(() => { if (net.on && (wal.share || walTrade) && Date.now() - walSent > 30000) walShare(); }, 5000);   // (now and then, for anyone who came in since)
+setInterval(() => { if (net.on && (wal.share || walTrade || walClub) && Date.now() - walSent > 30000) walShare(); }, 5000);   // (now and then, for anyone who came in since)
 // a crewmate's card: checked here before the game hears of it
 const walMates = new Map();
 function walIn(id, m) {
