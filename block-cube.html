@@ -265,7 +265,7 @@ body.tiny #fw,body.tiny #top,body.tiny #strip,body.tiny #nav,body.tiny #kinds,bo
 #vwc{position:absolute;top:32px;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center}
 #vwc img{width:100%;height:100%;object-fit:contain}#vwc img.px{image-rendering:pixelated}
 #vwc iframe{width:100%;height:100%;border:0;background:#000}
-#vwc canvas.cmbig{display:block;max-width:100%;max-height:100%;width:auto;height:auto}#vw.cmbig #vwm,#vw.cmbig #vwp,#vw.cmbig #vwx,#vw.cmbig #vwl,#vw.cmbig #vwo,#vw.cmbig #vwv{display:none!important}
+#vwc canvas.cmbig{display:block;max-width:100%;max-height:100%;width:auto;height:auto}#vwc canvas.stl{display:block;max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;cursor:grab}#vw.cmbig #vwm,#vw.cmbig #vwp,#vw.cmbig #vwx,#vw.cmbig #vwl,#vw.cmbig #vwo,#vw.cmbig #vwv{display:none!important}
 #vwc pre{margin:0;width:100%;height:100%;box-sizing:border-box;overflow:auto;padding:18px 22px 22px;color:#e9dccb;font:500 13px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
 #vwc .inf{width:min(560px,90%);max-height:100%;overflow:auto;padding:18px 0 20px;font:600 13px ui-monospace,Menlo,Consolas,monospace;color:#d8c6ad}
 #vwc .inf h3{margin:0 0 14px;text-align:center;font-size:15px;letter-spacing:.16em;color:#ffb04a}
@@ -1749,7 +1749,8 @@ async function decodeArt(a) {
 // colour (and its colour picture, when it has one), lit from above; seen from the front, a little from the right and above, on a
 // clear background. Nothing is added or guessed: a model that needs an extension to be read (squeezed meshes and the like), or that
 // fetches parts from elsewhere, is not drawn (its number shows, as before).
-const MDL_RE = /^model\/gltf(-binary|\+json)\b/;
+const MDL_RE = /^model\/(gltf(-binary|\+json)|stl)\b/, STL_RE = /^model\/stl\b/;
+const stlOf = t => !!(t && (t.ins && t.ins.some(x => STL_RE.test(x.ct || '')) || STL_RE.test(t.ct || '')));   // (a parcel whose 3D model is an STL)
 const mdl = {gl: null, busy: Promise.resolve()};
 function mdlCtx() {
   if (mdl.gl && !mdl.gl.g.isContextLost()) return mdl.gl;
@@ -1781,6 +1782,61 @@ function mdlParse(bytes) {
     else return null;   // (a part fetched from elsewhere: not drawn)
   }
   return {j, bin};
+}
+// an STL model (binary or text): its triangles, stood the way 3D printers stand them (Z up, turned here to the drawing's Y up), each
+// face lit by its own normal, in the colour its file gives where it gives one. Two ways of colouring an STL are read: Materialise
+// Magics (COLOR= and red, green, blue, alpha in the header for the whole part; a face whose bit 15 is 0 has its own red, green, blue
+// in bits 0-4, 5-9 and 10-14) and VisCAM / SolidView (bit 15 is 1: blue, green, red in bits 0-4, 5-9 and 10-14). A face whose two
+// attribute bytes are 0, as in any plain STL, has the part's colour. At most 300,000 triangles, as for a glTF model.
+async function stlTris(u) {
+  const dv = new DataView(u.buffer, u.byteOffset, u.byteLength), n0 = u.length >= 84 ? dv.getUint32(80, true) : 0, exact = n0 > 0 && 84 + 50 * n0 === u.length;
+  const head = String.fromCharCode(...u.subarray(0, Math.min(80, u.length))), base = [1, 1, 1, 1];
+  let V = null, A = null, nt = 0, magics = false;
+  const bin = async () => {
+    nt = Math.min(n0, Math.floor((u.length - 84) / 50)); if (!(nt > 0) || nt > 3e5) return false;
+    const ci = head.indexOf('COLOR='); if (ci >= 0 && ci + 10 <= 80) { magics = true; for (let a = 0; a < 4; a++) base[a] = u[ci + 6 + a] / 255; }
+    V = new Float32Array(nt * 9); A = new Uint16Array(nt);
+    for (let t = 0; t < nt; t++) { if (t && !(t % 10000)) await new Promise(r => setTimeout(r)); const o = 84 + t * 50 + 12; for (let q = 0; q < 9; q++) V[t * 9 + q] = dv.getFloat32(o + q * 4, true); A[t] = dv.getUint16(o + 36, true); }
+    return true;
+  };
+  if (exact || !/^\s*solid\b/i.test(head)) { if (u.length < 84 || !(await bin())) return null; }
+  else {
+    const L = [];
+    for (const m of new TextDecoder().decode(u).matchAll(/outer\s+loop([\s\S]*?)endloop/gi)) {
+      const P = [...m[1].matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/gi)].map(v => [+v[1], +v[2], +v[3]]);
+      for (let q = 1; q + 1 < P.length; q++) L.push(...P[0], ...P[q], ...P[q + 1]);
+      if (L.length > 27e5) return null;
+    }
+    if (L.length) { V = Float32Array.from(L); nt = L.length / 9; } else if (!(u.length >= 84 && await bin())) return null;
+  }
+  const p = new Float32Array(nt * 9), n = new Float32Array(nt * 9), uv = new Float32Array(nt * 6), k = new Float32Array(nt * 12);
+  let m = 0, lx = 1e30, ly = 1e30, lz = 1e30, hx = -1e30, hy = -1e30, hz = -1e30;
+  for (let t = 0; t < nt; t++) {
+    if (t && !(t % 10000)) await new Promise(r => setTimeout(r));   // (a short rest every 10,000 triangles, so nothing else has to wait)
+    const b = t * 9, x0 = V[b], y0 = V[b + 2], z0 = -V[b + 1], x1 = V[b + 3], y1 = V[b + 5], z1 = -V[b + 4], x2 = V[b + 6], y2 = V[b + 8], z2 = -V[b + 7];   // (x, y, z) to (x, z, -y): Z up becomes Y up
+    if (!isFinite(x0 + y0 + z0 + x1 + y1 + z1 + x2 + y2 + z2)) continue;
+    const ax = x1 - x0, ay = y1 - y0, az = z1 - z0, bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
+    let fx = ay * bz - az * by, fy = az * bx - ax * bz, fz = ax * by - ay * bx; const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+    const a = A ? A[t] : 0; let cr = base[0], cg = base[1], cb = base[2], ca = base[3];
+    if (a && magics && !(a & 0x8000)) { cr = (a & 31) / 31; cg = (a >> 5 & 31) / 31; cb = (a >> 10 & 31) / 31; ca = 1; }
+    else if (a && !magics && (a & 0x8000)) { cr = (a >> 10 & 31) / 31; cg = (a >> 5 & 31) / 31; cb = (a & 31) / 31; ca = 1; }
+    const o = m * 9; p[o] = x0; p[o + 1] = y0; p[o + 2] = z0; p[o + 3] = x1; p[o + 4] = y1; p[o + 5] = z1; p[o + 6] = x2; p[o + 7] = y2; p[o + 8] = z2;
+    for (let c = 0; c < 9; c += 3) { n[o + c] = fx; n[o + c + 1] = fy; n[o + c + 2] = fz; }
+    const q = m * 12; for (let c = 0; c < 12; c += 4) { k[q + c] = cr; k[q + c + 1] = cg; k[q + c + 2] = cb; k[q + c + 3] = ca; }
+    if (x0 < lx) lx = x0; if (x1 < lx) lx = x1; if (x2 < lx) lx = x2; if (x0 > hx) hx = x0; if (x1 > hx) hx = x1; if (x2 > hx) hx = x2;
+    if (y0 < ly) ly = y0; if (y1 < ly) ly = y1; if (y2 < ly) ly = y2; if (y0 > hy) hy = y0; if (y1 > hy) hy = y1; if (y2 > hy) hy = y2;
+    if (z0 < lz) lz = z0; if (z1 < lz) lz = z1; if (z2 < lz) lz = z2; if (z0 > hz) hz = z0; if (z1 > hz) hz = z1; if (z2 > hz) hz = z2;
+    m++;
+  }
+  const lo = [lx, ly, lz], hi = [hx, hy, hz];
+  if (!m || !(hi[0] >= lo[0])) return null;
+  return {groups: new Map([[-1, {p: p.subarray(0, m * 9), n: n.subarray(0, m * 9), u: uv.subarray(0, m * 6), k: k.subarray(0, m * 12)}]]), lo, hi};
+}
+// which way the camera looks: from the front, a little from the right and above (as always), turned by o.yaw and o.pitch when a player turns it
+function mdlDir(o) {
+  if (!o || !(o.yaw || o.pitch)) return [.5, .36, 1];
+  const y = Math.atan2(.5, 1) + (o.yaw || 0), q = Math.max(-1.45, Math.min(1.45, Math.atan2(.36, Math.hypot(.5, 1)) + (o.pitch || 0)));
+  return [Math.sin(y) * Math.cos(q), Math.sin(q), Math.cos(y) * Math.cos(q)];
 }
 const MDL_N = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16}, MDL_B = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}, MDL_MAX = {5120: 127, 5121: 255, 5122: 32767, 5123: 65535};
 function mdlAcc(M, i) {
@@ -1849,16 +1905,18 @@ async function mdlTex(M, ti) {
   try { return await createImageBitmap(new Blob([b], {type: ty})); } catch (e) { return null; }
 }
 // the picture: PNG bytes, S pixels square (null when the model cannot be drawn). One model at a time.
-function mdlPng(bytes, S = 256) { const p = mdl.busy.then(() => mdlDraw(bytes, S)).catch(() => null); mdl.busy = p.then(() => {}, () => {}); return p; }
-async function mdlDraw(bytes, S) {
-  const M = mdlParse(bytes); if (!M) return null;
-  const T = mdlTris(M); if (!T) return null;
+function mdlPng(bytes, S = 256, o) { const p = mdl.busy.then(() => mdlDraw(bytes, S, o)).catch(() => null); mdl.busy = p.then(() => {}, () => {}); return p; }
+async function mdlDraw(bytes, S, o = {}) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), gltf = u8.length >= 4 && new DataView(u8.buffer, u8.byteOffset, 4).getUint32(0, true) === 0x46546c67 || /^(\xef\xbb\xbf)?\s*\{/.test(String.fromCharCode(...u8.subarray(0, 16)));   // (glTF: its binary mark, or JSON; anything else is read as an STL)
+  const M = gltf ? mdlParse(bytes) : {j: {}}; if (!M) return null;
+  let T; if (gltf) T = mdlTris(M); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = await stlTris(u8); mdl.stl = T ? {b: bytes, T} : null; }
+  if (!T) return null;
   const mats = M.j.materials || [], texs = new Map();
   for (const key of T.groups.keys()) { const m = mats[key], ti = m && m.pbrMetallicRoughness && m.pbrMetallicRoughness.baseColorTexture; if (ti && ti.index != null && !texs.has(ti.index)) texs.set(ti.index, await mdlTex(M, ti.index)); }
   const X = mdlCtx(); if (!X) return null;
   const {c, g, P, L} = X; c.width = c.height = S;
   // the camera: from the front (glTF's +Z), a little from the right and above, just far enough to fit every point of the model
-  const ctr = [0, 1, 2].map(a => (T.lo[a] + T.hi[a]) / 2), d0 = [.5, .36, 1], dl = Math.hypot(...d0), bk = d0.map(e => e / dl), f = bk.map(e => -e);
+  const ctr = [0, 1, 2].map(a => (T.lo[a] + T.hi[a]) / 2), d0 = mdlDir(o), dl = Math.hypot(...d0), bk = d0.map(e => e / dl), f = bk.map(e => -e);
   let s = [-f[2], 0, f[0]]; const sl = Math.hypot(...s) || 1; s = s.map(e => e / sl);
   const up = [s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0]];
   let x0 = 1e30, x1 = -1e30, y0 = 1e30, y1 = -1e30;
@@ -1878,7 +1936,7 @@ async function mdlDraw(bytes, S) {
   for (const key of order) {
     const G = T.groups.get(key), m = mats[key] || {}, pb = m.pbrMetallicRoughness || {}, bc = pb.baseColorFactor || [1, 1, 1, 1], blend = m.alphaMode === 'BLEND';
     const ti = pb.baseColorTexture && pb.baseColorTexture.index, img = ti != null ? texs.get(ti) : null;
-    for (const [a, arr, n] of [['p', G.p, 3], ['n', G.n, 3], ['u', G.u, 2], ['k', G.k, 4]]) { if (L[a] < 0) continue; const b = g.createBuffer(); bufs.push(b); g.bindBuffer(g.ARRAY_BUFFER, b); g.bufferData(g.ARRAY_BUFFER, new Float32Array(arr), g.STATIC_DRAW); g.enableVertexAttribArray(L[a]); g.vertexAttribPointer(L[a], n, g.FLOAT, false, 0, 0); }
+    for (const [a, arr, n] of [['p', G.p, 3], ['n', G.n, 3], ['u', G.u, 2], ['k', G.k, 4]]) { if (L[a] < 0) continue; const b = g.createBuffer(); bufs.push(b); g.bindBuffer(g.ARRAY_BUFFER, b); g.bufferData(g.ARRAY_BUFFER, arr instanceof Float32Array ? arr : new Float32Array(arr), g.STATIC_DRAW); g.enableVertexAttribArray(L[a]); g.vertexAttribPointer(L[a], n, g.FLOAT, false, 0, 0); }
     g.uniform4fv(L.col, bc); g.uniform3fv(L.em, m.emissiveTexture ? [0, 0, 0] : m.emissiveFactor || [0, 0, 0]); g.uniform1f(L.cut, m.alphaMode === 'MASK' ? (m.alphaCutoff == null ? .5 : m.alphaCutoff) : 0);
     if (img) { const t = g.createTexture(); tex.push(t); g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, t); g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, img);
       for (const [p, v] of [[g.TEXTURE_MIN_FILTER, g.LINEAR], [g.TEXTURE_MAG_FILTER, g.LINEAR], [g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE], [g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE]]) g.texParameteri(g.TEXTURE_2D, p, v); g.uniform1i(L.tx, 0); g.uniform1f(L.ut, 1); }
@@ -1887,9 +1945,10 @@ async function mdlDraw(bytes, S) {
     g.drawArrays(g.TRIANGLES, 0, G.p.length / 3);
   }
   g.depthMask(true); g.disable(g.BLEND);
-  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  if (o.to) { o.to.width = o.to.height = S; const x = o.to.getContext('2d'); x.clearRect(0, 0, S, S); x.drawImage(c, 0, 0); }   // (a model being turned: straight into its canvas)
+  const blob = o.to ? null : await new Promise(r => c.toBlob(r, 'image/png'));
   for (const b of bufs) g.deleteBuffer(b); for (const t of tex) g.deleteTexture(t); for (const im of texs.values()) if (im && im.close) im.close();
-  return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+  return o.to ? true : blob ? new Uint8Array(await blob.arrayBuffer()) : null;
 }
 // a block hall's 3D models, drawn one at a time once the block is read (the model's own bytes, from the block itself)
 async function mdlBlock(B) {
@@ -2793,8 +2852,28 @@ function preview(t) {
     $cp.style.display = w ? 'block' : 'none'; $cp.innerHTML = w ? '<div class="pv0">loading the inscription…</div>' : ''; return;
   }
   const k = (t._pi || 0) % ids.length, base = cur && cur.ordBase != null ? cur.ordBase : 'https://ordinals.com';
+  if (room && STL_RE.test(t.ins && t.ins[k] ? t.ins[k].ct || '' : t.gal ? t.ct || '' : '')) { stlPv(t, ids, k); return; }
   $cp.style.display = 'block';
   $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>`;
+  $cp.append(pvRow(ids, k, t));
+}
+// an STL model's file: read only once its parcel is picked up (the last few kept, so the tablet and VIEW BIG read it once)
+const STLB = new Map();
+function stlBytes(id) {
+  if (STLB.has(id)) return STLB.get(id);
+  const p = galGet('/content/' + id, 'bytes').then(b => b && b.length && b.length <= 16e6 ? b : null, () => { STLB.delete(id); return null; });
+  STLB.set(id, p); while (STLB.size > 6) STLB.delete(STLB.keys().next().value);
+  return p;
+}
+// holding an STL model: ordinals.com's preview shows an STL as an empty page, so its picture is drawn here from the model, once
+function stlPv(t, ids, k) {
+  $cp.style.display = 'block'; $cp.innerHTML = '';
+  const P = t.stlPic || (t.stlPic = []);
+  if (P[k]) { if (preview.url) URL.revokeObjectURL(preview.url); preview.url = URL.createObjectURL(new Blob([P[k]], {type: 'image/png'})); const im = document.createElement('img'); im.className = 'pa'; im.alt = ''; im.src = preview.url; $cp.append(im); }
+  else {
+    $cp.insertAdjacentHTML('beforeend', '<div class="pv0">' + (P[k] === null ? 'its 3D model (STL) could not be drawn here' : 'drawing its 3D model (STL)\u2026') + '</div>');
+    if (P[k] === undefined) { P[k] = 0; stlBytes(ids[k]).then(b => b ? mdlPng(b, 512) : null).then(png => { P[k] = png || null; if (sel === t && (t._pi || 0) % ids.length === k) preview(t); }); }
+  }
   $cp.append(pvRow(ids, k, t));
 }
 // under an inscription's preview: which one of how many, its preview on ordinals.com (a new tab), and the next one
@@ -7302,6 +7381,22 @@ function vwPay(t) {
 }
 const vwEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
 function vwFrame(attrs) { const f = document.createElement('iframe'); for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
+function vwStl(it) {
+  const cv = document.createElement('canvas'), w = document.createElement('div'); cv.className = 'stl'; w.className = 'wait'; w.textContent = 'DRAWING ITS 3D MODEL\u2026';
+  const hn = document.createElement('div'); hn.className = 'vh'; hn.textContent = 'Drag it to turn it';
+  $vwc.append(w, cv, hn); it.turn = it.turn || {yaw: 0, pitch: 0};
+  const draw = it.draw = async () => {
+    if (it.busy) { it.again = true; return; } it.busy = true;
+    try { const b = await stlBytes(it.id); if (!vw || vw.items[vw.i] !== it) return; const ok = b && await mdlPng(b, 768, {yaw: it.turn.yaw, pitch: it.turn.pitch, to: cv});
+      if (vw && vw.items[vw.i] === it) { if (ok) { it.drawn = true; w.remove(); } else w.textContent = 'ITS 3D MODEL (STL) COULD NOT BE DRAWN HERE'; } }
+    finally { it.busy = false; if (it.again) { it.again = false; draw(); } }
+  };
+  let d = null;
+  cv.onpointerdown = e => { d = {x: e.clientX, y: e.clientY}; try { cv.setPointerCapture(e.pointerId); } catch (er) {} cv.style.cursor = 'grabbing'; };
+  cv.onpointermove = e => { if (!d) return; hn.remove(); it.turn.yaw -= (e.clientX - d.x) * .01; it.turn.pitch = Math.max(-1.6, Math.min(1.6, it.turn.pitch + (e.clientY - d.y) * .01)); d = {x: e.clientX, y: e.clientY}; draw(); };
+  cv.onpointerup = cv.onpointercancel = () => { d = null; cv.style.cursor = ''; };
+  draw();
+}
 function vwRender() {
   if (!vw) return;
   const it = vw.items[vw.i], n = vw.items.length;
@@ -7313,7 +7408,8 @@ function vwRender() {
   if (it.k === 'ins') {
     const url = 'https://ordinals.com/content/' + it.id, ty = it.type || '';
     what = 'inscription ' + (it.num != null ? '#' + fmt(it.num) : srShort ? srShort(it.id) : it.id.slice(0, 10)) + (ty ? ' · ' + ty.split(';')[0] : '') + (it.del ? ' · shows a delegate' : '');
-    if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
+    if (STL_RE.test(ty) && !it.del) { what += ' \u00b7 drag it to turn it'; vwStl(it); }   // (an STL model: ordinals.com shows none, so it is drawn here from the model and turned by dragging: nothing of it runs)
+    else if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
       if (vw.live) { runs = true; $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'})); }
       else $vwc.innerHTML = '<div class="inf"><h3>A 3D MODEL</h3><div><span>to turn it</span><b>GO LIVE: ordinals.com\u2019s own 3D viewer shows it (that runs ordinals.com\u2019s code)</b></div></div>';
     } else if (/^image\//.test(ty) && !it.del) { const im = new Image(); im.src = url; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $vwc.appendChild(im); }
@@ -9003,7 +9099,7 @@ function tradeAsk(k) {
       ['inscription fee', c ? fmt(c.fee) + ' sats · what inscribing it cost (as ordinals.com lists it)' : 'being read…'], ['sits on', c && c.v != null ? fmt(c.v) + ' sats' : ''],
       ['held by', o.s ? (mine ? 'your wallet: the chain says so' : 'their wallet: the chain says so') : 'being checked on the chain…']]);
     row(s, [I && !room.held ? btn('PICK IT UP TO LOOK CLOSER', () => { close(); rmHold(I.it); }) : null, X ? btn('OPEN ON ORDINALS.COM ↗', () => { try { window.open('https://ordinals.com/inscription/' + X, '_blank', 'noopener'); } catch (e) {} }) : null, X ? btn('RUN IT IN THE VIEWER ↗', () => { try { window.open(VIEWER + '#' + X, '_blank', 'noopener'); } catch (e) {} }) : null]);
-    s.append(el('p', 'fine', 'Picked up, it shows on your tablet; VIEW BIG shows it full size' + (t && t.art && t.art.mdl ? ', and GO LIVE turns the 3D model.' : '.')));
+    s.append(el('p', 'fine', 'Picked up, it shows on your tablet; VIEW BIG shows it full size' + (t && t.art && t.art.mdl ? (stlOf(t) ? ', where you turn the 3D model by dragging it.' : ', and GO LIVE turns the 3D model.') : '.')));
     if (mine && o.s) {
       const D = dealsToMe(), dw = D.filter(x => x.a === 'deal').map(x => nm(x.w)), dn = D.filter(x => x.a === 'no').map(x => nm(x.w));
       const s2 = sec('YOUR OFFER');
@@ -9119,7 +9215,7 @@ function showCard(t) {
   if (X) rows.push(['inscription id', X]);
   if (r.ts && !t.gal) rows.push(['made', new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
   if (!t.ct && r.ct) rows.push(['type', r.ct + (r.len ? ' · ' + fmt(r.len) + ' bytes' : '')]);
-  if (t.art && t.art.mdl) rows.push(['picture', 'its 3D model, drawn here from the model · VIEW BIG, then GO LIVE, turns the model']);
+  if (t.art && t.art.mdl) rows.push(['picture', stlOf(t) ? 'its 3D model (STL), drawn here from the model · in VIEW BIG, drag it to turn it' : 'its 3D model, drawn here from the model · VIEW BIG, then GO LIVE, turns the model']);
   if (t.who && t.w) rows.splice(0, 0, ['offered', tradeWord(t.w) + (t.w === 'sale' && t.pr ? ' · asking ' + tradePrVs(t.pr, X) : '')]);
   { const c = tradeCost(t.gal ? t.gid : t.ordIds && t.ordIds[0]); if (c) { rows.push(['inscription fee', fmt(c.fee) + ' sats · what inscribing it cost (ordinals.com)']); if (c.v != null) rows.push(['sits on', fmt(c.v) + ' sats']); } }
   if (t.who && t.who.me) { const D = dealsToMe(); if (D.length) rows.push(['answers', D.map(x => x.w.p + ' · ' + x.w.name + ': ' + DEAL_WORD[x.a]).join(' · ')]); }
@@ -15054,7 +15150,8 @@ window.AgentKit = window.AgentKit || (() => {
     const mk = ownWho(t);   // (the markers over it: who holds it, as a player sees them)
     if (t.gal) return {piece: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid || undefined, number: t.n || undefined, madeInBlock: t.h != null ? t.h : undefined, markers: mk.length ? mk : undefined};   // (a piece on a stand in a collection's hall: its card says the rest)
     const o = {n: t.idx, txid: t.id, feeRate: rf(t.rate), fee: t.fee, vsize: t.vsize, types: typesOf(t)};
-    if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) o.shows = 'its 3D model, as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; viewBig with live: true turns the model in ordinals.com\'s own viewer)';
+    if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) o.shows = stlOf(t) ? 'its 3D model (STL), as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; turnBig() turns it)' : 'its 3D model, as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; viewBig with live: true turns the model in ordinals.com\'s own viewer)';
+    else if (stlOf(t)) o.shows = 'its 3D model (STL): hold it and it is drawn on your tablet; viewBig() and look({picture: true}) show it large, and turnBig() turns it';
     if ((t.cat21 || t.labitbu) && t.art) o.shows = (t.cat21 ? 'its CAT-21 cat' : 'its Labitbu') + ', a picture on its box: hold it, then viewBig() and look({picture: true}) to see it';
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
     o.kindsReadFrom = typeof t.op === 'bigint' ? 'ordpool.space' : t.sc != null ? (t.live ? 'the transaction itself' : 'the block itself') : 'mempool.space tags';   // (where its kinds were read, as its card says)
@@ -15285,6 +15382,9 @@ window.AgentKit = window.AgentKit || (() => {
     const it = vw.items[vw.i], o = {what: text($('vwn')) || 'still reading the transaction', mode: vw.live ? 'LIVE VIEW: it runs' : 'SAFE VIEW: nothing runs'};
     if (!it) return o;
     if (it.k === 'info') { o.words = text($('vwc')).slice(0, 1500); return o; }
+    if (it.k === 'ins' && STL_RE.test(it.type || '') && !it.del) { o.why = 'an STL 3D model, drawn here from its file (nothing of it runs): turnBig({right, up}) turns it, as a player drags it'; const cv = $vwc.querySelector('canvas.stl');
+      if (it.drawn && cv) { const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const x = c.getContext('2d'); x.fillStyle = '#8a8a8a'; x.fillRect(0, 0, c.width, c.height); x.drawImage(cv, 0, 0); o.picture = {type: 'image/jpeg', width: c.width, height: c.height, dataUrl: c.toDataURL('image/jpeg', .85)}; } else o.why += ' (it is still being drawn)';
+      return o; }
     let g = SEEN.get(it); if (!g) { g = seeFile(it).catch(e => ({why: 'its file could not be read just now: ' + (e && e.message || e)})); SEEN.set(it, g); }
     return Object.assign(o, await g);
   }
@@ -15797,6 +15897,10 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crewmates joined, left, moved to another block or room, started a dance or emote, sat down, picked something up or started talking on voice chat; a new Bitcoin block was found; the music box changed; in the bitmap garden, a crewmate\'s chess move (piece, from, to, what it took), throw and cheers, and every ping-pong point and cornhole score; and what the person at your screen typed to you.', args: [{name: 'all', type: 'boolean', does: 'every event kept (the last 80), not only new ones'}], run: ({all}) => { evTick(); const L = all ? EVT.list : EVT.list.slice(EVT.read); EVT.read = EVT.list.length; return {events: L, note: L.length ? undefined : 'nothing new'}; }},
     {name: 'putBack', does: 'Put the parcel you hold back on its shelf.', run: async () => { if (!(inRoom() && room.held)) return {ok: true, note: 'you were not holding a parcel'}; rmPut(); await wait(800); return {ok: true}; }},
     {name: 'viewBig', untrusted: true, does: 'See the parcel you hold large (VIEW BIG). It tells you what it shows (an image: look({picture: true}) gives you the picture of it; a text: its words).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; vwOpen(); await wait(600); await until(() => !!text($('vwn')) && !/READING|LOADING|…$/m.test(text($('vw'))), 12000); const B = await bigSeen(); return {untrusted: text($('vw')), seen: B ? bigWords(B) : undefined}; }},
+    {name: 'turnBig', does: 'Turn the STL 3D model in the big view (VIEW BIG), as a player drags it: right and up, in degrees. Then look({picture: true}) shows it turned.', args: [{name: 'right', type: 'number', does: 'degrees to turn it to the right (minus: to the left)'}, {name: 'up', type: 'number', does: 'degrees to tip it, as dragging up does (minus: as dragging down)'}],
+      run: async ({right, up}) => { const it = typeof vw !== 'undefined' && vw && vw.items[vw.i]; if (!it || !it.draw) return {ok: false, error: 'the big view is not showing an STL 3D model: hold one, then viewBig()'};
+        it.turn.yaw -= (+right || 0) * Math.PI / 180; it.turn.pitch = Math.max(-1.6, Math.min(1.6, it.turn.pitch - (+up || 0) * Math.PI / 180)); it.draw(); await wait(60); await until(() => !it.busy, 8000);
+        return {ok: true, turnedFromStart: {right: Math.round(-it.turn.yaw * 180 / Math.PI), up: Math.round(-it.turn.pitch * 180 / Math.PI)}, seen: 'look({picture: true}) shows it'}; }},
     {name: 'closeBig', does: 'Close only the big view (VIEW BIG), as its CLOSE button does: you keep holding the parcel.', run: async () => { if (typeof vw === 'undefined' || !vw) return {ok: true, note: 'the big view was not open'}; vwClose(); await wait(300); return {ok: true, holding: inRoom() && room.held && !room.held.back ? parcelInfo(room.held.it.t) : null}; }},
     {name: 'tradeFloor', ro: true, untrusted: true, does: 'The trade floor in the common room: six bases on the Forum\'s sunken floor, one per crew player (P1 to P6). Each base: its player, its colour, the block on it (checked: the chain says that player\'s wallet holds it) and whom its player would like to trade with.', run: () => tradeInfo()},
     {name: 'putOnTradeBase', args: [{name: 'for', enum: ['sale', 'trade'], does: 'mark it for sale or for trade (default: your last choice, else for trade); setOffer() changes it later'}], does: 'Put the parcel you hold on your own trade base in the Forum, as PUT ON MY TRADE BASE does (and go there). Only a parcel with an inscription your wallet holds (read status on: a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve()). It replaces what was on your base; your crew is told you would like to trade, and sees it once their game has asked the chain.', run: async (a = {}) => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; if (a.for === 'sale' || a.for === 'trade') try { localStorage.setItem('bc.tradeW', a.for); } catch (e) {} const r = await tradePut(); if (r && r.ok === false) return r; await until(() => inCommon() && room.at.ready, 25000); await wait(400); return {ok: inCommon(), tradeFloor: tradeInfo()}; }},
