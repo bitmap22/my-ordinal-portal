@@ -1680,7 +1680,8 @@ async function scanBlock(B) {
     });
     // each CAT-21 cat, drawn by the CAT-21 reference code from its transaction id, its block's hash and its fee rate (as Ordpool draws it)
     if (window.Cat21 && B.hash) for (let i = 0; i < B.txs.length; i++) { const t = B.txs[i]; if (!t.cat21 || t.art || !(t.fee >= 0) || !t.catW) continue;
-      try { const id = t.id || await rawTxid(X, S.txs[i]), {svg} = Cat21.MooncatParser.parseAndGenerateSvg(Cat21.createCatHash(id, B.hash), t.fee / (t.catW / 4)); t.art = {ct: 'image/svg+xml', bytes: new TextEncoder().encode(svg)}; } catch (e) {} }
+      try { const id = t.id || await rawTxid(X, S.txs[i]), hash = B.hash, rate = t.fee / (t.catW / 4);   // (drawn each time it is wanted, about 0.1 ms, and not kept: a block of a thousand cats would hold 41 MB)
+        t.art = {ct: 'image/svg+xml', get bytes() { try { return new TextEncoder().encode(Cat21.MooncatParser.parseAndGenerateSvg(Cat21.createCatHash(id, hash), rate).svg); } catch (e) { return new Uint8Array(0); } }}; } catch (e) {} }
     try { own.ver++; } catch (e) {}
     const pl = POOLS.find(([re]) => re.test(S.cb || ''));
     B.cb = {words: S.cb || '', pool: B.pool || (pl ? pl[1] : null)};
@@ -2591,7 +2592,7 @@ function preview(t) {
     if (ids && ids.length) $cp.append(pvRow(ids, 0, t));
     return;
   }
-  if (room && t.art && /^image\//.test(t.art.ct || '') && (t.gal || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
+  if (room && t.art && /^image\//.test(t.art.ct || '') && (t.gal || t.cat21 || t.labitbu || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
     $cp.style.display = 'block'; $cp.innerHTML = '';
     if (preview.url) URL.revokeObjectURL(preview.url); preview.url = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct}));
     const im = document.createElement('img'); im.className = 'pa'; im.alt = ''; im.src = preview.url; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $cp.append(im);
