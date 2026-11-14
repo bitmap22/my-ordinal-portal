@@ -486,7 +486,11 @@ const note = t => { $('note').textContent = t; };
 // ---------------- Nostr: a tiny relay client (for finding each other) ----------------
 const { schnorr, sha256, bytesToHex, hexToBytes } = window.NB;
 // this visit's key: for crews and links (new every time, so two tabs never mix up)
-const sk = schnorr.utils.randomPrivateKey(), pk = bytesToHex(schnorr.getPublicKey(sk)), ME = pk.slice(0, 12);
+// this tab's own key, kept for the tab's life: a reload keeps you the same player, so your crew sees you come back. It is marked
+// in use while the page is open, so a copied tab (which starts with that mark) makes its own.
+const TABK = (() => { try { const S = sessionStorage; let k = S.getItem('bc.tabkey') || ''; if (!HEXK.test(k) || S.getItem('bc.tabon') === '1') { k = bytesToHex(schnorr.utils.randomPrivateKey()); S.setItem('bc.tabkey', k); } S.setItem('bc.tabon', '1'); return k; } catch (e) { return ''; } })();
+const tabOn = on => { try { sessionStorage.setItem('bc.tabon', on ? '1' : '0'); } catch (e) {} };
+const sk = TABK ? hexToBytes(TABK) : schnorr.utils.randomPrivateKey(), pk = bytesToHex(schnorr.getPublicKey(sk)), ME = pk.slice(0, 12);
 // your friend key: kept on this device, so your friends know it's you next time
 let fsk = null, fpk = '';
 try { const k = store.get('fkey'); if (HEXK.test(k)) { fsk = hexToBytes(k); fpk = bytesToHex(schnorr.getPublicKey(fsk)); } } catch (e) { fsk = null; }
@@ -876,7 +880,13 @@ function leaveCrew(msg) {
   else send(net.hostLink && net.hostLink.ch, { t: 'bye' });
   return new Promise(res => setTimeout(() => { for (const id of net.players.keys()) if (id !== ME) toGame({ type: 'left', id }); leave(); net.leaving = false; toGame({ type: 'off' }); showStart(msg || ''); res(); }, 250));
 }
-addEventListener('pagehide', () => { if (net.on) { if (net.host) { toAll({ t: 'bye', next: net.line.find(id => id !== ME) || '' }); beat('ended'); } else send(net.hostLink && net.hostLink.ch, { t: 'bye' }); } presence(true); });
+// where this tab's crew is, kept for the tab's life (on leaving the page, and when a phone puts it away, as a phone may close it
+// then): after a reload you are taken back in. Leaving the crew on purpose forgets it.
+const CREWTAB = 'bc.crewtab';
+function crewTabKeep() { try { if (net.on && net.rid && !net.leaving) sessionStorage.setItem(CREWTAB, JSON.stringify({ mode: net.mode, code: net.code, rid: net.rid, sail: net.sail ? 1 : 0, t: Date.now() })); else sessionStorage.removeItem(CREWTAB); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') crewTabKeep(); });
+addEventListener('pageshow', e => { if (e.persisted) tabOn(true); });
+addEventListener('pagehide', () => { crewTabKeep(); tabOn(false); if (net.on) { if (net.host) { toAll({ t: 'bye', next: net.line.find(id => id !== ME) || '' }); beat('ended'); } else send(net.hostLink && net.hostLink.ch, { t: 'bye' }); } presence(true); });
 
 // ---------------- invite codes (for when the relays can't be reached) ----------------
 // just what a link needs (the ICE name and password, the DTLS fingerprint, the addresses to try), short enough to paste in a chat
@@ -1344,6 +1354,19 @@ $('ropen').onchange = () => setOpen($('ropen').checked); $('ragents').onchange =
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').onclick(); });
 // online from the start: your friend card goes up, your friends are watched, and invites can reach you
 relaysOn(); presence(); watchFriends(); inbox(); drawFriends();
+// back after a reload (within 10 minutes): into the same crew or open hall, found by its room id; if no room of it answers, it is
+// put up again, and anyone of it still about joins up with it (two rooms of one crew become one)
+(async () => {
+  let s = null; try { s = JSON.parse(sessionStorage.getItem(CREWTAB) || 'null'); sessionStorage.removeItem(CREWTAB); } catch (e) {}
+  if (!s || typeof s !== 'object' || !(Date.now() - (+s.t || 0) < 600000) || typeof s.rid !== 'string' || !/^[A-Z0-9]{1,16}$/.test(s.rid)) return;
+  const mode = s.mode === 'sea' ? 'sea' : 'crew', code = typeof s.code === 'string' && /^[A-Z0-9]{1,6}$/.test(s.code) ? s.code : '', rid = s.rid;
+  if (mode === 'crew' && !code) return;
+  showStart(mode === 'sea' ? 'Taking you back into the open hall…' : 'Taking you back into crew ' + code + '…');
+  const rooms = await findRooms(r => r.rid === rid && r.mode === mode && r.n < r.max, 3500, { early: true, most: 12000 });
+  if (net.on) return;   // (they chose something else meanwhile)
+  const r = pickBest(rooms); net.sail = mode === 'sea' || !!s.sail;
+  if (r) { note('Joining…'); joinRoom(r); } else { note(''); host(mode, code, { rid }); }
+})();
 window.NET = net; window.VOICE = voice; window.PICS = PICS; window.CREW = { pack, unpack, check, allow, makeInvite, takeReply, useInvite, ME, pk, host, joinRoom, leaveCrew, findRooms, pickBest, lostHost, startGame, get picked() { return picked; } };   // for testing
 window.FRIENDS = { get list() { return friends; }, FR, fpk, FCODE, codeOf, addByCode, addFriend, removeFriend, inviteFriend, joinFriend, presence, online, isFriend };
 window.UI = Object.assign(UI, { openPanel, closePanel, showStart, showWait, setMute, isMuted, P, toast });
@@ -1574,7 +1597,7 @@ window.AgentKit = window.AgentKit || (() => {
   function crewState() {
     const P = [...net.players.entries()].map(([id, p]) => ({name: p.name, is: (id === ME ? agentHere() : (voice.st[id] && voice.st[id].ai) || p.ai) ? 'an AI agent' : 'a player', you: id === ME || undefined, host: id === net.hostId || undefined, game: {cube: 'Doge Cube'}[mateG.get(id)] || undefined}));   // (which game each is in, by its name)
     if (window.__agentOn) markGames();
-    return {note: PEOPLE_NOTE, on: net.on, kind: net.on ? (net.mode === 'sea' ? 'open hall' : 'crew') : 'not in a crew', code: net.on && net.mode === 'crew' ? net.code : undefined, youAreHost: net.on ? !!net.host : undefined,
+    return {note: PEOPLE_NOTE, on: net.on, kind: net.on ? (net.mode === 'sea' ? 'open hall' : 'crew') : 'not in a crew', code: net.on && net.mode === 'crew' ? net.code : undefined, youAreHost: net.on ? !!net.host : undefined, ifThisPageReloads: net.on ? 'it takes you back into this crew by itself (within 10 minutes), as the same player' : undefined,
       aiAgents: net.on ? (net.agents === 0 ? 'turned off by the host: you may only look, talk() to the person at your screen, or leaveCrew()' : 'allowed to play') : undefined,
       untrusted: {players: P, chat: (net.chat || []).slice(-20).map(c => c.name ? {from: c.name, text: c.text} : {notice: c.text})}};
   }
