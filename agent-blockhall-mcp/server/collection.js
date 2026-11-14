@@ -222,7 +222,7 @@
       const r = {id, namesParents: null, ordParents: null, hashOk: null, result: 'not checked'};
       try { const x = await io.mpJson('/api/tx/' + gen); const k = trim(x.j); r.hashOk = k.hashOk; const e = k.made.find(m => m.index === idx); r.namesParents = e ? e.parents : []; if (!e) r.noSuchInscription = true; } catch (e) { r.error = String(e && e.message || e); }
       if (r.namesParents && r.namesParents.length) { try { const x = await io.ordJson('/r/parents/' + id); r.ordParents = (x.j && x.j.ids) || []; } catch (e) {} }
-      else if (r.namesParents) r.ordParents = [];   // (ord counts a child only when it names its parent: nothing to ask)
+      else if (r.namesParents) r.ordNotNeeded = true;   // (ord counts a piece as a child only when it names its parent: nothing to ask)
       if (r.namesParents) r.result = r.noSuchInscription ? 'no such inscription in its transaction' : r.namesParents.length ? 'names a parent: check that parent\'s collection' : 'names no parent: it can\'t be proven to belong by a parent';
       if (r.namesParents && r.ordParents && r.namesParents.length && !r.ordParents.length) r.result = 'names a parent, but ord does not count it as its child (the parent was not spent to make it)';
       out[i] = r; done++; say('list', done);
