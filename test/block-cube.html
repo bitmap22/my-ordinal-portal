@@ -2984,8 +2984,8 @@ function mvFrame(H, clip, t, yaw, cv) {
     MV.fb = {f, c, d}; MV.w = W; MV.h = Hh; MV.px = new Uint8Array(W * Hh * 4); MV.im = null;
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, MV.fb.f); gl.viewport(0, 0, W, Hh); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  const ht = (H.meta && H.meta.heightM) || 1.75, eye = [0, .58 * ht, 2.05 * ht], VP = mul(persp(.62, W / Hh, .1, 30), look(eye, [0, .5 * ht, 0]));
-  BCH.pose(H, 1 / 25, {at: [0, 0, 0], yaw, vel: [0, 0], still: true, emote: clip, emoteN: 1, emoteT: t});
+  const ht = (H.meta && H.meta.heightM) || 1.75, D = 2.05 * ht, eye = [-D * Math.sin(yaw), .58 * ht, D * Math.cos(yaw)], VP = mul(persp(.62, W / Hh, .1, 30), look(eye, [0, .5 * ht, 0]));   // (turned: the camera goes round them; turning the person would make them step round, as people turning on the spot do)
+  BCH.pose(H, 1 / 25, {at: [0, 0, 0], yaw: 0, vel: [0, 0], still: true, emote: clip, emoteN: 1, emoteT: t});
   BCH.draw([H], VP, eye, {port: true, fog: 0});
   gl.readPixels(0, 0, W, Hh, gl.RGBA, gl.UNSIGNED_BYTE, MV.px);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
@@ -3003,7 +3003,7 @@ function mvPlay(cv, id, o) {
     const clip = await mvClip(id), H = clip && await mvPerson();
     if (!clip || !H) { if (cv.isConnected && o.fail) o.fail(); return; }
     let last = 0; const t0 = performance.now();
-    const step = now => { if (!cv.isConnected) return; if (now - last >= 40) { last = now; try { mvFrame(H, clip, (now - t0) / 1000, o.yaw, cv); o.drawn = true; if (o.ready) { o.ready(); o.ready = null; } } catch (e) { if (o.fail) o.fail(); return; } } requestAnimationFrame(step); };
+    const step = now => { if (!cv.isConnected) return; if (now - last >= 40 && !(o.hidden && o.hidden())) { last = now; try { mvFrame(H, clip, (now - t0) / 1000, o.yaw, cv); o.drawn = true; if (o.ready) { o.ready(); o.ready = null; } } catch (e) { if (o.fail) o.fail(); return; } } requestAnimationFrame(step); };
     requestAnimationFrame(step);
   })();
 }
@@ -3027,7 +3027,7 @@ function mdlPv(t, ids, k, base) {
     $cp.style.display = 'block'; $cp.innerHTML = ''; const d = document.createElement('div'); d.className = 'pvm pvf'; const cv = document.createElement('canvas'); cv.width = 300; cv.height = 340; d.append(cv);
     const n = document.createElement('div'); n.className = 'pvt'; n.textContent = 'a VRM move (movements only): played here on one of Block Hall\u2019s people';
     if (crew.on) { const b = document.createElement('button'); b.textContent = 'TRY THIS MOVE'; b.title = 'do it yourself: your crew sees it (move to stop)'; b.onclick = e => { e.stopPropagation(); mvTry(ids[k]); }; n.append(b); }
-    $cp.append(d, n, pvRow(ids, k, t)); mvPlay(cv, ids[k], {fail: () => { if (sel === t && (t._pi || 0) % ids.length === k) words(); }}); return;
+    $cp.append(d, n, pvRow(ids, k, t)); mvPlay(cv, ids[k], {hidden: () => !!vw, fail: () => { if (sel === t && (t._pi || 0) % ids.length === k) words(); }}); return;
   }
   if (K.empty) { words(); return; }
   const id = K.ptr ? K.ptr.id : ids[k], ct = K.ptr ? K.ptr.ct : (t.ins && t.ins[k] ? t.ins[k].ct || '' : t.ct || '');
