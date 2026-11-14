@@ -231,10 +231,12 @@
     const R = out.filter(Boolean), parents = {};
     for (const r of R) for (const p of r.namesParents || []) parents[p] = (parents[p] || 0) + 1;
     const nNo = R.filter(r => r.namesParents && !r.namesParents.length && !r.noSuchInscription).length, nYes = R.filter(r => r.namesParents && r.namesParents.length).length;
+    const nNot = R.filter(r => r.noSuchInscription).length, nLeft = R.length - nYes - nNo - nNot;
     return {check: 'Agent Blockhall Collection Check ' + VERSION + ' (a list of pieces)',
-      verdict: !R.length ? 'nothing was checked' : nNo === R.length ? (R.length === 1 ? 'it names no parent: it can\'t be proven to belong to a collection by a parent' : 'none of the ' + fmt(R.length) + ' pieces names a parent: they can\'t be proven to belong to one collection by a parent')
-        : fmt(nYes) + ' of ' + fmt(R.length) + ' name a parent; ' + fmt(nNo) + ' name none' + (R.length - nYes - nNo ? '; ' + fmt(R.length - nYes - nNo) + ' not checked' : ''),
-      counts: {pieces: R.length, namesNoParent: nNo, namesAParent: nYes, notChecked: R.length - nYes - nNo, given: (ids || []).length, usable: L.length, notStarted: L.length - R.length},
+      verdict: (!R.length ? 'nothing was checked' : nNo === R.length ? (R.length === 1 ? 'it names no parent: it can\'t be proven to belong to a collection by a parent' : 'none of the ' + fmt(R.length) + ' pieces names a parent: they can\'t be proven to belong to one collection by a parent')
+        : fmt(nYes) + ' of ' + fmt(R.length) + (nYes === 1 ? ' names' : ' name') + ' a parent; ' + fmt(nNo) + (nNo === 1 ? ' names' : ' name') + ' none' + (nNot ? '; ' + fmt(nNot) + ' not an inscription' : '') + (nLeft ? '; ' + fmt(nLeft) + ' not checked (a site did not answer)' : ''))
+        + ((ids || []).length > L.length ? ' (' + fmt((ids || []).length - L.length) + ' left out: not inscription IDs, or given twice)' : ''),
+      counts: {pieces: R.length, namesNoParent: nNo, namesAParent: nYes, notAnInscription: nNot, notChecked: nLeft, given: (ids || []).length, usable: L.length, notStarted: L.length - R.length},
       parentsNamed: Object.entries(parents).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([id, n]) => ({id, pieces: n})),
       pieces: R, checkedAt: new Date().toISOString().replace(/\.\d{3}/, '')};
   }

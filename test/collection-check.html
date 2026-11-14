@@ -311,7 +311,9 @@
   /* ---------- checking a parent's collection ---------- */
   const STEPS = [['found', 'Found the parent'], ['list', 'Its children'], ['second', 'A second list'], ['trail', 'The parent’s moves'], ['read', 'Each child read'], ['done', 'All checked']];
   function steps(on) { const ul = $('steps'); ul.textContent = ''; ul.classList.toggle('hidden', !on); for (const [k, t] of STEPS) { const li = document.createElement('li'); li.id = 'st-' + k; li.textContent = t; ul.appendChild(li); } }
+  let PEND = null;   // (while a new parent's lists are being read: what has been read so far, for agents)
   function progress(k, v) {
+    if (PEND && typeof v === 'number') PEND[k] = v;
     if (k === 'parent') return;
     const li = $('st-' + k); if (!li) return;
     const name = STEPS.find(s => s[0] === k)[1];
@@ -333,7 +335,8 @@
       if (known) { RUN = known; VIEW = {filter: 'all', from: 0}; }
       else {
         say((agent ? 'An AI agent asked to check the children of ' : 'Checking the children of ') + q + '…'); steps(true);
-        RUN = await CC.start(q, makeIo(), progress);
+        RUN = null; PEND = {parent: q, list: 0, second: 0}; $('out').classList.add('hidden');
+        try { RUN = await CC.start(q, makeIo(), progress); } finally { PEND = null; }
         runs.set(RUN.pid, RUN); while (runs.size > 4) runs.delete(runs.keys().next().value);
         VIEW = {filter: 'all', from: 0};
         finish('list'); finish('second', RUN.secondDone ? true : false);
@@ -455,7 +458,7 @@
     const v = $('lverdict'); v.textContent = r.verdict; v.className = r.counts.namesNoParent === r.counts.pieces ? 'no' : r.counts.namesAParent === r.counts.pieces ? 'ok' : 'part';
     const lf = $('lfacts'); lf.textContent = '';
     for (const [k, val] of [['Pieces checked', fmt(r.counts.pieces)], ['Name no parent', fmt(r.counts.namesNoParent)], ['Name a parent', fmt(r.counts.namesAParent)],
-      ['Not checked', fmt(r.counts.notChecked + r.counts.notStarted)], ['Given', fmt(r.counts.given)], ['Parents named', fmt(r.parentsNamed.length)]]) { const f = el('div', 'fact'); f.appendChild(el('b', null, k)); f.appendChild(el('span', null, val)); lf.appendChild(f); }
+      ['Not an inscription', fmt(r.counts.notAnInscription || 0)], ['Not checked', fmt(r.counts.notChecked + r.counts.notStarted)], ['Parents named', fmt(r.parentsNamed.length)]]) { const f = el('div', 'fact'); f.appendChild(el('b', null, k)); f.appendChild(el('span', null, val)); lf.appendChild(f); }
     const pb = $('parentsBox'), pl = $('parents'); pl.textContent = ''; pb.classList.toggle('hidden', !r.parentsNamed.length);
     for (const p of r.parentsNamed) { const li = el('li'); li.appendChild(link(p.id, '?parent=' + p.id, true)); li.appendChild(document.createTextNode(' · named by ' + fmt(p.pieces) + ' · ')); const b = link('check its collection', '?parent=' + p.id, true); li.appendChild(b); pl.appendChild(li); }
     const n = perPage(), from = LVIEW, tb = $('lrows'); tb.textContent = '';
@@ -498,22 +501,25 @@
     provenanceCheck: PORTAL + 'provenance-check.html?id=<any piece> proves where one piece came from, every step checked.', watch: PORTAL + 'watch.html?watch=inscription&value=' + RUN.pid + ' tells the moment the parent moves (a new child is made by spending it).',
     blockManifest: PORTAL + 'block-manifest.html?block=<a child\'s block> lists every transaction in that block.'} : {agentBlockhall: GAME};
   const short1 = r => Object.assign({}, r, {seeIt: seeIt()});
+  // while a parent's children lists are still being read there is nothing to report yet: say how far it got
+  const reading = () => PEND ? {checking: true, parent: PEND.parent, readingItsChildrenList: true, childrenListedSoFar: PEND.list, onTheSecondListSoFar: PEND.second, note: 'still reading the parent\'s children lists (a hundred a page, from two ord sites): call see() or children() again in a few seconds'} : null;
+  const needRun = () => { if (!RUN) throw new Error(busy ? 'still starting: call see() in a few seconds' : 'check a parent first'); };
   const until = async (cond, ms) => { const t = Date.now() + ms; while (!cond() && Date.now() < t) await sleep(300); };
   const cmds = [
     {name: 'check', does: 'Check which pieces are a parent\'s real children and show it on the page (as the Check button does). Waits up to `wait` seconds (default 90): a big collection can take some minutes, and the answer says how far it got (children "not reached yet"). Returns the verdict, counts, the parent\'s trail so far and the first children (newest first).', args: [{name: 'parent', does: 'the parent inscription\'s number (e.g. "#126744012") or ID'}, {name: 'wait', does: 'seconds to wait for it to finish (default 90, at most 600)', optional: true}],
-      run: async ({parent, wait}) => { let err = null; const p = check(parent, true); p.catch(e => { err = e; }); await sleep(50); await until(() => !busy || err, Math.min(600, Math.max(5, +wait || 90)) * 1000); if (err) throw err; return short1(report({limit: 25})); }},
+      run: async ({parent, wait}) => { let err = null; const p = check(parent, true); p.catch(e => { err = e; }); await sleep(50); await until(() => !busy || err, Math.min(600, Math.max(5, +wait || 90)) * 1000); if (err) throw err; return reading() || short1(report({limit: 25})); }},
     {name: 'children', does: 'The children checked so far, newest first, with each one\'s three checks (listedTwice, namesParent, parentSpent: true, false, or null when not checked yet), proven and why.', args: [{name: 'filter', does: 'all, proven, notProven or notReached (default all)', optional: true}, {name: 'from', does: 'where to start (default 0)', optional: true}, {name: 'limit', does: 'how many (default 100, at most 500)', optional: true}],
-      run: ({filter, from, limit}) => { if (!RUN) throw new Error('check a parent first'); return report({filter: filter || 'all', from: +from || 0, limit: +limit || 100}); }},
+      run: ({filter, from, limit}) => { const w = reading(); if (w) return w; needRun(); return report({filter: filter || 'all', from: +from || 0, limit: +limit || 100}); }},
     {name: 'child', does: 'One piece of the collection being checked: its three checks, proven and why.', args: [{name: 'id', does: 'the piece\'s inscription ID or number'}],
-      run: ({id}) => { if (!RUN) throw new Error('check a parent first'); const q = String(id || '').trim().toLowerCase().replace(/[#,]/g, ''); const c = RUN.list.find(x => x.id === q || String(x.number) === q); if (!c) return {ok: false, error: 'ord does not list that piece as a child of this parent'}; return CC.judge(RUN, c); }},
+      run: ({id}) => { const w = reading(); if (w) return w; needRun(); const q = String(id || '').trim().toLowerCase().replace(/[#,]/g, ''); const c = RUN.list.find(x => x.id === q || String(x.number) === q); if (!c) return {ok: false, error: 'ord does not list that piece as a child of this parent'}; return CC.judge(RUN, c); }},
     {name: 'list', does: 'Check a list of pieces (for a collection without a parent): does each name a parent in its own transaction, and does ord count it as that parent\'s child? Up to 10,000; shows it on the page. A piece that names no parent can\'t be proven to belong to a collection by a parent.', args: [{name: 'ids', does: 'inscription IDs: an array, or one string with them separated by commas or new lines'}],
       run: async ({ids}) => { const r = await checkList(ids, true); return Object.assign({}, r, {pieces: r.pieces.slice(0, 200), note: r.pieces.length > 200 ? 'the first 200 pieces; download the whole list from the page' : undefined}); }},
     {name: 'stop', does: 'Stop following the parent\'s trail (or the list): what was checked stays. For a parent, carryOn() goes on from there.', args: [],
       run: () => { stopAsked = true; lstop = true; return {ok: true}; }},
     {name: 'carryOn', does: 'Go on following the parent\'s trail after a stop, waiting up to `wait` seconds (default 90).', args: [{name: 'wait', does: 'seconds to wait (default 90, at most 600)', optional: true}],
-      run: async ({wait}) => { if (!RUN) throw new Error('check a parent first'); if (!busy) $('carry').click(); await until(() => !busy, Math.min(600, Math.max(5, +wait || 90)) * 1000); return short1(report({limit: 25})); }},
+      run: async ({wait}) => { needRun(); if (!busy) $('carry').click(); await until(() => !busy, Math.min(600, Math.max(5, +wait || 90)) * 1000); return short1(report({limit: 25})); }},
     {name: 'see', does: 'What the page shows now: the status line, whether it is still checking, and the verdict and counts.', args: [],
-      run: () => ({status: $('status').textContent, checking: busy, parent: RUN ? report({limit: 1}).parent : null, verdict: RUN && !$('out').classList.contains('hidden') ? report({limit: 1}).verdict : LIST ? LIST.verdict : null, counts: RUN && !$('out').classList.contains('hidden') ? report({limit: 1}).counts : LIST ? LIST.counts : null})}
+      run: () => Object.assign({status: $('status').textContent, checking: busy}, reading() || {}, {parent: RUN ? report({limit: 1}).parent : PEND ? PEND.parent : null, verdict: RUN && !$('out').classList.contains('hidden') ? report({limit: 1}).verdict : LIST ? LIST.verdict : null, counts: RUN && !$('out').classList.contains('hidden') ? report({limit: 1}).counts : LIST ? LIST.counts : null})}
   ];
   const plain = r => JSON.parse(JSON.stringify(r));
   const api = {};
