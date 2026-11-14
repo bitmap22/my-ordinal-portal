@@ -12,11 +12,12 @@
    portal's Provenance Check page uses).
    watch keeps an eye on the chain and says when something happens: the next block, a fee level, an inscription moving,
    an address, or a kind of transaction in a new block (server/watch.js, the same file the portal's Watch page uses).
+   dailyData gives Daily Data: every block of a UTC day, read the Block Manifest way, one file per day, made each night.
    Needs Node.js 18 or newer. No other packages. It speaks MCP over stdio.
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
 const GAME = PORTAL + 'block-cube.html';
@@ -459,6 +460,28 @@ async function watch({what, value, since, wait = 0}) {
   };
 }
 
+/* ---------- Daily Data: every block of a day, made each night by GitHub (the daily-data branch) ---------- */
+const DAILY = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/', 'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@daily-data/'];
+async function dailyJson(p) {
+  let err = null;
+  for (const b of DAILY) { try { const r = await fetchT(b + p, null, 30000); return {j: await r.json(), site: b}; } catch (e) { err = e; if (/http 404/.test(String(e)) && b === DAILY[0]) break; } }
+  throw err || new Error('the day files could not be had right now');
+}
+async function dailyData({day, block}) {
+  const I = (await dailyJson('index.json')).j;
+  if (!day && block == null) return {days: I.days, updated: I.updated, licence: I.licence, next: 'dailyData({day: "YYYY-MM-DD"}) gives that day\'s blocks; add block (a height) for one block.', page: PORTAL + 'daily.html'};
+  if (!day && block != null) { const d = I.days.find(x => +block >= x.firstBlock && +block <= x.lastBlock); if (!d) throw new Error('no day file has block ' + block + ' (days: ' + I.days.map(x => x.day).join(', ') + '): blockManifest({height: ' + block + '}) reads any block'); day = d.day; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) throw new Error('give the day as YYYY-MM-DD');
+  if (!I.days.some(x => x.day === day)) throw new Error('no file for ' + day + ' (days: ' + I.days.map(x => x.day).join(', ') + ')');
+  const x = await dailyJson('days/' + day + '.json'), D = x.j;
+  if (block != null) {
+    const b = D.blocks.find(y => y.height === +block); if (!b) throw new Error('block ' + block + ' is not in ' + day + ' (' + D.totals.firstBlock + ' to ' + D.totals.lastBlock + ')');
+    return Object.assign({day}, b, {walkIn: 'In Agent Blockhall (' + GAME + '): walkIn({height: ' + b.height + '}) in its agent kit, or type it into the tablet. blockManifest({height: ' + b.height + '}) lists every transaction in it.', licence: D.licence, source: x.site});
+  }
+  return {day: D.day, utc: D.utc, made: D.made, totals: D.totals, blocks: D.blocks, what: D.what, links: D.links, licence: D.licence, source: x.site,
+    next: 'blockManifest({height}) lists every transaction in any of these blocks; watch({what: "block"}) says when the next one comes.'};
+}
+
 /* ---------- the rare sats board (read each day from ordiscan.com by the portal) ---------- */
 async function rareSats() {
   const r = await fetchT(PORTAL + 'rare-sats.json', null, 15000), j = await r.json();
@@ -471,7 +494,7 @@ function about() {
     what: 'A 3D Bitcoin block explorer world for players and agents. Outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room with a big screen, a rare sats board, a jukebox and more.',
     open: GAME, portal: PORTAL, forAgents: PORTAL + 'llms.txt',
     inTheBrowser: 'Open the page and call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named cube_*. You play by the same rules as a player (walking speed, walls, the same buttons), people see you marked as an AI agent, and you can never wipe or delete anything.',
-    thisTool: 'This tool gives the catalogue without a browser: chain, feeAdvice, block, blockManifest, inscription, provenanceCheck, children, followBack, search, watch and rareSats. feeAdvice keeps score of itself; chain, block and inscription answers are each checked against a second, separate site (checked.agrees); blockManifest checks every transaction in a block; provenanceCheck proves where an inscription came from. Everything comes free from public sites (mempool.space and its copies, ordpool.space, ordinals.com and its back-ups), asked gently: at most 30 at once, then 6 a second per site, resting any site that asks us to slow down.'
+    thisTool: 'This tool gives the catalogue without a browser: chain, feeAdvice, block, blockManifest, inscription, provenanceCheck, children, followBack, search, watch, dailyData and rareSats. feeAdvice keeps score of itself; chain, block and inscription answers are each checked against a second, separate site (checked.agrees); blockManifest checks every transaction in a block; provenanceCheck proves where an inscription came from. Everything comes free from public sites (mempool.space and its copies, ordpool.space, ordinals.com and its back-ups), asked gently: at most 30 at once, then 6 a second per site, resting any site that asks us to slow down.'
   };
 }
 
@@ -489,13 +512,14 @@ const TOOLS = [
   {name: 'blockManifest', title: 'Block Manifest: every transaction in a block, checked', description: 'Every transaction in a block, sorted into the same kinds as Agent Blockhall\'s hall shelves (inscriptions and their file types, bitmaps, BRC-20, TAP, runes etched, minted and moved, Alkanes, Stamps, SRC-20, CAT-21, Atomicals, payments and more), with its fee, size and what it carries. Every item is checked: its id and size are worked out from the block\'s own bytes and matched with a second site\'s list, its kinds are read twice (this reader and ordpool.space\'s tags), and its inscriptions are matched with ordinals.com. Gives counts for every kind, then the items a page at a time; pick one kind to list only those. Reads the whole block, so the first ask takes some seconds; later pages of the same block are instant.', inputSchema: {type: 'object', properties: {height: {type: 'integer', description: 'block number (the same as its bitmap)'}, kind: {type: 'string', description: 'list only one kind, as named in counts (e.g. "runes etched", "BRC-20", "images", "bitmaps", "regular")'}, from: {type: 'integer', description: 'start this many items in (default 0)'}, limit: {type: 'integer', description: 'how many items (default 50, most 500)'}}, required: ['height']}, run: blockManifest},
   {name: 'provenanceCheck', title: 'Provenance Check: where an inscription came from, every step checked', description: 'Proves where an inscription came from. It reads the inscription out of its own transaction\'s bytes (file type, size, parents, delegate) and matches it with ordinals.com, fingerprints the content stored on the chain (SHA-256) and matches it with the file ordinals.com shows, checks the block it was made in, its number and its sat with second sites, and follows every move from where it sits now back to where it was made, each step spending the one before. Gives a verdict, each check (what it compared, with which site, and whether they agree) and the trail, oldest first.', inputSchema: {type: 'object', properties: {id: {type: 'string', description: 'inscription number (e.g. "#1000") or ID'}}, required: ['id']}, run: provenanceCheck},
   {name: 'watch', title: 'Watch: say when something happens on the chain', description: 'Keeps an eye on Bitcoin and says when something happens, each alert checked: the next block (what: "block"), the next-block fee at or under a level (what: "fee", value: sat/vB), an inscription moving (what: "inscription", value: number or ID; it tells as soon as the move is in the mempool and again once ordinals.com shows where it sits), an address sending or getting a transaction (what: "address"), or a kind of transaction in a new block (what: "kind", value: e.g. "runes etched", "bitmaps", "inscriptions"). The first call says where things stand and gives a since token; call again with since to hear what changed. wait (seconds, at most 240) keeps looking until something happens. Alerts link on to Agent Blockhall, the Block Manifest and the Provenance Check.', inputSchema: {type: 'object', properties: {what: {type: 'string', enum: ['block', 'fee', 'inscription', 'address', 'kind'], description: 'what to watch'}, value: {type: 'string', description: 'the fee level (sat/vB), the inscription (number or ID), the address, or the kind'}, since: {type: 'string', description: 'the since token from the last answer (what and value are then not needed)'}, wait: {type: 'integer', description: 'seconds to keep looking until something happens (default 0, most 240)'}}}, run: watch},
+  {name: 'dailyData', title: 'Daily Data: every block of a day, sorted and checked', description: 'Daily Data, made each night: every Bitcoin block of a UTC day, read the Block Manifest way. Each block: what is in it (counts of the halls\' kinds: inscriptions, runes, BRC-20 and more), its fees, who mined it, and its checks (hash from its own bytes and on a second site, transaction ids and sizes, kinds against ordpool.space, inscriptions against ordinals.com). No day: the list of days with their totals. A day: its totals and every block. A block (with or without the day): that block.', inputSchema: {type: 'object', properties: {day: {type: 'string', description: 'the UTC day, YYYY-MM-DD'}, block: {type: 'integer', description: 'one block\'s height'}}}, run: dailyData},
   {name: 'rareSats', title: 'The rare sats board', description: 'The rare sats board from Agent Blockhall\'s common room: each kind of rare sat and the price listed for one sat, read once a day.', inputSchema: {type: 'object', properties: {}}, run: rareSats}
 ].map(t => Object.assign(t, {annotations: RO}));
 const byName = new Map(TOOLS.map(t => [t.name, t]));
 
 /* ---------- MCP over stdio (JSON-RPC 2.0, one message per line) ---------- */
 const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
-const INSTRUCTIONS = 'Agent Blockhall\'s catalogue of Bitcoin, always free. Start with chain or search. feeAdvice keeps score of itself, chain, block and inscription answers say whether a second, separate site agrees (checked), blockManifest lists every transaction in a block, sorted into the halls\' kinds, each one checked, provenanceCheck proves where an inscription came from, every step checked, and watch says when something happens (the next block, a fee level, an inscription moving, an address, a kind in a new block). Inscriptions come from ordinals.com and its back-ups; fees and transactions from mempool.space and its copies. ' + UNTRUSTED + ' For the full 3D world (walking the halls, the common room, crews), open ' + GAME + ' in a browser.';
+const INSTRUCTIONS = 'Agent Blockhall\'s catalogue of Bitcoin, always free. Start with chain or search. feeAdvice keeps score of itself, chain, block and inscription answers say whether a second, separate site agrees (checked), blockManifest lists every transaction in a block, sorted into the halls\' kinds, each one checked, provenanceCheck proves where an inscription came from, every step checked, watch says when something happens (the next block, a fee level, an inscription moving, an address, a kind in a new block), and dailyData gives every block of a day, made each night. Inscriptions come from ordinals.com and its back-ups; fees and transactions from mempool.space and its copies. ' + UNTRUSTED + ' For the full 3D world (walking the halls, the common room, crews), open ' + GAME + ' in a browser.';
 function send(msg) { process.stdout.write(JSON.stringify(msg) + '\n'); }
 const reply = (id, result) => send({jsonrpc: '2.0', id, result});
 const fail = (id, code, message) => send({jsonrpc: '2.0', id, error: {code, message}});
