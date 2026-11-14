@@ -143,6 +143,7 @@
     <div class="panel">
       <h2 id="title">Inscription</h2>
       <div id="verdict"></div>
+      <p class="small" id="verdictLong"></p>
       <div id="badge" class="badge"></div>
       <p class="small" id="viewIt"></p>
       <div class="facts" id="facts"></div>
@@ -275,19 +276,22 @@
   const link = (text, href, same) => { const a = el('a', null, text); a.href = href; if (!same) { a.target = '_blank'; a.rel = 'noopener noreferrer'; } return a; };
   const size = b => b == null ? '–' : b >= 1e6 ? (b / 1e6).toFixed(2) + ' MB' : b >= 1e3 ? (b / 1e3).toFixed(1) + ' KB' : b + ' bytes';
   const tick = v => v === true ? '✓' : v === false ? '✗' : '·';
+  const kind = t => t ? String(t).split(';')[0].trim() : null;   // (text/html;charset=utf-8 shows as text/html)
   function show(r) {
     R = r;
     const P = r.root, c = r.counts;
     $('out').classList.remove('hidden');
     $('title').textContent = 'Inscription #' + fmt(P.number);
-    const v = $('verdict'); v.textContent = r.verdict; v.className = c.missing || c.notOnSecondSite ? 'no' : 'ok';
+    const v = $('verdict'); v.className = c.missing || c.notOnSecondSite ? 'no' : 'ok';
+    v.textContent = !c.inscriptions ? 'It loads no other inscriptions' : 'Uses ' + fmt(c.inscriptions) + ' inscription' + (c.inscriptions === 1 ? '' : 's') + (c.levels > 1 ? ', ' + c.levels + ' levels deep' : '') + (c.missing ? ': ' + fmt(c.missing) + ' missing' : c.notOnSecondSite ? ': ' + fmt(c.notOnSecondSite) + ' not on the second site' : ': all found');
+    $('verdictLong').textContent = r.verdict.charAt(0).toUpperCase() + r.verdict.slice(1) + '.';
     const bd = $('badge'); bd.textContent = r.allOnChain ? 'Everything it names is on the chain ✓' : c.missing ? 'Something it uses could not be found' : 'It names ' + fmt(c.outside) + ' address' + (c.outside === 1 ? '' : 'es') + ' outside the chain'; bd.className = 'badge' + (r.allOnChain ? '' : ' no');
     const vi = $('viewIt'); vi.textContent = '';
     vi.appendChild(document.createTextNode('See it where it’s shown: ')); vi.appendChild(link('ordinals.com', 'https://ordinals.com/inscription/' + P.id));
     vi.appendChild(document.createTextNode(' · ')); vi.appendChild(link('where it came from', 'provenance-check.html?id=' + P.id, true));
     if (c.children) { vi.appendChild(document.createTextNode(' · ')); vi.appendChild(link('check its children', 'collection-check.html?parent=' + P.id, true)); }
     const facts = $('facts'); facts.textContent = '';
-    const F = [['Number', '#' + fmt(P.number)], ['File type', P.contentType || '–'], ['Size', size(P.bytes)], ['Made in block', fmt(P.block)], ['Inscriptions it uses', fmt(c.inscriptions)],
+    const F = [['Number', '#' + fmt(P.number)], ['File type', kind(P.contentType) || '–'], ['Size', size(P.bytes)], ['Made in block', fmt(P.block)], ['Inscriptions it uses', fmt(c.inscriptions)],
       ['Levels deep', fmt(c.levels)], ['/r/ endpoints', fmt(c.endpoints)], ['Outside the chain', fmt(c.outside)], ['All of it together', size(c.totalBytes)]];
     for (const [k, val] of F) {
       const f = el('div', 'fact'); f.appendChild(el('b', null, k));
@@ -305,7 +309,7 @@
       const hows = [...new Set(n.usedBy.filter(u => n.id !== P.id).map(u => u.how))];
       const t = el('b'); t.appendChild(link('#' + fmt(n.number), 'provenance-check.html?id=' + n.id, true)); box.appendChild(t);
       for (const h of hows) box.appendChild(el('span', 'tag ' + h, h));
-      box.appendChild(el('span', 'd', ' ' + (n.contentType || n.error || '–') + ' · ' + size(n.bytes) + ' · ' + tick(n.checks.onOrdinals) + ' ordinals.com ' + tick(n.checks.onSecondSite) + ' second site'));
+      box.appendChild(el('span', 'd', ' ' + (kind(n.contentType) || n.error || '–') + ' · ' + size(n.bytes) + ' · ' + tick(n.checks.onOrdinals) + ' ordinals.com ' + tick(n.checks.onSecondSite) + ' second site'));
       const eps = Object.keys(n.endpoints || {}).filter(e => e !== 'content');
       if (eps.length || n.outside.length || (n.endpoints || {}).content) { box.appendChild(el('br')); box.appendChild(el('span', 'd', (eps.length ? 'asks /r/' + eps.join(', /r/') : '') + ((n.endpoints || {}).content ? (eps.length ? ' · ' : '') + 'builds /content/ paths ' + n.endpoints.content + '×' : '') + (n.outside.length ? ' · ' + n.outside.length + ' outside address' + (n.outside.length === 1 ? '' : 'es') : ''))); }
       if (n.read && !/^read/.test(n.read)) { box.appendChild(el('br')); box.appendChild(el('span', 'd', n.read)); }
