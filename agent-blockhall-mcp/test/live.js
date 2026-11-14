@@ -54,6 +54,18 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   for (const id of ['#0', '#1000', 'cdf08dc642ac8b8cc905417cc7b5cc4d4c2d77eb97941f0472e1ffae30ba012ei1', '2bb85f4b004be6da54f766c17c1e855187327112c231ef2ff35ebad0ea67c69ei0', 'd7f15bda17b289b59873857d03a00bd3ca90bfa3ac9bcf27cd2030cf3f1b6519i0', '#999999999'])
     calls.push(await call('provenanceCheck', {id}));
   results.provenance = calls.filter(c => c.name === 'provenanceCheck').map(c => c.args.id + ' (' + c.ms + ' ms): ' + (c.out && c.out.verdict ? c.out.verdict + ' | ' + Object.entries(c.out.checked).map(([k, v]) => k + '=' + v.agrees + (v.against ? '@' + v.against.replace('https://', '') : '')).join(' ') + ' | trail ' + c.out.trail.length : 'ERROR ' + c.out));
+  // Watch: the next block from two blocks back, a fee level far above today's, an address, a kind, and a bad kind
+  const tipNow = calls.find(c => c.name === 'chain' && c.out && c.out.newestBlock);
+  const wb = await call('watch', {what: 'block'}); calls.push(wb);
+  if (wb.out && wb.out.since) { const o = JSON.parse(Buffer.from(wb.out.since, 'base64').toString()); o.s.tip -= 2; const t = Buffer.from(JSON.stringify(o)).toString('base64'); calls.push(await call('watch', {since: t})); }
+  const wf = await call('watch', {what: 'fee', value: '500'}); calls.push(wf);
+  if (wf.out && wf.out.since) { const o = JSON.parse(Buffer.from(wf.out.since, 'base64').toString()); o.s.under = false; calls.push(await call('watch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
+  calls.push(await call('watch', {what: 'inscription', value: '#0'}));
+  const wk = await call('watch', {what: 'kind', value: 'inscriptions'}); calls.push(wk);
+  if (wk.out && wk.out.since) { const o = JSON.parse(Buffer.from(wk.out.since, 'base64').toString()); o.s.tip -= 1; calls.push(await call('watch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
+  calls.push(await call('watch', {what: 'kind', value: 'shoes'}));
+  calls.push(await call('watch', {what: 'block', wait: 30}));
+  results.watch = calls.filter(c => c.name === 'watch').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.out && c.out.watching ? c.out.watching + ' | ' + c.out.now + ' | looked ' + c.out.looked + ' | ' + c.out.events.map(e => e.title + (e.checked ? ' ' + JSON.stringify(Object.fromEntries(Object.entries(e.checked).map(([k, v]) => [k, v && v.agrees]))) : '')).join(' / ') : 'ERROR ' + c.out));
   results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {
     const k = c.out.checked;
     return c.out.block.height + ' (' + c.ms + ' ms): hash ' + k.blockHash.fromItsOwnBytes + '/' + (k.blockHash.secondSite && k.blockHash.secondSite.agrees) + ', ids ' + k.transactions.matched + '/' + k.transactions.of +
@@ -66,6 +78,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log(results.summary.join('\n'));
   if (results.manifestChecks.length) console.log('Block Manifest checks:\n' + results.manifestChecks.join('\n'));
   console.log('Provenance checks:\n' + results.provenance.join('\n'));
+  console.log('Watch:\n' + results.watch.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });
