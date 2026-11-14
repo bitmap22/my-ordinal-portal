@@ -171,7 +171,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 #cp .pv2{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#a08b72}
 #cp .pv2 button{background:none;border:1px solid rgba(247,147,26,.3);color:#ffb04a;border-radius:10px;padding:3px 9px;font:inherit;cursor:pointer}
 #cp .pv2{flex-wrap:wrap;row-gap:5px}#cp .pv2 span,#cp .pv2 button{white-space:nowrap}#cp .pv2 a.pvo{color:#ffb04a;text-decoration:none;border:1px solid rgba(247,147,26,.3);border-radius:10px;padding:3px 9px;margin:0 6px;white-space:nowrap}#cp .pv2 a.pvo:hover{background:rgba(247,147,26,.16)}
-#cp .pv0{margin-top:8px;font-size:10.5px;color:#a08b72}
+#cp .pv0{margin-top:8px;font-size:10.5px;color:#a08b72}#cp .pvm{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:clamp(120px,24vh,230px);margin-top:10px;padding:0 18px;border-radius:8px;background:#000;text-align:center;font-size:12px;line-height:1.5;color:#d8c6ad}#cp .pvm b{color:#ffb04a;letter-spacing:.14em}#cp .pvt{margin-top:6px;font-size:10.5px;color:#a08b72;text-align:center}
 .ktab{margin-left:8px;padding:2px 7px;border-radius:9px;border:1px solid rgba(247,147,26,.25);background:rgba(18,11,5,.5);color:#a08b72;font:inherit;letter-spacing:1px;cursor:pointer}
 .ktab.on{color:#ffb04a;border-color:rgba(247,147,26,.7);background:rgba(247,147,26,.12)}.ktab.none:not(.on){opacity:.45}
 #kn{font-style:normal;font-size:10px;color:#a08b72;padding:7px 2px;flex:none;white-space:nowrap}
@@ -367,7 +367,7 @@ body{background:transparent}#cmu{position:fixed;left:50%;bottom:22px;transform:t
 body.room #card{box-sizing:border-box;left:50%;right:auto;bottom:14px;width:min(640px,96vw);max-height:82vh;padding:16px 18px 14px;border:10px solid #0c0805;border-radius:28px;background:rgba(10,7,4,.94);box-shadow:0 0 0 1px rgba(247,147,26,.6),0 0 50px rgba(247,147,26,.3),0 30px 90px rgba(0,0,0,.8);transform:translate(-50%,70px)}
 body.room #card.on{transform:translate(-50%,0)}
 body.room #cp iframe{height:min(46vh,440px);margin-top:0}
-#cp img.pa{display:block;width:100%;height:min(46vh,440px);object-fit:contain;border-radius:8px;background:#000}#cp img.pa.px{image-rendering:pixelated}
+#cp img.pa{display:block;width:100%;height:min(46vh,440px);object-fit:contain;border-radius:8px;background:#000}#cp .pvm{height:min(46vh,440px);margin-top:0}#cp img.pa.px{image-rendering:pixelated}
 #cp .tx{display:none}body.room #cp .tx{display:block;background:linear-gradient(180deg,#120b06,#080503);border:1px solid rgba(247,147,26,.25);border-radius:14px;padding:14px 16px 16px;max-height:min(46vh,440px);overflow:auto;-webkit-user-select:text;user-select:text}
 #cp .th{display:flex;align-items:center;gap:12px;margin-bottom:12px;font:600 12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a08b72;letter-spacing:.04em}#cp .th img{width:72px;height:72px;border-radius:8px;box-shadow:0 0 18px rgba(247,147,26,.25);flex:none}
 #cp .tb{font:600 18px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#f7efe3}#cp .tb>div{display:flex;gap:14px;padding:5px 0;border-bottom:1px solid rgba(247,147,26,.1)}#cp .tb i{font-style:normal;color:#ffb04a;min-width:4.5em}#cp .tb b{font-weight:700;word-break:break-all}
@@ -2911,11 +2911,41 @@ function preview(t) {
     $cp.style.display = w ? 'block' : 'none'; $cp.innerHTML = w ? '<div class="pv0">loading the inscription…</div>' : ''; return;
   }
   const k = (t._pi || 0) % ids.length, base = cur && cur.ordBase != null ? cur.ordBase : 'https://ordinals.com';
-  if (room && STL_RE.test(t.ins && t.ins[k] ? t.ins[k].ct || '' : t.gal ? t.ct || '' : '')) { stlPv(t, ids, k); return; }
+  if (room && MDL_RE.test(t.ins && t.ins[k] ? t.ins[k].ct || '' : t.gal ? t.ct || '' : '')) { mdlPv(t, ids, k, base); return; }
   $cp.style.display = 'block';
   $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>`;
   $cp.append(pvRow(ids, k, t));
 }
+// a 3D model inscription, read once when its parcel is picked up (small files only: up to 400,000 bytes). Two kinds are not a
+// shape to draw: a file that only points to another inscription (its whole content is /content/<id>, as BRC-420 mints are), so
+// the model it points to is shown instead; and a glTF file with no shape in it at all (only movements, like a VRM animation),
+// which says so rather than showing an empty screen. MDLK keeps the answer: {} a model as it is, {ptr}, or {empty}.
+const MDLK = new Map(), MDLKP = new Map();
+const mdlKindOf = id => MDLK.get(id);
+function mdlKind(id) {
+  if (MDLK.has(id)) return Promise.resolve(MDLK.get(id));
+  if (MDLKP.has(id)) return MDLKP.get(id);
+  const p = (async () => {
+    let K = {};
+    try {
+      const m = await galGet('/r/inscription/' + id), len = m && m.content_length || 0;
+      if (len > 0 && len <= 400000) {
+        const b = await galGet('/content/' + id, 'bytes'), pm = b.length <= 300 && /^\s*\/content\/([0-9a-f]{64}i\d+)\s*$/.exec(new TextDecoder().decode(b));
+        if (pm) { const tm = await galGet('/r/inscription/' + pm[1]); K = {ptr: {id: pm[1], ct: tm && tm.content_type || '', n: tm ? tm.number : null}}; }
+        else {
+          let j = null; const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+          if (b.length >= 20 && dv.getUint32(0, true) === 0x46546c67 && dv.getUint32(16, true) === 0x4e4f534a) j = JSON.parse(new TextDecoder().decode(b.subarray(20, 20 + dv.getUint32(12, true))));
+          else if (/^(\xef\xbb\xbf)?\s*\{/.test(String.fromCharCode(...b.subarray(0, 16)))) j = JSON.parse(new TextDecoder().decode(b));
+          if (j && j.asset && !(j.meshes || []).length) K = {empty: true, moves: (j.animations || []).length, vrm: (j.extensionsUsed || []).includes('VRMC_vrm_animation')};
+        }
+      }
+    } catch (e) {}
+    MDLK.set(id, K); MDLKP.delete(id); if (MDLK.size > 400) MDLK.delete(MDLK.keys().next().value);
+    return K;
+  })();
+  MDLKP.set(id, p); return p;
+}
+const mdlEmptyWords = K => (K.moves ? (K.vrm ? 'movements for a 3D character (a VRM animation)' : 'movements for a 3D model (an animation)') : 'a 3D file') + ': it has no shape of its own to show';
 // an STL model's file: read only once its parcel is picked up (the last few kept, so the tablet and VIEW BIG read it once)
 const STLB = new Map();
 function stlBytes(id) {
@@ -2925,13 +2955,22 @@ function stlBytes(id) {
   return p;
 }
 // holding an STL model: ordinals.com's preview shows an STL as an empty page, so its picture is drawn here from the model, once
-function stlPv(t, ids, k) {
+function mdlPv(t, ids, k, base) {
+  const K = mdlKindOf(ids[k]), again = () => { if (sel === t && (t._pi || 0) % ids.length === k) preview(t); };
+  if (K === undefined) { $cp.style.display = 'block'; $cp.innerHTML = '<div class="pv0">reading its 3D model\u2026</div>'; $cp.append(pvRow(ids, k, t)); mdlKind(ids[k]).then(again); return; }
+  if (K.empty) { $cp.style.display = 'block'; $cp.innerHTML = ''; const d = document.createElement('div'); d.className = 'pvm'; d.innerHTML = '<b>' + (K.moves ? 'A 3D ANIMATION' : 'NO SHAPE') + '</b>'; d.append(mdlEmptyWords(K)); $cp.append(d, pvRow(ids, k, t)); return; }
+  const id = K.ptr ? K.ptr.id : ids[k], ct = K.ptr ? K.ptr.ct : (t.ins && t.ins[k] ? t.ins[k].ct || '' : t.ct || '');
+  if (STL_RE.test(ct)) stlPv(t, ids, k, id);
+  else { $cp.style.display = 'block'; $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + id)}" title="inscription preview"></iframe>`; $cp.append(pvRow(ids, k, t)); }
+  if (K.ptr) { const n = document.createElement('div'); n.className = 'pvt'; n.textContent = 'its file only points to inscription ' + (K.ptr.n != null ? '#' + fmt(K.ptr.n) : srShort(id)) + ': that model is shown'; $cp.insertBefore(n, $cp.querySelector('.pv2')); }
+}
+function stlPv(t, ids, k, sid = ids[k]) {
   $cp.style.display = 'block'; $cp.innerHTML = '';
   const P = t.stlPic || (t.stlPic = []);
   if (P[k]) { if (preview.url) URL.revokeObjectURL(preview.url); preview.url = URL.createObjectURL(new Blob([P[k]], {type: 'image/png'})); const im = document.createElement('img'); im.className = 'pa'; im.alt = ''; im.src = preview.url; $cp.append(im); }
   else {
     $cp.insertAdjacentHTML('beforeend', '<div class="pv0">' + (P[k] === null ? 'its 3D model (STL) could not be drawn here' : 'drawing its 3D model (STL)\u2026') + '</div>');
-    if (P[k] === undefined) { P[k] = 0; stlBytes(ids[k]).then(b => b ? mdlPng(b, 512) : null).then(png => { P[k] = png || null; if (sel === t && (t._pi || 0) % ids.length === k) preview(t); }); }
+    if (P[k] === undefined) { P[k] = 0; stlBytes(sid).then(b => b ? mdlPng(b, 512) : null).then(png => { P[k] = png || null; if (sel === t && (t._pi || 0) % ids.length === k) preview(t); }); }
   }
   $cp.append(pvRow(ids, k, t));
 }
@@ -7501,10 +7540,18 @@ function vwRender() {
   $vwm.textContent = vw.live ? 'LIVE VIEW' : 'SAFE VIEW'; $vw.classList.toggle('live', vw.live);
   const lb = document.getElementById('vwl'); lb.textContent = vw.live ? 'BACK TO SAFE' : 'GO LIVE';
   let what = '', runs = false, quiet = false;
+  if (it.k === 'ins' && MDL_RE.test(it.type || '') && !it.del && !it.ptrFrom && !it.empty) {   // (what this 3D model inscription really is: read once)
+    const K = mdlKindOf(it.id);
+    if (K === undefined) { $vwc.innerHTML = '<div class="wait">READING ITS 3D MODEL\u2026</div>'; lb.style.display = 'none'; $vwo.style.display = $vwv.style.display = 'none'; $vwn.textContent = (n > 1 ? (vw.i + 1) + ' of ' + n + ' \u00b7 ' : '') + 'reading its 3D model'; mdlKind(it.id).then(() => { if (vw && vw.items[vw.i] === it) vwRender(); }); return; }
+    if (K.ptr) { it.ptrFrom = it.id; it.id = K.ptr.id; it.type = K.ptr.ct; it.num = K.ptr.n; }
+    else if (K.empty) it.empty = K;
+  }
   if (it.k === 'ins') {
     const url = 'https://ordinals.com/content/' + it.id, ty = it.type || '';
     what = 'inscription ' + (it.num != null ? '#' + fmt(it.num) : srShort ? srShort(it.id) : it.id.slice(0, 10)) + (ty ? ' · ' + ty.split(';')[0] : '') + (it.del ? ' · shows a delegate' : '');
-    if (STL_RE.test(ty) && !it.del) { what += ' \u00b7 drag it to turn it'; vwStl(it); }   // (an STL model: ordinals.com shows none, so it is drawn here from the model and turned by dragging: nothing of it runs)
+    if (it.ptrFrom) what += ' \u00b7 the parcel\u2019s file only points to this one';
+    if (it.empty) { what += ' \u00b7 no shape to show'; $vwc.innerHTML = '<div class="inf"><h3>' + (it.empty.moves ? 'A 3D ANIMATION' : 'NO SHAPE') + '</h3><div><span>it holds</span><b>' + vwEsc(mdlEmptyWords(it.empty)) + '</b></div></div>'; }
+    else if (STL_RE.test(ty) && !it.del) { what += ' \u00b7 drag it to turn it'; vwStl(it); }   // (an STL model: ordinals.com shows none, so it is drawn here from the model and turned by dragging: nothing of it runs)
     else if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
       runs = true; quiet = true;   // (GO LIVE is how it turns, so its button shows in SAFE VIEW too; the words below already say so)
       if (vw.live) $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'}));
@@ -15484,6 +15531,7 @@ window.AgentKit = window.AgentKit || (() => {
     const it = vw.items[vw.i], o = {what: text($('vwn')) || 'still reading the transaction', mode: vw.live ? 'LIVE VIEW: it runs' : 'SAFE VIEW: nothing runs'};
     if (!it) return o;
     if (it.k === 'info') { o.words = text($('vwc')).slice(0, 1500); return o; }
+    if (it.k === 'ins' && it.empty) { o.why = mdlEmptyWords(it.empty); return o; }
     if (it.k === 'ins' && STL_RE.test(it.type || '') && !it.del) { o.why = 'an STL 3D model, drawn here from its file (nothing of it runs' + (it.lite ? '; ' + it.lite : '') + '): turnBig({right, up}) turns it, as a player drags it'; const cv = $vwc.querySelector('canvas.stl');
       if (it.drawn && cv) { const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const x = c.getContext('2d'); x.fillStyle = '#8a8a8a'; x.fillRect(0, 0, c.width, c.height); x.drawImage(cv, 0, 0); o.picture = {type: 'image/jpeg', width: c.width, height: c.height, dataUrl: c.toDataURL('image/jpeg', .85)}; } else o.why += ' (it is still being drawn)';
       return o; }
