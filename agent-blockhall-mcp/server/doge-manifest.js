@@ -388,5 +388,59 @@
     return rows.join('\n') + '\n';
   }
 
-  return {VERSION, KIND_NAMES, KIND_GROUPS, MERGE_MINED_FROM, sha256, hashHex, fromHex, headerHash, merkleRoot, readTx, explorerKinds, fileKind, buildManifest, toCSV};
+  /* ---------- gathering a block, in the same steps for every host ----------
+     io: {dx(path) -> the explorer's JSON, btc(path) -> Bitcore's JSON, raw(txid) -> a transaction's bytes as hex (or null to skip),
+          x3(path) -> 3xpl's JSON (optional, a last word on the hash)}; progress(step, value) is told how far it has got.
+     o: {detailCap, bytesCap} (how many transactions to read one by one, and from their bytes) */
+  async function gather(h, io, progress, o) {
+    const say = (k, v) => { try { progress && progress(k, v); } catch (e) {} };
+    const DETAIL_CAP = o && o.detailCap || 600, BYTES_CAP = o && o.bytesCap != null ? o.bytesCap : 150;
+    if (h == null || h === '' || h === 'newest') { const j = await io.dx('/v1/blocks?limit=1'); h = j.blocks && j.blocks[0] ? j.blocks[0].height : NaN; }
+    h = +h;
+    if (!(h >= 0) || h % 1) throw new Error('give a block number (a whole number from 0)');
+    say('height', h);
+    // 1. the header and the explorer's list, in block order (100 a page)
+    let B; try { B = await io.dx('/v1/block/' + h + '?limit=100'); } catch (e) { say('header', false); throw /404/.test(String(e)) ? new Error('there is no block ' + h.toLocaleString('en-GB') + ' yet') : e; }
+    if (!B || !B.hash) { say('header', false); throw new Error('there is no block ' + h.toLocaleString('en-GB') + ' yet'); }
+    say('header', true);
+    const list = (B.txs || []).slice();
+    for (let pg = 2; list.length < (B.total || 0) && pg <= 400; pg++) { const P = await io.dx('/v1/block/' + h + '?limit=100&page=' + pg); if (!P.txs || !P.txs.length) break; list.push(...P.txs); say('list', [list.length, B.total]); }
+    say('list', list.length === B.total ? true : false);
+    // 2. a second site's list (sizes and fees) and its hash
+    let second = [], secondHash = null, secondSite = null;
+    try { second = await io.btc('/tx?blockHeight=' + h + '&limit=' + Math.max(1000, list.length + 10)); if (second[0] && second[0].blockHash) { secondHash = second[0].blockHash; secondSite = 'https://api.bitcore.io'; } } catch (e) {}
+    if (!secondHash) try { const b = await io.btc('/block/' + h); if (b && b.hash) { secondHash = b.hash; secondSite = 'https://api.bitcore.io'; } } catch (e) {}
+    if (!secondHash && io.x3) try { const x = await io.x3('/dogecoin/block/' + h + '?data=block'); if (x.data && x.data.block && x.data.block.hash) { secondHash = x.data.block.hash; secondSite = 'https://3xpl.com'; } } catch (e) {}
+    say('second', !!secondHash);
+    // 3. each transaction, as the explorer reads it (its inputs' addresses and its outputs' kinds), as Doge Cube's halls do
+    const details = new Map(), want = list.slice(0, DETAIL_CAP); let done = 0;
+    say('details', [0, want.length]);
+    let i = 0; await Promise.all(Array.from({length: Math.min(4, want.length)}, async () => { while (i < want.length) { const t = want[i++]; try { details.set(t.txid, await io.dx('/v1/tx/' + t.txid)); } catch (e) {} done++; if (done % 5 === 0 || done === want.length) say('details', [done, want.length]); } }));
+    say('details', details.size === list.length ? true : false);
+    // 4. the ones that carry something, and the coinbase, from their own bytes
+    const carry = list.filter((t, k) => k === 0 || t.inscription || (details.get(t.txid) && (details.get(t.txid).outputs || []).some(q => q.type === 'nulldata'))).slice(0, BYTES_CAP);
+    const raw = new Map(); let rawStop = null, rd = 0;
+    if (io.raw) {
+      say('bytes', [0, carry.length]);
+      for (const t of carry) {
+        if (rawStop) break;
+        try { const hx = await io.raw(t.txid); if (hx) raw.set(t.txid, fromHex(hx)); } catch (e) { if (/slow down|40[23]|429|430/.test(String(e))) rawStop = e; }
+        rd++; say('bytes', [rd, carry.length]);
+      }
+      say('bytes', raw.size === carry.length ? true : false);
+    }
+    // 5. dunes: an etching only makes its dune if the name was free (the explorer's list of dunes)
+    let dunesMade = null; const tried = [];
+    for (const [, u] of raw) { try { const r = readTx(u, false); if (r.dune && r.dune.etched) tried.push(r.dune.etched); } catch (e) {} }
+    if (tried.length) { dunesMade = new Map();
+      for (const nm of tried) { const key = nm.replace(/•/g, ''); try { const j = await io.dx('/v1/dune/' + encodeURIComponent(key)); dunesMade.set(key, j && j.dune ? j.dune.dune_id : null); } catch (e) { if (/404/.test(String(e))) dunesMade.set(key, null); else { dunesMade = null; break; } } }
+      say('dunes', !!dunesMade); } else say('dunes', true);
+    const m = buildManifest({height: h, header: B, headerSite: 'https://thedoginalsexplorer.com', list, listSite: 'https://thedoginalsexplorer.com', details, second, secondHash, secondSite: secondSite || 'no second site',
+      raw, rawSite: io.raw ? 'https://api.blockchair.com' : null, rawWanted: io.raw ? carry.length : 0, dunesMade});
+    if (list.length > DETAIL_CAP) m.checked.note = 'A very big block: the first ' + DETAIL_CAP.toLocaleString('en-GB') + ' transactions were read one by one; the rest are from the lists only.';
+    if (rawStop) m.checked.ownBytes.stopped = 'Blockchair asked us to slow down (30 asks a minute): the rest were not read from their bytes this time. Try again in a minute.';
+    return m;
+  }
+
+  return {VERSION, KIND_NAMES, KIND_GROUPS, MERGE_MINED_FROM, sha256, hashHex, fromHex, headerHash, merkleRoot, readTx, explorerKinds, fileKind, buildManifest, toCSV, gather};
 });

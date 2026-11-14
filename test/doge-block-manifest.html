@@ -148,6 +148,7 @@
           <tbody id="rows"></tbody>
         </table>
       </div>
+      <p class="small" id="watchKind"></p>
       <div class="pager"><button type="button" id="prev">‹ Back</button><span id="pageNote"></span><button type="button" id="next">Next ›</button></div>
       <p class="small">Checked: <span class="y">✓</span> agrees, <span class="x">✗</span> differs, <span class="z">·</span> nothing to check. The six marks are: in the list the header proves, its size, its fee, its kinds, its inscriptions, and read from its own bytes. Text in <span class="u" style="color:#fd9">quotes like these</span> was written by whoever made the transaction. It's shown as they wrote it, unchecked.</p>
     </div>
@@ -216,8 +217,11 @@
     return r.json();
   }
 
+  const io = {dx: p => getJ(DX + p, 25000), btc: p => getJ(BTC + p, 45000), x3: p => getJ(X3 + p, 20000),
+    raw: async id => { const j = await getJ(BCR + '/raw/transaction/' + id, 20000); return j && j.data && j.data[id] && j.data[id].raw_transaction || null; }};
+
   /* ---------- reading a block ---------- */
-  const STEPS = [['header', 'The block’s header'], ['list', 'Transaction list'], ['second', 'Second site (Bitcore)'], ['details', 'Each transaction'], ['bytes', 'Their own bytes'], ['dunes', 'Dunes made']];
+  const STEPS = [['header', 'The block’s header'], ['list', 'Transaction list'], ['second', 'Second site (Bitcore)'], ['details', 'Each transaction'], ['bytes', 'Their own bytes'], ['dunes', 'Dunes made']];   // (the same steps as DogeManifest.gather)
   function steps(on) {
     const ul = $('steps'); ul.textContent = ''; ul.classList.toggle('hidden', !on);
     for (const [k, t] of STEPS) { const li = document.createElement('li'); li.id = 'st-' + k; li.textContent = t; ul.appendChild(li); }
@@ -231,55 +235,15 @@
     busy = true; byAgent = !!agent;
     $('go').disabled = $('newest').disabled = true;
     try {
-      if (h == null || h === '' || h === 'newest') {
-        say('Finding the newest block…');
-        const j = await getJ(DX + '/v1/blocks?limit=1', 15000); h = j.blocks && j.blocks[0] ? j.blocks[0].height : NaN;
-      }
-      h = +h;
-      if (!(h >= 0) || h % 1) throw new Error('give a block number (a whole number from 0)');
-      $('h').value = h;
-      if (cache.has(h)) { show(cache.get(h)); return M; }
-      say((agent ? 'An AI agent asked for block ' : 'Reading block ') + fmt(h) + '…'); steps(true);
-      // 1. the header and the explorer's list, in block order (100 a page)
-      step('header', 'busy'); step('list', 'busy');
-      let B; try { B = await getJ(DX + '/v1/block/' + h + '?limit=100', 25000); } catch (e) { step('header', 'no'); step('list', 'no'); throw /http 404/.test(String(e)) ? new Error('there is no block ' + fmt(h) + ' yet') : e; }
-      if (!B || !B.hash) { step('header', 'no'); throw new Error('there is no block ' + fmt(h) + ' yet'); }
-      step('header', 'ok');
-      const list = (B.txs || []).slice();
-      for (let pg = 2; list.length < (B.total || 0) && pg <= 400; pg++) { const P = await getJ(DX + '/v1/block/' + h + '?limit=100&page=' + pg, 25000); if (!P.txs || !P.txs.length) break; list.push(...P.txs); step('list', 'busy', fmt(list.length) + ' of ' + fmt(B.total)); }
-      step('list', list.length === B.total ? 'ok' : 'no', fmt(list.length));
-      // 2. a second site's list (sizes and fees) and its hash
-      step('second', 'busy');
-      let second = [], secondHash = null, secondSite = null;
-      try { second = await getJ(BTC + '/tx?blockHeight=' + h + '&limit=' + Math.max(1000, list.length + 10), 45000); if (second[0] && second[0].blockHash) { secondHash = second[0].blockHash; secondSite = 'https://api.bitcore.io'; } } catch (e) {}
-      if (!secondHash) try { const x = await getJ(X3 + '/dogecoin/block/' + h + '?data=block', 20000); if (x.data && x.data.block && x.data.block.hash) { secondHash = x.data.block.hash; secondSite = 'https://3xpl.com'; } } catch (e) {}
-      step('second', secondHash ? 'ok' : 'no');
-      // 3. each transaction, as the explorer reads it (its inputs' addresses and its outputs' kinds), as Doge Cube's halls do
-      const details = new Map(), want = list.slice(0, DETAIL_CAP);
-      let done = 0; step('details', 'busy', '0 of ' + fmt(want.length));
-      const pool = async (arr, n, fn) => { let i = 0; await Promise.all(Array.from({length: Math.min(n, arr.length)}, async () => { while (i < arr.length) { const k = i++; await fn(arr[k], k); } })); };
-      await pool(want, 4, async t => { try { details.set(t.txid, await getJ(DX + '/v1/tx/' + t.txid, 25000)); } catch (e) {} done++; if (done % 5 === 0 || done === want.length) { step('details', 'busy', fmt(done) + ' of ' + fmt(want.length)); say('Reading each transaction: ' + fmt(done) + ' of ' + fmt(want.length) + '…'); } });
-      step('details', details.size === list.length ? 'ok' : 'no', fmt(details.size) + ' of ' + fmt(list.length));
-      // 4. the ones that carry something, and the coinbase, from their own bytes
-      const carry = list.filter((t, i) => i === 0 || t.inscription || (details.get(t.txid) && (details.get(t.txid).outputs || []).some(o => o.type === 'nulldata'))).slice(0, BYTES_CAP);
-      const raw = new Map(); let rawStop = null, rd = 0; step('bytes', 'busy', '0 of ' + fmt(carry.length));
-      for (const t of carry) {
-        if (rawStop) break;
-        try { const j = await getJ(BCR + '/raw/transaction/' + t.txid, 20000); const hx = j && j.data && j.data[t.txid] && j.data[t.txid].raw_transaction; if (hx) raw.set(t.txid, DM.fromHex(hx)); } catch (e) { if (/slow down/.test(String(e))) rawStop = e; }
-        rd++; step('bytes', 'busy', fmt(rd) + ' of ' + fmt(carry.length)); say('Reading ' + fmt(carry.length) + ' transactions from their own bytes: ' + fmt(rd) + '…');
-      }
-      step('bytes', raw.size === carry.length ? 'ok' : 'no', fmt(raw.size) + ' of ' + fmt(carry.length));
-      // 5. dunes: an etching only makes its dune if the name was free (the explorer's list of dunes)
-      let dunesMade = null; const tried = [];
-      for (const [id, u] of raw) { try { const r = DM.readTx(u, false); if (r.dune && r.dune.etched) tried.push(r.dune.etched); } catch (e) {} }
-      if (tried.length) { step('dunes', 'busy'); dunesMade = new Map();
-        for (const nm of tried) { const key = nm.replace(/•/g, ''); try { const j = await getJ(DX + '/v1/dune/' + encodeURIComponent(key), 15000); dunesMade.set(key, j && j.dune ? j.dune.dune_id : null); } catch (e) { if (/http 404/.test(String(e))) dunesMade.set(key, null); else { dunesMade = null; break; } } }
-        step('dunes', dunesMade ? 'ok' : 'no'); } else step('dunes', 'ok', 'none tried');
-      say('Sorting ' + fmt(list.length) + ' transactions…'); await sleep(20);
-      const m = DM.buildManifest({height: h, header: B, headerSite: DX, list, listSite: DX, details, second, secondHash, secondSite: secondSite || 'no second site', raw, rawSite: 'https://api.blockchair.com', rawWanted: carry.length, dunesMade});
-      if (list.length > DETAIL_CAP) m.checked.note = 'A very big block: the first ' + fmt(DETAIL_CAP) + ' transactions were read one by one; the rest are from the lists only.';
-      if (rawStop) m.checked.ownBytes.stopped = 'Blockchair asked us to slow down (30 asks a minute): the rest were not read from their bytes this time. Try again in a minute.';
-      cache.set(h, m); while (cache.size > 4) cache.delete(cache.keys().next().value);
+      if (h != null && h !== '' && h !== 'newest' && cache.has(+h)) { $('h').value = +h; show(cache.get(+h)); return M; }
+      say(agent ? 'An AI agent asked for a block…' : 'Reading the block…'); steps(true);
+      const m = await DM.gather(h, io, (k, v) => {
+        if (k === 'height') { $('h').value = v; say((agent ? 'An AI agent asked for block ' : 'Reading block ') + fmt(v) + '…'); return; }
+        if (Array.isArray(v)) { step(k, 'busy', fmt(v[0]) + ' of ' + fmt(v[1])); if (k === 'details') say('Reading each transaction: ' + fmt(v[0]) + ' of ' + fmt(v[1]) + '…'); if (k === 'bytes') say('Reading ' + fmt(v[1]) + ' transactions from their own bytes: ' + fmt(v[0]) + '…'); return; }
+        step(k, v ? 'ok' : 'no');
+      }, {detailCap: DETAIL_CAP, bytesCap: BYTES_CAP});
+      const h2 = m.block.height;
+      cache.set(h2, m); while (cache.size > 4) cache.delete(cache.keys().next().value);
       show(m);
       return M;
     } catch (e) {
@@ -360,6 +324,7 @@
       for (const [k, t] of [['inList', 'in the list the header proves'], ['size', 'size'], ['fee', 'fee'], ['kinds', 'kinds'], ['inscriptions', 'inscriptions'], ['ownBytes', 'read from its own bytes']]) { const v = it.checked[k], s = el('span', v === true ? 'y' : v === false ? 'x' : 'z', v === true ? '✓' : v === false ? '✗' : '·'); s.title = t + (v === true ? ': yes' : v === false ? ': no' : ': nothing to check'); ck.appendChild(s); }
       tr.appendChild(ck); tb.appendChild(tr);
     }
+    const wk = $('watchKind'); wk.textContent = ''; const wa = document.createElement('a'); wa.href = 'doge-watch.html?watch=' + (kind ? 'kind&value=' + encodeURIComponent(kind) : 'block'); wa.textContent = kind ? 'Watch new blocks for ' + kind : 'Watch for the next block'; wk.appendChild(wa);
     $('pageNote').textContent = L.length ? fmt(from + 1) + '–' + fmt(Math.min(L.length, from + PAGE)) + ' of ' + fmt(L.length) : 'none';
     $('prev').disabled = from <= 0; $('next').disabled = from + PAGE >= L.length;
   }
