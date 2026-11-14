@@ -7463,13 +7463,14 @@ function vwRender() {
   document.getElementById('vwp').disabled = document.getElementById('vwx').disabled = n < 2;
   $vwm.textContent = vw.live ? 'LIVE VIEW' : 'SAFE VIEW'; $vw.classList.toggle('live', vw.live);
   const lb = document.getElementById('vwl'); lb.textContent = vw.live ? 'BACK TO SAFE' : 'GO LIVE';
-  let what = '', runs = false;
+  let what = '', runs = false, quiet = false;
   if (it.k === 'ins') {
     const url = 'https://ordinals.com/content/' + it.id, ty = it.type || '';
     what = 'inscription ' + (it.num != null ? '#' + fmt(it.num) : srShort ? srShort(it.id) : it.id.slice(0, 10)) + (ty ? ' · ' + ty.split(';')[0] : '') + (it.del ? ' · shows a delegate' : '');
     if (STL_RE.test(ty) && !it.del) { what += ' \u00b7 drag it to turn it'; vwStl(it); }   // (an STL model: ordinals.com shows none, so it is drawn here from the model and turned by dragging: nothing of it runs)
     else if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
-      if (vw.live) { runs = true; $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'})); }
+      runs = true; quiet = true;   // (GO LIVE is how it turns, so its button shows in SAFE VIEW too; the words below already say so)
+      if (vw.live) $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'}));
       else $vwc.innerHTML = '<div class="inf"><h3>A 3D MODEL</h3><div><span>to turn it</span><b>GO LIVE: ordinals.com\u2019s own 3D viewer shows it (that runs ordinals.com\u2019s code)</b></div></div>';
     } else if (/^image\//.test(ty) && !it.del) { const im = new Image(); im.src = url; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $vwc.appendChild(im); }
     else { runs = !/^text\/(plain|markdown|csv)|json/.test(ty); $vwc.appendChild(vwFrame({src: url, sandbox: vw.live ? 'allow-scripts allow-forms allow-same-origin' : '', title: 'inscription', allow: 'autoplay; fullscreen'})); }
@@ -7492,7 +7493,7 @@ function vwRender() {
     $vwo.style.display = $vwv.style.display = 'none';
   }
   lb.style.display = runs ? '' : 'none';
-  if (runs && !vw.live) { const h = document.createElement('div'); h.className = 'vh'; h.textContent = 'SAFE VIEW: nothing runs, so it may look blank or still. GO LIVE to see it work.'; $vwc.appendChild(h); }
+  if (runs && !vw.live && !quiet) { const h = document.createElement('div'); h.className = 'vh'; h.textContent = 'SAFE VIEW: nothing runs, so it may look blank or still. GO LIVE to see it work.'; $vwc.appendChild(h); }
   $vwn.textContent = (n > 1 ? (vw.i + 1) + ' of ' + n + ' · ' : '') + what;
 }
 function vwGo(d) { if (!vw || vw.items.length < 2) return; vw.i = (vw.i + d + vw.items.length) % vw.items.length; vw.live = false; $vwa.classList.remove('on'); vwRender(); }
@@ -15212,7 +15213,7 @@ window.AgentKit = window.AgentKit || (() => {
     const mk = ownWho(t);   // (the markers over it: who holds it, as a player sees them)
     if (t.gal) return {piece: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid || undefined, number: t.n || undefined, madeInBlock: t.h != null ? t.h : undefined, markers: mk.length ? mk : undefined};   // (a piece on a stand in a collection's hall: its card says the rest)
     const o = {n: t.idx, txid: t.id, feeRate: rf(t.rate), fee: t.fee, vsize: t.vsize, types: typesOf(t)};
-    if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) o.shows = stlOf(t) ? 'its 3D model (STL), as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; turnBig() turns it)' : 'its 3D model, as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; viewBig with live: true turns the model in ordinals.com\'s own viewer)';
+    if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) o.shows = stlOf(t) ? 'its 3D model (STL), as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; turnBig() turns it)' : 'its 3D model, as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; GO LIVE in VIEW BIG turns it in ordinals.com\'s own viewer, for the person at your screen: the kit cannot see inside that)';
     else if (stlOf(t)) o.shows = 'its 3D model (STL): hold it and it is drawn on your tablet; viewBig() and look({picture: true}) show it large, and turnBig() turns it';
     if ((t.cat21 || t.labitbu) && t.art) o.shows = (t.cat21 ? 'its CAT-21 cat' : 'its Labitbu') + ', a picture on its box: hold it, then viewBig() and look({picture: true}) to see it';
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
@@ -15979,7 +15980,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'answerDeal', does: 'At a crewmate\'s trade base with a block on it: LET\'S MAKE A DEAL or NOT INTERESTED, as the buttons there do ("none" takes your answer back). They are told. A deal is taken to another app to swap (nothing is swapped here): there, check the inscription id matches exactly (a copy can look the same), and prefer a swap where both sides go in one transaction. A deal also asks the chain again whether their wallet still holds it. You answer standing at their base, as a player does: in the common room this walks you there first.', args: [{name: 'base', does: 'their base (P1 to P6) or their name', req: true}, {name: 'answer', enum: ['deal', 'not interested', 'none'], does: 'your answer', req: true}],
       run: async ({base, answer}) => { const k = tradeBaseK(base); if (k < 0) return {ok: false, error: 'no crewmate with that base or name: tradeFloor() lists the bases'}; trade.list = tradeList(); const o = trade.list[k]; if (!o || o.who.me || !o.s) { const r = tradeDeal(k, 'deal'); if (!r.ok) return r; }
         const g = await tradeWalkTo(k, 'you answer'); if (!g.ok) return g; const r = tradeDeal(k, answer === 'deal' ? 'deal' : answer === 'not interested' ? 'no' : ''); return r.ok ? Object.assign(r, {walkedToTheirBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r; }},
-    {name: 'inspectBase', untrusted: true, does: 'Look closely at the block on a trade base (yours or a crewmate\'s), as a player does by clicking it: walks you to that base in the common room (as a player walks) and picks up a copy into your hands; the block stays on the base. Then viewBig() shows it full size, look({picture: true}) gives you its picture (a 3D model shows as a picture drawn from the model; viewBig with live: true turns the model in ordinals.com\'s own viewer), and putBack() puts the copy down. Returns everything the chain says about it.', args: [{name: 'base', does: 'the base (P1 to P6) or the player\'s name', req: true}],
+    {name: 'inspectBase', untrusted: true, does: 'Look closely at the block on a trade base (yours or a crewmate\'s), as a player does by clicking it: walks you to that base in the common room (as a player walks) and picks up a copy into your hands; the block stays on the base. Then viewBig() shows it full size, look({picture: true}) gives you its picture (a 3D model shows as a picture drawn from the model; GO LIVE in VIEW BIG turns it in ordinals.com\'s own viewer, for the person at your screen: the kit cannot see inside that), and putBack() puts the copy down. Returns everything the chain says about it.', args: [{name: 'base', does: 'the base (P1 to P6) or the player\'s name', req: true}],
       run: async ({base}) => { const k = tradeBaseK(base); if (k < 0) return {ok: false, error: 'no base or player by that name: tradeFloor() lists the bases'}; trade.list = tradeList(); const o = trade.list[k]; if (!o || !o.s) return {ok: false, error: (o ? o.who.p : 'P' + (k + 1)) + ' has no checked block on it right now'};
         const g = await tradeWalkTo(k, 'you look at a block'); if (!g.ok) return g;
         if (room.held && !room.held.back) { rmPut(); await wait(800); }
