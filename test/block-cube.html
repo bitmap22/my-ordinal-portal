@@ -10738,10 +10738,16 @@ function gdBitmapCanvas(L, px, bg) {
   return cv;
 }
 // the outputs of every transaction in block n, in block order (the coinbase first): what the picture is made from
-const gdVals = new Map();
+const gdVals = new Map(), gdMeta = new Map(), gdValsP = new Map();
 async function gdBlockValues(n) {
   if (gdVals.has(n)) return gdVals.get(n);
-  const B = await viaSources((s, b) => s.block(b, n)); const v = B.txs.map(t => t.value || 0); if (v.length) gdVals.set(n, v); return v;
+  if (gdValsP.has(n)) return gdValsP.get(n);   // (already being read: wait for that one)
+  const P = (async () => {
+  const B = await viaSources((s, b) => s.block(b, n)); const v = B.txs.map(t => t.value || 0); if (v.length) gdVals.set(n, v);
+  if (B.hash) { let big = null; for (const t of B.txs) if (t.idx !== 0 && (!big || (t.value || 0) > big.value)) big = {id: t.id, value: t.value || 0};   // (the block's own facts, for the chain data board: fees only where the source gives them)
+    gdMeta.set(n, {hash: B.hash, time: B.time, size: B.size, weight: B.weight, count: B.count, pool: B.pool || null, fees: B.fees ? B.txs.reduce((a, t) => a + (t.idx === 0 ? 0 : t.fee || 0), 0) : null, median: B.fees ? medianRate(B.txs) : null, big: big && big.value > 0 ? big : null}); }
+  return v; })();
+  gdValsP.set(n, P); try { return await P; } finally { gdValsP.delete(n); }
 }
 // ---- shapes for the garden: each vertex = position, normal, colour, sway (leaves move in the wind), material, and a place on
 //      the leaf picture. Materials: 0 plain, 1 leafy lump, 2 stone paving, 3 hedge, 4 lamp light, 5 lawn, 6 glass, 8 bark,
@@ -10904,6 +10910,10 @@ function gdTrees() {
 const GD_KEEP = [{c: [0, -50], r: 9.5}, {x: [9, 41.5], z: [-61, -37]}, {x: [-33, -13], z: [-47, -32]}, {c: [-26, -74], r: 7.5}, {x: [15, 35], z: [-89, -71]},
   {x: [13, 37], z: [-27, -9]}, {x: [-39, -21], z: [-25, -9]}, {x: [-6, 6], z: [-9, 0]}];
 const GD_PATHS = [[[0, -1.6], [0, -41.6]], [[7.6, -50], [12, -50]], [[-6.5, -46], [-14.5, -40.5]], [[-5.6, -55.6], [-20.5, -69.5]], [[5.6, -55.6], [18.5, -72]], [[6, -45.2], [16.5, -26.5]], [[-6, -45.2], [-23, -24.5]]];
+// the chain data board: a notice board on the plaza beside the case, facing the path in from the gate (a: its turn; w, h: the
+// sheet's size; y: the sheet's middle)
+const GD_BOARD = {x: 2.6, z: -46.3, a: -.6, w: 1.4, h: 1.0, y: 1.32};
+const gdBoardU = [Math.cos(GD_BOARD.a), -Math.sin(GD_BOARD.a)], gdBoardN = [Math.sin(GD_BOARD.a), Math.cos(GD_BOARD.a)];   // (along the sheet; out of its face)
 function gdPlan() {
   const {rnd, rr, reseed} = GDM; reseed(388067);
   const W = GD.W / 2, inner = W - GD.HT;
@@ -10938,6 +10948,7 @@ function gdPlan() {
   for (let i = 0; i < 4; i++) { const an = Math.PI / 4 + i * Math.PI / 2; lamps.push([Math.cos(an) * 6.6, -50 + Math.sin(an) * 6.6]); }
   for (const [x, z] of lamps) col.push({x, z, r: .28});
   col.push({x: 0, z: -50, r: GD.CR});
+  for (const k of [-.74, 0, .74]) col.push({x: GD_BOARD.x + gdBoardU[0] * k, z: GD_BOARD.z + gdBoardU[1] * k, r: .3});   // (the board: its two posts and its middle)
   return {trees, shrubs, lamps, col};
 }
 // ---- drawing the garden: its own sky; one shader for everything in it (sun with real shadows, sky light, lamps at night, rain,
@@ -11371,6 +11382,13 @@ function gdBuild() {
       card(lf, [p[0], p[1] + rr(.06, .16), p[2]], nrm([Math.cos(a) * .5 + rr(-.3, .3), 1, Math.sin(a) * .5 + rr(-.3, .3)]), rr(.26, .36), 2, mixc(fl[0], fl[1], rnd()), .3, [0, 1, 0]); } }
   // the case's plinth: an eight-sided stone column, a gold band round its top; the glass case on it (drawn see-through, last)
   lathe(st, [[1.5, 0], [1.5, .2], [1.22, .26], [1.06, .34], [1.0, 1.0], [1.18, 1.07], [1.18, 1.17], [0, 1.17]], 8, () => mixc(C(0xded7c8), C(0xc9c0ae), rnd() * .5), 0, 0, TR([1, 1, 1], [0, Math.PI / 8, 0], [0, 0, -50]));
+  // the chain data board: two posts on stone feet, a backing board in a frame, a little roof (the sheet itself is drawn with its picture)
+  { const B = GD_BOARD, U = gdBoardU, Nn = gdBoardN, at = (u, n) => [B.x + U[0] * u + Nn[0] * n, B.z + U[1] * u + Nn[1] * n], oak = C(0x5a3b22), dark = C(0x3a2616);
+    for (const s2 of [-1, 1]) { const [x, z] = at(s2 * .76, -.02); box(st, x, 1.08, z, .1, 2.16, .1, oak, 8, B.a); box(st, x, .07, z, .22, .14, .22, C(0x9c9384), 2, B.a); }
+    { const [x, z] = at(0, -.05); box(st, x, B.y, z, 1.56, 1.16, .05, dark, 8, B.a); }
+    for (const [y, h] of [[B.y + .55, .07], [B.y - .55, .07]]) { const [x, z] = at(0, -.02); box(st, x, y, z, 1.56, h, .09, oak, 8, B.a); }
+    for (const s2 of [-1, 1]) { const [x, z] = at(s2 * .74, -.02); box(st, x, B.y, z, .07, 1.16, .09, oak, 8, B.a); }
+    { const [x, z] = at(0, -.02); box(st, x, 2.2, z, 1.84, .07, .5, dark, 8, B.a); box(st, x, 2.26, z, 1.84, .06, .12, oak, 8, B.a); } }
   const gold = C(0xd9a440);
   lathe(st, [[1.19, 1.0], [1.21, 1.035], [1.19, 1.07]], 8, () => gold, 0, 0, TR([1, 1, 1], [0, Math.PI / 8, 0], [0, 0, -50]));
   const CY = 1.17, CS = 1.5, CH = 1.56;
@@ -11498,6 +11516,7 @@ function gdAct(sx, sy) {
   { const Q = gdPPAct(p); if (Q) return Q; }
   { const Q = gdChAct(p, ray); if (Q) return Q; }
   { const Q = gdSwimAct(p, C, ray); if (Q) return Q; }
+  { const Q = gdBoardAct(p, C, ray); if (Q) return Q; }   // (the chain data board)
   let best = null, bd = 9;
   for (const s of GD_SEATS) { const dx = s.x - p.x, dz = C.z0 + s.z - p.z, e = Math.hypot(dx, dz); if (e > s.r || e >= bd) continue;
     if (ray && e > .5) { const h = Math.hypot(ray.d[0], ray.d[2]) || 1; if ((dx * ray.d[0] + dz * ray.d[2]) / (h * e) < .5) continue; }   // (only a seat you are facing)
@@ -11511,6 +11530,7 @@ function gdDo(A) {
   const p = room && room.p, C = room && room.rooms[1]; if (!A || !p || !C || !C.gd) return;
   if (A.a === 'stand') { if (cm.pint) { cmSip(); return; } gdStand(C, p); return; }
   if (A.a === 'sip') { cmSip(); return; }
+  if (A.a === 'board') { gdChainOpen(); return; }
   if (A.a === 'ask') { gdAskPick(A.M); return; }
   if (A.a === 'lift' || A.a === 'put' || A.a === 'reset') { gdChessDo(A); return; }
   if (A.a === 'ppup' || A.a === 'ppdown' || A.a === 'serve') { gdPPDo(A); return; }
@@ -11520,7 +11540,7 @@ function gdDo(A) {
   if (A.a === 'cheers') { const n = performance.now(); if (gd.chAt && n - gd.chAt < 1300) return; gd.chAt = n; gd.chN = (gd.chN || 0) + 1; setTimeout(() => gdClink(1), 380); gdToast('Cheers, ' + (A.M.name || 'mate') + '!'); return; }
   if (A.a === 'seat') { const s = A.s; p.x = s.x; p.z = C.z0 + s.z; p.y = s.y - .43; p.sit = true; p.seat = s; p.vx = p.vz = 0; p.yaw = Math.atan2(-s.f[0], -s.f[1]); p.pitch = Math.min(p.pitch, .1); p.seatOut = s.o; }
 }
-addEventListener('keydown', e => { if ((e.key === 'e' || e.key === 'E') && !e.repeat && room && room.at && room.at.gd && room.at.ready && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) { const A = gdAct(room.lock ? null : room.mx, room.lock ? null : room.my); if (A) gdDo(A); } });
+addEventListener('keydown', e => { if ((e.key === 'e' || e.key === 'E') && !e.repeat && room && room.at && room.at.gd && room.at.ready && !(typeof $clw !== 'undefined' && $clw.classList.contains('on')) && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) { const A = gdAct(room.lock ? null : room.mx, room.lock ? null : room.my); if (A) gdDo(A); } });
 // ---- the bar cart's tap: pour yourself a pint, sip it, cheers with your crew (the same pint as the common room's) ----
 const GD_TAP = {x: -31.5, z: -37.5, y: 1.115, dz: .14};   // (the drip tray's top, under the middle spout)
 function gdFacing(p, x, z, ray, e, k) { if (!ray || e < .4) return true; const h = Math.hypot(ray.d[0], ray.d[2]) || 1; return ((x - p.x) * ray.d[0] + (z - p.z) * ray.d[2]) / (h * e) > k; }
@@ -11882,7 +11902,7 @@ function gdSigns(T, Lt, zo) {
 // ---- for AI agents (the agent kit): the garden's places to walk to, and everything going on, in words and numbers ----
 // each place: where to stand [x, z], and the point to face [x, y, z]
 const GD_GOTO = {
-  'your bitmap': [[0, -47.6], [0, 1.9, -50]], 'the gate': [[0, -6], [0, 1.4, -1.2]], 'bar cart': [[-31.4, -35.9], [-31.5, 1.15, -37.4]],
+  'your bitmap': [[0, -47.6], [0, 1.9, -50]], 'chain data board': [[1.7, -44.98], [2.6, 1.3, -46.3]], 'the gate': [[0, -6], [0, 1.4, -1.2]], 'bar cart': [[-31.4, -35.9], [-31.5, 1.15, -37.4]],
   'pool': [[22, -42.2], [22, 0, -46]],
   'diving board': [[36.2, -49], [31.9, .7, -49]], 'slide': [[12.2, -40], [12.2, 1.4, -41.6]], 'hot tub': [[38, -43.6], [38, .8, -46]], 'koi pond': [[25, -72.4], [25, 0, -80]],
   'chess board': [[19, -12.6], [19, .4, -16]], 'ping-pong red end': [[26.5, -12.5], [28.5, .8, -12.5]], 'ping-pong black end': [[30.5, -12.5], [28.5, .8, -12.5]],
@@ -11915,7 +11935,7 @@ function gdAgentInfo() {
   const bags = gdBagList().map((b, i) => ({bag: i, colour: i < 4 ? 'red' : 'blue', where: b.st === 'x' ? 'in someone\'s hand' : b.st === 'h' ? 'in a hole' : b.st === 'b' ? 'on a board' : 'on the grass', x: r1(b.x), z: r1(b.z)}));
   const [cr, cb] = gdBagScore(), bats = [-1, 1].map(s => ({bat: gdPPName(s), heldBy: gd.pp && gd.pp.side === s ? 'you' : gdPPTaken(s) ? 'a crewmate' : 'nobody (on the table)'}));
   return {
-    yourBitmap: C.gd.bm + '.bitmap', cameFrom: C.gd.from.h === COMMON ? 'the common room' : 'block ' + C.gd.from.h, backWay: 'leave() (or use() facing the case in the middle) takes you back the way you came',
+    yourBitmap: C.gd.bm + '.bitmap', chainData: 'bitmapData() reads your bitmap and its block from the chain (the board beside the case)', cameFrom: C.gd.from.h === COMMON ? 'the common room' : 'block ' + C.gd.from.h, backWay: 'leave() (or use() facing the case in the middle) takes you back the way you came',
     you: {sitting: p.sit ? (p.seat ? p.seat.label.replace(/^sit (on|at|by) the /, '').replace(/^get in the /, '') : 'yes') : false, swimming: !!p.swim, holding: cm.pint ? 'a pint (' + Math.round(cm.pint.fill * 100) + '% full)' : gd.pp ? 'the ' + gdPPName(gd.pp.side) + ' ping-pong bat' : gd.hb >= 0 ? 'the ' + gdBagName(gd.hb) : gd.hold ? 'the ' + gdPcName(gd.hold.c) : null},
     asks: gdAskInfo(),
     places: Object.keys(GD_GOTO), timeOfDay: gd.sun && gd.sun.dir[1] > 0 ? 'day' : 'night', weather: gd.wx ? gdWxWords(gd.wx) : undefined,
@@ -11936,9 +11956,9 @@ async function gdTravel() {
     for (const R of room.rooms) rmFree(R);
     room = {rooms: [null, null, null], p: {x: 0, z: -43.2, yaw: 0, pitch: -.03, vx: 0, vz: 0, ph: 0, bob: 0}, dirty: false, fixDirty: false, nPar: 0, nFix: 0, nDoor: 0, hov: ''};
     document.body.classList.add('room', 'gd'); document.body.classList.remove('gal', 'galok', 'shw', 'showcp', 'holding', 'gdok', 'cl', 'clok'); $th.classList.add('on');
-    const C = {h: GARDEN, gd: {from, bm: B.n}, ready: false, back: {to: NODOOR, o: 0}, front: {to: NODOOR, o: 0}, z0: 0, L: GD.L, plan: {items: [], labs: [], cats: [], nb: 0, side: 0, L: GD.L}};
+    const C = {h: GARDEN, gd: {from, bm: B.n, id: B.id}, ready: false, back: {to: NODOOR, o: 0}, front: {to: NODOOR, o: 0}, z0: 0, L: GD.L, plan: {items: [], labs: [], cats: [], nb: 0, side: 0, L: GD.L}};
     room.rooms[1] = C; room.at = C;
-    gdBuild(); await yieldNow(); C.ready = true; head(); gdCaseArt(B.n);
+    gdBuild(); await yieldNow(); C.ready = true; head(); gdCaseArt(B.n); gdChainLoad(true);
     rmFade(false);
   } finally { setTimeout(() => { if ($rfx.dataset.say === say && !$rfx.classList.contains('on')) delete $rfx.dataset.say; }, 450); }
 }
@@ -11948,6 +11968,113 @@ function gdBack() {
   (async () => { if (f.h === COMMON) { await srTravel(COMMON); return; } await roomEnter(f.h, {x: f.x, z: f.z}, {wait: true}); if (room && room.at && room.at.h === f.h) srT = {R: null, it: null, h: f.h, id: f.id.slice(0, 64), label: 'your bitmap'}; })();
 }
 $cbg.onclick = () => gdTravel();
+// ---- the chain data board: beside the case, your bitmap and its block as the chain says now ----
+//      Your bitmap (its inscription, when it was claimed, its sat, the wallet it is in, whether it is being sent right now), its
+//      block (when it was mined and by whom, its transactions: each one a parcel of the bitmap, its size, fees and middle fee),
+//      and the bitmaps here. Read from the chain when you come in (and again when you read the board, after two minutes); what
+//      cannot be read right now is not shown, never shown as nothing. A summary on the board; E opens it all; an agent reads the
+//      same with bitmapData().
+const gdc = {n: -1, id: '', ins: null, insAt: 0, send: null, sendAt: 0, busy: false, err: '', key: '', tex: null};
+const GD_FLOORS = [[1, 'ice'], [2, 'water'], [5, 'grass'], [20, 'desert'], [100, 'fire'], [500, 'lava storm'], [Infinity, 'plasma']];
+const gdFloorOf = r => r == null ? null : (GD_FLOORS.find(f => r < f[0]) || GD_FLOORS[6])[1];
+const gdBtc = sats => (sats / 1e8).toLocaleString('en-GB', {maximumFractionDigits: 8}) + ' BTC';
+const gdWhen = s => s ? new Date(s * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC' : null;
+function gdAgo(s) { if (!s) return null; const d = Date.now() / 1000 - s; if (d < 3600) return Math.max(1, Math.round(d / 60)) + ' minutes ago'; if (d < 86400 * 2) return Math.round(d / 3600) + ' hours ago'; if (d < 86400 * 365 * 2) return Math.round(d / 86400) + ' days ago'; return (d / 86400 / 365.25).toFixed(1) + ' years ago'; }
+// read it all (your bitmap's own record, the mempool for its output, its block's facts)
+async function gdChainLoad(force) {
+  const C = room && room.at; if (!C || !C.gd) return; const n = C.gd.bm, id = C.gd.id || '';
+  if (gdc.n !== n || gdc.id !== id) Object.assign(gdc, {n, id, ins: null, insAt: 0, send: null, sendAt: 0, err: ''});
+  if (gdc.busy || (!force && gdc.insAt && Date.now() - gdc.insAt < 120000)) return; gdc.busy = true;
+  const here = () => room && room.at && room.at.gd && room.at.gd.bm === n;
+  try {
+    if (!gdMeta.has(n)) { try { await gdBlockValues(n); } catch (e) {} }
+    if (id) { try { const d = await galGet('/r/inscription/' + id); if (!here()) return; gdc.ins = {num: d.number, h: d.height, ts: d.timestamp, addr: typeof d.address === 'string' ? d.address : '', sat: d.sat, out: d.output || ''}; gdc.insAt = Date.now(); } catch (e) { gdc.err = 'the chain could not be read just now'; } }
+    const o = gdc.ins && gdc.ins.out, [tx, vo] = String(o || '').split(':');
+    if (/^[0-9a-f]{64}$/.test(tx || '')) { try { const sp = await (await mpFetch('/api/tx/' + tx + '/outspend/' + vo, null, 10000)).json(); gdc.send = {spent: !!(sp && sp.spent), waiting: !!(sp && sp.spent && !(sp.status && sp.status.confirmed)), tx: sp && sp.txid || ''}; gdc.sendAt = Date.now(); } catch (e) { gdc.send = null; } }
+  } finally { gdc.busy = false; }
+}
+// the board's pages, as data (the board, the window and an agent read the same)
+const GD_CPAGES = ['your bitmap', 'its block', 'bitmaps here'];
+function gdChainData(page) {
+  const C = room && room.at; if (!C || !C.gd) return {error: 'you are not in the bitmap garden'};
+  const n = C.gd.bm, I = gdc.n === n ? gdc.ins : null, M = gdMeta.get(n), P = GD_CPAGES.includes(page) ? page : 'your bitmap', out = {page: P};
+  if (P === 'your bitmap') {
+    Object.assign(out, {bitmap: n + '.bitmap', inscription: I && I.num != null ? '#' + fmtN(I.num) : null, inscriptionId: C.gd.id || null,
+      claimed: I && I.h != null ? 'in block ' + fmtN(I.h) + (I.h > n ? ', ' + fmtN(I.h - n) + ' blocks after the block it claims' : ', the block it claims') + (I.ts ? ' (' + gdWhen(I.ts) + ')' : '') : null,
+      theClaim: 'the first proper "' + n + '.bitmap": the real claim of block ' + fmtN(n) + ' (checked on the chain when you came in)',
+      wallet: I ? (I.addr && own.addr && I.addr === own.addr ? 'in your wallet: the chain agrees' : I.addr ? 'the chain says it is no longer in your wallet' : null) : null,
+      sat: I && I.sat != null ? fmtN(I.sat) + ' (' + (q => q.r + (q.tags.length ? ', ' + q.tags.join(', ') : ''))(clRarity(I.sat)) + ')' : null,
+      moved: I && I.out ? (I.out.split(':')[0] === String(C.gd.id || '').slice(0, 64) ? 'still in the output it was made in' : 'it has moved since it was made') : null,
+      beingSent: gdc.n === n && gdc.send ? (gdc.send.waiting ? 'yes: a transaction moving it is waiting to be mined (' + gdc.send.tx + ')' : 'no') : null,
+      read: gdc.busy ? 'reading the chain…' : gdc.err || (gdc.insAt ? 'read ' + Math.max(0, Math.round((Date.now() - gdc.insAt) / 60000)) + ' min ago' : 'not read yet')});
+  } else if (P === 'its block') {
+    if (!M) out.block = fmtN(n) + ' (being read…)';
+    else { const sub = subsidy(n);
+      Object.assign(out, {block: fmtN(n), mined: gdWhen(M.time) + (gdAgo(M.time) ? ' · ' + gdAgo(M.time) : ''), foundBy: M.pool || null, blocksAgo: tipH >= n ? fmtN(tipH - n) + ' blocks ago' : null,
+        transactions: fmtN(M.count) + ': each one is a parcel of your bitmap (a square in its picture)', size: M.size ? (M.size / 1e6).toFixed(2) + ' MB' : null, weight: M.weight ? fmtN(M.weight) + ' weight units' : null,
+        fees: M.fees != null ? gdBtc(M.fees) : null, middleFee: M.median != null ? (Math.round(M.median * 10) / 10) + ' sat/vB (a ' + gdFloorOf(M.median) + ' floor in its hall)' : null,
+        minerGot: M.fees != null ? gdBtc(sub + M.fees) + ' (' + gdBtc(sub) + ' new coins + the fees)' : gdBtc(sub) + ' in new coins (the fees: not read right now)',
+        halvingEra: (Math.floor(n / EPOCH) + 1) + ' (' + gdBtc(sub) + ' a block)', biggest: M.big ? gdBtc(M.big.value) + ' moved in one transaction' + (M.big.id ? ' (' + M.big.id + ')' : '') : null, hash: M.hash}); }
+  } else {
+    const L = [{who: clName(clMe()) + ' (you)', bitmap: n + '.bitmap'}];
+    for (const Mt of crew.mates.values()) if (Mt.shown && Mt.s && Mt.s.in && Mt.s.h === GARDEN && Mt.s.bm >= 0) L.push({who: clName(Mt.id), bitmap: Mt.s.bm + '.bitmap'});
+    out.here = L; out.note = 'each bitmap here was checked on the chain as its holder\'s own';
+  }
+  return out;
+}
+// the window (E at the board)
+function gdChainOpen(pg) {
+  pg = GD_CPAGES.includes(pg) ? pg : 'your bitmap'; gdChainLoad(false);
+  clWin(s => { const h = document.createElement('h3'); h.textContent = 'THE BITMAP GARDEN · CHAIN DATA'; s.appendChild(h); const b = document.createElement('div'); b.className = 'b'; s.appendChild(b);
+    for (const P of GD_CPAGES) { const x = document.createElement('button'); x.textContent = P.toUpperCase(); if (P === pg) x.className = 'on'; x.onclick = () => gdChainOpen(P); b.appendChild(x); }
+    const c = document.createElement('button'); c.textContent = 'CLOSE (Esc)'; c.onclick = clWinClose; b.appendChild(c);
+    const pre = document.createElement('pre'); pre.textContent = clTermText(gdChainData(pg)); s.appendChild(pre); gdc.pg = pg; }, 'g');
+}
+// still open while it is read: show the new facts as they come
+setInterval(() => { if (typeof $clw !== 'undefined' && $clw.classList.contains('on') && $clw.querySelector('.s.g') && gdc.pg) { const pre = $clw.querySelector('pre'), t = clTermText(gdChainData(gdc.pg)); if (pre && pre.textContent !== t) pre.textContent = t; } }, 1000);
+// what you are looking at: the board (close by, in front of it)
+function gdBoardAct(p, C, ray) {
+  const B = GD_BOARD, dx = B.x - p.x, dz = C.z0 + B.z - p.z, e = Math.hypot(dx, dz); if (e > 3.2) return null;
+  if ((-dx) * gdBoardN[0] + (-dz) * gdBoardN[1] < .1) return null;   // (only from its front)
+  if (ray && clRayRect(ray, B.x, B.y, C.z0 + B.z, gdBoardN, B.w + .2, B.h + .3, 4) < 0 && e > 1.4) return null;
+  return {a: 'board', ray: true, label: 'read the chain data board'};
+}
+// the sheet on the board: a summary in big letters (painted again when what it says changes)
+function gdBoardLines() {
+  const C = room && room.at, n = C && C.gd ? C.gd.bm : -1, I = gdc.n === n ? gdc.ins : null, M = gdMeta.get(n), L = [];
+  L.push(['CHAIN DATA · ' + n + '.bitmap', 'h']);
+  L.push([I && I.num != null ? 'inscription #' + fmtN(I.num) + (I.h != null ? ' · claimed in block ' + fmtN(I.h) : '') : 'reading the chain…', '']);
+  L.push([I ? (I.addr && own.addr && I.addr === own.addr ? 'in your wallet · the chain agrees' : 'not in your wallet now') + (gdc.send && gdc.send.waiting ? ' · being sent' : '') : '', 'g']);
+  L.push(['THE BLOCK', 's']);
+  L.push([M ? 'mined ' + new Date(M.time * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}) + (M.pool ? ' by ' + M.pool : '') : 'being read…', '']);
+  L.push([M ? fmtN(M.count) + ' transactions = ' + fmtN(M.count) + ' parcels' : '', '']);
+  L.push([M && M.median != null ? 'middle fee ' + (Math.round(M.median * 10) / 10) + ' sat/vB · ' + gdFloorOf(M.median) + ' floor' : M ? (M.size / 1e6).toFixed(2) + ' MB' : '', '']);
+  L.push(['press E to read it all', 'f']);
+  return L;
+}
+function gdBoardTex() {
+  const L = gdBoardLines(), key = JSON.stringify(L); if (gdc.tex && gdc.key === key) return gdc.tex; gdc.key = key;
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 732; const c = cv.getContext('2d'), mono = 'ui-monospace,Menlo,Consolas,monospace';
+  c.fillStyle = '#16231b'; c.fillRect(0, 0, 1024, 732); c.strokeStyle = '#d9a440'; c.lineWidth = 10; c.strokeRect(10, 10, 1004, 712); c.textAlign = 'center'; c.textBaseline = 'middle';
+  let y = 78;
+  for (const [t, k] of L) {
+    if (k === 'h') { c.font = '800 54px ' + mono; c.fillStyle = '#ffd36b'; c.fillText(t, 512, y); y += 40; c.fillStyle = 'rgba(217,164,64,.6)'; c.fillRect(60, y, 904, 3); y += 52; continue; }
+    if (k === 's') { y += 14; c.font = '800 34px ' + mono; c.fillStyle = '#ffb04a'; c.fillText(t, 512, y); y += 56; continue; }
+    if (k === 'f') { c.font = '600 28px ' + mono; c.fillStyle = 'rgba(232,211,164,.7)'; c.fillText(t, 512, 682); continue; }
+    c.font = (k === 'g' ? '700 ' : '600 ') + '36px ' + mono; c.fillStyle = k === 'g' ? '#8fe08a' : '#efe6cf';
+    let s = t; while (s && c.measureText(s).width > 940) s = s.slice(0, -2); c.fillText(s === t ? s : s + '…', 512, y); y += 62;
+  }
+  if (gdc.tex) gl.deleteTexture(gdc.tex);
+  const tx = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tx); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv); gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  return gdc.tex = tx;
+}
+// drawn with the garden's picture program (its plaque shape, made the sheet's size, turned to face the path)
+function gdBoardDraw(T, Lt, zo, G) {
+  const B = GD_BOARD, sx = B.w / 1.3, sy = B.h / .46, U = gdBoardU, Nn = gdBoardN;
+  gl.bindTexture(gl.TEXTURE_2D, gdBoardTex()); gl.uniform1f(T.u.uGlow, .14 + Lt.night * .4);
+  gl.uniformMatrix4fv(T.u.uM, false, [U[0] * sx, 0, U[1] * sx, 0, 0, sy, 0, 0, Nn[0], 0, Nn[1], 0, B.x + Nn[0] * .002, B.y, zo + B.z + Nn[1] * .002, 1]);
+  gl.bindVertexArray(G.plaque.vao); gl.drawArrays(gl.TRIANGLES, 0, G.plaque.n);
+}
 function gdFrame(W, H, tn, dpr) {
   const G = gdBuild(), PR = G.PR, C = room.rooms[1];
   const dt = Math.min(.05, Math.max(0, tn - (rmLast || tn))); rmLast = tn;
@@ -12028,7 +12155,7 @@ function gdFrame(W, H, tn, dpr) {
     gl.useProgram(T.p); gl.uniformMatrix4fv(T.u.uVP, false, VP); gl.uniform3fv(T.u.uSun, ld); gl.uniform3fv(T.u.uSunC, Lt.sunC); gl.uniform3fv(T.u.uSkyA, Lt.skyA); gl.uniform1i(T.u.uTex, 0); gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, G.tex); gl.uniform1f(T.u.uGlow, .35 + Lt.night * .5); gl.uniformMatrix4fv(T.u.uM, false, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, y, zo - 50, 1]); gl.bindVertexArray(G.cube.vao); gl.drawArrays(gl.TRIANGLES, 0, G.cube.n);
     for (let i = 0; i < (G.mail.n || 0); i++) { const [x, z, f] = G.mail.at[i]; gl.bindTexture(gl.TEXTURE_2D, G.mail.tex[i]); gl.uniform1f(T.u.uGlow, .15 + Lt.night * .25); gl.uniformMatrix4fv(T.u.uM, false, [0, 0, -.22 * f, 0, 0, .26, 0, 0, f, 0, 0, 0, x + f * .055, .72, zo + z, 1]); gl.bindVertexArray(G.plaque.vao); gl.drawArrays(gl.TRIANGLES, 0, G.plaque.n); }
-    gl.bindVertexArray(G.plaque.vao); gdSigns(T, Lt, zo);
+    gl.bindVertexArray(G.plaque.vao); gdSigns(T, Lt, zo); gdBoardDraw(T, Lt, zo, G);
     if (G.plaqueTex) { gl.bindTexture(gl.TEXTURE_2D, G.plaqueTex); gl.uniform1f(T.u.uGlow, .12 + Lt.night * .35); gl.uniformMatrix4fv(T.u.uM, false, [1, 0, 0, 0, 0, Math.cos(-.12), Math.sin(-.12), 0, 0, -Math.sin(-.12), Math.cos(-.12), 0, 0, .62, zo - 50 + .985, 1]); gl.bindVertexArray(G.plaque.vao); gl.drawArrays(gl.TRIANGLES, 0, G.plaque.n); } }
   // people
   gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); if (crewList.length) chDraw(crewList, VP, eye, 0, 0); if (crew.hum && crew.hum.length) ppSafe(() => BCH.draw(crew.hum, VP, eye, {mir: 0, rf: 0})); gl.disable(gl.CULL_FACE);
@@ -12839,6 +12966,7 @@ document.head.insertAdjacentHTML('beforeend', '<style>#clw{position:fixed;inset:
   '#clw .s{width:min(760px,94vw);max-height:84vh;overflow:auto;padding:18px 20px;border-radius:14px;background:#031207;border:3px solid #6f6a55;box-shadow:0 0 0 6px #cfc6ac,0 0 40px rgba(60,255,120,.25) inset;color:#55ff7a;font:14px/1.45 ui-monospace,Menlo,Consolas,monospace;text-shadow:0 0 6px rgba(80,255,120,.6)}' +
   '#clw .s.p{background:#110d18;color:#f2e8d0;border-color:#d8b45a;box-shadow:0 0 0 4px #2a1e08;text-shadow:none}#clw h3{margin:0 0 8px;font-size:16px;letter-spacing:.08em}#clw .b{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}' +
   '#clw button{font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;padding:6px 9px;border-radius:7px;border:1px solid #2f8a45;background:#062a12;color:#7dff9a;cursor:pointer}#clw button.on{background:#2fd35a;color:#031207}' +
+  '#clw .s.g{background:#16231b;color:#efe6cf;border-color:#d9a440;box-shadow:0 0 0 4px #3a2616;text-shadow:none}#clw .s.g button{border-color:#8a6a2a;background:#22331f;color:#ffd36b}#clw .s.g button.on{background:#ffd36b;color:#16231b}' +
   '#clw .s.p button{border-color:#8a6a2a;background:#2a1e08;color:#ffd36b}#clw .s.p button.on{background:#ffd36b;color:#2a1e08}#clw pre{margin:0;white-space:pre-wrap;font:inherit}#clw img{max-width:100%;border-radius:8px;display:block;margin:0 auto 10px}</style>');
 function clWin(build, cls) { if (document.pointerLockElement) document.exitPointerLock(); $clw.innerHTML = ''; const s = document.createElement('div'); s.className = 's' + (cls ? ' ' + cls : ''); $clw.appendChild(s); build(s); $clw.classList.add('on'); }
 function clWinClose() { $clw.classList.remove('on'); $clw.innerHTML = ''; }
@@ -13324,7 +13452,7 @@ function ciData(tab) {
         ['draughts', 'sit on a sofa ([E]), click your piece, then a marked square'], ['four in a row', 'sit on a sofa ([E]), then click a column'],
         ['light switch', 'changes the lights for everyone: once every 3 minutes each'], ['jukebox, terminal, pictures', '[E] opens them, [Esc] closes']]});
       if (w === 'garden') S.push({t: 'the garden', rows: [['[E] (or click)', 'sit, swing, slide, swim, pour a drink, play a game: the words near the middle say what'],
-        ['your bitmap in its case', 'click it to go back the way you came']]});
+        ['the chain data board', 'beside the case: [E] reads your bitmap and its block, from the chain'], ['your bitmap in its case', 'click it to go back the way you came']]});
       if (crewOn) S.push({t: 'with a crew', rows: [['[Enter]', 'crew chat'], ['[Q]', 'moves and emotes ([Tab] for the next set, [1] to [9] to do one)'], ['click a crewmate\'s name', 'mute or unmute them (their voice, chat and trade messages)']]
         .concat(w === 'garden' || w === 'club' ? [['look at a crewmate + [E]', 'ask them to play: then [1] [2] [3] picks the game, [Esc] stops'], ['[Y] / [N]', 'yes or no, when someone asks you']] : [])});
     }
@@ -14674,6 +14802,10 @@ window.AgentKit = window.AgentKit || (() => {
       run: ({page}) => { const D = ciData(/how/i.test(String(page || '')) ? 'how' : 'keys'); return {ok: true, where: D.where, page: /how/i.test(String(page || '')) ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG}; }},
     {name: 'controls', ro: true, does: 'The list a person sees behind the i button (top left, on a computer): the buttons and keys for where you are now, and how to: staying safe, who is who (people, AI agents, NPCs), muting, the wallet (read only), getting into the bitmap garden and the clubs, the trade floor (nothing is ever traded here: trades happen off this app), and the block halls. You play with these kit tools, not keys.', args: [{name: 'page', does: '"keys" (the default) or "how to"'}],
       run: ({page}) => { const D = ciData(/how/i.test(String(page || '')) ? 'how' : 'keys'); return {ok: true, where: D.where, page: /how/i.test(String(page || '')) ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG}; }},
+    {name: 'controls', ro: true, does: 'The list a person sees behind the i button (top left, on a computer): the buttons and keys for where you are now, and how to: staying safe, who is who (people, AI agents, NPCs), muting, the wallet (read only), getting into the bitmap garden and the clubs, the trade floor (nothing is ever traded here: trades happen off this app), and the block halls. You play with these kit tools, not keys.', args: [{name: 'page', does: '"keys" (the default) or "how to"'}],
+      run: ({page}) => { const D = ciData(/how/i.test(String(page || '')) ? 'how' : 'keys'); return {ok: true, where: D.where, page: /how/i.test(String(page || '')) ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG}; }},
+    {name: 'bitmapData', ro: true, untrusted: true, does: 'In the bitmap garden: the chain data board beside the case, as data. Your bitmap (its inscription, when it was claimed, its sat and how rare, whether the chain says it is in your wallet, whether it is being sent right now), its block (when it was mined and by which pool, its transactions: each one a parcel of the bitmap, its size, fees, middle fee and floor, what the miner got) and the bitmaps here. Read fresh from the chain (again after two minutes); what cannot be read right now is left out.', args: [{name: 'refresh', type: 'boolean', does: 'true to read the chain again now'}],
+      run: async ({refresh}) => { if (!(inRoom() && room.at.gd)) return {ok: false, error: 'you are not in the bitmap garden: bitmapGarden() goes in'}; await gdChainLoad(!!refresh); if (!gdMeta.has(room.at.gd.bm)) await until(() => gdMeta.has(room.at.gd.bm), 20000); return {ok: true, yourBitmap: gdChainData('your bitmap'), itsBlock: gdChainData('its block'), bitmapsHere: gdChainData('bitmaps here'), board: 'goTo({place: "chain data board"}) then use() opens it on your screen, as a player reads it'}; }},
     {name: 'club', ro: true, untrusted: true, does: 'In a collection\'s members\' club: the collection, who is here, where each place is (for goTo), the darts scores, the draughts board and its legal moves, the four-in-a-row frame, the show stand, the jukebox, the lights, asks to play, and how to play each.', run: () => { const I = clAgentInfo(); return I ? Object.assign(I, {room: roomInfo()}) : {ok: false, error: 'you are not in a club: clubEnter() goes in'}; }},
     {name: 'clubEnter', does: 'Go into a collection\'s members\' club, as a player does: hold the collection\'s parent (on its pedestal in its gallery) and press ENTER THE CLUB. Your wallet must hold the parent or one of its children, and the chain must agree the piece is in your wallet now (an agent proves its own wallet with walletProve() on the play together page). In a gallery it walks to the pedestal and picks the parent up; give the parent\'s inscription id to go to that collection\'s gallery first.', args: [{name: 'collection', does: 'the parent\'s inscription id (leave it out in a gallery: that gallery\'s collection)'}],
       run: async ({collection}) => {
