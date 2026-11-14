@@ -1,0 +1,52 @@
+name: film-v2 (temporary)
+on:
+  push:
+    branches: [video-v2]
+    paths: ['.github/film2/go.json']
+permissions:
+  contents: write
+concurrency: {group: film-v2, cancel-in-progress: true}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      scenes: ${{ steps.p.outputs.scenes }}
+      mode: ${{ steps.p.outputs.mode }}
+      game: ${{ steps.p.outputs.game }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: video-v2}
+      - id: p
+        run: |
+          echo "scenes=$(jq -c .scenes .github/film2/go.json)" >> "$GITHUB_OUTPUT"
+          echo "mode=$(jq -r .mode .github/film2/go.json)" >> "$GITHUB_OUTPUT"
+          echo "game=$(jq -r '.game // "block-cube.html"' .github/film2/go.json)" >> "$GITHUB_OUTPUT"
+  film:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        scene: ${{ fromJSON(needs.plan.outputs.scenes) }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: video-v2}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install playwright pillow && python -m playwright install --with-deps chromium && sudo apt-get install -y -q ffmpeg
+      - run: |
+          (cd .github/film2 && python -m http.server 8000 --bind 127.0.0.1 > /dev/null 2>&1 &)
+          sleep 2
+          GAME=${{ needs.plan.outputs.game }} python -u .github/film2/film2.py ${{ matrix.scene }} frames ${{ needs.plan.outputs.mode }}
+        continue-on-error: true
+      - if: always()
+        run: |
+          M=${{ needs.plan.outputs.mode }}; G=${{ needs.plan.outputs.game }}; S=${G%%.html}-${{ matrix.scene }}; mkdir -p out/$M
+          if [ "$M" = "full" ]; then ffmpeg -y -loglevel error -framerate 30 -i frames/f%04d.jpg -c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p out/$M/$S.mp4 || true; fi
+          cp frames/log.json out/$M/$S-log.json || true
+          for f in frames/f*.jpg; do [ -e "$f" ] || continue; n=$(basename $f .jpg); i=$((10#${n#f})); if [ "$M" = "probe" ] || [ $((i % 60)) -eq 0 ]; then cp $f out/$M/$S-$n.jpg; fi; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -A out && git commit -q -m "Temporary: video scene $S ($M)" || exit 0
+          for i in 1 2 3 4 5 6 7 8 9 10; do git pull -q --rebase && git push && break; sleep $((RANDOM % 20 + 5)); done
