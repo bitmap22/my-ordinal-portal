@@ -73,7 +73,7 @@
     if (!s) return null;
     if (w.what === 'block' || w.what === 'kind') return 'the newest block is ' + fmt(s.tip);
     if (w.what === 'inscription') return s.spentBy ? 'it is moving: transaction ' + s.spentBy.slice(0, 12) + '… is ' + (s.confirmed ? 'in a block' : 'waiting to be mined') : 'it sits at ' + s.satpoint + (s.holder ? ', held by ' + s.holder : '');
-    if (w.what === 'address') { const [c, u] = String(s.bal).split(':').map(Number); return 'it holds ' + doge(c) + ' DOGE' + (u ? ' (and ' + doge(u) + ' waiting)' : ''); }
+    if (w.what === 'address') { const [c, u] = String(s.bal).split(':').map(Number); return 'it holds ' + doge(c) + ' DOGE' + (u ? ' (' + (u > 0 ? '+' : '') + doge(u) + ' DOGE waiting to be mined)' : ''); }
   }
 
   /* ---------- each later look: what changed, as alerts ---------- */
