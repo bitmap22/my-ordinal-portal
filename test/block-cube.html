@@ -12170,6 +12170,7 @@ void main(){
  else if(vM>6.5&&vM<7.5){vec3 r=reflect(-vd,n);vec3 env=mix(vec3(.02,.02,.03),mix(uMood1,uMood2,.5+.5*sin(r.x*3.+r.z*2.))*.55+uAmb,smoothstep(-.3,.6,r.y));K=K*.15+env*K*1.2;sp=.9;shin=140.;}
  else if(vM>7.5&&vM<8.5){vec2 q=abs(n.y)>.5?vW.xz:abs(n.x)>.5?vW.zy:vW.xy;float g=sin(q.x*40.+gn(q*vec2(2.,30.))*9.)*.5+.5;K*=.72+.4*g*gn(q*vec2(3.,60.));sp=.3;shin=60.;}
  else if(vM>8.5&&vM<9.5){o=fin(K*1.6,.7);return;}
+ else if(vM>18.5&&vM<19.5){float f=(1.-vT.y);f=f*f*(3.-2.*f);o=vec4(pow(K*(.5+uNeon*.5+uPulse),vec3(.4545))*f*.55,0.);return;}   // the cove's glow on the ceiling (added on)
  else if(vM>10.5&&vM<11.5){vec3 lp=vW-uLv;float y=lp.y,t=uNow*.25;float b=0.;for(int i=0;i<4;i++){float fi=float(i);vec3 c=vec3(sin(t*.7+fi*2.1)*.02,mod(t*(.15+fi*.04)+fi*.31,1.)*.3+.04,cos(t*.5+fi*1.3)*.02);b+=.0009/(dot(lp-c,lp-c)+.0004);}
   float wx=smoothstep(.9,1.4,b);vec3 L=mix(uLq*.6,K*1.4,wx);float fr=pow(1.-abs(dot(n,vd)),2.);o=fin(L*1.6+fr*.15,.75);return;}
  else if(vM>11.5&&vM<12.5){vec2 f=fract(vW.xz/.6);float j=min(min(f.x,1.-f.x),min(f.y,1.-f.y));K*=mix(.45,1.,smoothstep(0.,.03,j))*(.85+.2*gn(vW.xz*20.));}
@@ -12998,13 +12999,14 @@ function clDraw(B, VP, eye, Lt, tn, crewList, photo) {
   // the piece on show, turning in its case
   if (X.show) { const a = tn * .4, c = Math.cos(a), s = Math.sin(a), k = .3, y = 1.3 + Math.sin(tn * 1.2) * .02; gl.bindTexture(gl.TEXTURE_2D, X.show); gl.uniformMatrix4fv(T.u.uM, false, [c * k, 0, -s * k, 0, 0, k, 0, 0, s * k, 0, c * k, 0, CL_SHOW.x, y, CL_SHOW.z, 1]); gl.uniform3fv(T.u.uLit, litAt(0, 1.3, CL_SHOW.z)); gl.uniform1f(T.u.uGlow, .45); gl.uniform1f(T.u.uA, -1); gl.bindVertexArray(B.cube.vao); gl.drawArrays(gl.TRIANGLES, 0, 36); }
   // people
-  gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); if (crewList.length) chDraw(crewList, VP, eye, 0, 0); if (!photo && crew.hum && crew.hum.length) ppSafe(() => BCH.draw(crew.hum, VP, eye, {mir: 0, rf: 0})); gl.disable(gl.CULL_FACE);
+  gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); if (crewList.length) chDraw(crewList, VP, eye, 0, 0); if (crew.hum && crew.hum.length) ppSafe(() => BCH.draw(crew.hum, VP, eye, {mir: 0, rf: 0})); gl.disable(gl.CULL_FACE);
   // see-through last: the soft darkening under things, the glass, the lava lamps
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.depthMask(false);
   uni(); gl.vertexAttrib4f(5, 0, 0, 0, 0); gl.vertexAttrib4f(6, 1, 1, 1, 1);
   gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-1, -2); gl.bindVertexArray(B.sh.vao); gl.drawArrays(gl.TRIANGLES, 0, B.sh.n); gl.disable(gl.POLYGON_OFFSET_FILL);
   gl.bindVertexArray(B.gs.vao); gl.drawArrays(gl.TRIANGLES, 0, B.gs.n); if (PT && PT.ng) { gl.bindVertexArray(B.pintG.vao); gl.drawArrays(gl.TRIANGLES, 0, PT.ng); }
   gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
+  gl.bindVertexArray(B.wash.vao); gl.drawArrays(gl.TRIANGLES, 0, B.wash.n);   // (the cove's glow, added onto the ceiling)
   CL_LAVA.forEach((Lv, i) => { gl.uniform3f(u.uLv, Lv.x, Lv.y, Lv.z); gl.uniform3fv(u.uLq, Lv.l); gl.bindVertexArray(B.lava[i].vao); gl.drawArrays(gl.TRIANGLES, 0, B.lava[i].n); });
   gl.depthMask(true); gl.disable(gl.BLEND); gl.bindVertexArray(null);
 }
@@ -13089,7 +13091,7 @@ function clBuild() {
   const lbox = (v, T, x, y, z, sx, sy, sz, col, m = 0) => { const P = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(p => T([x + p[0] * sx / 2, y + p[1] * sy / 2, z + p[2] * sz / 2])), ref = T([x, y, z]);
     for (const f of [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]) { tri(v, P[f[0]], P[f[1]], P[f[2]], col, 0, m, ref); tri(v, P[f[0]], P[f[2]], P[f[3]], col, 0, m, ref); } };
   const at = (x, z, a) => { const c = Math.cos(a), s = Math.sin(a); return p => [x + c * p[0] + s * p[2], p[1], z - s * p[0] + c * p[2]]; };   // (local x across, local -z the way it faces)
-  const NEON1 = [-1, 0, 0], NEON2 = [-2, 0, 0], chrome = C(0xc8ccd4), lacq = C(0x0b0a10), walnut = C(0x4a2a17), velT = C(0x157a7c), velM = C(0xa3235f), velP = C(0x4b1f7a), velG = C(0xc98a1c);
+  const NEON1 = [-1, 0, 0], NEON2 = [-2, 0, 0], chrome = C(0xc8ccd4), lacq = C(0x0b0a10), walnut = C(0x4a2a17), velT = C(0x157a7c), velM = C(0xa3235f), velP = C(0x6a2fa6), velG = C(0xc98a1c);
   // ---- the room: checkerboard floor, the wallpaper above dark panelling with a chrome rail, the ceiling, the neon round it ----
   Q(st, [-W, 0, 0], [W, 0, 0], [W, 0, -L], [-W, 0, -L], [1, 1, 1], 1, [0, -1, -8]);
   Q(st, [-W, HT, 0], [W, HT, 0], [W, HT, -L], [-W, HT, -L], C(0x2a2433), 12, [0, HT + 1, -8]);
@@ -13108,6 +13110,9 @@ function clBuild() {
     const len = Math.hypot(x1 - x0, z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, sx = Math.abs(nz) > .5 ? len : .16, sz = Math.abs(nx) > .5 ? len : .16;
     box(st, cx + nx * .08, HT - .26, cz + nz * .08, sx, .05, sz, lacq, 18); box(st, cx + nx * .15, HT - .2, cz + nz * .15, Math.abs(nz) > .5 ? len : .02, .08, Math.abs(nx) > .5 ? len : .02, lacq, 18);
     box(st, cx + nx * .08, HT - .21, cz + nz * .08, Math.abs(nz) > .5 ? len - .1 : .025, .025, Math.abs(nx) > .5 ? len - .1 : .025, ch, 4); }
+  const wash = []; { const y = HT - .004, d = 1.1, sq = (a, b, c, e, col) => { for (const [p, u, t] of [[a, 0, 0], [b, 1, 0], [c, 1, 1], [a, 0, 0], [c, 1, 1], [e, 0, 1]]) put(wash, p, [0, -1, 0], col, 0, 19, u, t); };
+    sq([-W, y, -L], [W, y, -L], [W - d, y, -L + d], [-W + d, y, -L + d], NEON1); sq([W, y, 0], [-W, y, 0], [-W + d, y, -d], [W - d, y, -d], NEON1);
+    sq([-W, y, 0], [-W, y, -L], [-W + d, y, -L + d], [-W + d, y, -d], NEON2); sq([W, y, -L], [W, y, 0], [W - d, y, -d], [W - d, y, -L + d], NEON2); }
   // the doorway back to the gallery: a short dark passage, chrome round the opening
   { const d = CL.DOOR / 2; for (const s of [-1, 1]) box(st, s * (d + .04), 1.2, -.02, .08, 2.4, .1, chrome, 7); box(st, 0, 2.44, -.02, CL.DOOR + .16, .08, .1, chrome, 7);
     Q(st, [-d, 0, 0], [-d, 0, 1.6], [-d, 2.4, 1.6], [-d, 2.4, 0], C(0x0c0814), 0, [-d - 1, 1, .8]); Q(st, [d, 0, 0], [d, 0, 1.6], [d, 2.4, 1.6], [d, 2.4, 0], C(0x0c0814), 0, [d + 1, 1, .8]);
@@ -13251,7 +13256,7 @@ function clBuild() {
     for (const [n, u, v] of [[[0, 0, 1], [1, 0, 0], [0, 1, 0]], [[0, 0, -1], [-1, 0, 0], [0, 1, 0]], [[1, 0, 0], [0, 0, -1], [0, 1, 0]], [[-1, 0, 0], [0, 0, 1], [0, 1, 0]], [[0, 1, 0], [1, 0, 0], [0, 0, -1]], [[0, -1, 0], [1, 0, 0], [0, 0, 1]]])
       for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]) d.push(n[0] / 2 + u[0] * a / 2 + v[0] * c / 2, n[1] / 2 + u[1] * a / 2 + v[1] * c / 2, n[2] / 2 + u[2] * a / 2 + v[2] * c / 2, n[0], n[1], n[2], (a + 1) / 2, (1 - c) / 2);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 32, 24); gl.bindVertexArray(null); return {vao, n: 36}; })();
-  cl.built = {PR: clPrograms(), st: mk(st), gs: mk(gs), sh: mk(sh), lava: lavaV, ball: mk(ball), quad: clQuadVAO(), cube,
+  cl.built = {PR: clPrograms(), st: mk(st), gs: mk(gs), sh: mk(sh), wash: mk(wash), lava: lavaV, ball: mk(ball), quad: clQuadVAO(), cube,
     dart: gdVAOdyn(dart, 24), man: gdVAOdyn(man, 48), disc: gdVAOdyn(disc, 42), tex: {}, frames: CL_FRAMES.map(() => ({tex: null, id: '', n: null, info: null})), pintB: null};
   clTextures(cl.built);
   return cl.built;
