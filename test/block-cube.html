@@ -1749,7 +1749,7 @@ async function decodeArt(a) {
 // colour (and its colour picture, when it has one), lit from above; seen from the front, a little from the right and above, on a
 // clear background. Nothing is added or guessed: a model that needs an extension to be read (squeezed meshes and the like), or that
 // fetches parts from elsewhere, is not drawn (its number shows, as before).
-const MDL_RE = /^model\/(gltf(-binary|\+json)|stl)\b/, STL_RE = /^model\/stl\b/;
+const MDL_RE = /^model\/(gltf(-binary|\+json)|stl)\b/, STL_RE = /^model\/stl\b/, OCT_RE = /^(application\/octet-stream|unknown|)$/i;   // (OCT_RE: a file with no type of its own: read once when picked up, in case it is a 3D file with no shape, like a VRM move)
 const stlOf = t => !!(t && (t.ins && t.ins.some(x => STL_RE.test(x.ct || '')) || STL_RE.test(t.ct || '')));   // (a parcel whose 3D model is an STL)
 const mdl = {gl: null, busy: Promise.resolve()};
 function mdlCtx() {
@@ -2911,7 +2911,9 @@ function preview(t) {
     $cp.style.display = w ? 'block' : 'none'; $cp.innerHTML = w ? '<div class="pv0">loading the inscription…</div>' : ''; return;
   }
   const k = (t._pi || 0) % ids.length, base = cur && cur.ordBase != null ? cur.ordBase : 'https://ordinals.com';
-  if (room && MDL_RE.test(t.ins && t.ins[k] ? t.ins[k].ct || '' : t.gal ? t.ct || '' : '')) { mdlPv(t, ids, k, base); return; }
+  const ck = t.ins && t.ins[k] ? t.ins[k].ct || '' : t.gal ? t.ct || '' : '';
+  if (room && MDL_RE.test(ck)) { mdlPv(t, ids, k, base); return; }
+  if (room && OCT_RE.test(ck) && ids[k]) { const K = mdlKindOf(ids[k]); if (K && K.empty) { mdlPv(t, ids, k, base); return; } if (K === undefined) mdlKind(ids[k]).then(K => { if (K.empty && sel === t && (t._pi || 0) % ids.length === k) preview(t); }); }
   $cp.style.display = 'block';
   $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>`;
   $cp.append(pvRow(ids, k, t));
@@ -3025,7 +3027,7 @@ function mdlPv(t, ids, k, base) {
     $cp.style.display = 'block'; $cp.innerHTML = ''; const d = document.createElement('div'); d.className = 'pvm pvf'; const cv = document.createElement('canvas'); cv.width = 300; cv.height = 340; d.append(cv);
     const n = document.createElement('div'); n.className = 'pvt'; n.textContent = 'a VRM move (movements only): played here on one of Block Hall\u2019s people';
     if (crew.on) { const b = document.createElement('button'); b.textContent = 'TRY THIS MOVE'; b.title = 'do it yourself: your crew sees it (move to stop)'; b.onclick = e => { e.stopPropagation(); mvTry(ids[k]); }; n.append(b); }
-    $cp.append(d, n, pvRow(ids, k, t)); mvPlay(cv, ids[k], {fail: () => { if (sel === t) words(); }}); return;
+    $cp.append(d, n, pvRow(ids, k, t)); mvPlay(cv, ids[k], {fail: () => { if (sel === t && (t._pi || 0) % ids.length === k) words(); }}); return;
   }
   if (K.empty) { words(); return; }
   const id = K.ptr ? K.ptr.id : ids[k], ct = K.ptr ? K.ptr.ct : (t.ins && t.ins[k] ? t.ins[k].ct || '' : t.ct || '');
@@ -7609,10 +7611,12 @@ function vwRender() {
   $vwm.textContent = vw.live ? 'LIVE VIEW' : 'SAFE VIEW'; $vw.classList.toggle('live', vw.live);
   const lb = document.getElementById('vwl'); lb.textContent = vw.live ? 'BACK TO SAFE' : 'GO LIVE';
   let what = '', runs = false, quiet = false;
-  if (it.k === 'ins' && MDL_RE.test(it.type || '') && !it.del && !it.ptrFrom && !it.empty) {   // (what this 3D model inscription really is: read once)
-    const K = mdlKindOf(it.id);
-    if (K === undefined) { $vwc.innerHTML = '<div class="wait">READING ITS 3D MODEL\u2026</div>'; lb.style.display = 'none'; $vwo.style.display = $vwv.style.display = 'none'; $vwn.textContent = (n > 1 ? (vw.i + 1) + ' of ' + n + ' \u00b7 ' : '') + 'reading its 3D model'; mdlKind(it.id).then(() => { if (vw && vw.items[vw.i] === it) vwRender(); }); return; }
-    if (K.ptr) { it.ptrFrom = it.id; it.id = K.ptr.id; it.type = K.ptr.ct; it.num = K.ptr.n; }
+  const oct = it.k === 'ins' && !MDL_RE.test(it.type || '') && OCT_RE.test(it.type || '') && !it.octSeen;   // (a file with no type of its own: is it a 3D file with no shape, like a VRM move?)
+  if (it.k === 'ins' && (MDL_RE.test(it.type || '') || oct) && !it.del && !it.ptrFrom && !it.empty) {   // (what this 3D model inscription really is: read once)
+    const K = mdlKindOf(it.id), wd = oct ? 'reading the file' : 'reading its 3D model';
+    if (K === undefined) { $vwc.innerHTML = '<div class="wait">' + wd.toUpperCase() + '\u2026</div>'; lb.style.display = 'none'; $vwo.style.display = $vwv.style.display = 'none'; $vwn.textContent = (n > 1 ? (vw.i + 1) + ' of ' + n + ' \u00b7 ' : '') + wd; mdlKind(it.id).then(() => { if (vw && vw.items[vw.i] === it) vwRender(); }); return; }
+    if (oct) { it.octSeen = 1; if (K.empty) it.empty = K; }
+    else if (K.ptr) { it.ptrFrom = it.id; it.id = K.ptr.id; it.type = K.ptr.ct; it.num = K.ptr.n; }
     else if (K.empty) it.empty = K;
   }
   if (it.k === 'ins') {
