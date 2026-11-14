@@ -12068,7 +12068,7 @@ async function clTravel() {
     if (room.held) rmPut(); select(null); vwClose();
     await rmFade(true);
     for (const R of room.rooms) rmFree(R);
-    room = {rooms: [null, null, null], p: {x: 0, z: -1.5, yaw: 0, pitch: -.03, vx: 0, vz: 0, ph: 0, bob: 0}, dirty: false, fixDirty: false, nPar: 0, nFix: 0, nDoor: 0, hov: ''};
+    room = {rooms: [null, null, null], p: {x: 0, z: -1.5, yaw: 0, pitch: -.03, vx: 0, vz: 0, ph: 0, bob: 0}, dirty: false, fixDirty: false, nPar: 0, nFix: 0, nDoor: 0, hov: '-'};   // (so the gallery's last words under the cross are cleared)
     document.body.classList.add('room', 'cl'); document.body.classList.remove('gal', 'galok', 'shw', 'showcp', 'holding', 'gdok', 'gd', 'clok'); $th.classList.add('on');
     const C = {h: CLUB, cl: {pid, from, me: M.id, meN: M.n, num: G ? G.num : null, name: G ? G.name || '' : '', n: G ? G.n : null}, ready: false, back: {to: NODOOR, o: 0}, front: {to: NODOOR, o: 0}, z0: 0, L: CL.L, plan: {items: [], labs: [], cats: [], nb: 0, side: 0, L: CL.L}};
     room.rooms[1] = C; room.at = C; cl.news = []; clGamesReset();
@@ -12136,7 +12136,7 @@ const CL_GOTO = {
   'draughts black side': [3.15, -9.85, 4.2, -9.85], 'draughts red side': [3.15, -12.55, 4.2, -12.55], 'draughts table': [3.45, -11.2, 4.6, -11.2],
   'four in a row red side': [3.15, -4.05, 4.2, -4.05], 'four in a row yellow side': [3.15, -6.75, 4.2, -6.75], 'four in a row table': [3.45, -5.4, 4.6, -5.4],
   'jukebox': [CL_JB.x, -14.4, CL_JB.x, -15.6], 'light switch': [CL_SW.x, -.9, CL_SW.x, 0], 'show stand': [0, -7.0, 0, -8.2], 'photo wall': [7.9, -1.65, 4.9, -1.65], 'camera': [4.2, -1.65, 4.9, -1.65],
-  'terminal': [-2.6, -1.9, -2.6, -.45], 'sofa': [-6.4, -1.6, -6.4, -.5], 'bean bags': [-4.0, -3.9, -4.1, -2.8], 'tv': [-6.0, -2.2, -6.0, -3.95], 'frames': [7.4, -7.95, 9, -7.95], 'door': [0, -1.2, 0, 0]};
+  'terminal': [-2.6, -1.9, -2.6, -.45], 'sofa': [-6.4, -1.6, -6.4, -.5], 'bean bags': [-4.0, -3.9, -4.1, -2.8], 'tv': [-4.7, -2.4, -6.0, -3.95], 'frames': [7.4, -7.95, 9, -7.95], 'door': [0, -1.2, 0, 0]};
 // ---- drawing the club: one shader for the room and everything in it, lit by coloured lights (spots, the neon round the
 //      ceiling, the lava lamps, the jukebox, the screens), no sun. Materials: 0 plain, 1 checkerboard floor, 2 the wallpaper
 //      (80s confetti), 3 velvet, 4 neon (glows; a colour of -1 or -2 takes the light's mood colour), 5 rug, 6 glass, 7 chrome,
@@ -12148,6 +12148,7 @@ uniform vec3 uE,uAmb,uMood1,uMood2;uniform float uNow,uDisco,uNeon,uPulse,uShA;u
 out vec4 o;
 ${GD_NOISE}
 float h3(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453);}
+vec4 fin(vec3 c,float a){return vec4(pow(max(c,vec3(0.)),vec3(.4545)),a);}   // (the room's colours as they were chosen: lit in light's own terms, then shown)
 vec3 moodOf(vec3 c){return c.r<-1.5?uMood2:c.r<-.5?uMood1:c;}
 // the mirror ball's spots: from the ball out through its turning facets, a spot where a facet sends one
 float discoAt(vec3 w){vec3 d=normalize(w-uBall);float a=uNow*.35,ca=cos(a),sa=sin(a);d=vec3(ca*d.x+sa*d.z,d.y,-sa*d.x+ca*d.z);
@@ -12162,15 +12163,15 @@ void main(){
   if(r<.3){vec2 a=abs(o2);s=step(a.x+a.y*1.7,.13)*step(-.07,o2.y);}else if(r<.55)s=smoothstep(.09,.07,length(o2))-smoothstep(.06,.04,length(o2));else if(r<.8)s=step(abs(o2.y-.06*sin(o2.x*28.)),.018)*step(abs(o2.x),.17);else s=step(length(o2),.03);
   K=mix(K,pc*.55,s*.85);em=s*uNeon*.35;sp=.03;}
  else if(vM>2.5&&vM<3.5){float q=gn(vW.xz*36.+vW.y*21.)*.5+gn(vW.yx*40.)*.5;K*=.8+.3*q;float rim=pow(1.-abs(dot(n,vd)),2.2);K*=1.+rim*.9;sp=.015;}
- else if(vM>3.5&&vM<4.5){float fl=uDisco>.5?.75+.25*sin(uNow*9.+vW.x*2.+vW.z):1.;o=vec4(K*(2.6+uPulse*2.)*fl,.85);return;}
+ else if(vM>3.5&&vM<4.5){float fl=uDisco>.5?.75+.25*sin(uNow*9.+vW.x*2.+vW.z):1.;o=fin(K*(2.6+uPulse*2.)*fl,.85);return;}
  else if(vM>4.5&&vM<5.5){vec2 q=vW.xz;float fib=gn(q*90.)*.5+gn(q*170.)*.5;vec2 c=floor(q/.6),f=fract(q/.6)-.5;float k=h3(vec3(c,7.));
   float pat=k<.5?step(abs(f.x+f.y),.08)+step(abs(f.x-f.y),.08):smoothstep(.16,.14,length(f))-smoothstep(.1,.08,length(f));K=mix(K,K.zxy*1.3+.04,clamp(pat,0.,1.)*.7);K*=.8+.35*fib;sp=.01;em=clamp(pat,0.,1.)*uNeon*.25;}
- else if(vM>5.5&&vM<6.5){float fr=pow(1.-abs(dot(n,vd)),3.);vec3 env=mix(uAmb*2.,uMood1*.5+uMood2*.3,.5+.5*reflect(-vd,n).y);o=vec4(mix(vec3(.02,.025,.03),env,fr)+K*.03,.1+fr*.55);return;}
+ else if(vM>5.5&&vM<6.5){float fr=pow(1.-abs(dot(n,vd)),3.);vec3 env=mix(uAmb*2.,uMood1*.5+uMood2*.3,.5+.5*reflect(-vd,n).y);o=fin(mix(vec3(.02,.025,.03),env,fr)+K*.03,.1+fr*.55);return;}
  else if(vM>6.5&&vM<7.5){vec3 r=reflect(-vd,n);vec3 env=mix(vec3(.02,.02,.03),mix(uMood1,uMood2,.5+.5*sin(r.x*3.+r.z*2.))*.55+uAmb,smoothstep(-.3,.6,r.y));K=K*.15+env*K*1.2;sp=.9;shin=140.;}
  else if(vM>7.5&&vM<8.5){vec2 q=abs(n.y)>.5?vW.xz:abs(n.x)>.5?vW.zy:vW.xy;float g=sin(q.x*40.+gn(q*vec2(2.,30.))*9.)*.5+.5;K*=.72+.4*g*gn(q*vec2(3.,60.));sp=.3;shin=60.;}
- else if(vM>8.5&&vM<9.5){o=vec4(K*1.6,.7);return;}
+ else if(vM>8.5&&vM<9.5){o=fin(K*1.6,.7);return;}
  else if(vM>10.5&&vM<11.5){vec3 lp=vW-uLv;float y=lp.y,t=uNow*.25;float b=0.;for(int i=0;i<4;i++){float fi=float(i);vec3 c=vec3(sin(t*.7+fi*2.1)*.02,mod(t*(.15+fi*.04)+fi*.31,1.)*.3+.04,cos(t*.5+fi*1.3)*.02);b+=.0009/(dot(lp-c,lp-c)+.0004);}
-  float wx=smoothstep(.9,1.4,b);vec3 L=mix(uLq*.6,K*1.4,wx);float fr=pow(1.-abs(dot(n,vd)),2.);o=vec4(L*1.6+fr*.15,.75);return;}
+  float wx=smoothstep(.9,1.4,b);vec3 L=mix(uLq*.6,K*1.4,wx);float fr=pow(1.-abs(dot(n,vd)),2.);o=fin(L*1.6+fr*.15,.75);return;}
  else if(vM>11.5&&vM<12.5){vec2 f=fract(vW.xz/.6);float j=min(min(f.x,1.-f.x),min(f.y,1.-f.y));K*=mix(.45,1.,smoothstep(0.,.03,j))*(.85+.2*gn(vW.xz*20.));}
  else if(vM>12.5&&vM<13.5){float fr=pow(1.-abs(dot(n,vd)),2.);K=K*(.9+fr)+uAmb*.2;sp=.8;shin=120.;em=.25;}
  else if(vM>13.5&&vM<14.5){vec2 u=vT;vec3 c;float hz=.42;
@@ -12196,12 +12197,12 @@ void main(){
   c+=K*uLC[i]*at*(max(dot(n,l),0.)*.85+.15);vec3 hv=normalize(l+vd);spec+=uLC[i]*at*pow(max(dot(n,hv),0.),shin)*sp;}
  if(uDisco>.01){float d=discoAt(vW);c+=K*d*uDisco*mix(vec3(1.),uMood1+uMood2,.4)*1.6;spec+=d*uDisco*.4*sp;}
  c+=spec+K*em;
- o=vec4(c,clamp(em*.6,0.,.8));}`);
+ o=fin(c,clamp(em*.6,0.,.8));}`);
   // pictures on quads: the dartboard, the chalkboard, the frames, the screens, the signs (lit by the room, or glowing)
   const T = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec2 aT;uniform mat4 uVP,uM;out vec2 vT;out vec3 vN;
 void main(){vT=aT;vN=mat3(uM)*aN;gl_Position=uVP*uM*vec4(aP,1.);}`,
   V + `in vec2 vT;in vec3 vN;uniform sampler2D uTex;uniform vec3 uAmb,uLit;uniform float uGlow,uA;out vec4 o;
-void main(){vec4 t=texture(uTex,vT);if(t.a<.02)discard;vec3 K=pow(t.rgb,vec3(2.2));vec3 c=K*(uAmb*1.2+uLit)+K*uGlow;o=vec4(c,uA<0.?uGlow*.4:uA);}`);
+void main(){vec4 t=texture(uTex,vT);if(t.a<.02)discard;vec3 K=pow(t.rgb,vec3(2.2));vec3 c=K*(uAmb*1.2+uLit)+K*uGlow;o=vec4(pow(max(c,vec3(0.)),vec3(.4545)),uA<0.?uGlow*.4:uA);}`);
   return {P, T};
 }
 // a quad for the pictures: a unit square facing +z (position, normal, place on the picture)
@@ -12795,7 +12796,7 @@ function clLights(tn) {
     [-4.5, 3.32, -4, a, cove], [4.5, 3.32, -4, b, cove], [-4.5, 3.32, -12, b, cove], [4.5, 3.32, -12, a, cove],
     [CL_TVS[0].x, 1.0, CL_TVS[0].z + .6, [.5, .55, .7], .35], [1.4, 2.0, -15.0, [1, .3, .6], .35 + (m === 2 ? .8 : .2)], [0, 3.3, -13, ww, 1.2 * spot]];
   const pl = new Float32Array(80), pc = new Float32Array(60); L.slice(0, 20).forEach((q, i) => { pl.set([q[0], q[1], q[2], q[4]], i * 4); pc.set(q[3], i * 3); });
-  const amb = m === 1 ? [.06, .04, .028] : m === 2 ? [.022, .012, .04] : m === 3 ? [.016, .012, .026] : [.04, .034, .036];
+  const amb = m === 1 ? [.075, .05, .035] : m === 2 ? [.03, .018, .05] : m === 3 ? [.02, .016, .03] : [.05, .042, .045];
   return {pl, pc, L, a, b, amb, disco: m === 3 ? 1 : 0, neon: m === 2 ? 1 : m === 3 ? .5 : 0, pulse};
 }
 // ---- walking: the walls, the furniture; the doorway takes you back to the gallery ----
@@ -13077,7 +13078,7 @@ function clBuild() {
   reseed(77001);
   const st = [], gs = [], sh = [], W = CL.W / 2, L = CL.L, HT = CL.HT;
   const Q = (v, a, b, c, d, col, m, ref) => { tri(v, a, b, c, col, 0, m, ref); tri(v, a, c, d, col, 0, m, ref); };
-  const QU = (v, a, b, c, d, n, col, m) => { for (const [p, u, t] of [[a, 0, 1], [b, 1, 1], [c, 1, 0], [a, 0, 1], [c, 1, 0], [d, 0, 0]]) put(v, p, n, col, 0, m, u, t); };   // (with a place on a picture, for the mural)
+  const QU = (v, a, b, c, d, n, col, m) => { for (const [p, u, t] of [[a, 0, 0], [b, 1, 0], [c, 1, 1], [a, 0, 0], [c, 1, 1], [d, 0, 1]]) put(v, p, n, col, 0, m, u, t); };   // (with a place on a picture, for the mural)
   // a box turned and placed by T (a function of a point), its faces turned out from its middle
   const lbox = (v, T, x, y, z, sx, sy, sz, col, m = 0) => { const P = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(p => T([x + p[0] * sx / 2, y + p[1] * sy / 2, z + p[2] * sz / 2])), ref = T([x, y, z]);
     for (const f of [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]) { tri(v, P[f[0]], P[f[1]], P[f[2]], col, 0, m, ref); tri(v, P[f[0]], P[f[2]], P[f[3]], col, 0, m, ref); } };
@@ -13085,7 +13086,7 @@ function clBuild() {
   const NEON1 = [-1, 0, 0], NEON2 = [-2, 0, 0], chrome = C(0xc8ccd4), lacq = C(0x0b0a10), walnut = C(0x4a2a17), velT = C(0x157a7c), velM = C(0xa3235f), velP = C(0x4b1f7a), velG = C(0xc98a1c);
   // ---- the room: checkerboard floor, the wallpaper above dark panelling with a chrome rail, the ceiling, the neon round it ----
   Q(st, [-W, 0, 0], [W, 0, 0], [W, 0, -L], [-W, 0, -L], [1, 1, 1], 1, [0, -1, -8]);
-  Q(st, [-W, HT, 0], [W, HT, 0], [W, HT, -L], [-W, HT, -L], C(0x15121c), 12, [0, HT + 1, -8]);
+  Q(st, [-W, HT, 0], [W, HT, 0], [W, HT, -L], [-W, HT, -L], C(0x2a2433), 12, [0, HT + 1, -8]);
   const paper = C(0x2a1640), wall = (a, b, y0, y1, ref) => Q(st, [a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]], paper, 2, ref);
   wall([-W, -L], [W, -L], 1.02, HT, [0, 1, -L - 1]); wall([-W, 0], [-W, -L], 1.02, HT, [-W - 1, 1, -8]); wall([W, 0], [W, -L], 1.02, HT, [W + 1, 1, -8]);
   wall([-W, 0], [-CL.DOOR / 2, 0], 1.02, HT, [0, 1, 1]); wall([CL.DOOR / 2, 0], [W, 0], 1.02, HT, [0, 1, 1]); wall([-CL.DOOR / 2, 0], [CL.DOOR / 2, 0], 2.4, HT, [0, 1, 1]);
