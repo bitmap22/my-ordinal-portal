@@ -2217,10 +2217,9 @@ function mdlMvPv(t, ids, mv) {
     info: (nm, i, N) => { n.textContent = 'a 3D model that moves by itself' + (N > 1 ? ': move ' + (i + 1) + ' of ' + N : '') + (nm ? ' (' + nm + ')' : '') + ', played here from its file'; },
     fail: A => { t.mdlMv = Object.assign({}, mv, {no: A && A.big ? 'big' : 'x'}); if (sel === t && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) preview(t); }});
 }
-// VIEW BIG: the held parcel, when the model shown is its own model (read with its block) and it moves by itself
-function vwMoving(it) {
-  const t = vw && vw.t, id0 = t && (t.ordIds && t.ordIds.length ? t.ordIds[0] : t.gid);
-  if (!t || !t.mdl || it.ptrFrom || id0 !== it.id) return null;
+// VIEW BIG: a parcel whose model (read with its block) moves by itself
+function vwMoving(t) {
+  if (!t || !t.mdl) return null;
   if (t.mdlMv === undefined) t.mdlMv = mdlMoving(t.mdl);
   return t.mdlMv && !t.mdlMv.no ? t : null;
 }
@@ -7786,7 +7785,7 @@ function vwItems(t, tx) {
     rows.push(...vwRows(t._marks || []));
     const pay = vwPay(t); L.push({k: 'info', title: pay ? (t._x.tx.vin[0] && t._x.tx.vin[0].is_coinbase ? 'NEW COINS \u00b7 NO INSCRIPTION OR STAMP' : 'A PAYMENT \u00b7 NO INSCRIPTION OR STAMP') : 'NO INSCRIPTION OR STAMP TO SHOW', rows, svg: pay});
   }
-  if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) L.unshift({k: 'pic', bytes: t.art.bytes, type: 'image/png', what: 'its 3D model · a picture drawn here from the model'});
+  if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) L.unshift({k: 'pic', bytes: t.art.bytes, type: 'image/png', what: 'its 3D model · a picture drawn here from the model', mdlT: t});
   if ((t.cat21 || t.labitbu) && t.art) L.unshift({k: 'pic', bytes: t.art.bytes, type: t.art.ct, what: t.cat21 ? 'its CAT-21 cat · drawn from this transaction and its block' : 'its Labitbu · the picture in its taproot control block'});
   return L;
 }
@@ -7860,16 +7859,6 @@ function vwRender() {
     }
     else if (it.empty) { what += ' \u00b7 no shape to show'; $vwc.innerHTML = '<div class="inf"><h3>' + (it.empty.moves ? 'A 3D ANIMATION' : 'NO SHAPE') + '</h3><div><span>it holds</span><b>' + vwEsc(mdlEmptyWords(it.empty)) + '</b></div></div>'; }
     else if (STL_RE.test(ty) && !it.del) { what += ' \u00b7 drag it to turn it'; vwStl(it); }   // (an STL model: ordinals.com shows none, so it is drawn here from the model and turned by dragging: nothing of it runs)
-    else if (MDL_RE.test(ty) && !STL_RE.test(ty) && !it.del && !vw.live && vwMoving(it)) {   // (a 3D model that moves by itself: played here from its file and turned by dragging; GO LIVE still shows ordinals.com's own viewer)
-      const t = vwMoving(it); runs = true; quiet = true; what += ' \u00b7 it moves by itself' + (t.mdlMv.n > 1 ? ' (' + t.mdlMv.n + ' moves, one after another)' : '') + ', played here from its file \u00b7 drag to turn it';
-      const cv = document.createElement('canvas'), hn = document.createElement('div'); cv.className = 'stl'; cv.width = cv.height = 640; hn.className = 'vh'; hn.textContent = 'Drag it to turn it'; $vwc.append(cv, hn);
-      it.turn = it.turn || {yaw: 0, pitch: 0}; it.draw = () => {}; it.busy = false;
-      const o = it.mm = {get yaw() { return it.turn.yaw; }, get pitch() { return it.turn.pitch; }, cv, fail: A => { t.mdlMv = Object.assign({}, t.mdlMv, {no: A && A.big ? 'big' : 'x'}); if (vw && vw.items[vw.i] === it) vwRender(); }};
-      let d = null; cv.onpointerdown = e => { d = {x: e.clientX, y: e.clientY}; try { cv.setPointerCapture(e.pointerId); } catch (er) {} cv.style.cursor = 'grabbing'; };
-      cv.onpointermove = e => { if (!d) return; hn.remove(); it.turn.yaw -= (e.clientX - d.x) * .01; it.turn.pitch = Math.max(-1.6, Math.min(1.6, it.turn.pitch + (e.clientY - d.y) * .01)); d = {x: e.clientX, y: e.clientY}; };
-      cv.onpointerup = cv.onpointercancel = () => { d = null; cv.style.cursor = ''; };
-      mdlMvPlay(cv, t.mdl, o);
-    }
     else if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
       runs = true; quiet = true;   // (GO LIVE is how it turns, so its button shows in SAFE VIEW too; the words below already say so)
       if (vw.live) $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'}));
@@ -7885,7 +7874,18 @@ function vwRender() {
     else if (ty === 'text/html' || ty === 'image/svg+xml') { runs = true; $vwc.appendChild(vwFrame({srcdoc: RR.utf8(it.bytes), sandbox: vw.live ? 'allow-scripts' : '', title: 'stamp'})); }   // (never our page's own origin)
     else { const p = document.createElement('pre'); p.textContent = RR.utf8(it.bytes.subarray(0, 200000)); $vwc.appendChild(p); }
     $vwo.style.display = $vwv.style.display = 'none';
+  } else if (it.k === 'pic' && vwMoving(it.mdlT)) {   // (its 3D model moves by itself: played here from its file and turned by dragging)
+    const t = it.mdlT; what = 'its 3D model \u00b7 it moves by itself' + (t.mdlMv.n > 1 ? ' (' + t.mdlMv.n + ' moves, one after another)' : '') + ', played here from its file \u00b7 drag to turn it';
+    const cv = document.createElement('canvas'), hn = document.createElement('div'); cv.className = 'stl'; cv.width = cv.height = 640; hn.className = 'vh'; hn.textContent = 'Drag it to turn it'; $vwc.append(cv, hn);
+    it.turn = it.turn || {yaw: 0, pitch: 0}; it.draw = () => {}; it.busy = false;
+    const o = it.mm = {get yaw() { return it.turn.yaw; }, get pitch() { return it.turn.pitch; }, cv, fail: A => { t.mdlMv = Object.assign({}, t.mdlMv, {no: A && A.big ? 'big' : 'x'}); if (vw && vw.items[vw.i] === it) vwRender(); }};
+    let d = null; cv.onpointerdown = e => { d = {x: e.clientX, y: e.clientY}; try { cv.setPointerCapture(e.pointerId); } catch (er) {} cv.style.cursor = 'grabbing'; };
+    cv.onpointermove = e => { if (!d) return; hn.remove(); it.turn.yaw -= (e.clientX - d.x) * .01; it.turn.pitch = Math.max(-1.6, Math.min(1.6, it.turn.pitch + (e.clientY - d.y) * .01)); d = {x: e.clientX, y: e.clientY}; };
+    cv.onpointerup = cv.onpointercancel = () => { d = null; cv.style.cursor = ''; };
+    mdlMvPlay(cv, t.mdl, o);
+    $vwo.style.display = $vwv.style.display = 'none';
   } else if (it.k === 'pic') {   // (a picture made or read here: shown as a picture, where nothing can run)
+    if (it.mdlT && it.mdlT.mdlMv && it.mdlT.mdlMv.no === 'big') it.what = 'its 3D model \u00b7 it moves by itself, but it is too big to play here (over ' + fmt(MDL_MAXT) + ' triangles): its still picture';
     what = it.what + ' · ' + vwKind(it.type) + ' · ' + fmt(it.bytes.length) + ' bytes';
     vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: it.type})); const im = new Image(); im.src = vwUrl; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im);
     $vwo.style.display = $vwv.style.display = 'none';
@@ -15936,7 +15936,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (it.k === 'ins' && it.empty) { o.why = mdlEmptyWords(it.empty);
       if (it.mv && it.mv.drawn && it.mv.cv && it.mv.cv.isConnected) { const cv = it.mv.cv, c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const x = c.getContext('2d'); x.fillStyle = '#8a8a8a'; x.fillRect(0, 0, c.width, c.height); x.drawImage(cv, 0, 0); o.picture = {type: 'image/jpeg', width: c.width, height: c.height, dataUrl: c.toDataURL('image/jpeg', .85)}; o.why += ' (played here on one of Block Hall\u2019s people: look({picture: true}) again shows another moment of it; tryMove() does it yourself, in a crew)'; }
       return o; }
-    if (it.k === 'ins' && it.mm && it.mm.cv && it.mm.cv.isConnected) { o.why = 'a 3D model that moves by itself, played here from its file (nothing of it runs): turnBig({right, up}) turns it, as a player drags it; look({picture: true}) again shows another moment of its moves';
+    if (it.mm && it.mm.cv && it.mm.cv.isConnected) { o.why = 'a 3D model that moves by itself, played here from its file (nothing of it runs): turnBig({right, up}) turns it, as a player drags it; look({picture: true}) again shows another moment of its moves';
       if (it.mm.drawn) { const cv = it.mm.cv, c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const x = c.getContext('2d'); x.fillStyle = '#8a8a8a'; x.fillRect(0, 0, c.width, c.height); x.drawImage(cv, 0, 0); o.picture = {type: 'image/jpeg', width: c.width, height: c.height, dataUrl: c.toDataURL('image/jpeg', .85)}; }
       return o; }
     if (it.k === 'ins' && STL_RE.test(it.type || '') && !it.del) { o.why = 'an STL 3D model, drawn here from its file (nothing of it runs' + (it.lite ? '; ' + it.lite : '') + '): turnBig({right, up}) turns it, as a player drags it'; const cv = $vwc.querySelector('canvas.stl');
