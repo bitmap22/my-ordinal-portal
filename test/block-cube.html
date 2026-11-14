@@ -10487,6 +10487,7 @@ function crewSend(tn) {
   else if (room && room.at && room.at.ready && !room.at.gal) { const p = room.p, H = room.held; s = {in: 1, h: room.at.h, x: +p.x.toFixed(2), z: +(p.z - room.at.z0).toFixed(2), y: +Math.atan2(Math.sin(p.yaw), Math.cos(p.yaw)).toFixed(3), p: +p.pitch.toFixed(2), hk: H && !H.back ? H.it.k : -1}; }
   else s = {in: 0, h: cur && cur.height >= 0 ? cur.height : -1, x: 0, z: 0, y: 0, p: 0, hk: -1};
   s.look = crew.look; emState(s); if (window.__agentOn) s.ai = 1; if (room && room.at && room.at.gd && s.in) { s.bm = room.at.gd.bm; if (room.p.sit) { s.sit = 1; if (room.p.seat) s.st = GD_SEATS.indexOf(room.p.seat); } if (cm.pint) s.hk = 60; if (gd.chN) s.ch = gd.chN; if (gd.board.v) { s.cb = gd.board.b; s.cx = gd.board.x; s.cv = gd.board.v; } if (gd.hold) s.hp = gd.hold.c; if (gd.pp) s.pb = gd.pp.side; if (gd.pgOut) s.pg = gd.pgOut; if (gd.bags.v) { s.bg = gdBagEnc(gdBagList()); s.bv = gd.bags.v; } if (gd.hb >= 0) s.hb = gd.hb; if (gd.bt) s.bt = gd.bt; if (room.p.swim || room.p.ride) { s.gy = +(room.p.y || 0).toFixed(2); if (room.p.sit) s.sit = 1; } if (gd.ask) s.iv = [gd.ask.to, gd.ask.g, gd.ask.st]; if (gd.ans.length) s.ia = gd.ans.flatMap(a => [a.from, a.st, a.yes]); }
+  if (room && room.at && (room.at.cl || room.at.gd) && s.in) guSend(s);   // (a give-up, for the crew)
   if (room && room.at && room.at.cl && s.in) clSend(s);   // (in the club: your seat, the games, the lights, the music, the show stand)
   if (s.in && s.hk >= 0 && own.share && room && room.held) { const hid = ownIdsOf(room.held.it.t).find(x => own.ids.has(x)); if (hid) s.hid = hid; }
   const k = JSON.stringify(s), moving = k !== crew.last;
@@ -10513,7 +10514,7 @@ function crewPose(tn, dt, VP, W, H) {
     else if (far > 4) { const k = Math.min(1, 9 * Math.min(dt, .1) / far); R.p = [R.p[0] + (tx - R.p[0]) * k, ease(R.p[1], ty, 12, dt), R.p[2] + (tz - R.p[2]) * k]; }
     else R.p = [ease(R.p[0], tx, 10, dt), ease(R.p[1], ty, 12, dt), ease(R.p[2], tz, 10, dt)];
     M.shown = true; R.ch = C.h;
-    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn); gdMateCh(M, R, s, pn); if (C.cl) { clMateGames(M, s); gdMateAsk(M, s, pn); } if (C.gd) { gdMateBoard(M, R, s); gdMatePP(M, R, s); gdMateCh2(M, R, s); gdMateAsk(M, s, pn); } else { R.hp = ''; R.pb = 0; R.hb = -1; }
+    R.yaw = s.y + Math.PI + (C.common ? cmYaw(C) : 0); R.pitch = s.p; R.look = M.look; R.held = s.hk >= 0 && TYPES[s.hk] ? TYPES[s.hk].lin : null; R.pint = s.hk === 60; R.sit = !!s.sit; R.talk = pn < M.talkT; R.emote = s.em || null; R.emoteN = s.en; R.emoteAt = s.ea; ppSip(M, R, s, pn); gdMateCh(M, R, s, pn); if (C.cl || C.gd) guMate(M, s); if (C.cl) { clMateGames(M, s); gdMateAsk(M, s, pn); } if (C.gd) { gdMateBoard(M, R, s); gdMatePP(M, R, s); gdMateCh2(M, R, s); gdMateAsk(M, s, pn); } else { R.hp = ''; R.pb = 0; R.hb = -1; }
     const H = ppSafe(() => ppMate(M), null);
     if (!H) { R.look = [M.look[0] % CH_LOOKS.length, M.look[1], M.look[2]]; R.tagY = null; R.pintS = 0; }   // (a Node Runner until their person has arrived)
     const wait = !H && ppWait(M), pose = H ? ppSafe(() => ppPose(M, H, R, dt), []) : wait ? [] : chPose(R, tn, dt);
@@ -11571,7 +11572,7 @@ function gdBoardNews(M, a, b) {   // what a crewmate's new board says they did: 
   const nm = M.name || 'A crewmate'; if (b === GD_CB0 && a !== GD_CB0) { M.lift = null; gdNews(nm + ' set the chess board up again'); return; }
   const gone = [], come = []; for (let i = 0; i < 64; i++) if (a[i] !== b[i]) (b[i] === '.' ? gone : come).push(i);
   if (gone.length === 1 && !come.length) { M.lift = {c: a[gone[0]], k: gone[0]}; return; }
-  if (come.length === 1 && gone.length <= 1) { const k = come[0], c = b[k], took = a[k] !== '.' ? a[k] : '', f = gone.length ? gone[0] : M.lift && M.lift.c === c ? M.lift.k : -1; M.lift = null;
+  if (come.length === 1 && gone.length <= 1) { const k = come[0], c = b[k], took = a[k] !== '.' ? a[k] : ''; guSide('chess', gdWhite(c) ? 0 : 1, M.id); const f = gone.length ? gone[0] : M.lift && M.lift.c === c ? M.lift.k : -1; M.lift = null;
     gdNews(nm + ' moved the ' + gdPcName(c) + (f >= 0 ? ' from ' + gdSqName(f) : ' from beside the board') + ' to ' + gdSqName(k) + (took ? ', taking the ' + gdPcName(took) : '') + ' (chess)'); return; }
   // (more than that at once: you are catching up with a game already going, so nothing to tell)
 }
@@ -11597,7 +11598,7 @@ function gdChessAct(p, C, ray) {
 function gdChessDo(A) {
   const b = gd.board.b.split(''); let x = gd.board.x;
   if (A.a === 'lift') { const P = A.P; if (P.k >= 0) { if (b[P.k] !== P.c) return; b[P.k] = '.'; } else { if (x[P.ti] !== P.c) return; x = x.slice(0, P.ti) + x.slice(P.ti + 1); } gd.hold = {c: P.c, k: P.k}; gdChessSet(b.join(''), x); gdClack(.5); return; }
-  if (A.a === 'put' && gd.hold) { const there = b[A.sq]; if (there !== '.') x += there; b[A.sq] = gd.hold.c; gd.hold = null; gdChessSet(b.join(''), x); gdClack(1); return; }
+  if (A.a === 'put' && gd.hold) { guSide('chess', gdWhite(gd.hold.c) ? 0 : 1, clMe()); const there = b[A.sq]; if (there !== '.') x += there; b[A.sq] = gd.hold.c; gd.hold = null; gdChessSet(b.join(''), x); gdClack(1); return; }
   if (A.a === 'reset') { gdChessSet(GD_CB0, ''); gdClack(1); }
 }
 function gdClack(v) { if (!sndOn) return; const a = audio(); if (!a) return; const t = a.currentTime, o = a.createOscillator(), G = a.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(420, t); o.frequency.exponentialRampToValueAtTime(160, t + .09); G.gain.setValueAtTime(.12 * v, t); G.gain.exponentialRampToValueAtTime(.0001, t + .14); o.connect(G); G.connect(a.destination); o.start(t); o.stop(t + .16); }
@@ -11673,6 +11674,7 @@ function gdPPAim() { const ray = rmRay(null, null), T = GD_PP; if (ray && ray.d[
 function gdPPLaunch(from, side, aimZ, mine) {
   const T = GD_PP, tx = T.x - side * (.35 + Math.random() * .75), tz0 = Math.max(T.z - T.hw + .12, Math.min(T.z + T.hw - .12, aimZ)), tz = tz0 + (Math.random() - .5) * 2 * (.18 + .4 * Math.min(1, Math.abs(tz0 - T.z) / (T.hw - .12)) ** 2), fl = .55 + Math.random() * .12;   // (the wider you aim, the more it can stray)
   const sp = (Math.random() < .5 ? -1 : 1) * 1.3 * Math.pow(Math.random(), 1.5), ts = (Math.random() - .5) * .3;
+  if (mine) guSide('ping-pong', side < 0 ? 0 : 1, clMe());
   gd.ball = {p: from.slice(), v: [(tx - from[0]) / fl, (T.y + .02 - from[1] + 4.9 * fl * fl) / fl, (tz - from[2]) / fl], by: side, b: 0, live: true, mine, n: Date.now(), t0: performance.now(), sp, ts};
   gdPPSend(); gdTock(1.2);
 }
@@ -11715,7 +11717,7 @@ function gdPPDo(A) {
 }
 // a crewmate's bat and their hits and points
 function gdMatePP(M, R, s) { R.pb = s.pb || 0; const g = s.pg; if (!g || g[0] === M.lpg) return; const first = M.lpg === undefined; M.lpg = g[0]; if (first && !g[8]) { gd.psc = [g[9], g[10]]; return; }
-  gd.ball = {p: [g[1], g[2], g[3]], v: [g[4], g[5], g[6]], by: g[7], b: 0, live: !!g[8], hide: !g[8], mine: false, n: g[0], t0: performance.now(), sp: g[11] || 0, ts: g[12] || 0}; if (gd.ball.live) gdTock(1.1); else { const ch = gd.psc[0] !== g[9] || gd.psc[1] !== g[10], was = gd.psc; gd.psc = [g[9], g[10]]; if (ch) { gdToast('Red ' + g[9] + ' · ' + g[10] + ' Black'); gdNews(!g[9] && !g[10] ? 'Ping-pong: the game is over (it was red ' + was[0] + ' · ' + was[1] + ' black before the last point); a new one starts at 0 · 0' : 'Ping-pong: red ' + g[9] + ' · ' + g[10] + ' black', true); } } }
+  if (g[8]) guSide('ping-pong', g[7] < 0 ? 0 : 1, M.id); gd.ball = {p: [g[1], g[2], g[3]], v: [g[4], g[5], g[6]], by: g[7], b: 0, live: !!g[8], hide: !g[8], mine: false, n: g[0], t0: performance.now(), sp: g[11] || 0, ts: g[12] || 0}; if (gd.ball.live) gdTock(1.1); else { const ch = gd.psc[0] !== g[9] || gd.psc[1] !== g[10], was = gd.psc; gd.psc = [g[9], g[10]]; if (ch) { gdToast('Red ' + g[9] + ' · ' + g[10] + ' Black'); gdNews(!g[9] && !g[10] ? 'Ping-pong: the game is over (it was red ' + was[0] + ' · ' + was[1] + ' black before the last point); a new one starts at 0 · 0' : 'Ping-pong: red ' + g[9] + ' · ' + g[10] + ' black', true); } } }
 // the bats (on the table, or in a hand) and the ball, this moment
 function gdPPInst(G) {
   if (!G.pong) { const {C, lathe, box, TR} = GDM, wd = C(0x9c6b3f), mk = (col, flat) => { const v = []; if (flat) { lathe(v, [[0, 0], [.08, 0], [.08, .012], [0, .012]], 14, () => col, 0, 0); box(v, 0, .005, .13, .03, .01, .1, wd); } else { lathe(v, [[0, -.012], [.08, -.006], [.08, .006], [0, .012]], 14, () => col, 0, 0, TR([1, 1, 1], [Math.PI / 2, 0, 0], [0, 0, 0])); box(v, 0, -.12, 0, .028, .1, .02, wd); } return gdVAOdyn(v, 1); };
@@ -11759,7 +11761,7 @@ function gdChDo(A) {
     let dx = A.to[0] - p.x, dz = A.to[1] - p.z; const dist = Math.max(1.5, Math.min(12, Math.hypot(dx, dz))), k = dist / (Math.hypot(dx, dz) || 1), sc = .03 + dist * .018;
     const x1 = p.x + dx * k + (Math.random() - .5) * 2 * sc, z1 = p.z + dz * k + (Math.random() - .5) * 2 * sc, q = gdBoardAt(x1, z1), st = q ? (q.hole ? 'h' : 'b') : 'g';
     const land = {x: q && q.hole ? q.B.x : x1, z: q && q.hole ? q.B.z + .33 * q.B.f : z1, st}, tf = .45 + dist * .07;
-    gd.hb = -1; gd.fly.push({i, p0, land, t0: performance.now(), tf, mine: true}); gd.bt = [Date.now(), i, +p0[0].toFixed(2), +p0[1].toFixed(2), +p0[2].toFixed(2), +land.x.toFixed(2), +land.z.toFixed(2), 'gbh'.indexOf(st), +tf.toFixed(2)]; crew.last = ''; }
+    guSide('cornhole', i < 4 ? 0 : 1, clMe()); gd.hb = -1; gd.fly.push({i, p0, land, t0: performance.now(), tf, mine: true}); gd.bt = [Date.now(), i, +p0[0].toFixed(2), +p0[1].toFixed(2), +p0[2].toFixed(2), +land.x.toFixed(2), +land.z.toFixed(2), 'gbh'.indexOf(st), +tf.toFixed(2)]; crew.last = ''; }
 }
 // the bags in the air: an arc to where they land; then they lie there (and the score, for a throw of yours)
 function gdChStep() {
@@ -11770,7 +11772,7 @@ function gdChStep() {
 function gdMateCh2(M, R, s) {
   R.hb = Number.isInteger(s.hb) ? s.hb : -1;
   if (s.bg && s.bv > gd.bags.v) { const L = gdBagDec(s.bg); if (L) gd.bags = {s: L, v: s.bv}; }
-  const t = s.bt; if (t && t[0] !== M.lbt) { const first = M.lbt === undefined; M.lbt = t[0]; if (!first) { gd.fly.push({i: t[1], p0: [t[2], t[3], t[4]], land: {x: t[5], z: t[6], st: 'gbh'[t[7]]}, t0: performance.now(), tf: t[8], mine: false}); gdNews((M.name || 'A crewmate') + ' threw the ' + gdBagName(t[1]) + ': ' + ['on the grass', 'onto a board (1 point)', 'into the hole (3 points)'][t[7]] + ' (cornhole)'); } }
+  const t = s.bt; if (t && t[0] !== M.lbt) { const first = M.lbt === undefined; M.lbt = t[0]; if (!first) { guSide('cornhole', t[1] < 4 ? 0 : 1, M.id); gd.fly.push({i: t[1], p0: [t[2], t[3], t[4]], land: {x: t[5], z: t[6], st: 'gbh'[t[7]]}, t0: performance.now(), tf: t[8], mine: false}); gdNews((M.name || 'A crewmate') + ' threw the ' + gdBagName(t[1]) + ': ' + ['on the grass', 'onto a board (1 point)', 'into the hole (3 points)'][t[7]] + ' (cornhole)'); } }
 }
 function gdChInst(G) {
   if (!G.bagV) { const {C, box} = GDM, mk = c => { const v = []; GDM.blob(v, 2, .06, () => C(c), 0, 0, GDM.TR([.085, .028, .085], [0, 0, 0], [0, 0, 0])); return gdVAOdyn(v, 8); }; G.bagV = [mk(0xd62828), mk(0x2e6fd6)]; }   // (soft bean bags)
@@ -12432,7 +12434,7 @@ function clGamesReset() {
   cl.darts = {pl: [], sc: [], tu: 0, ts: 301, d: [], bust: 0, win: '', go: 0, v: 0, at: 0};
   cl.dr = {b: CL_DR0, t: 0, c: -1, w: -1, f: -1, to: -1, n: 0, v: 0, at: 0}; cl.drPick = -1;
   cl.fr = {b: '.'.repeat(42), t: 0, w: -1, l: -1, v: 0, at: 0};
-  cl.fly = []; cl.drop = []; cl.light = {m: 0, v: 0}; cl.mu = {k: -1, t0: 0, v: 0}; cl.show = {id: '', by: '', v: 0, ok: false, pic: null, info: null};
+  cl.fly = []; cl.drop = []; cl.light = {m: 0, v: 0}; cl.lightBy = new Map(); cl.mu = {k: -1, t0: 0, v: 0}; cl.show = {id: '', by: '', v: 0, ok: false, pic: null, info: null};
 }
 // ================= DARTS =================
 const CL_SD = 19, CL_SWAY = t => [Math.sin(t * 1.3) * 7 + Math.sin(t * 2.9 + 1) * 4, Math.cos(t * 1.1) * 6 + Math.sin(t * 3.7) * 3];   // the hand: a steady sway you can see, then a random spread (mm)
@@ -12472,8 +12474,8 @@ function clDartLand(hit) {
 }
 function clDartsNext(v) { const D = JSON.parse(JSON.stringify(cl.darts)); if (D.v !== v || D.win) return; D.tu = (D.tu + 1) % D.pl.length; D.ts = D.sc[D.tu]; D.d = []; D.bust = 0; clDartsSet(D); }
 // a player who left (gone 15 seconds) loses their turn: the next player present moves it on
-function clDartsTick() {
-  const D = cl.darts; if (!D.pl.length || D.win) return; const cur = D.pl[D.tu]; if (cur === clMe()) return;
+function clDartsTick() {   // (a player gone 20 seconds leaves the game: guTick does that, as giving up)
+  return; const D = cl.darts; if (!D.pl.length || D.win) return; const cur = D.pl[D.tu]; if (cur === clMe()) return;
   const here = clHere(crew.mates.get(cur)); if (here) { D.away = 0; return; } if (!D.away) { D.away = performance.now(); return; }
   if (performance.now() - D.away > 15000 && D.pl.includes(clMe())) { const N = JSON.parse(JSON.stringify(D)); N.tu = (N.tu + 1) % N.pl.length; N.ts = N.sc[N.tu]; N.d = []; N.bust = 0; delete N.away; clDartsSet(N); clNews('Darts: ' + clName(cur) + ' left, so the turn moved on', 0); }
 }
@@ -12525,14 +12527,14 @@ function clDrMove(from, to) {   // returns '' or why not
   const L = clDrLegal(G), st = L.find(q => q.from === from && q.to === to);
   if (!st) { if (clDrSide(G.b[from]) !== me) return clDrName(from) + ' is not one of your pieces'; if (G.c >= 0 && from !== G.c) return 'your piece on ' + clDrName(G.c) + ' must go on taking';
     if (L.length && L[0].over >= 0) return 'you must take: ' + [...new Set(L.map(q => clDrName(q.from) + '×' + clDrName(q.to)))].join(', '); return clDrName(from) + ' to ' + clDrName(to) + ' is not a legal move'; }
-  const N = clDrApply(G, st); N.v = clVer(G.v); cl.dr = N; cl.drPick = N.c; crew.last = ''; clClack(); clNews('Draughts: you (' + CL_DRS[me] + ') ' + clDrName(from) + (st.over >= 0 ? '×' : '-') + clDrName(to) + (N.c >= 0 ? ', and must take again' : '') + (N.w >= 0 ? ': you win!' : ''), 0);
+  const N = clDrApply(G, st); N.v = clVer(G.v); cl.dr = N; guSide('draughts', me, clMe()); cl.drPick = N.c; crew.last = ''; clClack(); clNews('Draughts: you (' + CL_DRS[me] + ') ' + clDrName(from) + (st.over >= 0 ? '×' : '-') + clDrName(to) + (N.c >= 0 ? ', and must take again' : '') + (N.w >= 0 ? ': you win!' : ''), 0);
   if (N.w >= 0) clCheer(); return '';
 }
 function clDrNew() { cl.dr = {b: CL_DR0, t: 0, c: -1, w: -1, f: -1, to: -1, n: 0, v: clVer(cl.dr.v), at: Date.now()}; cl.drPick = -1; crew.last = ''; clNews('Draughts: a new game (black moves first)', 0); }
 function clDrMate(M, s) { if (!s.drs || !s.drm || s.drm[0] <= cl.dr.v) return; const was = cl.dr, a = s.drm;
   cl.dr = {b: s.drs, t: a[1], c: a[2], w: a[3], f: a[4], to: a[5], n: a[6], v: a[0], at: Date.now()}; if (cl.drPick >= 0 && cl.dr.b !== was.b) cl.drPick = -1;
   if (a[6] === 0 && was.n) clNews('Draughts: ' + clName(M.id) + ' started a new game', 1);
-  else if (a[6] > was.n && a[4] >= 0) { clClack(); clNews('Draughts: ' + clName(M.id) + ' (' + CL_DRS[1 - (a[2] >= 0 ? 1 - a[1] : a[1])] + ') ' + clDrName(a[4]) + '-' + clDrName(a[5]) + (a[3] >= 0 ? ': ' + CL_DRS[a[3]] + ' wins' : ''), 1); if (a[3] >= 0) clCheer(); } }
+  else if (a[6] > was.n && a[4] >= 0) { guSide('draughts', a[2] >= 0 ? a[1] : 1 - a[1], M.id); clClack(); clNews('Draughts: ' + clName(M.id) + ' (' + CL_DRS[1 - (a[2] >= 0 ? 1 - a[1] : a[1])] + ') ' + clDrName(a[4]) + '-' + clDrName(a[5]) + (a[3] >= 0 ? ': ' + CL_DRS[a[3]] + ' wins' : ''), 1); if (a[3] >= 0) clCheer(); } }
 // ================= FOUR IN A ROW =================
 const CL_FRS = ['red', 'yellow'], CL_FRC = ['R', 'Y'];
 function clFrWin(b) { for (let r = 0; r < 6; r++) for (let c = 0; c < 7; c++) { const v = b[r * 7 + c]; if (v === '.') continue;
@@ -12541,7 +12543,7 @@ function clFrDrop(col) {   // col 0-6 (west to east): returns '' or why not
   const G = cl.fr, me = clSeatOf('fr'); if (me < 0) return 'sit on one side of the four-in-a-row table to play (red sits on the south sofa, yellow on the north)';
   if (G.w >= 0) return (G.w === 2 ? 'the frame is full (a draw)' : CL_FRS[G.w] + ' has won') + ': start a new game'; if (me !== G.t) return 'it is ' + CL_FRS[G.t] + '\'s turn (you are ' + CL_FRS[me] + ')';
   if (!(col >= 0 && col < 7)) return 'columns are 1 to 7'; let r = 0; while (r < 6 && G.b[r * 7 + col] !== '.') r++; if (r >= 6) return 'column ' + (col + 1) + ' is full';
-  const b = G.b.split(''), k = r * 7 + col; b[k] = CL_FRC[me]; const nb = b.join(''), wl = clFrWin(nb);
+  const b = G.b.split(''), k = r * 7 + col; b[k] = CL_FRC[me]; guSide('four in a row', me, clMe()); const nb = b.join(''), wl = clFrWin(nb);
   cl.fr = {b: nb, t: 1 - me, w: wl ? me : nb.includes('.') ? -1 : 2, l: k, v: clVer(G.v), at: Date.now()}; cl.drop.push({k, c: me, t0: performance.now()}); crew.last = '';
   clNews('Four in a row: you (' + CL_FRS[me] + ') dropped in column ' + (col + 1) + (wl ? ': four in a row, you win!' : cl.fr.w === 2 ? ': the frame is full, a draw' : ''), 0); if (wl) clCheer(); return '';
 }
@@ -12549,7 +12551,7 @@ function clFrNew() { cl.fr = {b: '.'.repeat(42), t: 0, w: -1, l: -1, v: clVer(cl
 function clFrMate(M, s) { if (!s.frs || !s.frm || s.frm[0] <= cl.fr.v) return; const was = cl.fr, a = s.frm;
   cl.fr = {b: s.frs, t: a[1], w: a[2], l: a[3], v: a[0], at: Date.now()};
   if (!s.frs.replace(/\./g, '').length && was.b.replace(/\./g, '').length) clNews('Four in a row: ' + clName(M.id) + ' started a new game', 1);
-  else if (a[3] >= 0 && s.frs[a[3]] !== '.' && was.b[a[3]] === '.') { const c = s.frs[a[3]] === 'R' ? 0 : 1; cl.drop.push({k: a[3], c, t0: performance.now()}); clNews('Four in a row: ' + clName(M.id) + ' (' + CL_FRS[c] + ') dropped in column ' + (a[3] % 7 + 1) + (a[2] === 2 ? ': a draw' : a[2] >= 0 ? ': ' + CL_FRS[a[2]] + ' wins' : ''), 1); if (a[2] >= 0 && a[2] < 2) clCheer(); } }
+  else if (a[3] >= 0 && s.frs[a[3]] !== '.' && was.b[a[3]] === '.') { const c = s.frs[a[3]] === 'R' ? 0 : 1; guSide('four in a row', c, M.id); cl.drop.push({k: a[3], c, t0: performance.now()}); clNews('Four in a row: ' + clName(M.id) + ' (' + CL_FRS[c] + ') dropped in column ' + (a[3] % 7 + 1) + (a[2] === 2 ? ': a draw' : a[2] >= 0 ? ': ' + CL_FRS[a[2]] + ' wins' : ''), 1); if (a[2] >= 0 && a[2] < 2) clCheer(); } }
 // which side of a table you are sitting on (-1: not at it)
 function clSeatOf(g) { const p = room && room.p; return p && p.sit && p.seat && p.seat.game === g ? p.seat.side : -1; }
 // a table's game can start again when it is over, not begun, idle three minutes, or the other side's sofa is empty
@@ -12561,7 +12563,12 @@ function clCanNew(g) {
 }
 // ================= the light switch, the jukebox, the show stand (shared too) =================
 const CL_LIGHTS = [{n: 'COLLECTION', css: '#ffd23f'}, {n: 'WARM', css: '#ff9a3c'}, {n: 'NEON', css: '#ff2a8a'}, {n: 'DISCO', css: '#29e6ff'}];
-function clLightSet(m) { cl.light = {m: ((m % 4) + 4) % 4, v: clVer(cl.light.v)}; crew.last = ''; clPaintSwitch(); clClick(); clNews('Lights: you switched them to ' + CL_LIGHTS[cl.light.m].n.toLowerCase(), 0); }
+// one switch of the lights per person every three minutes (no flicking them on and off): kept by your page for you, and by
+// everyone's page for each crewmate, so a page changed to flick faster still cannot flick anyone else's lights
+const CL_LIGHT_MS = 180000;
+function clLightWait() { const w = (cl.lightMine || -1e9) + CL_LIGHT_MS - performance.now(); return w > 0 ? w : 0; }
+const clMinSec = ms => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+function clLightSet(m) { if (clLightWait()) { gdToast('You can switch the lights again in ' + clMinSec(clLightWait())); return 'you can switch the lights again in ' + clMinSec(clLightWait()) + ' (one switch a person every 3 minutes)'; } cl.lightMine = performance.now(); cl.light = {m: ((m % 4) + 4) % 4, v: clVer(cl.light.v)}; crew.last = ''; clPaintSwitch(); clClick(); clNews('Lights: you switched them to ' + CL_LIGHTS[cl.light.m].n.toLowerCase(), 0); return ''; }
 function clShowSet(id) {   // put a piece of yours on show (it must be in your wallet: the chain is asked first)
   cl.show = {id, by: clMe(), v: clVer(cl.show.v), ok: false, pic: null, info: null}; crew.last = ''; clPaintShow(); clShowCheck(); clNews('You put #' + ((cl.picInfo.get(id) || {}).n != null ? fmt(cl.picInfo.get(id).n) : clShort(id)) + ' on the show stand', 0);
 }
@@ -12572,7 +12579,7 @@ async function clShowCheck() {   // the piece on show: shown only once the chain
   finally { S.busy = false; }
 }
 function clMateExtras(M, s) {
-  if (s.lm && s.lm[0] > cl.light.v) { cl.light = {m: s.lm[1], v: s.lm[0]}; clPaintSwitch(); clNews('Lights: ' + clName(M.id) + ' switched them to ' + CL_LIGHTS[cl.light.m].n.toLowerCase(), 1); }
+  if (s.lm && s.lm[0] > cl.light.v && Date.now() - (cl.lightBy.get(M.id) || -1e13) >= CL_LIGHT_MS) { cl.lightBy.set(M.id, Date.now()); cl.light = {m: s.lm[1], v: s.lm[0]}; clPaintSwitch(); clNews('Lights: ' + clName(M.id) + ' switched them to ' + CL_LIGHTS[cl.light.m].n.toLowerCase(), 1); }
   if (s.mu && s.mu[0] > cl.mu.v) { cl.mu = {k: s.mu[1], t0: s.mu[2], v: s.mu[0]}; clMusic(); clPaintJb(); clNews('Jukebox: ' + clName(M.id) + (cl.mu.k >= 0 ? ' put on ' + CL_TUNES[cl.mu.k].n : ' stopped the music'), 1); }
   if (s.sw && s.sw[0] > cl.show.v && typeof s.swi === 'string') { cl.show = {id: s.swi, by: M.id, v: s.sw[0], ok: false, pic: null, info: null}; clPaintShow(); clShowCheck(); clNews(clName(M.id) + ' put a piece on the show stand', 1); }
 }
@@ -12849,6 +12856,7 @@ function clAct(sx, sy) {
   if (clAtLine(p)) { const w = clDartsWhat(p); if (w.a === 'throw') { const aim = clDartRay(ray); return aim ? Object.assign(w, {aim, ray: true}) : {a: 'hint', label: 'your throw: look at the board'}; } return w; }
   const near = (x, z, r, k) => Math.hypot(x - p.x, z - p.z) < r && clFacing(p, x, z, ray, k);
   if (clRayRect(ray, CL_JB.x, .9, CL_JB.z + .32, [0, 1], 1.0, 1.8, 3) > 0) return {a: 'jb', label: 'choose a tune on the jukebox'};
+  if (clRayRect(ray, CL_SW.x, CL_SW.y, -.04, [0, -1], .36, .3, 2.5) > 0 && clLightWait()) return {a: 'hint', label: 'the lights are ' + CL_LIGHTS[cl.light.m].n.toLowerCase() + ' · you can switch them again in ' + clMinSec(clLightWait())};
   if (clRayRect(ray, CL_SW.x, CL_SW.y, -.04, [0, -1], .36, .3, 2.5) > 0) return {a: 'light', label: 'switch the lights to ' + CL_LIGHTS[(cl.light.m + 1) % 4].n.toLowerCase() + ' (now ' + CL_LIGHTS[cl.light.m].n.toLowerCase() + ')'};
   if (near(CL_SHOW.x, CL_SHOW.z, 1.9, .55)) { const S = cl.show; if (S.id && S.by === clMe()) return {a: 'unshow', label: 'take your piece off the show stand'}; return {a: 'show', label: S.id ? 'put your piece on show (instead of ' + clName(S.by) + '\'s)' : 'put your piece on show'}; }
   if (near(CL_CAM.x, CL_CAM.z, 1.6, .5) && p.x < CL_CAM.x + .3) return {a: 'photo', label: 'take a photo at the photo wall (3 seconds to get in it)'};
@@ -12881,7 +12889,7 @@ function clDo(A) {
   if (A.a === 'drmove') { const w = clDrMove(A.from, A.to); if (w) gdToast(w); return; }
   if (A.a === 'drnew') { clDrNew(); return; } if (A.a === 'frnew') { clFrNew(); return; }
   if (A.a === 'frdrop') { const w = clFrDrop(A.c); if (w) gdToast(w); return; }
-  if (A.a === 'jb') { clJbOpen(); return; } if (A.a === 'light') { clLightSet(cl.light.m + 1); return; }
+  if (A.a === 'jb') { clJbOpen(); return; } if (A.a === 'light') { clLightSet(cl.light.m + 1); return; }   // (it says so if you switched them less than 3 minutes ago)
   if (A.a === 'show') { const id = clMyPieces()[0]; if (!id) { gdToast('the chain does not show a piece of this collection in your wallet right now'); return; } clShowSet(id); return; }
   if (A.a === 'unshow') { cl.show = {id: '', by: clMe(), v: clVer(cl.show.v), ok: false, pic: null, info: null}; crew.last = ''; clPaintShow(); clNews('You took your piece off the show stand', 0); return; }
   if (A.a === 'photo') { clPhoto(); return; } if (A.a === 'term') { clTermOpen(cl.termPg); return; } if (A.a === 'frame') { clFrameOpen(A.i); return; }
@@ -13023,7 +13031,7 @@ function clAgentInfo() {
     club: (K.name ? K.name + ' · ' : '') + 'the members\' club of collection ' + (K.num != null ? '#' + fmt(K.num) : K.pid), parentId: K.pid, youCameInWith: K.me === K.pid ? 'the parent itself' : 'piece ' + (K.meN != null ? '#' + fmt(K.meN) : K.me),
     backWay: 'leave() (or walking out through the door in the south wall, x 0, z 0) takes you to the collection\'s gallery',
     you: {sitting: seat ? seat.label.replace(/^sit /, '').replace(/^flop /, '') : false, holding: cm.pint ? 'a pint (' + Math.round(cm.pint.fill * 100) + '% full)' : null, atTheThrowingLine: clAtLine(p)},
-    here: mates, checking: notYet.length ? notYet : undefined, asks: gdAskInfo(),
+    here: mates, checking: notYet.length ? notYet : undefined, asks: gdAskInfo(), youArePlaying: guMine().map(q => q.g + (q.side >= 0 ? ' (' + GU_SIDES[q.g][q.side] + ')' : '')), giveUp: 'giveUp({game}) ends a game you are playing for everyone in it (the other side wins); leaving mid-game counts as giving up after 20 seconds',
     places: Object.fromEntries(Object.entries(CL_GOTO).map(([k, v]) => [k, {x: v[0], z: v[1]}])),
     darts: {game: '301: three darts a turn; finish exactly on 0 with a double (or the bull); below 0, 1, or 0 without a double is bust', players: D.pl.map((id, i) => ({untrusted: clName(id), left: D.sc[i], turn: i === D.tu && !D.win || undefined})), thisTurn: D.d.map(h => clDartShort(clDartScore(h[0], h[1]))), bust: !!D.bust, winner: D.win ? {untrusted: clName(D.win)} : null,
       how: 'goTo({place: "darts"}) to stand at the line; use() starts a game, or joins one before its first dart; on your turn throwDart({at: "T20"}) (or D16, S5, 25, bull): your hand sways and spreads the dart as a player\'s does (about 2 cm), so aim where a miss is safe'},
@@ -13035,7 +13043,7 @@ function clAgentInfo() {
     newGame: 'a table\'s game starts again (use() while seated, looking off the board) when it is over, not begun, idle 3 minutes, or the other side\'s sofa is empty',
     showStand: cl.show.id ? {onShow: cl.show.info && cl.show.info.n != null ? '#' + fmt(cl.show.info.n) : cl.show.id, by: {untrusted: clName(cl.show.by)}, checked: cl.show.ok ? 'the chain says their wallet holds it' : 'being checked'} : {onShow: 'the parent (nobody has put a piece up)', how: 'goTo({place: "show stand"}) and use() puts your piece up'},
     jukebox: {playing: cl.mu.k >= 0 ? CL_TUNES[cl.mu.k].n : 'nothing', tunes: CL_TUNES.map(t => t.n), how: 'goTo({place: "jukebox"}) then jukebox({tune})'},
-    lights: {now: CL_LIGHTS[cl.light.m].n.toLowerCase(), mood: cl.mood ? cl.mood.from : null, how: 'goTo({place: "light switch"}) and use() moves it on: collection, warm, neon, disco'},
+    lights: {now: CL_LIGHTS[cl.light.m].n.toLowerCase(), mood: cl.mood ? cl.mood.from : null, how: 'goTo({place: "light switch"}) and use() moves it on: collection, warm, neon, disco. One switch a person every 3 minutes', youCanSwitchAgainIn: clLightWait() ? clMinSec(clLightWait()) : 'now'},
     photoWall: 'stand in front of the photo wall (goTo({place: "photo wall"})) and someone uses the camera (goTo({place: "camera"}), use()): 3 seconds, then the photo',
     terminal: {pages: CL_PAGES, how: 'clubTerminal({page}) reads the chain data terminal (a player sits at it, or presses E at it)'}
   };
@@ -13051,7 +13059,8 @@ function clMateParse(s) {
     drs: typeof s.drs === 'string' && /^[.bBrR]{32}$/.test(s.drs) ? s.drs : '', drm: arr(s.drm, 7, v => n(v, 1e13)) && [0, 1].includes(s.drm[1]) && s.drm[2] >= -1 && s.drm[2] < 32 && s.drm[3] >= -1 && s.drm[3] < 2 ? s.drm : null,
     frs: typeof s.frs === 'string' && /^[.RY]{42}$/.test(s.frs) ? s.frs : '', frm: arr(s.frm, 4, v => n(v, 1e13)) && [0, 1].includes(s.frm[1]) && s.frm[2] >= -1 && s.frm[2] < 3 && s.frm[3] >= -1 && s.frm[3] < 42 ? s.frm : null,
     lm: arr(s.lm, 2, v => n(v, 1e13)) && [0, 1, 2, 3].includes(s.lm[1]) ? s.lm : null, mu: arr(s.mu, 3, v => n(v, 1e13)) && [-1, 0, 1, 2].includes(s.mu[1]) ? s.mu : null,
-    sw: arr(s.sw, 1, v => n(v, 1e13)) ? s.sw : null, swi: typeof s.swi === 'string' && OWN_ID.test(s.swi) ? s.swi : ''};
+    sw: arr(s.sw, 1, v => n(v, 1e13)) ? s.sw : null, swi: typeof s.swi === 'string' && OWN_ID.test(s.swi) ? s.swi : '',
+    gu: Array.isArray(s.gu) && s.gu.length === 4 && n(s.gu[0], 1e13) && Number.isInteger(s.gu[1]) && s.gu[1] >= 0 && s.gu[1] < 6 && Number.isInteger(s.gu[2]) && s.gu[2] >= -1 && s.gu[2] < 2 && typeof s.gu[3] === 'string' && (!s.gu[3] || CL_ID.test(s.gu[3])) ? s.gu : null};
 }
 function clSend(s) {
   const C = room.at, p = room.p; s.cl = C.cl.pid; s.cm = C.cl.me;
@@ -13078,6 +13087,79 @@ function clHeadWords() {
   const C = room && room.at, K = C && C.cl; if (!K) return ''; const n = 1 + [...crew.mates.values()].filter(clHere).length;
   return (K.name ? K.name + ' · ' : '') + 'members\' club of collection ' + (K.num != null ? '#' + fmt(K.num) : '…') + ' · ' + n + (n === 1 ? ' member' : ' members') + ' here · lights: ' + CL_LIGHTS[cl.light.m].n.toLowerCase();
 }
+// ---- giving up a game, in the club and in the garden: it ends the game for everyone in it at once and says who won. Leaving
+//      the place mid-game (or the crew) counts as giving up after 20 seconds, so a page reload does not end it. Each page keeps
+//      who played which side from the moves it saw; the page of the one still playing says when the other has gone ----
+const GU_GAMES = ['chess', 'ping-pong', 'cornhole', 'darts', 'draughts', 'four in a row'], GU_AWAY = 20000;
+const GU_SIDES = {chess: ['white', 'black'], 'ping-pong': ['red', 'black'], cornhole: ['red', 'blue'], draughts: ['black', 'red'], 'four in a row': ['red', 'yellow']};
+const gu = {by: {chess: ['', ''], 'ping-pong': ['', ''], cornhole: ['', ''], draughts: ['', ''], 'four in a row': ['', '']}, away: new Map(), out: null, arm: 0, armG: ''};
+function guSide(g, side, id) { if (gu.by[g] && (side === 0 || side === 1) && id) gu.by[g][side] = id; }
+const guHereM = id => id === clMe() || (clIn() ? clHere(crew.mates.get(id)) : gdInGarden(crew.mates.get(id)));
+const guPlace = g => GU_GAMES.indexOf(g) >= 3 ? 'club' : 'garden';
+function guAt() { return room && room.at && room.at.ready ? (room.at.cl ? 'club' : room.at.gd ? 'garden' : '') : ''; }
+// is a game going (begun and not over)?
+function guLive(g) {
+  if (g === 'chess') return gd.board.b !== GD_CB0 || !!gd.board.x;
+  if (g === 'ping-pong') return gd.psc[0] + gd.psc[1] > 0;
+  if (g === 'cornhole') { const L0 = gdBags0(); return gdBagList().some((b, i) => b.st !== 'g' || Math.hypot(b.x - L0[i].x, b.z - L0[i].z) > .05); }
+  if (g === 'darts') return !!(cl.darts.go && !cl.darts.win && cl.darts.pl.length);
+  if (g === 'draughts') return cl.dr.n > 0 && cl.dr.w < 0;
+  if (g === 'four in a row') return cl.fr.w < 0 && /[RY]/.test(cl.fr.b);
+  return false;
+}
+// the games you are playing now (where you are), with your side
+function guMine() {
+  const at = guAt(), me = clMe(), out = []; if (!at) return out;
+  for (const g of GU_GAMES) { if (guPlace(g) !== at || !guLive(g)) continue;
+    if (g === 'darts') { if (cl.darts.pl.includes(me)) out.push({g, side: -1}); continue; }
+    let side = gu.by[g].indexOf(me);
+    if (g === 'ping-pong' && gd.pp) side = gd.pp.side < 0 ? 0 : 1;
+    if (g === 'draughts' || g === 'four in a row') { const s = clSeatOf(g === 'draughts' ? 'dr' : 'fr'); if (s >= 0) side = s; }
+    if (side >= 0) out.push({g, side}); }
+  return out;
+}
+// give up (you), or say a crewmate who left has given up (leaver: their id): the game ends now, for everyone
+function guGiveUp(g, side, leaver) {
+  const S = GU_SIDES[g], wn = side >= 0 && S ? S[1 - side] : '';
+  if (g === 'chess') gdChessSet(GD_CB0, '');
+  else if (g === 'ping-pong') { gd.psc = [0, 0]; if (gd.ball) { gd.ball.live = false; gd.ball.hide = true; } gdPPSend(); }
+  else if (g === 'cornhole') gdBagSet(gdBags0());
+  else if (g === 'darts') { const D = JSON.parse(JSON.stringify(cl.darts)), id = leaver || clMe(), i = D.pl.indexOf(id); if (i < 0) return;
+    const many = D.pl.length > 1, turn = D.tu === i; D.pl.splice(i, 1); D.sc.splice(i, 1); if (D.tu > i) D.tu--; if (D.tu >= D.pl.length) D.tu = 0; if (turn) { D.d = []; D.bust = 0; D.ts = D.sc[D.tu] != null ? D.sc[D.tu] : 301; }
+    if (many && D.pl.length === 1) D.win = D.pl[0]; else if (!D.pl.length) { D.go = 0; D.win = ''; } clDartsSet(D); }
+  else if (g === 'draughts') { const G = cl.dr; cl.dr = Object.assign({}, G, {w: 1 - side, c: -1, v: clVer(G.v), at: Date.now()}); cl.drPick = -1; crew.last = ''; }
+  else if (g === 'four in a row') { const F = cl.fr; cl.fr = Object.assign({}, F, {w: 1 - side, v: clVer(F.v), at: Date.now()}); crew.last = ''; }
+  const dw = g === 'darts' ? cl.darts : null, say = (leaver ? clName(leaver) + ' left the ' + g + ' game (that counts as giving up)' : 'You gave up the ' + g + ' game' + (side >= 0 && S ? ' (' + S[side] + ')' : '')) +
+    (g === 'darts' ? (dw.win ? ': ' + clName(dw.win) + ' wins' : dw.pl.length ? ': the others play on' : '') : wn ? ': ' + wn + ' wins' : '');
+  gu.out = [Date.now(), GU_GAMES.indexOf(g), side, leaver || '']; crew.last = ''; gdToast(say); (clIn() ? clNews : gdNews)(say, 0); if (clIn()) clCheer(); return say;
+}
+// a crewmate's give-up (theirs, or their page saying someone left): what it says
+function guMate(M, s) {
+  const q = s.gu; if (!q || q[0] === M.lgu) return; const first = M.lgu === undefined; M.lgu = q[0]; if (first && Date.now() - q[0] > 15000) return;
+  const g = GU_GAMES[q[1]], S = GU_SIDES[g], side = q[2], who = q[3] ? (q[3] === clMe() ? 'you' : clName(q[3])) : clName(M.id);
+  const say = (q[3] ? who + ' left the ' + g + ' game (that counts as giving up)' : who + ' gave up the ' + g + ' game' + (side >= 0 && S ? ' (' + S[side] + ')' : '')) + (g === 'darts' ? '' : side >= 0 && S ? ': ' + S[1 - side] + ' wins' : '');
+  gdToast(say); (clIn() ? clNews : gdNews)(say, 0);
+}
+// leaving counts as giving up: the one still playing (if that is you) says so once the other has been gone 20 seconds
+function guTick() {
+  const at = guAt(), now = performance.now(); if (!at) { gu.away.clear(); return; }
+  for (const g of GU_GAMES) { if (guPlace(g) !== at || !guLive(g)) continue;
+    if (g === 'darts') { const D = cl.darts; if (!D.pl.includes(clMe())) continue; for (const id of D.pl) { if (id === clMe()) continue; const k = g + id; if (guHereM(id)) { gu.away.delete(k); continue; } if (!gu.away.has(k)) gu.away.set(k, now); else if (now - gu.away.get(k) > GU_AWAY && D.pl.indexOf(clMe()) === Math.min(...D.pl.map((x, i) => guHereM(x) ? i : 99))) { gu.away.delete(k); guGiveUp(g, -1, id); return; } } continue; }
+    const B = gu.by[g], mine = guMine().find(q => q.g === g); if (!mine) continue; const other = B[1 - mine.side], k = g + other;
+    if (!other || other === clMe()) continue; if (guHereM(other)) { gu.away.delete(k); continue; }
+    if (!gu.away.has(k)) gu.away.set(k, now); else if (now - gu.away.get(k) > GU_AWAY) { gu.away.delete(k); guGiveUp(g, 1 - mine.side, other); return; } }
+}
+setInterval(() => { try { guTick(); guDraw(); } catch (e) {} }, 1000);
+function guSend(s) { if (gu.out && Date.now() - gu.out[0] < 12000) s.gu = gu.out; }
+// the button (for a person): GIVE UP, then once more to be sure
+document.head.insertAdjacentHTML('beforeend', '<style>#gubtn{position:fixed;right:calc(14px + env(safe-area-inset-right));bottom:calc(92px + env(safe-area-inset-bottom));z-index:31;display:none;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,120,120,.55);background:rgba(40,8,8,.82);color:#ffd0c8;font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;cursor:pointer}#gubtn.on{display:block}#gubtn.arm{background:#b8231c;color:#fff}</style>');
+const $gub = document.createElement('button'); $gub.id = 'gubtn'; $gub.type = 'button'; document.body.appendChild($gub);
+function guDraw() {
+  const L = guMine(), pn = performance.now(), q = L.find(o => o.g === gu.armG) || L[0], armed = q && gu.arm > pn && gu.armG === q.g;
+  const t = !q ? '' : armed ? 'SURE? GIVE UP ' + q.g.toUpperCase() : 'GIVE UP ' + q.g.toUpperCase(); if ($gub.textContent !== t) $gub.textContent = t; $gub.classList.toggle('on', !!q); $gub.classList.toggle('arm', !!armed);
+}
+$gub.onclick = e => { e.stopPropagation(); const L = guMine(), pn = performance.now(), q = L.find(o => o.g === gu.armG) || L[0]; if (!q) return;
+  if (gu.arm > pn && gu.armG === q.g) { gu.arm = 0; guGiveUp(q.g, q.side); } else { gu.arm = pn + 4000; gu.armG = q.g; } guDraw(); $gub.blur(); };
 // ---- building the club (once): the room, the bar, the darts corner, the game tables and their sofas, the lounge, the
 //      jukebox, the cassette wall, the photo wall, the terminal, the show stand, the lamps, the mirror ball ----
 function clBuild() {
@@ -14380,6 +14462,9 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'jukebox', does: 'In a club, at the jukebox: put a tune on for everyone in the club, or stop it, as a player does by choosing on the jukebox.', args: [{name: 'tune', does: 'NEON NIGHTS, RAVE 92, BLOCK PARTY, or stop', req: true}],
       run: ({tune}) => { if (!clIn()) return {ok: false, error: 'you are not in a club'}; const p = room.p; if (Math.hypot(p.x - CL_JB.x, p.z - CL_JB.z) > 2.6) return {ok: false, error: 'walk to the jukebox first: goTo({place: "jukebox"})'};
         const t = String(tune || '').trim().toLowerCase(); if (t === 'stop') { clTune(-1); return {ok: true, playing: 'nothing'}; } const k = CL_TUNES.findIndex(T => T.n.toLowerCase().startsWith(t) || T.n.toLowerCase().includes(t)); if (k < 0) return {ok: false, error: 'tunes: ' + CL_TUNES.map(T => T.n).join(', ') + ', or stop'}; clTune(k); return {ok: true, playing: CL_TUNES[k].n, note: 'everyone in the club hears it from the same moment'}; }},
+    {name: 'giveUp', does: 'Give up a game you are playing, in a club or the bitmap garden (darts, draughts, four in a row, chess, ping-pong, cornhole), as a player does with the GIVE UP button: the game ends for everyone in it at once and the other side wins (in darts you leave the game and the others play on; the last one left wins). Leaving the place mid-game counts as giving up after 20 seconds.', args: [{name: 'game', enum: GU_GAMES, does: 'which game (leave it out if you play only one now)'}],
+      run: ({game}) => { const L = guMine(); if (!L.length) return {ok: false, error: 'you are not playing a game here right now'}; const q = game ? L.find(o => o.g === String(game).toLowerCase()) : L.length === 1 ? L[0] : null;
+        if (!q) return {ok: false, error: game ? 'you are not playing ' + game + ' here right now' : 'you play more than one now: giveUp({game})', playing: L.map(o => o.g)}; return {ok: true, said: guGiveUp(q.g, q.side)}; }},
     {name: 'chessMove', does: 'In the bitmap garden: move a giant chess piece as a player does: walk to it, look at it, pick it up, walk to the square, look at it, put it down (taking whatever stands there, which goes beside the board). No chess rules are kept: any piece may go anywhere.', args: [{name: 'from', does: 'a square, e.g. "e2"', req: true}, {name: 'to', does: 'a square, e.g. "e4"', req: true}],
       run: async ({from, to}) => { if (!(inRoom() && room.at.gd)) return {ok: false, error: 'only in the bitmap garden'}; const a = gdSqIx(from), b = gdSqIx(to); if (a < 0 || b < 0 || a === b) return {ok: false, error: 'two different squares, like "e2" and "e4"'}; if (gd.hold || gd.pp || gd.hb >= 0 || cm.pint) return {ok: false, error: 'your hands are full: put down what you hold first'}; if (room.p.sit || room.p.swim) return {ok: false, error: 'stand up (or climb out) first'};
         const z0 = room.at.z0, c = gd.board.b[a]; if (c === '.') return {ok: false, error: 'no piece on ' + from};
