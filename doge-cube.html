@@ -2059,7 +2059,7 @@ const fwAt = e => { const r = $fwb.getBoundingClientRect(); return Math.max(0, M
 $fwb.addEventListener('pointermove', e => {
   const i = fwAt(e), h0 = fwTop - FW_N * FW_PER + 1 + i * FW_PER, g = fwGroup(h0); fwHover = true;
   if (fwRange !== '1d') return;
-  $fwS.textContent = 'blocks ' + fmt(h0) + '–' + fmt(h0 + FW_PER - 1) + (g ? ' · ~' + fmt(Math.round(g.v)) + ' transactions a block' + (g.fee != null ? ' · middle fee ' + rt(g.fee) : '') + (g.t ? ' · ' + ago(g.t) : '') : ' · loading…');
+  $fwS.textContent = 'blocks ' + fmt(h0) + '–' + fmt(h0 + FW_PER - 1) + (g ? ' · ~' + fmt(Math.round(g.v)) + ' transactions a block' + (g.fee != null ? ' · middle fee ' + rateWords(g.fee) : '') + (g.t ? ' · ' + ago(g.t) : '') : ' · loading…');
 });
 $fwb.addEventListener('pointerleave', () => { fwHover = false; if (fwRange === '1d') $fwS.textContent = fwSum; });
 $fwb.addEventListener('click', e => go(fwTop - FW_N * FW_PER + 1 + fwAt(e) * FW_PER + FW_PER - 1));   // tap a bar to open the last block of its ten
@@ -2151,7 +2151,7 @@ const which = () => liveIdx === 0 ? 'the next block' : 'block +' + liveIdx;
 function feedBlock(b, isNew) {
   const x = BFEE.get(b.height);
   feedRow('blk', `${chip(GOLD)}<b>Block ${fmt(b.height)}</b> ${isNew ? 'just found' : 'found'}` +
-    `<br>${fmt(b.tx_count)} transactions · ${kb(b.size)}` + (x ? ` · fees ${doge(x.total)} · middle ${rt(x.med)}` : ''), clock24(b.timestamp));
+    `<br>${fmt(b.tx_count)} transactions · ${kb(b.size)}` + (x ? ` · fees ${doge(x.total)} · middle ${rateWords(x.med)}` : ''), clock24(b.timestamp));
 }
 // a block just found: how many inscriptions it made, and of what kinds (the explorer's listing of it: 2 units)
 const dcSeenH = new Set();
@@ -2174,7 +2174,7 @@ function feedStart(txs) {   // a fresh block list: note its biggest and top-payi
   for (const t of txs) { if (!big || t.vsize > big.vsize) big = t; if (!top || ownRate(t) > ownRate(top)) top = t; }
   rec = {v: big ? big.vsize : 0, r: top ? ownRate(top) : 0};
   $fh2.textContent = 'JOINING ' + which().toUpperCase(); $ft.innerHTML = '';
-  if (big) feedRow('rec', `${chip('#ffd36b')}<b>${which()}</b> started: ${fmt(txs.length)} transactions<br>biggest ${vb(big.vsize)} · top fee rate ${rt(ownRate(top))}`);
+  if (big) feedRow('rec', `${chip('#ffd36b')}<b>${which()}</b> started: ${fmt(txs.length)} transactions<br>biggest ${vb(big.vsize)} · top fee rate ${rateWords(ownRate(top))}`);
 }
 const tcss = n => TYPES.find(T => T.name === n).css;
 // the next block's inscriptions: the explorer's inscription pool says which waiting transactions make one (or a piece of a bigger
@@ -2223,12 +2223,12 @@ const heatA = (r, a) => feeCss(r).replace('rgb(', 'rgba(').replace(')', ',' + a 
 function feedTx(t) {
   spawnText(t.id, false);
   const r = ownRate(t), [kn, cat, kc] = liveKind(t);
-  feedRow('tx', `<b style="color:${kc}">${kn}</b><span class="cat">${cat}</span><br><span class="fee">${rt(r)} · ${vb(t.vsize)} · ${doge(t.fee)}</span>`, null, t.id,
+  feedRow('tx', `<b style="color:${kc}">${kn}</b><span class="cat">${cat}</span><br><span class="fee">${rateWords(r)} · ${vb(t.vsize)} · ${doge(t.fee)}</span>`, null, t.id,
     `border-left:4px solid ${feeCss(r)};box-shadow:inset 0 0 0 1px ${heatA(r, .45)};background:linear-gradient(90deg,${heatA(r, .22)},transparent 75%)`);
   if (!rec) return;
-  if (t.vsize > rec.v) { rec.v = t.vsize; feedRow('rec', `${chip('#ffd36b')}<b>new biggest</b> in ${which()}: ${vb(t.vsize)} · ${rt(r)}`, null, t.id); }
-  if (r > rec.r) { rec.r = r; feedRow('rec', `${chip('#ff5a6a')}<b>new top fee rate</b> in ${which()}: ${rt(r)} · ${doge(t.fee)}`, null, t.id); }
-  if (t.value >= 1e14) feedRow('rec', `${chip('#f0c75e')}<b>big move</b>: outputs total <b>${btc(t.value)}</b> · ${rt(r)}`, null, t.id);
+  if (t.vsize > rec.v) { rec.v = t.vsize; feedRow('rec', `${chip('#ffd36b')}<b>new biggest</b> in ${which()}: ${vb(t.vsize)} · ${rateWords(r)}`, null, t.id); }
+  if (r > rec.r) { rec.r = r; feedRow('rec', `${chip('#ff5a6a')}<b>new top fee rate</b> in ${which()}: ${rateWords(r)} · ${doge(t.fee)}`, null, t.id); }
+  if (t.value >= 1e14) feedRow('rec', `${chip('#f0c75e')}<b>big move</b>: outputs total <b>${btc(t.value)}</b> · ${rateWords(r)}`, null, t.id);
 }
 
 /* ---------- mined blocks (browse back) ---------- */
@@ -2326,7 +2326,7 @@ const vb = v => fmt(Math.round(v)) + ' bytes';   // (Dogecoin has no witness dis
 const kb = v => v >= 1e6 ? (v / 1e6).toFixed(2) + ' MB' : v >= 1000 ? (v / 1000).toFixed(v >= 1e4 ? 0 : 1) + ' kB' : fmt(Math.round(v)) + ' B';
 // fee rates in DOGE per kB, as Dogecoin people say them (1 DOGE/kB = 100,000 koinu a byte)
 const rtS = v => { const d = v / 1e5; return d >= 100 ? d.toFixed(0) : String(+d.toPrecision(d >= 1 ? 3 : 2)); };
-const rt = v => rtS(v) + ' DOGE/kB';
+const rateWords = v => rtS(v) + ' DOGE/kB';
 const $cp = document.getElementById('cp');
 function addRows(rows) {
   for (const [k, v, sw] of rows) {
@@ -2444,7 +2444,7 @@ function select(t) {
   if (!t.live && t.idx === 0) rows.push(['type', 'coinbase (miner reward)']);
   if (t.fee >= 0 && !(t.idx === 0 && !t.live)) {
     const k = feeCol(t), sw = `rgb(${k.map(x => Math.round(x * 255)).join(',')})`;
-    rows.push(['fee rate', rt(ownRate(t)), sw]);
+    rows.push(['fee rate', rateWords(ownRate(t)), sw]);
     rows.push(['fee', doge(t.fee)]);
   } else if (t.est) rows.push(['fee', 'still being read…']);
   rows.push(['size', t.est ? '~' + vb(t.vsize) + ' (still being read)' : vb(t.vsize)]);
@@ -2481,7 +2481,7 @@ const $pv = document.getElementById('pv'), $nx = document.getElementById('nx'), 
 function feeRange(list) {
   let lo = Infinity, hi = 0;
   for (const t of list) { if (t.fee < 0 || (!t.live && t.idx === 0)) continue; const r = ownRate(t); if (r < lo) lo = r; if (r > hi) hi = r; }
-  return lo === Infinity ? '' : ' · ' + rtS(lo) + '–' + rt(hi);
+  return lo === Infinity ? '' : ' · ' + rtS(lo) + '–' + rateWords(hi);
 }
 /* ---------- the block's new coins: Dogecoin's reward ----------
    Dogecoin's first 145,000 blocks paid a random reward (up to 1,000,000 DOGE; up to 500,000 from block 100,000). Then a set reward,
@@ -6509,7 +6509,7 @@ function rmHover() {
   let s = '', sip = false;
   if (h && h.it && h.it.show) s = showHover(h.it);
   else if (h && h.it && h.it.t.gal) s = galHover(h.it);
-  else if (h && h.it) { const t = h.it.t, w = t.word && t.word.a; s = (folOn(h.it) ? 'ON THE TETHER · ' : '') + TYPES[h.it.k].name + (t.bh != null && room.at && room.at.h1 > room.at.h ? ' · block ' + fmt(t.bh) : '') + (w ? ' · ' + w.slice(0, 24) : '') + (t.fee >= 0 ? ' · ' + rt(ownRate(t)) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to hold'; }
+  else if (h && h.it) { const t = h.it.t, w = t.word && t.word.a; s = (folOn(h.it) ? 'ON THE TETHER · ' : '') + TYPES[h.it.k].name + (t.bh != null && room.at && room.at.h1 > room.at.h ? ' · block ' + fmt(t.bh) : '') + (w ? ' · ' + w.slice(0, 24) : '') + (t.fee >= 0 ? ' · ' + rateWords(ownRate(t)) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to hold'; }
   else if (h && h.sign) s = 'change where this door goes';
   else if (cmOn(room.at)) { const A = cmAct(mid ? null : room.mx, mid ? null : room.my); if (A) { s = A.label + ' · ' + (coarse ? 'tap' : A.ray || room.lock ? 'click or E' : 'E'); sip = !!cm.pint && (A.a === 'sip' || A.a === 'stand'); } }
   $rl.classList.toggle('sip', sip);   // (the pint's own words sit just above the glass, not over what you look at)
@@ -6531,7 +6531,7 @@ function heldSized(t, fee, size, cb, on) {
       if (cb || !(t.fee >= 0)) { r.remove(); continue; }
       r.lastChild.textContent = doge(t.fee);
       const fr = document.createElement('div'), c = feeCol(t), i = document.createElement('i'); fr.className = 'r'; fr.innerHTML = '<span></span><b></b>';
-      fr.firstChild.textContent = 'fee rate'; fr.lastChild.textContent = rt(ownRate(t)); i.style.background = `rgb(${c.map(x => Math.round(x * 255)).join(',')})`; fr.lastChild.prepend(i); r.before(fr);
+      fr.firstChild.textContent = 'fee rate'; fr.lastChild.textContent = rateWords(ownRate(t)); i.style.background = `rgb(${c.map(x => Math.round(x * 255)).join(',')})`; fr.lastChild.prepend(i); r.before(fr);
     }
   }
 }
@@ -8521,6 +8521,9 @@ window.AgentKit = window.AgentKit || (() => {
       if (!c.ro && !c.always && banned()) return {ok: false, error: BANNED};
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
+      for (const d of c.args || []) { const v = args[d.name]; if (v === undefined || v === null) continue;   // (a number or a yes/no given as words works; anything else gets a clear answer, never a broken game)
+        if (d.type === 'number') { const x = typeof v === 'string' ? (/^\s*\d+\.bitmap\s*$/i.test(v) ? parseInt(v, 10) : v.trim() === '' ? NaN : +v) : v; if (typeof x !== 'number' || !isFinite(x)) return {ok: false, error: d.name + ' must be a number: ' + d.does}; args[d.name] = x; }
+        else if (d.type === 'boolean' && typeof v !== 'boolean') { if (v === 'true' || v === 1) args[d.name] = true; else if (v === 'false' || v === 0) args[d.name] = false; else return {ok: false, error: d.name + ' must be true or false: ' + d.does}; } }
       try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
