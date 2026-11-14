@@ -73,6 +73,8 @@
     ['consolidations', 'transactions', t => sc(t, TF.consol)], ['batch payouts', 'transactions', t => sc(t, TF.batch)], ['multisig', 'transactions', t => sc(t, TF.msig)],
     ['messages', 'transactions', t => sc(t, TF.msg)], ['coinbase', 'transactions', t => sc(t, TF.cb)]];
   const KIND_NAMES = KINDS.map(k => k[0]).concat(['regular']);
+  // which part of the hall each kind's shelves are in: inscriptions, tokens or transactions
+  const KIND_GROUPS = Object.assign(Object.fromEntries(KINDS.map(k => [k[0], k[1]])), {regular: 'transactions'});
   // the kinds that make a transaction more than a regular payment (the hall's "regular" shelf is everything without one)
   const SPECIAL = new Set(['inscriptions', 'bitmaps', 'BRC-20', 'BRC-420', 'TAP', 'CRC-20 · LEAF', 'SRC-20', 'Stamps', 'Counterparty', 'CAT-21', 'Atomicals', 'Labitbu', 'OpenTimestamps', 'Alkanes', 'runes', 'DMT mints', 'NAT']);
 
@@ -124,7 +126,7 @@
     let raw; try { raw = U8F.decode(u); } catch (e) { return null; }
     const cs = [...raw]; let ok = 0; for (const ch of cs) { const c = ch.codePointAt(0); if ((c >= 32 && c !== 127 && !(c >= 0x80 && c < 0xa0)) || c === 10 || c === 9) ok++; }
     if (ok / cs.length < 0.95) return null;
-    const t = raw.replace(/[\u0000-\u001f\u007f�]+/g, ' ').trim();
+    const t = raw.replace(/[\u0000-\u001f\u007f\ufffd]+/g, ' ').trim();
     return /[a-z]{2}/i.test(t) ? (t.length > 300 ? t.slice(0, 300) + '…' : t) : null;
   }
   function coinbaseWords(u) {
@@ -365,7 +367,8 @@
 
   // one row per transaction, for spreadsheets
   function toCSV(M) {
-    const q = v => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    // (text written in a transaction that starts like a spreadsheet formula gets a ' in front, so a spreadsheet shows it and never runs it)
+    const q = v => { let t = v == null ? '' : String(v); if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = "'" + t; return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
     const head = ['block', 'n', 'txid', 'fee_sats', 'vsize', 'fee_rate_sat_vb', 'kinds', 'inscription_ids', 'content_types', 'token_untrusted', 'rune', 'bitmap', 'message_untrusted', 'id_checked', 'size_checked', 'kinds_agree', 'inscriptions_agree'];
     const rows = [head.join(',')];
     for (const it of M.items) {
@@ -378,5 +381,5 @@
     return rows.join('\n') + '\n';
   }
 
-  return {VERSION, KIND_NAMES, sha256, hashHex, scanBlock, readSummary, buildManifest, toCSV, runesMade};
+  return {VERSION, KIND_NAMES, KIND_GROUPS, sha256, hashHex, scanBlock, readSummary, buildManifest, toCSV, runesMade};
 });

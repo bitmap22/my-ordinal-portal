@@ -47,6 +47,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   calls.push(await call('blockManifest', {height: 767430, kind: 'inscriptions'}));
   calls.push(await call('blockManifest', {height: 767430, kind: 'runes etched'}));
   calls.push(await call('blockManifest', {height: 767430, kind: 'shoes'}));
+  calls.push(await call('blockManifest', {height: 99999999}));
   const tip = calls.find(c => c.name === 'chain' && c.out && c.out.newestBlock);
   if (tip) calls.push(await call('blockManifest', {height: tip.out.newestBlock - 1, limit: 5}));
   results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {

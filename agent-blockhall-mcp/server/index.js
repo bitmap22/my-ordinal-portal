@@ -356,8 +356,9 @@ async function rawBlock(hash, h) {
 }
 async function readManifest(h) {
   const got = manifests.get(h); if (got && Date.now() - got.t < 600000) return got.m;
-  const H = await mpFetch('/api/block-height/' + h, 15000), hash = (await H.r.text()).trim();
-  if (!isTxid(hash)) throw new Error('no block ' + fmt(h) + ' yet');
+  let H; try { H = await mpFetch('/api/block-height/' + h, 15000); } catch (e) { throw /http 40[04]/.test(String(e)) ? new Error('there is no block ' + fmt(h) + ' yet') : e; }
+  const hash = (await H.r.text()).trim();
+  if (!isTxid(hash)) throw new Error('there is no block ' + fmt(h) + ' yet');
   const [meta, raw, sum, tags, second, ids] = await Promise.allSettled([mpJson('/api/block/' + hash, 15000), rawBlock(hash, h),
     mpFetch('/api/v1/block/' + hash + '/summary', 90000).then(async x => ({list: BM.readSummary(await x.r.text()), site: x.site})),
     fetchT('https://ordpool.space/api/v1/block/' + hash + '/summary', null, 90000).then(async r => BM.readSummary(await r.text())),
