@@ -13035,7 +13035,8 @@ function clFrame(W, H, tn, dpr) {
   rmStep(dt);
   const p = room.p, cp = Math.cos(p.pitch), dir = [-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp];
   const eye = [p.x, EYE + p.bob + (p.y || 0) - (p.sit ? .62 : 0), p.z], asp = W / H, game = p.sit && p.seat && p.seat.game;
-  cl.fov = cl.fov || 1.12; cl.fov += ((game ? (asp < 1 ? .85 : .62) : asp < 1 ? 1.3 : 1.12) - cl.fov) * Math.min(1, dt * 6); const fov = cl.fov;   // (sitting at a game table, the view closes in on its board)
+  const oche = !p.sit && dir[2] < -.8 && clAtLine(p) && clDartsWhat(p).a === 'throw';   // (your throw, at the line, facing the board)
+  cl.fov = cl.fov || 1.12; cl.fov += ((game ? (asp < 1 ? .85 : .62) : oche ? (asp < 1 ? .62 : .45) : asp < 1 ? 1.3 : 1.12) - cl.fov) * Math.min(1, dt * 6); const fov = cl.fov;   // (sitting at a game table, or your throw at the line: the view closes in on the board)
   const VP = mul(persp(fov, asp, .05, 120), look(eye, [eye[0] + dir[0], eye[1] + dir[1], eye[2] + dir[2]]));
   room.view = {eye, dir, fov, asp};
   if (performance.now() - (cl.hovAt || 0) > 90) { cl.hovAt = performance.now(); const mid = room.lock || coarse, A = clAct(mid ? null : room.mx, mid ? null : room.my), s = A ? A.label + (A.a === 'hint' ? '' : ' · ' + (coarse ? 'tap' : room.lock ? 'click or E' : 'E')) : '';
@@ -13248,6 +13249,140 @@ function guDraw() {
 }
 $gub.onclick = e => { e.stopPropagation(); const L = guMine(), pn = performance.now(), q = L.find(o => o.g === gu.armG) || L[0]; if (!q) return;
   if (gu.arm > pn && gu.armG === q.g) { gu.arm = 0; guGiveUp(q.g, q.side); } else { gu.arm = pn + 6000; gu.armG = q.g; } guDraw(); $gub.blur(); };
+
+/* ================= THE i BUTTON: the buttons, the keys, and how things work =================
+   On a computer, next to the house (top left): it opens a list of the buttons and keys for where you are now (the cube, a
+   block's room, the common room, a gallery, the bitmap garden, a club), and how the main things work: the wallet (read only),
+   getting into the bitmap garden and the clubs (not what is inside them), the trade floor, and the block halls. Esc, the
+   button again, or a click outside the list closes it. An agent reads the same list with the kit's controls(). */
+const ciCss = document.createElement('style');
+ciCss.textContent = `#ti{display:none}
+@media (pointer:fine) and (min-width:601px){#ti{display:flex;position:fixed;left:calc(66px + env(safe-area-inset-left));top:calc(18px + env(safe-area-inset-top));width:40px;height:40px;border-radius:20px;z-index:20;font:italic 700 19px Georgia,'Times New Roman',serif}body.room:not(.crewpage) #ti{left:calc(114px + env(safe-area-inset-left))}}
+body.tiny #ti{display:none!important}
+#ti.on{background:rgba(247,147,26,.85);color:#140c05}
+#cinf{position:fixed;inset:0;z-index:42;display:none;align-items:center;justify-content:center;background:rgba(4,6,8,.55)}
+#cinf.on{display:flex}
+#cinf>div{width:min(760px,calc(100vw - 32px));max-height:min(86vh,800px);overflow:auto;background:#120d08;border:2px solid #d9a441;border-radius:12px;padding:18px 22px 16px;color:#efe3cf;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+#cinf h2{margin:0;font-size:15px;letter-spacing:1.5px;color:#ffb04a}
+#cinf .w{margin:2px 0 6px;color:#bfae93}
+#cinf .tb{display:flex;gap:8px;margin:8px 0 4px}
+#cinf .tb button,#cinf .x button{background:#241a10;border:1px solid #6b5432;border-radius:6px;color:#ffe1a8;font:700 12px ui-monospace,Menlo,Consolas,monospace;padding:6px 10px;cursor:pointer;letter-spacing:.5px}
+#cinf .tb button.on{background:#d9a441;color:#140c05;border-color:#d9a441}
+#cinf h3{margin:14px 0 6px;font-size:12px;letter-spacing:1.5px;color:#ffcf7a;text-transform:uppercase}
+#cinf .r{display:grid;grid-template-columns:minmax(150px,210px) 1fr;gap:5px 14px;align-items:baseline}
+#cinf .k{color:#ffe1a8;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+#cinf .k svg{width:16px;height:16px;flex:none;color:#ffb04a}
+#cinf kbd{display:inline-block;min-width:18px;padding:0 5px;border:1px solid #6b5432;border-bottom-width:2px;border-radius:4px;background:#241a10;font:600 12px ui-monospace,Menlo,Consolas,monospace;color:#ffe1a8;text-align:center}
+#cinf p{margin:0 0 8px}
+#cinf .warn{border-left:3px solid #ff8a3d;padding-left:9px;color:#ffd9b0}
+#cinf .x{margin-top:14px;text-align:right}`;
+document.head.appendChild(ciCss);
+const $ti = document.createElement('button'); $ti.id = 'ti'; $ti.className = 'tl'; $ti.type = 'button'; $ti.textContent = 'i';
+$ti.setAttribute('aria-label', 'buttons, keys and how to'); $ti.title = 'buttons, keys and how to';
+document.body.appendChild($ti);
+const $cinf = document.createElement('div'); $cinf.id = 'cinf'; $cinf.setAttribute('role', 'dialog'); $cinf.setAttribute('aria-label', 'buttons, keys and how to');
+document.body.appendChild($cinf);
+const ci = {tab: 'keys'};
+// where you are now
+function ciWhere() {
+  const R = typeof room !== 'undefined' && room ? room.at : null;
+  if (typeof room === 'undefined' || !room) return 'cube';
+  return R && R.cl ? 'club' : R && R.gd ? 'garden' : R && R.gal ? 'gallery' : R && R.common ? 'common' : 'room';
+}
+const CI_WHERE = {cube: 'the cube', room: 'a block\'s room', common: 'the common room', gallery: 'a gallery', garden: 'the bitmap garden', club: 'a members\' club'};
+// the list, as data: each row is [keys or button, what it does, the button's id for its picture]. Keys go in [square brackets].
+function ciData(tab) {
+  const w = ciWhere(), inR = w !== 'cube', S = [], crewOn = typeof crew !== 'undefined' && crew && crew.on;
+  if ((tab || 'keys') === 'keys') {
+    if (!inR) {
+      S.push({t: 'buttons', rows: [['house (top left)', 'walk into the block', 'th'], ['i', 'this list', 'ti'],
+        ['the block number box', 'type a block number (or a transaction ID), then [Enter]'], ['‹   ›', 'the block before / the block after'],
+        ['LIVE', 'the block being made right now'], ['FEES', 'switch the colours between fees and ordinals'], ['eye', 'x-ray: see inside the cube', 'xr'],
+        ['layers', 'open the cube\'s layers', 'op'], ['FEED', 'show or hide the live feed'], ['play (top right)', 'flip back through the blocks', 'tp'],
+        ['camera', 'save a picture', 'ts'], ['sound', 'sound on or off', 'tu'], ['code', 'download', 'tc'], ['tablet', 'search and fast travel', 'tsr']]});
+      S.push({t: 'mouse', rows: [['drag', 'turn the cube'], ['wheel', 'zoom in and out'], ['click a parcel', 'see what it is (its card)']]});
+      S.push({t: 'keys', rows: [['[←] [→]', 'the block before / the block after'], ['[↑] [↓]', 'step through the parcels of the kind you picked'],
+        ['[O]', 'open the layers'], ['[Esc]', 'close the parcel\'s card']].concat(crewOn ? [['[Enter]', 'crew chat']] : [])});
+    } else {
+      S.push({t: 'buttons', rows: [['house (top left)', 'back out to the cube', 'th'], ['people', 'play together: find a crew, connect your wallet (read only)', 'pt'],
+        ['i', 'this list', 'ti'], ['camera (top right)', 'save a picture', 'ts'], ['sound', 'sound on or off', 'tu']]
+        .concat(w === 'garden' || w === 'club' ? [['GIVE UP (bottom right)', 'shows while you are in a game: click it twice to give up (the other side wins)']] : [])});
+      S.push({t: 'moving', rows: [['click the room', 'look around with the mouse ([Esc] gives the mouse back)'], ['[W] [A] [S] [D] or arrows', 'walk'], ['[Shift]', 'run'],
+        ['walk', 'stand up from a seat']]});
+      S.push({t: 'doing', rows: [['[E] (or click)', 'use what you are looking at: the words near the middle of the screen say what']]
+        .concat(w === 'garden' || w === 'club' ? [] : [['click a parcel', 'hold it (it shows what it is, like a tablet)']])
+        .concat([['[T]', 'the tablet: search and fast travel'], ['[Esc]', 'put back what you hold, or close a box']])});
+      if (w !== 'garden' && w !== 'club') S.push({t: 'holding a parcel (its card shows which work)', rows: [['[V]', 'view it big'], ['[G]', 'open its collection\'s gallery'],
+        ['[B]', 'enter the bitmap garden (your own bitmap)'], ['[K]', 'enter the members\' club (your own piece of a collection)'], ['[C]', 'put it on your trade base'],
+        ['[F]', 'follow it back through the blocks'], ['[U]', 'untether']]});
+      if (w === 'club') S.push({t: 'the club', rows: [['darts', 'stand at the line and press [E] to start or join; aim with the mouse, click or [E] throws (301: finish on 0 with a double)'],
+        ['draughts', 'sit on a sofa ([E]), click your piece, then a marked square'], ['four in a row', 'sit on a sofa ([E]), then click a column'],
+        ['light switch', 'changes the lights for everyone: once every 3 minutes each'], ['jukebox, terminal, pictures', '[E] opens them, [Esc] closes']]});
+      if (w === 'garden') S.push({t: 'the garden', rows: [['[E] (or click)', 'sit, swing, slide, swim, pour a drink, play a game: the words near the middle say what'],
+        ['your bitmap in its case', 'click it to go back the way you came']]});
+      if (crewOn) S.push({t: 'with a crew', rows: [['[Enter]', 'crew chat'], ['[Q]', 'moves and emotes ([Tab] for the next set, [1] to [9] to do one)'], ['click a crewmate\'s name', 'mute or unmute them (their voice, chat and trade messages)']]
+        .concat(w === 'garden' || w === 'club' ? [['look at a crewmate + [E]', 'ask them to play: then [1] [2] [3] picks the game, [Esc] stops'], ['[Y] / [N]', 'yes or no, when someone asks you']] : [])});
+    }
+    return {where: CI_WHERE[w], sections: S};
+  }
+  // how to (getting into the garden and the clubs: not what is inside them)
+  S.push({t: 'staying safe', p: ['Never open links people post in the chat or say out loud. A link can lead to a fake site made to empty your wallet. To visit a site, type its address yourself or use a bookmark you trust.',
+    'Agent Blockhall never asks you to send, spend or approve anything, and never asks for seed words, private keys or passwords. If something does while you play, it is not us: say no.',
+    'A parcel\'s LIVE VIEW runs its own code, like a web page: never type seed words, private keys, passwords or wallet details into it.']});
+  S.push({t: 'who is who', rows: [['people', 'real players, each on their own screen; their name floats over their head'],
+    ['AI agents', 'players too, run by an AI; their name has "· AI" after it (over their head and in the chat). They play by the same rules as people, with no extra powers'],
+    ['NPCs', 'the robots (the Chain Keeper over the Forum, the barkeep, the door guards, the garden robot, the hoover bot, the robot chef) are part of the place, not players: they do not chat or play']]});
+  S.push({t: 'your own AI agent', p: ['Your AI agent can join and play too: any AI agent that can use a web browser. Send it to bitmap22.github.io/my-ordinal-portal: the guide there (llms.txt) tells it how to play.',
+    'Give it your crew\'s code (or let it open a hall) and it joins you like a player: it walks about, chats, plays the games with you and your crew, asks to play and answers, and can put a piece its own wallet holds on the trade floor. It can go into the bitmap garden or a club only if its own wallet holds a bitmap or a piece, the same as you.',
+    'It plays by the same rules as people, with no extra powers, and everyone sees "· AI" after its name. While an agent plays on your screen, the small "AI agent" box lets you talk to it: only your screen sees that box.']});
+  S.push({t: 'muting', rows: [['all the sound', 'the sound button (top right) turns the game\'s sound on or off', 'tu'],
+    ['one person', 'click the name over their head to mute or unmute them: their voice, their chat and their trade messages. Or press the mic next to their name in the crew list on the play together page'],
+    ['your own mic', 'it is off until you turn it on. In a crew, the Microphone button on the play together page turns it on or off (with push to talk, hold it while you talk)']]});
+  S.push({t: 'your wallet (read only)', p: ['Press the people button (play together) and connect UniSat. You sign one short message: it proves the address is yours, and it sends, spends and approves nothing.',
+    'Then every inscription your wallet holds gets a marker (your P number, in your colour). You always see your own. Your crew sees them only if you switch "let my crew see" on (it starts off).']});
+  S.push({t: 'the bitmap garden', p: ['For bitmap holders. Connect your wallet, pick up your own bitmap (the real claim of its block) and press ENTER THE BITMAP GARDEN ([B]). Crewmates who hold a bitmap too can come in with you.']});
+  S.push({t: 'the members\' clubs', p: ['One club for each collection with a parent and children. Connect your wallet and pick up the parent (or one of its children) in its gallery. If your wallet holds a piece of that collection, press ENTER THE CLUB ([K]). Each time, the chain is asked that the piece really is in your wallet. Only crewmates who hold a piece of the same collection can come in.']});
+  S.push({t: 'the trade floor (the swap table)', p: ['In the common room\'s Forum: six stone bases in a ring, one for each player (P1 to P6).',
+    'Hold a parcel with an inscription your wallet holds and press PUT ON MY TRADE BASE ([C]). Your crew sees it only once their own game has asked the chain that it is in your wallet.',
+    'To say you would like to trade with a crewmate (they need a piece on their base too), walk up to your base and press [E] (or click it), then turn it to their colour. They are told. Turn it back to your own colour, or take your piece back, any time.'],
+    warn: 'Nothing is ever swapped, traded or sold in Agent Blockhall. The base only shows that you would like to trade. Any swap or trade happens off this app, on a marketplace you trust. Be careful: check the inscription yourself before you agree, and never share seed words, private keys or passwords with anyone.'});
+  S.push({t: 'the block halls', rows: [['a block\'s room', 'its parcels stand on shelves by kind, like a library; the sign over each bookcase says what is on it'],
+    ['the floor', 'the block\'s middle fee picks the floor: ice (under 1 sat/vB), water (1 to 2), grass (2 to 5), desert (5 to 20), fire (20 to 100), lava storm (100 to 500), plasma (500 and up)'],
+    ['the doors', 'one at each end: the block before and the block after; click the number over a door to send it to another block'],
+    ['the newest block\'s door', 'leads to the common room'],
+    ['FOLLOW IT BACK ([F])', 'shows where a held inscription has been, block by block, on a tether; the doors follow its journey. UNTETHER ([U]) lets it go'],
+    ['OPEN GALLERY ([G])', 'a collection\'s own room, from any of its pieces'], ['the tablet ([T])', 'search for a block, a bitmap, an inscription, an ID or an address, and fast travel']]});
+  return {where: CI_WHERE[w], sections: S};
+}
+// the list on the screen (built from the data above: words only, no markup from anywhere else)
+function ciDraw() {
+  const D = ciData(ci.tab), box = document.createElement('div'), h = document.createElement('h2'), wh = document.createElement('div');
+  h.textContent = 'BUTTONS, KEYS AND HOW TO'; wh.className = 'w'; wh.textContent = 'You are in ' + D.where + '.';
+  const tb = document.createElement('div'); tb.className = 'tb';
+  for (const [k, l] of [['keys', 'BUTTONS & KEYS'], ['how', 'HOW TO']]) { const b = document.createElement('button'); b.type = 'button'; b.textContent = l; b.className = ci.tab === k ? 'on' : ''; b.onclick = () => { ci.tab = k; ciDraw(); }; tb.appendChild(b); }
+  box.append(h, wh, tb);
+  const words = (el, t) => { for (const [i, bit] of String(t).split(/\[([^\]]+)\]/).entries()) { if (!bit) continue; if (i % 2) { const k = document.createElement('kbd'); k.textContent = bit; el.appendChild(k); } else el.appendChild(document.createTextNode(bit)); } };
+  for (const s of D.sections) {
+    const t = document.createElement('h3'); t.textContent = s.t; box.appendChild(t);
+    if (s.rows) { const g = document.createElement('div'); g.className = 'r';
+      for (const [k, d, ic] of s.rows) { const a = document.createElement('div'); a.className = 'k'; const src = ic && document.getElementById(ic), svg = src && src.querySelector('svg');
+        if (svg) a.appendChild(svg.cloneNode(true)); words(a, k); const b = document.createElement('div'); words(b, d); g.append(a, b); }
+      box.appendChild(g); }
+    for (const t2 of s.p || []) { const p = document.createElement('p'); words(p, t2); box.appendChild(p); }
+    if (s.warn) { const p = document.createElement('p'); p.className = 'warn'; p.textContent = s.warn; box.appendChild(p); }
+  }
+  const x = document.createElement('div'); x.className = 'x'; const c = document.createElement('button'); c.type = 'button'; c.textContent = 'CLOSE (Esc)'; c.onclick = () => ciShow(false); x.appendChild(c); box.appendChild(x);
+  $cinf.replaceChildren(box);
+}
+function ciShow(on) {
+  if (on && document.pointerLockElement) document.exitPointerLock();
+  if (on) ciDraw(); $cinf.classList.toggle('on', !!on); $ti.classList.toggle('on', !!on);
+  if (on && typeof rmLetGo === 'function') rmLetGo();
+}
+$ti.onclick = () => ciShow(!$cinf.classList.contains('on'));
+$cinf.addEventListener('pointerdown', e => { if (e.target === $cinf) ciShow(false); });
+// while the list is open it keeps the keyboard (nothing walks behind it); Esc closes it
+addEventListener('keydown', e => { if (!$cinf.classList.contains('on')) return; if (e.key === 'Escape') ciShow(false); e.stopImmediatePropagation(); if (e.key !== 'Tab') e.preventDefault(); }, true);
 // ---- building the club (once): the room, the bar, the darts corner, the game tables and their sofas, the lounge, the
 //      jukebox, the cassette wall, the photo wall, the terminal, the show stand, the lamps, the mirror ball ----
 function clBuild() {
@@ -13332,7 +13467,7 @@ function clBuild() {
     shadow(sh, x, z, Math.max(sx, sz) * .75, .4, .8); };
   const rug = (x, z, sx, sz, col, round) => { if (round) lathe(st, [[0, .006], [sx / 2, .006], [sx / 2, 0]], 40, () => col, 0, 5, TR([1, 1, sz / sx], [0, 0, 0], [x, 0, z])); else box(st, x, .004, z, sx, .008, sz, col, 5); };
   const pend = (x, z, y, col) => { limb(st, [x, HT, z], [x, y + .2, z], .006, .006, 5, C(0x111111), 0); lathe(st, [[.03, .2], [.06, .18], [.2, .02], [.22, 0], [.0, 0]], 18, () => col, 0, 18, TR([1, 1, 1], [0, 0, 0], [x, y, z])); lathe(st, [[0, .005], [.2, .005]], 18, () => [1, .9, .7], 0, 9, TR([1, 1, 1], [0, 0, 0], [x, y, z])); };
-  for (const [G, col, rc] of [[CL_DR, velT, C(0x23104a)], [CL_FR, velM, C(0x0d3a45)]]) {
+  for (const [G, col, rc] of [[CL_DR, velM, C(0x0d3a45)], [CL_FR, velT, C(0x23104a)]]) {   // (teal behind four in a row: a pink sofa through its holes looked like red discs)
     rug(G.x, G.z, 2.9, 3.6, rc, true); table(G.x, G.z, .9, .9, .45); pend(G.x, G.z, 2.15, C(0xd02a7a));
     sofa(at(G.x, G.z + 1.35, 0), 1.6, col); sofa(at(G.x, G.z - 1.35, Math.PI), 1.6, col);
     shadow(sh, G.x, G.z + 1.35, 1.0, .6, .9); shadow(sh, G.x, G.z - 1.35, 1.0, .6, .9); }
@@ -14524,6 +14659,8 @@ window.AgentKit = window.AgentKit || (() => {
         if (crewmate) { const want = String(crewmate).trim().toLowerCase(), a = gd.asked.find(x => { const M = crew.mates.get(x.from); return M && mateName(M).toLowerCase() === want; }); if (!a) return {ok: false, error: 'no ask from a crewmate called that', asks: gdAskInfo().toYou}; id = a.from; }
         const A = gd.asked.find(x => !id || x.from === id), why = gdAnswer(!!yes, id); if (why) return {ok: false, error: why};
         return {ok: true, answered: yes ? 'yes' : 'no', to: {untrusted: A ? A.name : ''}, then: yes && A ? 'goTo({place: "' + gdAskGo()[A.g] + '"}) to play ' + gdAskG()[A.g] : 'nothing more'}; }},
+    {name: 'controls', ro: true, does: 'The list a person sees behind the i button (top left, on a computer): the buttons and keys for where you are now, and how to: staying safe, who is who (people, AI agents, NPCs), muting, the wallet (read only), getting into the bitmap garden and the clubs, the trade floor (nothing is ever traded here: trades happen off this app), and the block halls. You play with these kit tools, not keys.', args: [{name: 'page', does: '"keys" (the default) or "how to"'}],
+      run: ({page}) => { const D = ciData(/how/i.test(String(page || '')) ? 'how' : 'keys'); return {ok: true, where: D.where, page: /how/i.test(String(page || '')) ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse'}; }},
     {name: 'club', ro: true, untrusted: true, does: 'In a collection\'s members\' club: the collection, who is here, where each place is (for goTo), the darts scores, the draughts board and its legal moves, the four-in-a-row frame, the show stand, the jukebox, the lights, asks to play, and how to play each.', run: () => { const I = clAgentInfo(); return I ? Object.assign(I, {room: roomInfo()}) : {ok: false, error: 'you are not in a club: clubEnter() goes in'}; }},
     {name: 'clubEnter', does: 'Go into a collection\'s members\' club, as a player does: hold the collection\'s parent (on its pedestal in its gallery) and press ENTER THE CLUB. Your wallet must hold the parent or one of its children, and the chain must agree the piece is in your wallet now (an agent proves its own wallet with walletProve() on the play together page). In a gallery it walks to the pedestal and picks the parent up; give the parent\'s inscription id to go to that collection\'s gallery first.', args: [{name: 'collection', does: 'the parent\'s inscription id (leave it out in a gallery: that gallery\'s collection)'}],
       run: async ({collection}) => {
