@@ -172,7 +172,7 @@
   <div class="panel small">
     <h2>For AI agents</h2>
     <p>In this page: <code>await window.agent.help()</code>, then <code>agent.read({height})</code>, <code>agent.items({kind, from, limit})</code>, <code>agent.item({n})</code>, <code>agent.checked()</code> and <code>agent.see()</code>. Where the browser has WebMCP, the same commands are tools named <code>dogemanifest_*</code>. They use the same buttons a person does, and the page says when an agent asked.</p>
-    <p>The bigger apps: <a href="doge-cube.html">Doge Cube</a>, where you walk into any Dogecoin block in 3D (its kit's <code>walkIn({height})</code>), and its Bitcoin twin <a href="block-cube.html">Agent Blockhall</a>, with the Bitcoin <a href="block-manifest.html">Block Manifest</a>.</p>
+    <p>The bigger apps: <a href="doge-cube.html">Doge Cube</a>, where you walk into any Dogecoin block in 3D (its kit's <code>walkIn({height})</code>), and its Bitcoin twin <a href="block-cube.html">Agent Blockhall</a>, with the Bitcoin <a href="block-manifest.html">Block Manifest</a>. For any Doginal in a block, the <a href="doge-provenance-check.html">Doge Provenance Check</a> proves where it came from, read from the chain.</p>
     <p>The block reader is one file, <a href="../agent-blockhall-mcp/server/doge-manifest.js">doge-manifest.js</a>. More in <a href="llms.txt">llms.txt</a>.</p>
   </div>
 
@@ -369,7 +369,8 @@
     for (const x of it.inscriptions || []) {
       const label = (x.contentType === 'unknown' ? 'inscription (no file type given)' : x.contentType || 'inscription') + (x.bytesHere ? ', ' + fmt(x.bytesHere) + ' bytes here' : '') +
         (x.pieces ? x.finishedHere ? ', all ' + fmt(x.pieces) + ' piece' + (x.pieces === 1 ? '' : 's') + ' here' : ', ' + fmt(x.piecesHere) + ' of ' + fmt(x.pieces) + ' pieces here (the rest in later transactions)' : '') + (x.delegate ? ', delegate' : '');
-      if (x.id) { const a = el('a', null, label); a.href = 'https://thedoginalsexplorer.com/inscription/' + x.id; a.target = '_blank'; a.rel = 'noopener'; line(a); } else line(label);
+      if (x.id) { const a = el('a', null, label); a.href = 'https://thedoginalsexplorer.com/inscription/' + x.id; a.target = '_blank'; a.rel = 'noopener';
+        const pc = el('a', null, 'where it came from'); pc.href = 'doge-provenance-check.html?id=' + x.id; pc.title = 'Doge Provenance Check: prove where this Doginal came from, read from the chain'; line(a, ' \u00b7 ', pc); } else line(label);
     }
     if (it.piece) line('a piece of a bigger file (' + fmt(it.piece.piecesHere) + ' piece' + (it.piece.piecesHere === 1 ? '' : 's') + (it.piece.last ? ', the last one' : '') + ')');
     if (it.token) { const t = it.token, w = t.untrusted || {}; line(t.protocol + ' ', ...[w.op, w.tick, w.amount].filter(v => v != null && v !== '').map(u)); }
@@ -397,7 +398,8 @@
 
   /* ---------- the agent kit: window.agent (the same steps as the buttons; the page says when an agent asked) ---------- */
   const GAME = 'https://bitmap22.github.io/my-ordinal-portal/doge-cube.html', TWIN = 'https://bitmap22.github.io/my-ordinal-portal/block-manifest.html';
-  const seeIt = h => ({dogeCube: GAME, walkIn: 'Walk into block ' + h + ' in 3D in Doge Cube: type ' + h + ' into its tablet, or in its agent kit, walkIn({height: ' + h + '}). These kinds are its hall’s shelves.', bitcoinTwin: TWIN});
+  const PROV = 'https://bitmap22.github.io/my-ordinal-portal/doge-provenance-check.html';
+  const seeIt = h => ({provenanceCheck: PROV + '?id=<a Doginal id from this block> proves where it came from, read from the chain.', dogeCube: GAME, walkIn: 'Walk into block ' + h + ' in 3D in Doge Cube: type ' + h + ' into its tablet, or in its agent kit, walkIn({height: ' + h + '}). These kinds are its hall’s shelves.', bitcoinTwin: TWIN});
   const brief = () => M && {manifest: M.manifest, block: M.block, counts: M.counts, checked: Object.assign({}, M.checked, {differences: M.checked.differences.slice(0, 20)}), sources: M.sources, seeIt: seeIt(M.block.height)};
   const need = () => { if (!M) throw new Error('no block read yet: call agent.read({height}) first'); };
   const kindOf = k => { if (k == null || String(k).trim() === '' || String(k).toLowerCase() === 'all') return ''; const n = DM.KIND_NAMES.find(x => x.toLowerCase() === String(k).trim().toLowerCase()); if (!n) throw new Error('kinds are: ' + DM.KIND_NAMES.join(', ')); return n; };
