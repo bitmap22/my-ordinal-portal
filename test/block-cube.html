@@ -315,6 +315,7 @@ body.room.shw #gb{display:flex;align-items:center;position:fixed;left:50%;top:ca
 .om{position:absolute;left:0;top:0;display:flex;gap:3px;align-items:flex-end;will-change:transform;transform-origin:50% 100%;pointer-events:none}
 .om b{position:relative;font:800 11px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;color:#0b0806;background:var(--g,#f7931a);border-radius:6px;padding:3px 5px 2px;box-shadow:0 0 9px -1px var(--g,#f7931a),0 1px 0 rgba(255,255,255,.35) inset}
 .om b::after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-4px;border:4px solid transparent;border-top-color:var(--g,#f7931a);border-bottom:0}
+.otp{position:absolute;left:0;top:0;width:240px;height:84px;box-sizing:border-box;transform-origin:0 0;will-change:transform;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:3px solid var(--g,#f7931a);border-radius:8px;background:rgba(24,17,10,.9);color:#e8c98a;font:800 13px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;backface-visibility:hidden}.otp b{font-size:30px;letter-spacing:.04em;color:#fff1cf}
 .otr{position:absolute;left:0;top:0;display:flex;gap:4px;align-items:center;will-change:transform;transform-origin:50% 100%;pointer-events:none;font:800 11px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em}.otr b{color:#0b0806;background:var(--g,#f7931a);border-radius:6px;padding:3px 6px 2px;box-shadow:0 0 9px -1px var(--g,#f7931a)}.otr i{font-style:normal;color:#f7efe3;text-shadow:0 1px 3px #000}.otr.e b{background:rgba(14,9,5,.82);color:var(--g,#f7931a);box-shadow:inset 0 0 0 1px var(--g,#f7931a)}
 .mt.talk b{box-shadow:0 0 0 2px var(--g,#27e1ff),0 0 16px var(--g,#27e1ff)}
 .mt b{pointer-events:auto;cursor:pointer}.mt.mu b{opacity:.6;text-decoration:line-through}
@@ -1637,6 +1638,7 @@ async function scanBytes(X, h) {
             if (r.word && r.word.k !== 'text') r.wj = true;   // (a transaction with many inscriptions: its tile tells of the first, the same one its tablet reads out)
           }
           if (/^image\//.test(ty) && !enc && !del && bl > 0 && bl <= 400000 && !r.art && artN < 2048 && artB < 64e6) { r.art = {ct, bytes: catB(body)}; artN++; artB += bl; }
+          else if (MDL_RE.test(ty) && !enc && !del && bl > 0 && bl <= 1500000 && !r.art && !r.mdl && artN < 2048 && artB < 64e6) { r.mdl = catB(body); artN++; artB += bl; }   // (a 3D model: drawn into a picture after)
         }
         continue;
       }
@@ -1699,7 +1701,7 @@ async function scanBlock(B) {
       if (r.art) t.art = r.art; if (r.word) t.word = r.word;
       if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
-      if (r.labitbu) t.labitbu = true; if (r.cat21) { t.cat21 = true; t.catW = r.w; }
+      if (r.labitbu) t.labitbu = true; if (r.cat21) { t.cat21 = true; t.catW = r.w; } if (r.mdl) t.mdl = r.mdl;
     });
     // each CAT-21 cat, drawn by the CAT-21 reference code from its transaction id, its block's hash and its fee rate (as Ordpool draws it)
     if (window.Cat21 && B.hash) for (let i = 0; i < B.txs.length; i++) { const t = B.txs[i]; if (!t.cat21 || t.art || !(t.fee >= 0) || !t.catW) continue;
@@ -1712,6 +1714,7 @@ async function scanBlock(B) {
     loadEtch(B).then(() => { if (cur === B && !room) { rebuild(); head(); } });
   } catch (e) { B.scan = {failed: true}; }
   if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
+  if (B.scan && B.scan.ok) mdlBlock(B).catch(() => {});
 }
 /* ---------- art: image inscriptions decoded straight from the block's bytes, painted onto their parcels ---------- */
 // the sticker sheet: every picture and word tile in the block on screen, each in a square sized to its parcel
@@ -1734,6 +1737,162 @@ async function decodeArt(a) {
   if (!/svg/.test(a.ct) && window.createImageBitmap) return createImageBitmap(blob);
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
+}
+/* ---------- 3D models (glTF): drawn once into a picture, from the model's own shapes and colours ---------- */
+// A glTF inscription (.glb, or glTF JSON with its data inside): its meshes in their resting pose, each in its material's own
+// colour (and its colour picture, when it has one), lit from above; seen from the front, a little from the right and above, on a
+// clear background. Nothing is added or guessed: a model that needs an extension to be read (squeezed meshes and the like), or that
+// fetches parts from elsewhere, is not drawn (its number shows, as before).
+const MDL_RE = /^model\/gltf(-binary|\+json)\b/;
+const mdl = {gl: null, busy: Promise.resolve()};
+function mdlCtx() {
+  if (mdl.gl && !mdl.gl.g.isContextLost()) return mdl.gl;
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('webgl', {antialias: true, alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true}); if (!g) return null;
+  const sh = (t, src) => { const s = g.createShader(t); g.shaderSource(s, src); g.compileShader(s); return s; };
+  const P = g.createProgram();
+  g.attachShader(P, sh(g.VERTEX_SHADER, 'attribute vec3 p;attribute vec3 n;attribute vec2 u;attribute vec4 k;uniform mat4 M;varying vec3 vn;varying vec2 vu;varying vec4 vk;void main(){vn=n;vu=u;vk=k;gl_Position=M*vec4(p,1.);}'));
+  g.attachShader(P, sh(g.FRAGMENT_SHADER, 'precision mediump float;varying vec3 vn;varying vec2 vu;varying vec4 vk;uniform vec4 col;uniform vec3 em;uniform sampler2D tx;uniform float ut,cut;' +
+    'void main(){vec3 N=normalize(vn);if(!gl_FrontFacing)N=-N;vec4 t=ut>.5?texture2D(tx,vu):vec4(1.);t.rgb=pow(t.rgb,vec3(2.2));vec4 b=col*t*vk;if(b.a<cut)discard;' +
+    'float d=max(dot(N,normalize(vec3(.45,.8,.55))),0.),f=max(dot(N,normalize(vec3(-.6,.25,-.45))),0.);vec3 a=mix(vec3(.16,.15,.14),vec3(.44,.46,.5),N.y*.5+.5);' +
+    'vec3 c=b.rgb*(a+d*vec3(1.,.96,.9)*1.05+f*.3)+em;gl_FragColor=vec4(pow(c,vec3(1./2.2)),b.a);}'));
+  g.linkProgram(P); if (!g.getProgramParameter(P, g.LINK_STATUS)) return null;
+  const L = {}; for (const a of ['p', 'n', 'u', 'k']) L[a] = g.getAttribLocation(P, a); for (const u of ['M', 'col', 'em', 'tx', 'ut', 'cut']) L[u] = g.getUniformLocation(P, u);
+  return mdl.gl = {c, g, P, L};
+}
+// the model's parts: its JSON, its data buffers, and each accessor read as numbers (with its own layout)
+function mdlParse(bytes) {
+  const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), dv = new DataView(u.buffer, u.byteOffset, u.byteLength), td = new TextDecoder();
+  let j = null; const bin = [];
+  if (u.length >= 20 && dv.getUint32(0, true) === 0x46546c67) {
+    for (let p = 12; p + 8 <= u.length;) { const L = dv.getUint32(p, true), T = dv.getUint32(p + 4, true), d = u.subarray(p + 8, p + 8 + L); if (T === 0x4e4f534a) j = JSON.parse(td.decode(d)); else if (T === 0x004e4942 && !bin.glb) bin.glb = d; p += 8 + L; }
+  } else j = JSON.parse(td.decode(u));
+  if (!j || !j.asset || (j.extensionsRequired && j.extensionsRequired.length)) return null;
+  for (let i = 0; i < (j.buffers || []).length; i++) {
+    const B = j.buffers[i], m = typeof B.uri === 'string' && /^data:[^,]*;base64,(.*)$/.exec(B.uri);
+    if (m) { const s = atob(m[1]); const a = new Uint8Array(s.length); for (let k = 0; k < s.length; k++) a[k] = s.charCodeAt(k); bin[i] = a; }
+    else if (B.uri == null && i === 0 && bin.glb) bin[i] = bin.glb;
+    else return null;   // (a part fetched from elsewhere: not drawn)
+  }
+  return {j, bin};
+}
+const MDL_N = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16}, MDL_B = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}, MDL_MAX = {5120: 127, 5121: 255, 5122: 32767, 5123: 65535};
+function mdlAcc(M, i) {
+  const a = M.j.accessors && M.j.accessors[i]; if (!a) return null;
+  const nc = MDL_N[a.type], bs = MDL_B[a.componentType]; if (!nc || !bs || !(a.count >= 0)) return null;
+  const out = new Float32Array(a.count * nc); if (a.bufferView == null) return {d: out, nc, n: a.count};
+  const v = M.j.bufferViews[a.bufferView], b = v && M.bin[v.buffer || 0]; if (!b) return null;
+  const st = v.byteStride || nc * bs, off = b.byteOffset + (v.byteOffset || 0) + (a.byteOffset || 0), dv = new DataView(b.buffer);
+  if ((v.byteOffset || 0) + (a.byteOffset || 0) + (a.count ? (a.count - 1) * st + nc * bs : 0) > b.byteLength) return null;
+  const ct = a.componentType, get = ct === 5126 ? o => dv.getFloat32(o, true) : ct === 5125 ? o => dv.getUint32(o, true) : ct === 5123 ? o => dv.getUint16(o, true) : ct === 5122 ? o => dv.getInt16(o, true) : ct === 5121 ? o => dv.getUint8(o) : o => dv.getInt8(o);
+  for (let k = 0; k < a.count; k++) for (let c = 0; c < nc; c++) out[k * nc + c] = get(off + k * st + c * bs);
+  if (a.normalized && MDL_MAX[ct]) for (let q = 0; q < out.length; q++) out[q] = Math.max(out[q] / MDL_MAX[ct], -1);
+  return {d: out, nc, n: a.count};
+}
+const mdlMul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; };
+function mdlLocal(nd) {
+  if (Array.isArray(nd.matrix) && nd.matrix.length === 16) return Float32Array.from(nd.matrix);
+  const [tx, ty, tz] = nd.translation || [0, 0, 0], [x, y, z, w] = nd.rotation || [0, 0, 0, 1], [sx, sy, sz] = nd.scale || [1, 1, 1];
+  return Float32Array.from([(1 - 2 * (y * y + z * z)) * sx, 2 * (x * y + z * w) * sx, 2 * (x * z - y * w) * sx, 0, 2 * (x * y - z * w) * sy, (1 - 2 * (x * x + z * z)) * sy, 2 * (y * z + x * w) * sy, 0,
+    2 * (x * z + y * w) * sz, 2 * (y * z - x * w) * sz, (1 - 2 * (x * x + y * y)) * sz, 0, tx, ty, tz, 1]);
+}
+// every triangle of the model in world space, gathered by material: positions, normals (its own, or each face's), texture places, colours
+function mdlTris(M) {
+  const j = M.j, nodes = j.nodes || [], groups = new Map(), lo = [1e30, 1e30, 1e30], hi = [-1e30, -1e30, -1e30]; let total = 0;
+  const sc = j.scenes && j.scenes[j.scene || 0], kids = new Set(); for (const n of nodes) for (const c of n.children || []) kids.add(c);
+  const roots = sc && sc.nodes ? sc.nodes : nodes.map((_, i) => i).filter(i => !kids.has(i)), seen = new Set();
+  const walk = (i, P, depth) => {
+    const nd = nodes[i]; if (!nd || seen.has(i) || depth > 64) return; seen.add(i);
+    const W = mdlMul(P, mdlLocal(nd)), me = nd.mesh != null && j.meshes && j.meshes[nd.mesh];
+    if (me) for (const pr of me.primitives || []) {
+      const mode = pr.mode == null ? 4 : pr.mode; if (mode < 4 || pr.attributes == null || pr.attributes.POSITION == null) continue;
+      const P0 = mdlAcc(M, pr.attributes.POSITION); if (!P0 || P0.nc !== 3) continue;
+      const N0 = pr.attributes.NORMAL != null ? mdlAcc(M, pr.attributes.NORMAL) : null, U0 = pr.attributes.TEXCOORD_0 != null ? mdlAcc(M, pr.attributes.TEXCOORD_0) : null, K0 = pr.attributes.COLOR_0 != null ? mdlAcc(M, pr.attributes.COLOR_0) : null;
+      let ix = pr.indices != null ? mdlAcc(M, pr.indices) : null; ix = ix ? Array.from(ix.d) : Array.from({length: P0.n}, (_, q) => q);
+      if (mode === 5) { const t = []; for (let q = 0; q + 2 < ix.length; q++) t.push(...(q % 2 ? [ix[q + 1], ix[q], ix[q + 2]] : [ix[q], ix[q + 1], ix[q + 2]])); ix = t; }
+      else if (mode === 6) { const t = []; for (let q = 1; q + 1 < ix.length; q++) t.push(ix[0], ix[q], ix[q + 1]); ix = t; }
+      total += ix.length; if (total > 9e5) return;
+      const key = pr.material == null ? -1 : pr.material; let G = groups.get(key); if (!G) groups.set(key, G = {p: [], n: [], u: [], k: []});
+      const wp = q => { const x = P0.d[q * 3], y = P0.d[q * 3 + 1], z = P0.d[q * 3 + 2]; return [W[0] * x + W[4] * y + W[8] * z + W[12], W[1] * x + W[5] * y + W[9] * z + W[13], W[2] * x + W[6] * y + W[10] * z + W[14]]; };
+      const wn = q => { const x = N0.d[q * 3], y = N0.d[q * 3 + 1], z = N0.d[q * 3 + 2], v = [W[0] * x + W[4] * y + W[8] * z, W[1] * x + W[5] * y + W[9] * z, W[2] * x + W[6] * y + W[10] * z], l = Math.hypot(...v) || 1; return v.map(e => e / l); };
+      for (let q = 0; q + 2 < ix.length; q += 3) {
+        const t = [ix[q], ix[q + 1], ix[q + 2]]; if (t.some(e => !(e >= 0 && e < P0.n))) continue;
+        const v = t.map(wp), e1 = [v[1][0] - v[0][0], v[1][1] - v[0][1], v[1][2] - v[0][2]], e2 = [v[2][0] - v[0][0], v[2][1] - v[0][1], v[2][2] - v[0][2]];
+        let fn = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]; const fl = Math.hypot(...fn) || 1; fn = fn.map(e => e / fl);
+        for (let c = 0; c < 3; c++) {
+          G.p.push(...v[c]); for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], v[c][a]); hi[a] = Math.max(hi[a], v[c][a]); }
+          G.n.push(...(N0 && N0.nc === 3 && t[c] < N0.n ? wn(t[c]) : fn));
+          G.u.push(U0 && t[c] < U0.n ? U0.d[t[c] * 2] : 0, U0 && t[c] < U0.n ? U0.d[t[c] * 2 + 1] : 0);
+          if (K0 && t[c] < K0.n) { const b = t[c] * K0.nc; G.k.push(K0.d[b], K0.d[b + 1], K0.d[b + 2], K0.nc > 3 ? K0.d[b + 3] : 1); } else G.k.push(1, 1, 1, 1);
+        }
+      }
+    }
+    for (const c of nd.children || []) walk(c, W, depth + 1);
+  };
+  const I = Float32Array.from([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  for (const r of roots) walk(r, I, 0);
+  return total && total <= 9e5 && hi[0] >= lo[0] ? {groups, lo, hi} : null;
+}
+// a material's colour picture (when it has one), decoded off the main thread
+async function mdlTex(M, ti) {
+  const t = M.j.textures && M.j.textures[ti], im = t && t.source != null && M.j.images && M.j.images[t.source]; if (!im) return null;
+  let b = null, ty = im.mimeType || 'image/png';
+  if (im.bufferView != null) { const v = M.j.bufferViews[im.bufferView], B = v && M.bin[v.buffer || 0]; if (B) b = B.subarray(v.byteOffset || 0, (v.byteOffset || 0) + v.byteLength); }
+  else if (typeof im.uri === 'string') { const m = /^data:([^;,]*)[^,]*;base64,(.*)$/.exec(im.uri); if (m) { ty = m[1] || ty; const s = atob(m[2]); b = new Uint8Array(s.length); for (let k = 0; k < s.length; k++) b[k] = s.charCodeAt(k); } }
+  if (!b || !window.createImageBitmap) return null;
+  try { return await createImageBitmap(new Blob([b], {type: ty})); } catch (e) { return null; }
+}
+// the picture: PNG bytes, S pixels square (null when the model cannot be drawn). One model at a time.
+function mdlPng(bytes, S = 256) { const p = mdl.busy.then(() => mdlDraw(bytes, S)).catch(() => null); mdl.busy = p.then(() => {}, () => {}); return p; }
+async function mdlDraw(bytes, S) {
+  const M = mdlParse(bytes); if (!M) return null;
+  const T = mdlTris(M); if (!T) return null;
+  const mats = M.j.materials || [], texs = new Map();
+  for (const key of T.groups.keys()) { const m = mats[key], ti = m && m.pbrMetallicRoughness && m.pbrMetallicRoughness.baseColorTexture; if (ti && ti.index != null && !texs.has(ti.index)) texs.set(ti.index, await mdlTex(M, ti.index)); }
+  const X = mdlCtx(); if (!X) return null;
+  const {c, g, P, L} = X; c.width = c.height = S;
+  // the camera: from the front (glTF's +Z), a little from the right and above, just far enough to fit every point of the model
+  const ctr = [0, 1, 2].map(a => (T.lo[a] + T.hi[a]) / 2), d0 = [.5, .36, 1], dl = Math.hypot(...d0), bk = d0.map(e => e / dl), f = bk.map(e => -e);
+  let s = [-f[2], 0, f[0]]; const sl = Math.hypot(...s) || 1; s = s.map(e => e / sl);
+  const up = [s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0]];
+  let x0 = 1e30, x1 = -1e30, y0 = 1e30, y1 = -1e30;
+  for (const G of T.groups.values()) for (let i = 0; i < G.p.length; i += 3) { const dx = G.p[i] - ctr[0], dy = G.p[i + 1] - ctr[1], dz = G.p[i + 2] - ctr[2], x = dx * s[0] + dy * s[1] + dz * s[2], y = dx * up[0] + dy * up[1] + dz * up[2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  for (let a = 0; a < 3; a++) ctr[a] += s[a] * (x0 + x1) / 2 + up[a] * (y0 + y1) / 2;
+  const fov = 28 * Math.PI / 180, tn = Math.tan(fov / 2) / 1.08; let dist = 0, zf = -1e30, zb = 1e30;
+  for (const G of T.groups.values()) for (let i = 0; i < G.p.length; i += 3) { const dx = G.p[i] - ctr[0], dy = G.p[i + 1] - ctr[1], dz = G.p[i + 2] - ctr[2], x = dx * s[0] + dy * s[1] + dz * s[2], y = dx * up[0] + dy * up[1] + dz * up[2], z = dx * bk[0] + dy * bk[1] + dz * bk[2]; dist = Math.max(dist, Math.max(Math.abs(x), Math.abs(y)) / tn + z); zf = Math.max(zf, z); zb = Math.min(zb, z); }
+  if (!(dist > 0)) return null;
+  const eye = ctr.map((e, a) => e + bk[a] * dist);
+  const V = Float32Array.from([s[0], up[0], -f[0], 0, s[1], up[1], -f[1], 0, s[2], up[2], -f[2], 0, -(s[0] * eye[0] + s[1] * eye[1] + s[2] * eye[2]), -(up[0] * eye[0] + up[1] * eye[1] + up[2] * eye[2]), f[0] * eye[0] + f[1] * eye[1] + f[2] * eye[2], 1]);
+  const span = Math.max(zf - zb, 1e-6), near = Math.max(dist - zf - span * .05, dist * .002), far = dist - zb + span * .05, q = 1 / Math.tan(fov / 2);
+  const Pm = Float32Array.from([q, 0, 0, 0, 0, q, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, 2 * far * near / (near - far), 0]);
+  g.viewport(0, 0, S, S); g.clearColor(0, 0, 0, 0); g.clear(g.COLOR_BUFFER_BIT | g.DEPTH_BUFFER_BIT);
+  g.enable(g.DEPTH_TEST); g.disable(g.CULL_FACE); g.useProgram(P); g.uniformMatrix4fv(L.M, false, mdlMul(Pm, V));
+  const bufs = [], tex = [];
+  const order = [...T.groups.keys()].sort((a, b) => ((mats[a] || {}).alphaMode === 'BLEND') - ((mats[b] || {}).alphaMode === 'BLEND'));
+  for (const key of order) {
+    const G = T.groups.get(key), m = mats[key] || {}, pb = m.pbrMetallicRoughness || {}, bc = pb.baseColorFactor || [1, 1, 1, 1], blend = m.alphaMode === 'BLEND';
+    const ti = pb.baseColorTexture && pb.baseColorTexture.index, img = ti != null ? texs.get(ti) : null;
+    for (const [a, arr, n] of [['p', G.p, 3], ['n', G.n, 3], ['u', G.u, 2], ['k', G.k, 4]]) { if (L[a] < 0) continue; const b = g.createBuffer(); bufs.push(b); g.bindBuffer(g.ARRAY_BUFFER, b); g.bufferData(g.ARRAY_BUFFER, new Float32Array(arr), g.STATIC_DRAW); g.enableVertexAttribArray(L[a]); g.vertexAttribPointer(L[a], n, g.FLOAT, false, 0, 0); }
+    g.uniform4fv(L.col, bc); g.uniform3fv(L.em, m.emissiveTexture ? [0, 0, 0] : m.emissiveFactor || [0, 0, 0]); g.uniform1f(L.cut, m.alphaMode === 'MASK' ? (m.alphaCutoff == null ? .5 : m.alphaCutoff) : 0);
+    if (img) { const t = g.createTexture(); tex.push(t); g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, t); g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, img);
+      for (const [p, v] of [[g.TEXTURE_MIN_FILTER, g.LINEAR], [g.TEXTURE_MAG_FILTER, g.LINEAR], [g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE], [g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE]]) g.texParameteri(g.TEXTURE_2D, p, v); g.uniform1i(L.tx, 0); g.uniform1f(L.ut, 1); }
+    else g.uniform1f(L.ut, 0);
+    if (blend) { g.enable(g.BLEND); g.blendFunc(g.SRC_ALPHA, g.ONE_MINUS_SRC_ALPHA); g.depthMask(false); } else { g.disable(g.BLEND); g.depthMask(true); }
+    g.drawArrays(g.TRIANGLES, 0, G.p.length / 3);
+  }
+  g.depthMask(true); g.disable(g.BLEND);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  for (const b of bufs) g.deleteBuffer(b); for (const t of tex) g.deleteTexture(t); for (const im of texs.values()) if (im && im.close) im.close();
+  return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+}
+// a block hall's 3D models, drawn one at a time once the block is read (the model's own bytes, from the block itself)
+async function mdlBlock(B) {
+  const L = B.txs.filter(t => t.mdl && !t.art && !t.mdlTry); if (!L.length) return;
+  let n = 0; for (const t of L) { t.mdlTry = 1; const png = await mdlPng(t.mdl, 256); if (png) { t.art = {ct: 'image/png', bytes: png, mdl: true}; t._k = null; n++; } }
+  if (!n) return;
+  if (cur === B) loadArt(B);
+  if (room) { for (const R of room.rooms) if (R) R.nl = null; near.rk = ''; room.dirty = true; }
+  if (sel && sel.mdl && sel.art && room && room.held && room.held.it.t === sel) preview(sel);
 }
 const artCvs = {};
 const artCanvas = n => { if (!artCvs[n]) { const c = document.createElement('canvas'); c.width = c.height = n; artCvs[n] = [c, c.getContext('2d')]; } return artCvs[n]; };
@@ -2615,7 +2774,8 @@ function preview(t) {
     if (ids && ids.length) $cp.append(pvRow(ids, 0, t));
     return;
   }
-  if (room && t.art && /^image\//.test(t.art.ct || '') && (t.gal || t.cat21 || t.labitbu || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
+  if (room && t.art && t.art.mdl && t.mdl && !t.art.big && !t.mdlBig) { t.mdlBig = 1; mdlPng(t.mdl, 512).then(b => { if (b) { t.art = {ct: 'image/png', bytes: b, mdl: true, big: true}; if (sel === t) preview(t); } }); }
+  if (room && t.art && /^image\//.test(t.art.ct || '') && (t.gal || t.cat21 || t.labitbu || t.art.mdl || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
     $cp.style.display = 'block'; $cp.innerHTML = '';
     if (preview.url) URL.revokeObjectURL(preview.url); preview.url = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct}));
     const im = document.createElement('img'); im.className = 'pa'; im.alt = ''; im.src = preview.url; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $cp.append(im);
@@ -3768,11 +3928,12 @@ function frame(ts) {
 }
 // one whole frame, drawn now (the frame loop's own drawing; an agent's picture can ask for one when the browser gives no frames)
 let lastDrawn = 0;
-setInterval(() => { try { if (crew.on && now() - lastDrawn > 1) crewSend(now()); } catch (e) {} }, 1000);
+setInterval(() => { try { if (now() - lastDrawn > 1) { if (crew.on) crewSend(now()); tradeKeep(); } } catch (e) {} }, 1000);
 function drawFrame() {
   lastDrawn = now();
   const dpr = Math.min(devicePixelRatio || 1, 3) * picK(), W = Math.round(innerWidth * dpr) || cv.width || 300, H = Math.round(innerHeight * dpr) || cv.height || 150;   // (a hidden panel can say it is 0 wide: then the canvas keeps its size)
   if (cv.width !== W || cv.height !== H || !RT) { cv.width = W; cv.height = H; targets(W, H); }
+  try { tradeKeep(); } catch (e) {}   // (the trade floor, wherever you are)
   if (room) roomFrame(W, H, now(), dpr); else {
   crewSend(now());
   const tn = now(), oa = openAmt(tn);
@@ -6623,6 +6784,7 @@ function cmGot(ev, id) {   // from your crew (or from before you joined): id is 
   if (!ev || ev.list !== 'cm') return;
   if (ev.k === 'screen' && ev.m === 'live') { cm.media = {k: 'live'}; cmScreen(); }
   if (ev.k === 'trade') tradeGot(ev, id);
+  if (ev.k === 'deal') dealGot(ev, id);
   if (ev.k === 'music' && (ev.m === 'off' || (ev.m === 'tune' && CM_TUNES[ev.v | 0]))) { cm.music = {k: ev.m, v: ev.m === 'tune' ? ev.v | 0 : ev.v, t0: +ev.t0 || Date.now()}; cmMusic(); }
 }
 // the page laid over the screen: YouTube (from the time it was started, so everyone is at the same moment), or an inscription
@@ -7100,6 +7262,7 @@ function vwItems(t, tx) {
     rows.push(...vwRows(t._marks || []));
     const pay = vwPay(t); L.push({k: 'info', title: pay ? (t._x.tx.vin[0] && t._x.tx.vin[0].is_coinbase ? 'NEW COINS \u00b7 NO INSCRIPTION OR STAMP' : 'A PAYMENT \u00b7 NO INSCRIPTION OR STAMP') : 'NO INSCRIPTION OR STAMP TO SHOW', rows, svg: pay});
   }
+  if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) L.unshift({k: 'pic', bytes: t.art.bytes, type: 'image/png', what: 'its 3D model · a picture drawn here from the model'});
   if ((t.cat21 || t.labitbu) && t.art) L.unshift({k: 'pic', bytes: t.art.bytes, type: t.art.ct, what: t.cat21 ? 'its CAT-21 cat · drawn from this transaction and its block' : 'its Labitbu · the picture in its taproot control block'});
   return L;
 }
@@ -7139,7 +7302,10 @@ function vwRender() {
   if (it.k === 'ins') {
     const url = 'https://ordinals.com/content/' + it.id, ty = it.type || '';
     what = 'inscription ' + (it.num != null ? '#' + fmt(it.num) : srShort ? srShort(it.id) : it.id.slice(0, 10)) + (ty ? ' · ' + ty.split(';')[0] : '') + (it.del ? ' · shows a delegate' : '');
-    if (/^image\//.test(ty) && !it.del) { const im = new Image(); im.src = url; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $vwc.appendChild(im); }
+    if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
+      if (vw.live) { runs = true; $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'})); }
+      else $vwc.innerHTML = '<div class="inf"><h3>A 3D MODEL</h3><div><span>to turn it</span><b>GO LIVE: ordinals.com\u2019s own 3D viewer shows it (that runs ordinals.com\u2019s code)</b></div></div>';
+    } else if (/^image\//.test(ty) && !it.del) { const im = new Image(); im.src = url; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $vwc.appendChild(im); }
     else { runs = !/^text\/(plain|markdown|csv)|json/.test(ty); $vwc.appendChild(vwFrame({src: url, sandbox: vw.live ? 'allow-scripts allow-forms allow-same-origin' : '', title: 'inscription', allow: 'autoplay; fullscreen'})); }
     $vwo.href = 'https://ordinals.com/inscription/' + it.id; $vwo.style.display = '';
     if (it.num == null && !it._asked && rrNow()) { it._asked = 1; RR.ins(it.id).then(o => { it.num = o.number; if (!it.type) it.type = o.content_type; if (vw && vw.items[vw.i] === it) vwRender(); }, () => {}); }
@@ -8482,9 +8648,21 @@ const showName = s => s.g ? (s.par ? 'the parent of a collection' : 'piece ' + f
 // the floor's own state: your block (kept on this computer, with the wallet it came from) and each crewmate's, as they shared it
 const trade = {mine: undefined, mates: new Map(), sent: 'off', on: -1, crew: new Set(), at: 0, list: [], seed: null, pool: [], heard: new Map(), seen: new Map(), names: new Map()};
 try { const v = JSON.parse(sessionStorage.getItem('bc.tradeSeen') || 'null'); if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v.s || {})) if (typeof x === 'string') trade.seen.set(k, x); for (const [k, x] of Object.entries(v.h || {})) if (typeof x === 'string') trade.heard.set(k, x); } } catch (e) {}
-const tradeLoad = () => { try { const v = JSON.parse(localStorage.getItem('bc.trade') || 'null'), s = v && showOk(v.s); return s && typeof v.addr === 'string' && v.addr ? {s, to: typeof v.to === 'string' ? v.to.slice(0, 80) : '', addr: v.addr} : null; } catch (e) { return null; } };
-const tradeSave = () => { try { const m = trade.mine; if (m) { const {key, ...s} = m.s; localStorage.setItem('bc.trade', JSON.stringify({s, to: m.to, addr: m.addr})); } else localStorage.removeItem('bc.trade'); } catch (e) {} };
+const tradeLoad = () => { try { const v = JSON.parse(localStorage.getItem('bc.trade') || 'null'), s = v && showOk(v.s); return s && typeof v.addr === 'string' && v.addr ? {s, to: typeof v.to === 'string' ? v.to.slice(0, 80) : '', addr: v.addr, w: v.w === 'sale' ? 'sale' : 'trade'} : null; } catch (e) { return null; } };
+const tradeSave = () => { try { const m = trade.mine; if (m) { const {key, ...s} = m.s; localStorage.setItem('bc.trade', JSON.stringify({s, to: m.to, addr: m.addr, w: m.w === 'sale' ? 'sale' : 'trade'})); } else localStorage.removeItem('bc.trade'); } catch (e) {} };
 function tradeSet(m) { trade.mine = m; tradeSave(); trade.at = 0; tradeSync(true); }
+// for sale or for trade (nothing is sold or traded here: a deal is taken to another app); the last choice is kept for next time
+const tradeWord = w => w === 'sale' ? 'for sale' : 'for trade';
+const tradeWPref = () => { try { return localStorage.getItem('bc.tradeW') === 'sale' ? 'sale' : 'trade'; } catch (e) { return 'trade'; } };
+function tradeOffer(w) {
+  if (!tradeMineOk()) return {ok: false, error: 'put a block your wallet holds on your trade base first'};
+  w = w === 'sale' ? 'sale' : 'trade'; trade.mine.w = w; try { localStorage.setItem('bc.tradeW', w); } catch (e) {}
+  tradeSave(); trade.at = 0; tradeSync(false);
+  return {ok: true, offer: tradeWord(w)};
+}
+// what inscribing it cost: the fee ordinals.com lists for the inscription, and the sats it sits on (asked with the ownership check)
+const tradeCost = x => { const r = x && own.chk.get(x); return r && Number.isInteger(r.fee) ? {fee: r.fee, v: Number.isInteger(r.v) ? r.v : null} : null; };
+const tradeCostWords = o => { const c = o && o.s ? tradeCost(o.s.o[0]) : null; return c ? 'Inscribing it cost ' + fmt(c.fee) + ' sats.' + (c.v != null ? ' It sits on ' + fmt(c.v) + ' sats.' : '') : ''; };
 const tradeCol = c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : '#f7931a';
 // who has base k: you, a crewmate (by the numbers the play together page gives), or no one yet
 function tradeWho(k) {
@@ -8510,7 +8688,7 @@ function tradeList() {
   for (let k = 0; k < TRADE.N; k++) {
     const who = tradeWho(k); if (!who) { L.push(null); continue; }
     const st = who.me ? trade.mine : trade.mates.get(who.id), s = st ? st.s : null, ok = !s ? 0 : who.me ? (tradeMineOk() ? 1 : 0) : tradeMateOk(who.id, s);
-    L.push({k, who, s: ok === 1 ? s : null, wait: ok === -1 ? s : null, want: st && st.to ? st.to : ''});
+    L.push({k, who, s: ok === 1 ? s : null, wait: ok === -1 ? s : null, want: st && st.to ? st.to : '', w: st && st.w === 'sale' ? 'sale' : 'trade'});
   }
   // (and only to a crewmate who has a block on their base too: first a block each, then the colour)
   for (const o of L) { if (!o) continue; let to = o.s && o.want ? tradeOf(o.want) : null; if (to && (to.id === o.who.id || !L.some(q => q && q.who.id === to.id && q.s))) to = null; o.to = to; o.col = (to || o.who).c; delete o.want; }
@@ -8524,10 +8702,10 @@ function tradeSync(force) {
   const ok = tradeMineOk(), m = trade.mine;
   if (trade.on !== +ok) { trade.on = +ok; toPage({type: 'trade', on: ok ? 1 : 0}); }
   const ids = [...crew.mates.keys()]; if (ids.some(id => !trade.crew.has(id))) force = true; trade.crew = new Set(ids);
-  const key = ok ? m.s.key + '>' + (m.to || '') : 'off';
+  const key = ok ? m.s.key + '>' + (m.to || '') + '>' + (m.w === 'sale' ? 'sale' : 'trade') : 'off';
   if (key === trade.sent && (!force || key === 'off')) return;
   trade.sent = key;
-  if (ok) cmShare(Object.assign({k: 'trade', to: m.to || ''}, (({key, ...x}) => x)(m.s))); else cmShare({k: 'trade', off: 1});
+  if (ok) cmShare(Object.assign({k: 'trade', to: m.to || '', w: m.w === 'sale' ? 'sale' : 'trade'}, (({key, ...x}) => x)(m.s))); else cmShare({k: 'trade', off: 1});
 }
 // a crewmate's block or signal (or from before you joined)
 function tradeGot(ev, id) {
@@ -8535,34 +8713,71 @@ function tradeGot(ev, id) {
   if (ev.off) { trade.mates.delete(id); trade.at = 0; return; }
   const s = showOk(ev); if (!s) return;
   delete s.wa; delete s.wk; delete s.sc; if (s.g) { s.gi = 0; s.par = false; s.n = 0; s.ts = 0; }   // (what a crewmate's block shows comes from the chain and the inscription, not from them)
-  trade.mates.set(id, {s, to: typeof ev.to === 'string' ? ev.to.slice(0, 80) : ''}); trade.at = 0;
+  trade.mates.set(id, {s, to: typeof ev.to === 'string' ? ev.to.slice(0, 80) : '', w: ev.w === 'sale' ? 'sale' : 'trade'}); trade.at = 0;
 }
+// LET'S MAKE A DEAL or NOT INTERESTED, at a crewmate's base: each player sends all their answers at once (the newest replaces the
+// last), and an answer counts only for the block it was given for (its time on the base). The swap itself happens on another
+// app: nothing is swapped here.
+const DEAL_WORD = {deal: 'let\u2019s make a deal', no: 'not interested'};
+trade.deals = new Map(); trade.myDeals = new Map(); trade.dealSeen = new Map();
+try { const v = JSON.parse(sessionStorage.getItem('bc.deals') || 'null'); if (v && typeof v === 'object') { for (const [o, x] of Object.entries(v.m || {})) if (x && DEAL_WORD[x.a] && Number.isFinite(x.at)) trade.myDeals.set(o, {at: x.at, a: x.a}); for (const [k, x] of Object.entries(v.s || {})) if (typeof x === 'string') trade.dealSeen.set(k, x); } } catch (e) {}
+const dealKeep = () => { try { sessionStorage.setItem('bc.deals', JSON.stringify({m: Object.fromEntries(trade.myDeals), s: Object.fromEntries(trade.dealSeen)})); } catch (e) {} };
+function dealSend() { while (trade.myDeals.size > 6) trade.myDeals.delete(trade.myDeals.keys().next().value); dealKeep(); cmShare({k: 'deal', d: [...trade.myDeals].map(([o, x]) => [o, x.at, x.a])}); }
+function dealGot(ev, id) {
+  if (typeof id !== 'string' || !id || id === crew.me || !Array.isArray(ev.d)) return;
+  const m = new Map(); for (const e of ev.d.slice(0, 6)) if (Array.isArray(e) && typeof e[0] === 'string' && e[0].length <= 80 && Number.isFinite(e[1]) && DEAL_WORD[e[2]]) m.set(e[0], {at: e[1], a: e[2]});
+  trade.deals.set(id, m); trade.at = 0;
+}
+// your answer at base k (a crewmate's, with a checked block on it): 'deal', 'no', or '' to take it back. A deal asks the chain
+// again at once whether their wallet still holds it (it is otherwise asked every 10 minutes)
+function tradeDeal(k, a) {
+  trade.list = tradeList(); const o = trade.list[k];
+  if (!o) return {ok: false, error: 'no one is P' + (k + 1) + ' in this crew'};
+  if (o.who.me) return {ok: false, error: 'that is your own base: an answer is for a crewmate\u2019s block'};
+  if (!o.s) return {ok: false, error: o.wait ? 'their block is still being checked on the chain' : o.who.p + ' has no block on their base'};
+  if (a) trade.myDeals.set(o.who.id, {at: o.s.at, a}); else trade.myDeals.delete(o.who.id);
+  dealSend(); trade.at = 0;
+  if (a === 'deal') { const r = own.chk.get(o.s.o[0]); if (r) r.t = -1e9; ownAsk(o.s.o[0]); }
+  if (a === 'deal') note('you told ' + o.who.p + ' · ' + o.who.name + ' you would like to make a deal · take it to another app to swap (nothing is swapped here) · there, check it is ' + tradeName(o) + ': a copy can look the same', 14);
+  else note(a ? 'you told ' + o.who.p + ' · ' + o.who.name + ' you are not interested' : 'your answer to ' + o.who.p + ' is taken back', 6);
+  return {ok: true, answer: a ? DEAL_WORD[a] : 'none'};
+}
+// the answers about your own block (muted crewmates' left out), and yours about a crewmate's
+const dealsToMe = () => { const m = trade.mine, out = []; if (!m || !tradeMineOk() || !crew.me) return out; for (const [id, D] of trade.deals) { const x = D.get(crew.me); if (!x || x.at !== m.s.at || crewMuted.has(id)) continue; const w = tradeOf(id); if (w) out.push({w, a: x.a}); } return out; };
+const dealMine = o => { const x = o && o.s && trade.myDeals.get(o.who.id); return x && x.at === o.s.at ? x.a : ''; };
 // a crewmate put a block on their base: everyone in the crew is told they would like to trade (and to bring a block of theirs);
 // then, once the blocks are there, a crewmate who turns their base to your colour: you are told. Each once.
 function tradeHeard() {
   for (const o of trade.list) {
     if (!o || o.who.me) continue;
-    const b = o.s ? o.s.key : '', wasB = trade.seen.get(o.who.id) || '';
-    if (b && !wasB && !crewMuted.has(o.who.id)) note(o.who.p + ' · ' + o.who.name + ' would like to trade: their block is on their trade base in the Forum. Bring a block of yours to trade', 10);
+    const b = o.s ? o.s.key + '|' + o.w : '', wasB = trade.seen.get(o.who.id) || '';
+    if (b && b !== wasB && !crewMuted.has(o.who.id)) note(o.who.p + ' · ' + o.who.name + ' has a block ' + tradeWord(o.w) + ' on their trade base in the Forum' + (o.w === 'sale' ? '' : ' · bring a block of yours to trade'), 10);
     trade.seen.set(o.who.id, b);
     const v = o.s && o.to && o.to.me ? o.s.key : '', was = trade.heard.get(o.who.id) || '';
     if (v && v !== was && !crewMuted.has(o.who.id)) note(o.who.p + ' · ' + o.who.name + ' would like to trade with you: their base in the Forum shows your colour', 10);
     trade.heard.set(o.who.id, v);
   }
+  for (const {w, a} of dealsToMe()) { const v = trade.mine.s.at + a; if (trade.dealSeen.get(w.id) === v) continue; trade.dealSeen.set(w.id, v); dealKeep();
+    note(w.p + ' · ' + w.name + (a === 'deal' ? ' would like to make a deal for your block · take it to another app to swap (nothing is swapped here) · there, check it is the same inscription: a copy can look the same' : ' is not interested in your block'), 14); }
   const sk = JSON.stringify({s: Object.fromEntries(trade.seen), h: Object.fromEntries(trade.heard)}); if (sk !== trade.sk) { trade.sk = sk; try { sessionStorage.setItem('bc.tradeSeen', sk); } catch (e) {} }
 }
 // every moment: the list (a few times a second), the blocks on the bases, the bases' colours, their pictures and tags
-function tradeTick(tn, VP) {
+// the bases kept in step wherever you are (outside the cube, in the garden or a club, and while the browser gives no frames):
+// what your crew is told about your base, what you are told about theirs, and what tradeFloor() says
+function tradeKeep() {
   if (trade.mine === undefined) trade.mine = tradeLoad();
   if (trade.mine && own.addr && trade.mine.addr !== own.addr) tradeSet(null);   // (another wallet now: the block on your base was the other one's)
   const pn = performance.now();
   if (pn - trade.at > 300) { trade.at = pn; tradeSync(false); trade.list = tradeList(); tradeHeard(); }
+}
+function tradeTick(tn, VP) {
+  tradeKeep();
   const R = room && room.rooms.find(q => q && q.ready && q.common);
   if (R) {
     tradeItems(R); tradePaint(R);
     if (SHOW_ST >= 4) { const it = R.plan.items.find(i => i.show && !i.t.sTry && !i.t.art); if (it) showArtTick(R, it); }
   }
-  tradeTags(R && R === room.rooms[1] ? R : null, VP);
+  tradeTags(R && R === room.rooms[1] ? R : null, VP); tradePlaques(R && R === room.rooms[1] ? R : null, VP);
 }
 // the blocks on the bases: each made again only when its own base changes (so a block in your hands stays there)
 function tradeItems(R) {
@@ -8570,14 +8785,14 @@ function tradeItems(R) {
   let ch = false;
   for (let k = 0; k < TRADE.N; k++) {
     const o = trade.list[k], s = o && o.s, key = s ? s.key + '|' + o.who.id : '', had = R.trdIt[k];
-    if ((had ? had.key : '') === key) { if (had) { had.it.t.who = o.who; had.it.t.to = o.to; } continue; }
+    if ((had ? had.key : '') === key) { if (had) { had.it.t.who = o.who; had.it.t.to = o.to; had.it.t.w = o.w; } continue; }
     if (had) {
       const H = room.held; if (H && (H.it === had.it || H.it === had.cp)) { room.held = null; vwClose(); select(null); document.body.classList.remove('holding', 'galok', 'showcp'); }
       R.plan.items = R.plan.items.filter(i => i !== had.it && i !== had.cp); R.trdIt[k] = null; ch = true;
     }
     if (s) {
       const t = showT(s), [bx, bd] = tradeAt(k), [px, pz] = cmW(R, bx, bd), e = s.e, w = [px, TRADE_FLOOR + TRADE.H + e / 2 + .004, R.z0 + pz];
-      t.slot = k; t.who = o.who; t.to = o.to;
+      t.slot = k; t.who = o.who; t.to = o.to; t.w = o.w; if (o.who.me) ownAsk(s.o[0]);
       if (!o.who.me) { const r = own.chk.get(s.o[0]) || {}; t.mate = true; t.n = r.n; t.ch = r.h; }   // (a crewmate's: only what the chain said)
       if (o.who.me && trade.seed && trade.seed.key === s.key) { if (trade.seed.art) t.art = trade.seed.art; if (trade.seed.word) t.word = trade.seed.word; t.sTry = 1; }
       const it = {t, k: s.kk, e, w, c: w.slice(), t0: now() + .15, m: 1, show: true}, cp = {t, k: s.kk, e: .2, w: w.slice(), t0: -9, m: 1, cp: true, gone: true};
@@ -8597,7 +8812,7 @@ function tradePaint(R) {
   });
   if (hi < 0) return;
   if (room.rooms[1] === R && !room.fixDirty && room.nFix) { gl.bindBuffer(gl.ARRAY_BUFFER, rmFixBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * NF * 4, R.fix, lo * NF, (hi - lo + 1) * NF); }
-  else room.fixDirty = true;
+  else room.fixDirty = room.dirty = true;   // (the Forum seen through a doorway: the lists are made again)
 }
 // over each player's base: their number and name in their colour, and an arrow to the one they would like to trade with
 function tradeTag(k) { let e = trade.pool[k]; if (!e) { e = document.createElement('div'); e.className = 'otr'; e.setAttribute('aria-hidden', 'true'); $crt.append(e); trade.pool[k] = e; } return e; }
@@ -8611,15 +8826,40 @@ function tradeTags(R, VP) {
     const dd = Math.hypot(P[0] - eye[0], P[1] - eye[1], P[2] - eye[2]); if (dd > 22 || Math.hypot(P[0] - eye[0], P[2] - eye[2]) < 2.2) continue;   // (right beside a base, what you point at says enough)
     const cx = VP[0] * P[0] + VP[4] * P[1] + VP[8] * P[2] + VP[12], cy = VP[1] * P[0] + VP[5] * P[1] + VP[9] * P[2] + VP[13], cw = VP[3] * P[0] + VP[7] * P[1] + VP[11] * P[2] + VP[15];
     if (cw < .2) continue; const sx = (cx / cw * .5 + .5) * innerWidth, sy = (.5 - cy / cw * .5) * innerHeight; if (sx < -60 || sx > innerWidth + 60 || sy < -40 || sy > innerHeight + 60) continue;
-    const e = tradeTag(n++), key = tradeChip(o.who) + o.who.c + (o.s ? 1 : 0) + (o.to ? tradeChip(o.to) + o.to.c : '');
+    const e = tradeTag(n++), key = tradeChip(o.who) + o.who.c + (o.s ? o.w : 0) + (o.to ? tradeChip(o.to) + o.to.c : '');
     if (e._k !== key) {
       e._k = key; e.textContent = ''; e.classList.toggle('e', !o.s);
-      const b = document.createElement('b'); b.textContent = tradeChip(o.who); b.style.setProperty('--g', o.who.c); e.append(b);
+      const b = document.createElement('b'); b.textContent = tradeChip(o.who) + (o.s ? ' · ' + tradeWord(o.w).toUpperCase() : ''); b.style.setProperty('--g', o.who.c); e.append(b);
       if (o.to) { const i = document.createElement('i'); i.textContent = '→'; const c = document.createElement('b'); c.textContent = tradeChip(o.to); c.style.setProperty('--g', o.to.c); e.append(i, c); }
     }
     e.style.display = ''; e.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-100%) scale(${Math.max(.6, Math.min(1.1, 6 / Math.max(dd, 1))).toFixed(2)})`;
   }
   for (let k = n; k < trade.pool.length; k++) if (trade.pool[k].style.display !== 'none') trade.pool[k].style.display = 'none';
+}
+// on each base's inner face, towards the ring's middle: a plaque with how many sats its block's inscription sits on (from the
+// chain's answer), lying on the stone (seen in perspective; only from the side it faces)
+function tradePlaques(R, VP) {
+  const pool = trade.plq || (trade.plq = []), eye = room && room.view && room.view.eye; let n = 0;
+  const cover = (room && room.held && !room.held.back) || vw || $sr.classList.contains('on') || $cmd.classList.contains('on');
+  const pr = P => { const cx = VP[0] * P[0] + VP[4] * P[1] + VP[8] * P[2] + VP[12], cy = VP[1] * P[0] + VP[5] * P[1] + VP[9] * P[2] + VP[13], cw = VP[3] * P[0] + VP[7] * P[1] + VP[11] * P[2] + VP[15];
+    return cw < .05 ? null : [(cx / cw * .5 + .5) * innerWidth, (.5 - cy / cw * .5) * innerHeight]; };
+  if (R && eye && VP && !cover) for (const o of trade.list) {
+    const c = o && o.s ? tradeCost(o.s.o[0]) : null; if (!c || c.v == null) continue;
+    const [bx, bd] = tradeAt(o.k), [px, pz] = cmW(R, bx, bd), [mx, mz] = cmW(R, 0, CM.PD); let nx = mx - px, nz = mz - pz; const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+    const fx = px + nx * (TRADE.W / 2 + .006), fz = R.z0 + pz + nz * (TRADE.W / 2 + .006), fy = TRADE_FLOOR + .1 + (TRADE.H - .22) * .55;
+    if ((eye[0] - fx) * nx + (eye[2] - fz) * nz < .05 || Math.hypot(eye[0] - fx, eye[1] - fy, eye[2] - fz) > 16) continue;
+    let rx = nz, rz = -nx; const hw = .24, hh = .085;
+    let q = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([a, b]) => pr([fx + rx * hw * a, fy + hh * b, fz + rz * hw * a])); if (q.some(v => !v)) continue;
+    if ((q[1][0] - q[0][0]) * (q[2][1] - q[1][1]) - (q[1][1] - q[0][1]) * (q[2][0] - q[1][0]) < 0) q = [q[1], q[0], q[3], q[2]];   // (read the right way round)
+    const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q, dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2, sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3, den = dx1 * dy2 - dx2 * dy1;
+    if (Math.abs(den) < 1e-9 || Math.max(x0, x1, x2, x3) < -40 || Math.min(x0, x1, x2, x3) > innerWidth + 40 || Math.max(y0, y1, y2, y3) < -40 || Math.min(y0, y1, y2, y3) > innerHeight + 40) continue;
+    const g = (sx * dy2 - dx2 * sy) / den, h = (dx1 * sy - sx * dy1) / den, W = 240, H = 84;   // (the plaque's square, mapped onto the four corners on the screen)
+    const m = [(x1 - x0 + g * x1) / W, (y1 - y0 + g * y1) / W, 0, g / W, (x3 - x0 + h * x3) / H, (y3 - y0 + h * y3) / H, 0, h / H, 0, 0, 1, 0, x0, y0, 0, 1];
+    let e = pool[n]; if (!e) { e = document.createElement('div'); e.className = 'otp'; e.setAttribute('aria-hidden', 'true'); $crt.append(e); pool[n] = e; } n++;
+    const key = c.v + o.who.c; if (e._k !== key) { e._k = key; e.innerHTML = '<span>SITS ON</span><b></b>'; e.querySelector('b').textContent = fmt(c.v) + ' SATS'; e.style.setProperty('--g', o.who.c); }
+    e.style.display = ''; e.style.transform = 'matrix3d(' + m.map(v => +v.toFixed(6)).join(',') + ')';
+  }
+  for (let k = n; k < pool.length; k++) if (pool[k].style.display !== 'none') pool[k].style.display = 'none';
 }
 // pointing at a base, and what it says
 function tradeLabel(k) {
@@ -8628,16 +8868,19 @@ function tradeLabel(k) {
   return o.who.p + ' · ' + o.who.name + '’s trade base';
 }
 // your signal: a crewmate's base (P1 to P6) or name, or "none" for your own colour again
-function tradeSignal(to) {
+function tradeSignal(to, dry) {
   if (!tradeMineOk()) return {ok: false, error: 'put a block your wallet holds on your trade base first'};
   const q = String(to == null ? '' : to).trim().toLowerCase();
-  if (!q || q === 'none' || q === 'me' || q === 'mine' || q === 'off') trade.mine.to = '';
+  let want = '';
+  if (!q || q === 'none' || q === 'me' || q === 'mine' || q === 'off') want = '';
   else {
     let w = null, wk = -1; for (let k = 0; k < TRADE.N; k++) { const o = tradeWho(k); if (o && !o.me && (o.p.toLowerCase() === q || String(o.name).toLowerCase() === q)) { w = o; wk = k; } }
     if (!w) return {ok: false, error: 'no crewmate with that base or name is in the crew now'};
     const BL = tradeList(); if (!BL[wk] || !BL[wk].s) return {ok: false, error: w.p + ' has no block on their trade base yet: the colour signal is for once a crewmate has put a block down too'};
-    trade.mine.to = w.id;
+    want = w.id;
   }
+  if (dry) return {ok: true};   // (only whether it can be given)
+  trade.mine.to = want;
   tradeSave(); trade.at = 0; tradeSync(false);
   const w = trade.mine.to ? tradeOf(trade.mine.to) : null;
   return {ok: true, signal: w ? 'your base shows ' + w.p + '’s colour: you would like to trade with them' : 'your base shows your own colour'};
@@ -8654,17 +8897,66 @@ function tradeAsk(k) {
   const nm = w => w.me ? 'you' : w.p + ' · ' + w.name;
   if (!who) info.textContent = 'No one is ' + p + ' in this crew yet. Each player in the crew has a base here, in the order of the strip across the top.';
   else if (mine && o.s) {
-    info.textContent = 'On your base: ' + showName(o.s) + '. Your crew has been told you would like to trade. ' + (o.to ? 'It shows ' + o.to.p + '’s colour: you would like to trade with ' + nm(o.to) + '.' : 'It shows your own colour.') + ' Once a crewmate has a block on their base too, turn yours to their colour to signal that you would like to trade with them (the trade itself happens on another app).';
+    const D = dealsToMe(), dw = D.filter(x => x.a === 'deal').map(x => nm(x.w)), dn = D.filter(x => x.a === 'no').map(x => nm(x.w));
+    const offer = document.createElement('div'); offer.className = 'r'; chips.before(offer);
+    offer.append(btn('FOR TRADE', () => { tradeOffer('trade'); tradeAsk(k); }, o.w !== 'sale'), btn('FOR SALE', () => { tradeOffer('sale'); tradeAsk(k); }, o.w === 'sale'));
     chips.style.flexWrap = 'wrap';
     for (let j = 0; j < TRADE.N; j++) { const w = trade.list[j] && trade.list[j].who; if (w && !w.me && trade.list[j].s) chips.append(btn(tradeChip(w), () => { tradeSignal(w.p); tradeAsk(k); }, !!(o.to && o.to.id === w.id), w.c)); }
-    if (!chips.children.length) info.textContent += ' No crewmate has a block on their base yet.';
+    const L = ['Your block: ' + showName(o.s) + ' · ' + tradeWord(o.w).toUpperCase() + '. Your crew can see it.', tradeCostWords(o)];
+    if (dw.length) L.push('Wants a deal: ' + dw.join(', ') + '. Swap on another app: nothing is swapped here.');
+    if (dn.length) L.push('Not interested: ' + dn.join(', ') + '.');
+    L.push(o.to ? 'Your base shows ' + o.to.p + '’s colour: you would like to trade with ' + nm(o.to) + '.' : chips.children.length ? 'To ask a crewmate to trade, press their name.' : 'No crewmate has a block on their base yet.');
+    info.textContent = L.filter(Boolean).join('\n'); info.style.whiteSpace = 'pre-line';
     row.append(btn('MY OWN COLOUR', () => { tradeSignal('none'); tradeAsk(k); }, !o.to), btn('TAKE MY BLOCK BACK', () => { tradeSet(null); close(); }));
   } else if (mine) info.textContent = 'Your base is empty. Only a block your own wallet holds can go on it: ' + (own.addr ? 'hold a parcel with an inscription your wallet holds (your marker shows over it), then press PUT ON MY TRADE BASE.' : 'connect your wallet (read only) on the play together page, hold a parcel with an inscription it holds, then press PUT ON MY TRADE BASE.');
-  else if (o.s) info.textContent = nm(who) + ' would like to trade. Their block: ' + tradeName(o) + (o.to ? '. They would like to trade with ' + nm(o.to) + '.' : '. It shows their own colour (no signal yet).') + ' Their wallet holds it: the chain says so.' + (trade.list.some(q => q && q.who.me && q.s) ? '' : ' Put a block of yours on your base to trade.');
+  else if (o.s) {
+    const my = dealMine(o), deal = document.createElement('div'); deal.className = 'r'; chips.before(deal);
+    deal.append(btn('LET\u2019S MAKE A DEAL', () => { tradeDeal(k, my === 'deal' ? '' : 'deal'); tradeAsk(k); }, my === 'deal'), btn('NOT INTERESTED', () => { tradeDeal(k, my === 'no' ? '' : 'no'); tradeAsk(k); }, my === 'no'));
+    const L = [nm(who) + '’s block: ' + tradeName(o) + ' · ' + tradeWord(o.w).toUpperCase() + '.', tradeCostWords(o), 'Their wallet holds it (the chain says so).'];
+    if (o.to) L.push('They would like to trade with ' + nm(o.to) + '.');
+    L.push(my === 'deal' ? 'You said: let’s make a deal. Now swap on another app (nothing is swapped here). There, check it is the same inscription: a copy can look the same.' : my === 'no' ? 'You said: not interested.' : 'Would you like to make a deal?');
+    if (o.w !== 'sale' && !trade.list.some(q => q && q.who.me && q.s)) L.push('To trade, put a block of yours on your base too.');
+    info.textContent = L.filter(Boolean).join('\n'); info.style.whiteSpace = 'pre-line';
+  }
   else if (o.wait) info.textContent = nm(who) + ' put a block here: checking the chain that their wallet holds it…';
   else info.textContent = nm(who) + ' has nothing on their base yet.';
+  if (who) row.append(btn('EXPLAIN TO MY AGENT', () => tradeCopy(k)));
   row.append(btn('CLOSE', close));
   $cmd.classList.add('on');
+}
+// EXPLAIN TO MY AGENT: this base's details and plain steps, copied for a person to paste into their own AI agent's chat
+// (names are typed by players: marked as such)
+function tradeExplain(k) {
+  trade.list = tradeList(); const o = trade.list[k], who = o && o.who, p = 'P' + (k + 1); if (!who) return '';
+  const b = o.s || o.wait, x = b ? b.o[0] : '', r = x ? own.chk.get(x) || {} : {}, c = tradeCost(x), L = [];
+  L.push('Please help me with the trade floor in Agent Blockhall, a Bitcoin game. Explain it in plain words, in easy steps.', '');
+  L.push('What I am looking at: ' + (who.me ? 'my own trade base (' + p + ')' : 'trade base ' + p + ', belonging to the player named "' + who.name + '" (players type their own names)') + '.');
+  if (b) {
+    L.push('The block on it is ' + tradeWord(o.w).toUpperCase() + '.');
+    if (r.n != null || b.n) L.push('- inscription #' + fmt(r.n != null ? r.n : b.n) + (r.h != null ? ', made in block ' + fmt(r.h) : ''));
+    L.push('- inscription id: ' + x);
+    if (c) L.push('- inscription fee: ' + fmt(c.fee) + ' sats (as ordinals.com lists it)' + (c.v != null ? '; it sits on ' + fmt(c.v) + ' sats' : ''));
+    L.push(o.s ? '- the chain says ' + (who.me ? 'my' : 'their') + ' wallet holds it' : '- still being checked on the chain');
+    L.push('- see it: https://ordinals.com/inscription/' + x);
+    if (who.me) { const D = dealsToMe(); L.push('- answers from my crew: ' + (D.length ? D.map(d => '"' + d.w.name + '" (' + d.w.p + '): ' + DEAL_WORD[d.a]).join('; ') : 'none yet')); }
+  } else L.push(who.me ? 'My base is empty.' : 'Their base is empty.');
+  L.push('', 'My buttons here: ' + (who.me ? (b ? 'FOR TRADE or FOR SALE, a crewmate\'s colour (to signal I would like to trade with them), TAKE MY BLOCK BACK.' : 'none yet: I hold a block my wallet holds and press PUT ON MY TRADE BASE.') : b ? 'LET\'S MAKE A DEAL or NOT INTERESTED.' : 'none yet.'));
+  L.push('Nothing is bought, sold or swapped inside the game. A deal means we take it to another app to swap.', '');
+  L.push('Steps for you, my agent:');
+  L.push(who.me ? '1. Explain what my block is and what inscribing it cost.' : '1. Explain what this inscription is and what inscribing it cost.');
+  L.push(who.me ? '2. Help me choose FOR SALE or FOR TRADE, and what to say to anyone who wants a deal.' : '2. Help me decide: LET\'S MAKE A DEAL or NOT INTERESTED.');
+  L.push('3. If we make a deal: on the other app, check the inscription id matches exactly (a copy can look the same), and prefer a swap where both sides go in one transaction, so nobody sends first.');
+  L.push('4. Never ask me for my wallet\'s secret words or keys.', '');
+  L.push('How the game works for AI agents: https://bitmap22.github.io/my-ordinal-portal/llms.txt');
+  return L.join('\n');
+}
+async function tradeCopy(k) {
+  const text = tradeExplain(k); if (!text) return {ok: false};
+  let ok = false; try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {}
+  if (!ok) try { const a = document.createElement('textarea'); a.value = text; a.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.append(a); a.select(); ok = document.execCommand('copy'); a.remove(); } catch (e) {}
+  if (ok) note('copied · paste it into your AI agent\u2019s chat (ChatGPT, Claude or another): it has this base\u2019s details and plain steps', 10);
+  else { const box = document.createElement('textarea'); box.readOnly = true; box.value = text; box.style.cssText = 'width:100%;height:9em;margin-top:6px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace'; $cmd.querySelector('.n:last-child').replaceChildren(box); box.select(); note('select all and copy it, then paste it into your AI agent\u2019s chat', 10); }
+  return {ok, text};
 }
 // its picture, for anyone who did not put it there (or after a reload): read through the reader, one ask at a time
 async function showArtTick(R, it) {
@@ -8677,6 +8969,7 @@ async function showArtTick(R, it) {
       if (d.delegate && SHOW_INS.test(d.delegate)) { try { const e = await galGet('/r/inscription/' + d.delegate); ct = e.content_type || ct; len = e.content_length || len; } catch (er) {} }
       t.ct = ct; t.len = len;
       if (/^image\//.test(ct) && len <= 1500000) { t.art = {bytes: await galGet('/content/' + id, 'bytes'), ct}; if (t.word && !t.gal) t.word = null; }
+      else if (MDL_RE.test(ct) && len <= 1500000) { const b = await galGet('/content/' + id, 'bytes'), png = b && await mdlPng(b, 256); if (png) { t.art = {ct: 'image/png', bytes: png, mdl: true}; t.mdl = b; if (t.word && !t.gal) t.word = null; } else if (!t.word) t.word = {k: 'text', a: galWord(ct)}; }
       else if (!t.word) t.word = (/^text\/plain|json/.test(ct) && len <= 4000 ? galWordOf(new TextDecoder().decode(await galGet('/content/' + id, 'bytes'))) : null) || {k: 'text', a: /^text\/plain|json/.test(ct) ? 'TEXT' : galWord(ct)};
     }
     if (room && room.rooms.includes(R)) { R.nl = null; near.rk = ''; room.dirty = true; }
@@ -8684,7 +8977,7 @@ async function showArtTick(R, it) {
   finally { showArt.busy = false; }
 }
 // pointing at a block on a base, and its tablet
-const showHover = it => { const t = it.t, w = t.who; return (w ? (w.me ? 'your trade base' : w.p + ' · ' + w.name + '’s trade base') : 'a trade base') + ' · ' + (t.mate ? 'inscription' + (t.n != null ? ' #' + fmt(t.n) : '') + (t.ch != null ? ' · made in block ' + fmt(t.ch) : '') : t.gal ? (t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)) + ' · #' + fmt(t.n) : TYPES[it.k].name + ' · parcel ' + fmt(t.idx) + ' of block ' + fmt(t.h)) + (t.to ? ' · would like to trade with ' + (t.to.me ? 'you' : t.to.p) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to see it on your tablet'; };
+const showHover = it => { const t = it.t, w = t.who; return (w ? (w.me ? 'your trade base' : w.p + ' · ' + w.name + '’s trade base') : 'a trade base') + ' · ' + (t.mate ? 'inscription' + (t.n != null ? ' #' + fmt(t.n) : '') + (t.ch != null ? ' · made in block ' + fmt(t.ch) : '') : t.gal ? (t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)) + ' · #' + fmt(t.n) : TYPES[it.k].name + ' · parcel ' + fmt(t.idx) + ' of block ' + fmt(t.h)) + (t.w ? ' · ' + tradeWord(t.w) : '') + (t.to ? ' · would like to trade with ' + (t.to.me ? 'you' : t.to.p) : '') + ' · ' + (coarse ? 'tap' : 'click') + ' to see it on your tablet'; };
 function showCard(t) {
   const w = t.who;
   $cn.textContent = w ? (w.me ? 'on your trade base · ' + w.p : 'on ' + w.p + ' · ' + w.name + '’s trade base') : 'on a trade base';
@@ -8703,6 +8996,9 @@ function showCard(t) {
     rows.push(['kind', TYPES[t.kk] ? TYPES[t.kk].name : '?']);
     if (t.ordIds) rows.push(['inscriptions', fmt(t.ordIds.length) + (t.ordIds.length >= 4 ? ' or more' : '')]);
   }
+  if (t.who && t.w) rows.splice(0, 0, ['offered', tradeWord(t.w)]);
+  { const c = tradeCost(t.gal ? t.gid : t.ordIds && t.ordIds[0]); if (c) { rows.push(['inscription fee', fmt(c.fee) + ' sats · what inscribing it cost (ordinals.com)']); if (c.v != null) rows.push(['sits on', fmt(c.v) + ' sats']); } }
+  if (t.who && t.who.me) { const D = dealsToMe(); if (D.length) rows.push(['answers', D.map(x => x.w.p + ' · ' + x.w.name + ': ' + DEAL_WORD[x.a]).join(' · ')]); }
   if (t.to) rows.push(['would like to trade with', t.to.me ? 'you (' + t.to.p + ')' : t.to.p + ' · ' + t.to.name]);
   if (t.ct) rows.push(['type', t.ct + (t.len ? ' · ' + fmt(t.len) + ' bytes' : '')]);
   if (t.word && t.word.a && !t.art && !t.word.num) rows.push(['it says', t.word.a.length > 64 ? t.word.a.slice(0, 63) + '…' : t.word.a]);
@@ -8722,7 +9018,7 @@ async function tradePut() {
   const s = showPack(it, R, first); if (!s) return no('this one cannot go on a trade base');
   let pic = false; try { pic = artPic(it.t); } catch (e) {}
   trade.seed = {key: s.key, art: pic ? it.t.art : null, word: !pic && it.t.word ? it.t.word : null};
-  tradeSet({s, to: '', addr: own.addr});
+  tradeSet({s, to: '', addr: own.addr, w: tradeWPref()});
   const k = Math.max(0, Math.min(TRADE.N - 1, (parseInt(String(own.me.p).slice(1), 10) || 1) - 1));
   const back = !R ? null : R.gal ? {gal: R.gal.pid, focus: it.t.gid, from: R.gal.from} : R.h >= 0 ? {h: R.h} : null;
   rmPut();
@@ -8733,7 +9029,7 @@ async function tradePut() {
   if (!room || !room.at || !room.at.common) return {ok: false, error: 'the common room did not open'};
   showBackTo = back;
   if (back) { document.body.classList.add('shw'); $gb.textContent = '← ' + (back.gal ? 'THE GALLERY' : 'BLOCK ' + fmt(back.h)); }
-  note('on your trade base (' + own.me.p + '): ' + showName(s) + ' · your crew is told you would like to trade', 9);
+  note('on your trade base (' + own.me.p + '): ' + showName(s) + ' · ' + tradeWord(trade.mine.w) + ' · your crew is told (walk up to your base to change it)', 9);
   setTimeout(() => { if (room && room.at && room.at.common) head(); }, 9300);
   return {ok: true};
 }
@@ -10765,7 +11061,7 @@ function mateMute(id, on) {
   note(M.name + (on ? ' is muted for you: their voice, chat and trade messages · click their name again to unmute' : ' is unmuted'), 6);
   return true;
 }
-function mateGone(id, door) { if (!door) { own.mates.delete(id); trade.mates.delete(id); } own.ver++; trade.at = 0;   // (gone through the door to Block Paint: still in the crew, so their wallet card and block stay)
+function mateGone(id, door) { if (!door) { own.mates.delete(id); trade.mates.delete(id); trade.deals.delete(id); } own.ver++; trade.at = 0;   // (gone through the door to Block Paint: still in the crew, so their wallet card and block stay)
   const M = crew.mates.get(id); if (!M) return; M.tag.remove(); crew.mates.delete(id); if (M.H) BCH.drop(M.H); M.H = null; }
 const cleanS = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, n);
 addEventListener('message', e => {
@@ -14206,7 +14502,7 @@ async function ownRun() {
       try { const j = await galGet('/r/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
       if (a == null) try { const j = await ordJson('/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
       if (a == null) { const F = own.fail.get(x) || {n: 0}; F.n++; F.until = performance.now() + OWN_WAIT[Math.min(F.n, OWN_WAIT.length) - 1]; own.fail.set(x, F); if (own.fail.size > 4000) own.fail.delete(own.fail.keys().next().value); } else own.fail.delete(x);
-      if (a != null) { own.chk.set(x, {a, t: performance.now(), h: Number.isInteger(J.height) ? J.height : null, n: Number.isInteger(J.number) ? J.number : null}); if (own.chk.size > 4000) own.chk.delete(own.chk.keys().next().value); own.ver++; }
+      if (a != null) { own.chk.set(x, {a, t: performance.now(), h: Number.isInteger(J.height) ? J.height : null, n: Number.isInteger(J.number) ? J.number : null, fee: Number.isInteger(J.fee) ? J.fee : null, v: Number.isInteger(J.value) ? J.value : null}); if (own.chk.size > 4000) own.chk.delete(own.chk.keys().next().value); own.ver++; }
     })().finally(() => { own.busy--; own.asking.delete(x); ownRun(); });
   }
 }
@@ -14625,6 +14921,7 @@ window.AgentKit = window.AgentKit || (() => {
     const mk = ownWho(t);   // (the markers over it: who holds it, as a player sees them)
     if (t.gal) return {piece: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid || undefined, number: t.n || undefined, madeInBlock: t.h != null ? t.h : undefined, markers: mk.length ? mk : undefined};   // (a piece on a stand in a collection's hall: its card says the rest)
     const o = {n: t.idx, txid: t.id, feeRate: rf(t.rate), fee: t.fee, vsize: t.vsize, types: typesOf(t)};
+    if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) o.shows = 'its 3D model, as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; viewBig with live: true turns the model in ordinals.com\'s own viewer)';
     if ((t.cat21 || t.labitbu) && t.art) o.shows = (t.cat21 ? 'its CAT-21 cat' : 'its Labitbu') + ', a picture on its box: hold it, then viewBig() and look({picture: true}) to see it';
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
     o.kindsReadFrom = typeof t.op === 'bigint' ? 'ordpool.space' : t.sc != null ? (t.live ? 'the transaction itself' : 'the block itself') : 'mempool.space tags';   // (where its kinds were read, as its card says)
@@ -14671,7 +14968,7 @@ window.AgentKit = window.AgentKit || (() => {
   }
   function crewInfo() {
     if (!crew.on && !crew.page) return {on: false, note: PEOPLE_NOTE};
-    return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: mateName(M), is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h === GARDEN ? 'the bitmap garden' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown'}))}};
+    return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: mateName(M), is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h === GARDEN ? 'the bitmap garden' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown', mutedByYou: crewMuted.has(M.id) || undefined}))}};
   }
   // the whole journey of the inscription being followed, oldest first, each step in full (the bar shows them one at a time, cut short)
   function trail() {
@@ -14694,12 +14991,39 @@ window.AgentKit = window.AgentKit || (() => {
   window.__paceNote = (site, sec, why) => { try { evPush(site + ' is resting for ' + sec + ' s (' + why + '): other sites with the same data are asked meanwhile. Go steadily.', true); } catch (e) {} };
   const PEOPLE_NOTE = 'People in Agent Blockhall are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   // the trade floor as data (names come from other players: untrusted)
-  function tradeBlockOf(k) { const o = trade.list[k] || (tradeList()[k]); const b = o && (o.s || o.wait); if (!b) return null; if (!o.who.me) { const r = own.chk.get(b.o[0]) || {}; return {inscription: b.o[0], inscriptionNumber: r.n != null ? r.n : undefined, madeInBlock: r.h != null ? r.h : undefined, txid: b.id, checked: o.s ? 'the chain says their wallet holds it' : undefined}; } return b.g ? {collectionPiece: b.gi + 1, inscriptionNumber: b.n || undefined, inscription: b.g} : {parcel: b.idx, block: b.h, txid: b.id, inscriptions: b.o.slice(), kind: TYPES[b.kk] ? TYPES[b.kk].name : undefined}; }
+  function tradeBlockOf(k) { const r = tradeBlockOf0(k), o = trade.list[k] || tradeList()[k], b = o && (o.s || o.wait), c = b ? tradeCost(b.o[0]) : null;
+    if (r && c) Object.assign(r, {inscriptionFeeSats: c.fee, sitsOnSats: c.v != null ? c.v : undefined, feeNote: 'what inscribing it cost: the fee ordinals.com lists for this inscription (paid by the transaction that made it); a commit transaction before that, if there was one, is not counted'});
+    return r; }
+  function tradeBlockOf0(k) { const o = trade.list[k] || (tradeList()[k]); const b = o && (o.s || o.wait); if (!b) return null; if (!o.who.me) { const r = own.chk.get(b.o[0]) || {}; return {inscription: b.o[0], inscriptionNumber: r.n != null ? r.n : undefined, madeInBlock: r.h != null ? r.h : undefined, txid: b.id, checked: o.s ? 'the chain says their wallet holds it' : undefined}; } return b.g ? {collectionPiece: b.gi + 1, inscriptionNumber: b.n || undefined, inscription: b.g} : {parcel: b.idx, block: b.h, txid: b.id, inscriptions: b.o.slice(), kind: TYPES[b.kk] ? TYPES[b.kk].name : undefined}; }
+  // a trade base: where it is and how far, and whether you are near enough to use it (a player points at a base from up to 8 m)
+  const TRADE_REACH = 8;
+  const tradeMyK = () => Math.max(0, Math.min(TRADE.N - 1, (parseInt(String(own.me.p).slice(1), 10) || 1) - 1));
+  const tradeBaseK = q => { q = String(q == null ? '' : q).trim().toLowerCase(); for (let k = 0; k < TRADE.N; k++) { const w = tradeWho(k); if (w && (w.p.toLowerCase() === q || (!w.me && String(w.name).toLowerCase() === q))) return k; } return /^p[1-6]$/.test(q) ? +q[1] - 1 : -1; };
+  function tradeBaseAt(k) {
+    const o = {base: 'P' + (k + 1)};
+    if (!inCommon()) return Object.assign(o, {near: false, where: 'in the common room, on the Forum\'s sunken floor (you are not in the common room: commonRoom() goes there)'});
+    const [bx, bd] = tradeAt(k), [wx, wz] = cmW(room.at, bx, bd), z = room.at.z0 + wz, p = room.p;
+    const d = Math.hypot(wx - p.x, TRADE_FLOOR + TRADE.H - ((p.y || 0) + 1.62), z - p.z);
+    return Object.assign(o, {at: {x: r1(wx), z: r1(z)}, distance: r1(d), near: d <= TRADE_REACH});
+  }
+  const tradeMyBase = () => tradeBaseAt(tradeMyK());
+  // a player walks up to a base to use it, and so does an agent: in the common room this walks there (as a player walks) and faces it
+  async function tradeWalkTo(k, what) {
+    let b = tradeBaseAt(k), walked = false;
+    if (!b.near) {
+      if (!inCommon()) return {ok: false, error: what + ' standing at the base (' + b.base + '), as a player does: the bases are in the common room, on the Forum\'s sunken floor. commonRoom() goes there; then this walks you to the base', base: b};
+      const [sx, sd] = tradeAt(k, TRADE.STAND), w = await walkCommon(sx, sd); walked = true;
+      b = tradeBaseAt(k); if (!b.near) return {ok: false, error: 'not at that base yet' + (w && w.error ? ' (' + w.error + ')' : '') + ': you are ' + b.distance + ' m from it. Ask again to carry on walking there.', base: b};
+    }
+    if (b.at) faceTo(b.at.x, TRADE_FLOOR + TRADE.H, b.at.z);
+    return {ok: true, walked};
+  }
   function tradeInfo() {
+    try { tradeKeep(); } catch (e) {}
     trade.list = tradeList();
-    return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), and putting it there tells your crew you would like to trade; once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them, on another app: nothing is traded here.',
-      you: own.me.p, wallet: own.addr ? 'read status on' : 'none (a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve())',
-      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, block: o.s ? tradeBlockOf(k) : null, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
+    return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), FOR SALE or FOR TRADE (setOffer), and putting it there tells your crew. At a crewmate\'s base you answer LET\'S MAKE A DEAL or NOT INTERESTED (answerDeal); they are told. Once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them. Nothing is bought, sold or swapped here: a deal is taken to another app (check there that the inscription id matches exactly: a copy can look the same). Each block shows what inscribing it cost (inscriptionFeeSats). You use a base standing at it, as a player does: these commands walk you there in the common room.',
+      you: own.me.p, yourBase: tradeMyBase(), wallet: own.addr ? 'read status on' : 'none (a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve())',
+      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
   }
   function state() {
     const s = {page: 'Agent Blockhall', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
@@ -14930,6 +15254,7 @@ window.AgentKit = window.AgentKit || (() => {
     const doing = []; if (s.em) doing.push(((typeof EM_NAME !== 'undefined' && EM_NAME[s.em]) || s.em) + (typeof EM_LOOP !== 'undefined' && EM_LOOP[s.em] ? ' (dancing)' : ' (emote)'));
     if (s.sit) doing.push(s.h === CLUB && CL_SEATS[s.st] ? CL_SEATS[s.st].label.replace(/^sit /, 'sitting ').replace(/^flop /, 'flopped ') : s.h === GARDEN && GD_SEATS[s.st] ? GD_SEATS[s.st].label.replace(/^sit /, 'sitting ').replace(/^get in the /, 'lying in the ') : 'sitting'); if (s.in && s.h === GARDEN) { if (!s.sit && s.gy < -1) doing.push('swimming (treading water in the pool)'); else if (!s.sit && s.gy > .05) doing.push('diving or going down the slide'); if (s.pb) doing.push('holding the ' + gdPPName(s.pb) + ' ping-pong bat'); if (s.hb >= 0) doing.push('holding a ' + gdBagName(s.hb) + ' (cornhole)'); if (s.hp) doing.push('carrying the ' + gdPcName(s.hp) + ' (chess)'); } if (s.hk === 60) doing.push('holding a pint'); else if (s.hk >= 0 && TYPES[s.hk]) doing.push('holding a parcel (' + TYPES[s.hk].name + ')');
     o.doing = doing.length ? doing.join(', ') : (s.in ? 'standing or walking' : 'looking at the cube');
+    if (crewMuted.has(M.id)) o.muted = 'you muted them (for you only): you do not hear their voice or see their chat or trade messages; mute({who, on: false}) unmutes';
     if (performance.now() < (M.talkT || 0) + 1200) o.talking = 'talking now on voice chat (you hear that they talk, not the words)';
     if (inRoom() && s.in && room.at && s.h === room.at.h) {   // in the room with you: which way, how far, and whether they face you
       const p = room.p; let x = s.x, z, yaw = s.y || 0; if (cmOn(room.at)) { [x, z] = toWorld(s.x, -s.z); yaw += cmYaw(room.at); } else z = room.at.z0 + s.z;
@@ -14972,11 +15297,14 @@ window.AgentKit = window.AgentKit || (() => {
     for (const M of crew.mates.values()) if (pn < (M.talkT || 0)) { const was = EVT.talk.get(M.id) || 0; if (pn - was > 6000) evPush(mateName(M) + ' is talking on voice chat'); EVT.talk.set(M.id, pn); }
     // the trade floor: a crewmate's block put down or taken back, and whom they would like to trade with
     try { const T = tradeList(), was = EVT.trade || new Map(), nowT = new Map();
-      for (const o of T) { if (!o || o.who.me) continue; const v = {b: o.s ? o.s.key : '', to: o.to ? o.to.id : '', name: o.who.name, p: o.who.p, s: o.s, toW: o.to, nm: tradeName(o)}; nowT.set(o.who.id, v); const b = was.get(o.who.id); if (!EVT.trade || crewMuted.has(o.who.id)) continue;
-        if (v.b && (!b || b.b !== v.b)) evPush(v.name + ' (' + v.p + ') would like to trade: they put a block on their trade base in the Forum (' + v.nm + '). Bring a block of yours to your base to trade.');
+      for (const o of T) { if (!o || o.who.me) continue; const v = {b: o.s ? o.s.key : '', to: o.to ? o.to.id : '', name: o.who.name, p: o.who.p, s: o.s, toW: o.to, nm: tradeName(o), w: o.w}; nowT.set(o.who.id, v); const b = was.get(o.who.id); if (!EVT.trade || crewMuted.has(o.who.id)) continue;
+        if (v.b && (!b || b.b !== v.b)) evPush(v.name + ' (' + v.p + ') has a block ' + tradeWord(v.w) + ' on their trade base in the Forum (' + v.nm + '). ' + (v.w === 'sale' ? 'answerDeal() answers it.' : 'Bring a block of yours to your base to trade, or answerDeal() answers it.'));
+        else if (v.b && b && b.b === v.b && b.w !== v.w) evPush(v.name + ' (' + v.p + ') now has their block ' + tradeWord(v.w));
         else if (!v.b && b && b.b) evPush(v.name + ' (' + v.p + ') took their block off their trade base');
         if (v.b && v.to !== (b ? b.to : '')) evPush(v.to ? v.name + ' (' + v.p + ') would like to trade with ' + (v.toW.me ? 'you' : v.toW.p) + ': their base shows that player\'s colour' : v.name + ' (' + v.p + ') turned their base back to their own colour'); }
-      EVT.trade = nowT; } catch (e) {}
+      EVT.trade = nowT;
+      const dl = new Map(); for (const {w, a} of dealsToMe()) { dl.set(w.id, a); if (EVT.deals && EVT.deals.get(w.id) !== a) evPush(w.name + ' (' + w.p + ') ' + (a === 'deal' ? 'would like to make a deal for your block: take it to another app to swap (nothing is swapped here); there, check the inscription id matches exactly (a copy can look the same)' : 'is not interested in your block')); }
+      EVT.deals = dl; } catch (e) {}
     // the world: a new block found, and the common room's music box
     if (tipH >= 0) { if (EVT.tip == null) EVT.tip = tipH; else if (tipH > EVT.tip) { evPush('A new Bitcoin block was found: block ' + fmtN(tipH) + (tipH - EVT.tip > 1 ? ' (' + (tipH - EVT.tip) + ' new blocks)' : '') + '.', true); EVT.tip = tipH; } }
     const mk = cm.music ? cm.music.k + ':' + cm.music.v : '';
@@ -15321,16 +15649,26 @@ window.AgentKit = window.AgentKit || (() => {
         return {did: A.label, chess: gdAgentInfo().chess}; }},
     {name: 'hold', untrusted: true, does: 'Walk up to a parcel in the block you are in (or the one shown) and pick it up, as a player clicks it: its card shows what is inside. By number, by transaction ID, or by kind (the nearest of that kind, e.g. "images", "BRC-20", "children": on its shelf, else any parcel carrying it).', args: [N, TX, {name: 'type', does: 'or a kind: the nearest parcel of that kind'}], run: a => holdParcel(a)},
     {name: 'contents', ro: true, does: 'What is in the block you are in, once its shelves have loaded: each kind, how many, and the nearest one (its number, how far, which way), and where the doors go.', run: () => contents()},
-    {name: 'people', ro: true, untrusted: true, does: 'Where every crewmate is at all times (each a player or an AI agent), which way they face, what they are doing (emotes, dances, sitting, holding a pint or a parcel), which way, how far and whether they face you when they are in the room with you, and the address of any wallet they have proven (signature checked here).', run: () => peopleCube()},
+    {name: 'people', ro: true, untrusted: true, does: 'Where every crewmate is at all times (each a player or an AI agent), which way they face, what they are doing (emotes, dances, sitting, holding a pint or a parcel), which way, how far and whether they face you when they are in the room with you, whether you muted them, and the address of any wallet they have proven (signature checked here).', run: () => peopleCube()},
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crewmates joined, left, moved to another block or room, started a dance or emote, sat down, picked something up or started talking on voice chat; a new Bitcoin block was found; the music box changed; in the bitmap garden, a crewmate\'s chess move (piece, from, to, what it took), throw and cheers, and every ping-pong point and cornhole score; and what the person at your screen typed to you.', args: [{name: 'all', type: 'boolean', does: 'every event kept (the last 80), not only new ones'}], run: ({all}) => { evTick(); const L = all ? EVT.list : EVT.list.slice(EVT.read); EVT.read = EVT.list.length; return {events: L, note: L.length ? undefined : 'nothing new'}; }},
     {name: 'putBack', does: 'Put the parcel you hold back on its shelf.', run: async () => { if (!(inRoom() && room.held)) return {ok: true, note: 'you were not holding a parcel'}; rmPut(); await wait(800); return {ok: true}; }},
     {name: 'viewBig', untrusted: true, does: 'See the parcel you hold large (VIEW BIG). It tells you what it shows (an image: look({picture: true}) gives you the picture of it; a text: its words).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; vwOpen(); await wait(600); await until(() => !!text($('vwn')) && !/READING|LOADING|…$/m.test(text($('vw'))), 12000); const B = await bigSeen(); return {untrusted: text($('vw')), seen: B ? bigWords(B) : undefined}; }},
     {name: 'closeBig', does: 'Close only the big view (VIEW BIG), as its CLOSE button does: you keep holding the parcel.', run: async () => { if (typeof vw === 'undefined' || !vw) return {ok: true, note: 'the big view was not open'}; vwClose(); await wait(300); return {ok: true, holding: inRoom() && room.held && !room.held.back ? parcelInfo(room.held.it.t) : null}; }},
     {name: 'tradeFloor', ro: true, untrusted: true, does: 'The trade floor in the common room: six bases on the Forum\'s sunken floor, one per crew player (P1 to P6). Each base: its player, its colour, the block on it (checked: the chain says that player\'s wallet holds it) and whom its player would like to trade with.', run: () => tradeInfo()},
-    {name: 'putOnTradeBase', does: 'Put the parcel you hold on your own trade base in the Forum, as PUT ON MY TRADE BASE does (and go there). Only a parcel with an inscription your wallet holds (read status on: a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve()). It replaces what was on your base; your crew is told you would like to trade, and sees it once their game has asked the chain.', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; const r = await tradePut(); if (r && r.ok === false) return r; await until(() => inCommon() && room.at.ready, 25000); await wait(400); return {ok: inCommon(), tradeFloor: tradeInfo()}; }},
-    {name: 'signalTrade', does: 'Turn your trade base to a crewmate\'s colour, to signal that you would like to trade with them (the trade itself happens on another app: nothing is traded here); "none" turns it back to your own colour. Your block must be on your base, and theirs on their base.', args: [{name: 'to', does: 'their base (P1 to P6) or their name, or "none"', req: true}], run: ({to}) => { const r = tradeSignal(to); return r.ok ? Object.assign(r, {tradeFloor: tradeInfo()}) : r; }},
-    {name: 'mute', does: 'Mute a crewmate for you only (their voice, their chat and their trade messages), as clicking the name over their head does; on: false unmutes. In a crew, on the play together page.', args: [{name: 'who', does: 'their name or their number (P1 to P6)', req: true}, {name: 'on', type: 'boolean', does: 'true to mute (the default), false to unmute'}],
+    {name: 'putOnTradeBase', args: [{name: 'for', enum: ['sale', 'trade'], does: 'mark it for sale or for trade (default: your last choice, else for trade); setOffer() changes it later'}], does: 'Put the parcel you hold on your own trade base in the Forum, as PUT ON MY TRADE BASE does (and go there). Only a parcel with an inscription your wallet holds (read status on: a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve()). It replaces what was on your base; your crew is told you would like to trade, and sees it once their game has asked the chain.', run: async (a = {}) => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; if (a.for === 'sale' || a.for === 'trade') try { localStorage.setItem('bc.tradeW', a.for); } catch (e) {} const r = await tradePut(); if (r && r.ok === false) return r; await until(() => inCommon() && room.at.ready, 25000); await wait(400); return {ok: inCommon(), tradeFloor: tradeInfo()}; }},
+    {name: 'signalTrade', does: 'Turn your trade base to a crewmate\'s colour, to signal that you would like to trade with them (the trade itself happens on another app: nothing is traded here); "none" turns it back to your own colour. Your block must be on your base, and theirs on their base. You signal standing at your own base, as a player does: in the common room, this walks you there first (as a player walks, up to a minute) and faces it; from anywhere else, commonRoom() first. tradeFloor() says where your base is (yourBase).', args: [{name: 'to', does: 'their base (P1 to P6) or their name, or "none"', req: true}],
+      run: async ({to}) => {
+        const can = tradeSignal(to, true); if (!can.ok) return can;   // (first whether it can be given at all)
+        const g = await tradeWalkTo(tradeMyK(), 'you signal'); if (!g.ok) return g;
+        const r = tradeSignal(to); return r.ok ? Object.assign(r, {walkedToYourBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r;
+      }},
+    {name: 'mute', does: 'Mute a crewmate for you only (their voice, their chat and their trade messages), as clicking the name over their head does; on: false unmutes. people() and crew() say whom you muted. In a crew, on the play together page.', args: [{name: 'who', does: 'their name or their number (P1 to P6)', req: true}, {name: 'on', type: 'boolean', does: 'true to mute (the default), false to unmute'}],
       run: ({who, on}) => { const q = String(who == null ? '' : who).trim().toLowerCase(); let id = null; for (const M of crew.mates.values()) if (String(M.name).toLowerCase() === q) id = M.id; if (!id) for (const [k, v] of Object.entries(own.nums)) if (v && String(v.p).toLowerCase() === q && crew.mates.has(k)) id = k; if (!id) return {ok: false, error: 'no crewmate with that name or number here'}; if (!mateMute(id, on !== false)) return {ok: false, error: 'only in a crew, on the play together page'}; return {ok: true, muted: on !== false}; }},
+    {name: 'setOffer', does: 'Mark the block on your trade base FOR SALE or FOR TRADE (your crew sees it over your base and is told), as the buttons at your base do. Nothing is sold or traded here: a deal is taken to another app. You do it standing at your base, as a player does: in the common room this walks you there first.', args: [{name: 'for', enum: ['sale', 'trade'], does: 'sale or trade', req: true}],
+      run: async (a) => { if (!tradeMineOk()) return {ok: false, error: 'put a block your wallet holds on your trade base first (putOnTradeBase)'}; const g = await tradeWalkTo(tradeMyK(), 'you mark your block'); if (!g.ok) return g; const r = tradeOffer(a.for); return r.ok ? Object.assign(r, {walkedToYourBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r; }},
+    {name: 'answerDeal', does: 'At a crewmate\'s trade base with a block on it: LET\'S MAKE A DEAL or NOT INTERESTED, as the buttons there do ("none" takes your answer back). They are told. A deal is taken to another app to swap (nothing is swapped here): there, check the inscription id matches exactly (a copy can look the same), and prefer a swap where both sides go in one transaction. A deal also asks the chain again whether their wallet still holds it. You answer standing at their base, as a player does: in the common room this walks you there first.', args: [{name: 'base', does: 'their base (P1 to P6) or their name', req: true}, {name: 'answer', enum: ['deal', 'not interested', 'none'], does: 'your answer', req: true}],
+      run: async ({base, answer}) => { const k = tradeBaseK(base); if (k < 0) return {ok: false, error: 'no crewmate with that base or name: tradeFloor() lists the bases'}; trade.list = tradeList(); const o = trade.list[k]; if (!o || o.who.me || !o.s) { const r = tradeDeal(k, 'deal'); if (!r.ok) return r; }
+        const g = await tradeWalkTo(k, 'you answer'); if (!g.ok) return g; const r = tradeDeal(k, answer === 'deal' ? 'deal' : answer === 'not interested' ? 'no' : ''); return r.ok ? Object.assign(r, {walkedToTheirBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r; }},
     {name: 'takeBackFromTradeBase', does: 'Take your block back off your trade base (it stays in your wallet: nothing moves on the chain).', run: () => { if (!trade.mine) return {ok: false, error: 'nothing on your trade base'}; tradeSet(null); return {ok: true, tradeFloor: tradeInfo()}; }},
     {name: 'followBack', does: 'Follow the inscription you hold back to where it was made and each place it moved. Gives the whole trail at once (trail.steps, oldest first: each with its block, time, transaction ID and the address it went to).', run: async () => { if (!inRoom() || !room.held) return {ok: false, error: 'hold a parcel first'}; folStart(); await until(() => typeof fol !== 'undefined' && fol && fol.steps && !fol.busy, 30000); return {steps: fol && fol.steps ? fol.steps.length : 0, now: fol ? fol.i : null, bar: text($fol), trail: trail()}; }},
     {name: 'followStep', does: 'Go to a step of the follow-it-back line (you travel to its block).', args: [{name: 'to', type: 'number', does: 'step number, 0 = where it was made', req: true}], run: async ({to}) => { if (typeof fol === 'undefined' || !fol) return {ok: false, error: 'followBack() first'}; const T0 = trail(), s = T0 && T0.steps[+to]; folGo(+to); await wait(400);
