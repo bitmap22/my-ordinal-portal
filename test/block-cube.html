@@ -8859,7 +8859,7 @@ function tradePlaques(R, VP) {
   };
   if (R && eye && VP && !cover) for (const o of trade.list) {
     if (!o || !o.s) continue;
-    const c = tradeCost(o.s.o[0]), D = dealsFor(o);
+    const c = tradeCost(o.s.o[0]), D = dealsFor(o, 'all');
     const [bx, bd] = tradeAt(o.k), [px, pz] = cmW(R, bx, bd), [mx, mz] = cmW(R, 0, CM.PD); let nx = mx - px, nz = mz - pz; if (Math.abs(nx) >= Math.abs(nz)) { nx = Math.sign(nx) || 1; nz = 0; } else { nz = Math.sign(nz) || 1; nx = 0; }
     const fx = px + nx * (TRADE.W / 2 + .006), fz = R.z0 + pz + nz * (TRADE.W / 2 + .006), fy = TRADE_FLOOR + .1 + (TRADE.H - .22) * .55;
     if ((eye[0] - fx) * nx + (eye[2] - fz) * nz < .05 || Math.hypot(eye[0] - fx, eye[1] - fy, eye[2] - fz) > 16) continue;
@@ -8870,20 +8870,26 @@ function tradePlaques(R, VP) {
     // how many sats it sits on
     if (c && c.v != null) lay('otp', 's' + c.v + o.who.c, e => { e.innerHTML = '<span>SITS ON</span><b></b>'; const B = e.querySelector('b'), w = fmt(c.v) + ' SATS'; B.textContent = w; B.style.fontSize = Math.min(30, Math.floor(212 / (w.length * .62))) + 'px'; e.style.setProperty('--g', o.who.c); }, fx, fy, fz, rx, rz, .24, .085, 240, 84);
     // under it, no words needed: a tick and the players who said LET'S MAKE A DEAL, each in their colour (it glows when one is new)
-    if (D.length) { const nw = D.some(x => performance.now() - x.t < 10000);
-      lay('otd' + (nw ? ' nw' : ''), 'd' + D.map(x => x.w.p + x.w.c).join() + o.who.c + (nw ? 1 : 0), e => { e.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#2fbf6a"/><path d="M6.5 12.5l3.6 3.6 7.4-8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-        const L = D.slice(0, 5), fs = L.length >= 5 ? 13 : L.length === 4 ? 15 : 18; e.style.gap = (L.length >= 4 ? 4 : 7) + 'px'; e.firstChild.style.width = e.firstChild.style.height = (L.length >= 4 ? 26 : 34) + 'px';   // (all five other players fit)
-        for (const x of L) { const b = document.createElement('b'); b.textContent = x.w.p; b.style.background = x.w.c; b.style.fontSize = fs + 'px'; b.style.padding = (fs * .28).toFixed(1) + 'px ' + (fs * .36).toFixed(1) + 'px'; e.append(b); } e.style.setProperty('--g', o.who.c); }, fx, fy - .2, fz, rx, rz, .24, .065, 240, 64); }
+    if (D.length) { const Y = D.filter(x => x.a === 'deal'), N = D.filter(x => x.a === 'no'), nw = Y.some(x => performance.now() - x.t < 10000);
+      lay('otd' + (nw ? ' nw' : ''), 'd' + D.map(x => x.a + x.w.p + x.w.c).join() + o.who.c + (nw ? 1 : 0), e => {
+        const cnt = Y.length + N.length, two = Y.length && N.length, fs = cnt >= 5 ? (two ? 12 : 13) : cnt === 4 ? (two ? 14 : 15) : 18, ic = cnt >= 4 || two ? 24 : 34;   // (all five other players fit)
+        e.innerHTML = ''; e.style.gap = (cnt >= 4 || two ? 4 : 7) + 'px';
+        const icon = yes => { const t = document.createElement('template'); t.innerHTML = yes ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#2fbf6a"/><path d="M6.5 12.5l3.6 3.6 7.4-8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+          : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#e5484d"/><path d="M8 8l8 8M16 8l-8 8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>'; const v = t.content.firstChild; v.style.width = v.style.height = ic + 'px'; e.append(v); };
+        const chip = (x, dim) => { const b = document.createElement('b'); b.textContent = x.w.p; b.style.background = x.w.c; b.style.fontSize = fs + 'px'; b.style.padding = (fs * .28).toFixed(1) + 'px ' + (fs * .36).toFixed(1) + 'px'; if (dim) b.style.opacity = '.75'; e.append(b); };
+        if (Y.length) { icon(true); for (const x of Y.slice(0, 5)) chip(x); }
+        if (N.length) { if (Y.length) { const s = document.createElement('i'); s.style.cssText = 'width:2px;align-self:stretch;margin:10px 3px;background:rgba(232,201,138,.35)'; e.append(s); } icon(false); for (const x of N.slice(0, 5)) chip(x, true); }
+        e.style.setProperty('--g', o.who.c); }, fx, fy - .2, fz, rx, rz, .24, .065, 240, 64); }
   }
   for (let k = n; k < pool.length; k++) if (pool[k].style.display !== 'none') pool[k].style.display = 'none';
 }
 // the crewmates who said LET'S MAKE A DEAL to a base's block (for that block only; muted crewmates left out), and when each was
 // first seen here
-function dealsFor(o) {
+function dealsFor(o, want = 'deal') {
   const out = []; if (!o || !o.s) return out; const W = o.who.id, A = o.s.at, T = trade.dealT || (trade.dealT = new Map());
-  const add = (id, w) => { const k = W + '|' + id + '|' + A; if (!T.has(k)) T.set(k, performance.now()); out.push({w, t: T.get(k)}); };
-  for (const [id, D] of trade.deals) { if (id === W || crewMuted.has(id)) continue; const x = D.get(W); if (x && x.at === A && x.a === 'deal') { const w = tradeOf(id); if (w) add(id, w); } }
-  if (!o.who.me && dealMine(o) === 'deal') { const w = tradeOf(crew.me || 'me'); if (w) add('me', w); }
+  const add = (id, w, a) => { const k = W + '|' + id + '|' + A + '|' + a; if (!T.has(k)) T.set(k, performance.now()); out.push({w, a, t: T.get(k)}); };
+  for (const [id, D] of trade.deals) { if (id === W || crewMuted.has(id)) continue; const x = D.get(W); if (x && x.at === A && (want === 'all' || x.a === want)) { const w = tradeOf(id); if (w) add(id, w, x.a); } }
+  const my = o.who.me ? '' : dealMine(o); if (my && (want === 'all' || my === want)) { const w = tradeOf(crew.me || 'me'); if (w) add('me', w, my); }
   return out;
 }
 // pointing at a base, and what it says
@@ -15074,7 +15080,7 @@ window.AgentKit = window.AgentKit || (() => {
     trade.list = tradeList();
     return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), FOR SALE or FOR TRADE (setOffer), and putting it there tells your crew. At a crewmate\'s base you answer LET\'S MAKE A DEAL or NOT INTERESTED (answerDeal); they are told. Once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them. Nothing is bought, sold or swapped here: a deal is taken to another app (check there that the inscription id matches exactly: a copy can look the same). Each player is responsible for their own trades there; Agent Blockhall is not part of any trade and claims no liability for it. Each block shows what inscribing it cost (inscriptionFeeSats). You use a base standing at it, as a player does: these commands walk you there in the common room.',
       you: own.me.p, yourBase: tradeMyBase(), wallet: own.addr ? 'read status on' : 'none (a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve())',
-      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, wantsADeal: o.s ? dealsFor(o).map(x => x.w.me ? 'you' : x.w.p) : undefined, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
+      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, wantsADeal: o.s ? dealsFor(o, 'deal').map(x => x.w.me ? 'you' : x.w.p) : undefined, notInterested: o.s ? dealsFor(o, 'no').map(x => x.w.me ? 'you' : x.w.p) : undefined, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
   }
   function state() {
     const s = {page: 'Agent Blockhall', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
