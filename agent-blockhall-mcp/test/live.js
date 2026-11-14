@@ -81,6 +81,29 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
       ', sizes ' + k.sizes.matched + '/' + k.sizes.of + ', kinds ' + (k.kinds ? k.kinds.agreed + '/' + k.kinds.of : '-') + ', inscriptions ' + (k.inscriptions ? k.inscriptions.agreed + '/' + k.inscriptions.of : '-') +
       (k.runesEtched ? ', etched ' + k.runesEtched.made + '/' + k.runesEtched.tried : '') + ', differences ' + k.differences.length + ', items ' + c.out.items.kind + ' ' + c.out.items.list.length + '/' + c.out.items.total + ', sources ' + JSON.stringify(c.out.sources);
   });
+  // Doge Cube's tools, for Dogecoin: a block with the first Doginals, its next page (no new reading), the newest block, a kind
+  // it does not know, a block not made yet; Doginal #0, #1,000 and one that does not exist; the watches, and a fee watch (there is none)
+  const dstart = calls.length;
+  calls.push(await call('dogeBlockManifest', {height: 4609723, kind: 'inscriptions', limit: 5}));
+  calls.push(await call('dogeBlockManifest', {height: 4609723, from: 5, limit: 3}));
+  calls.push(await call('dogeBlockManifest', {height: 'newest', limit: 5}));
+  calls.push(await call('dogeBlockManifest', {height: 4609723, kind: 'shoes'}));
+  calls.push(await call('dogeBlockManifest', {height: 99999999}));
+  for (const id of ['#0', '#1000', '#999999999']) calls.push(await call('dogeProvenanceCheck', {id}));
+  const db = await call('dogeWatch', {what: 'block'}); calls.push(db);
+  if (db.out && db.out.since) { const o = JSON.parse(Buffer.from(db.out.since, 'base64').toString()); o.s.hash = null; o.s.tip -= 2; calls.push(await call('dogeWatch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
+  calls.push(await call('dogeWatch', {what: 'inscription', value: '#0'}));
+  const dk = await call('dogeWatch', {what: 'kind', value: 'inscriptions'}); calls.push(dk);
+  if (dk.out && dk.out.since) { const o = JSON.parse(Buffer.from(dk.out.since, 'base64').toString()); o.s.hash = null; o.s.tip -= 1; calls.push(await call('dogeWatch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
+  calls.push(await call('dogeWatch', {what: 'fee', value: '1'}));
+  for (const a of [{}, {day: '2026-11-13'}, {block: 6455172}, {day: '2001-01-01'}]) calls.push(await call('dogeDailyData', a));
+  results.doge = calls.slice(dstart).map(c => c.name + ' ' + JSON.stringify(c.args).slice(0, 70) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : !c.out ? 'no answer' :
+    c.out.manifest ? 'block ' + c.out.block.height + ': hash ' + c.out.checked.blockHash.fromItsOwnHeader + '/' + (c.out.checked.blockHash.secondSite && c.out.checked.blockHash.secondSite.agrees) + ', list proved ' + c.out.checked.transactionList.provedByMerkleRoot +
+      ', second list ' + c.out.checked.secondList.matched + '/' + c.out.checked.secondList.of + ', own bytes ' + c.out.checked.ownBytes.read + '/' + c.out.checked.ownBytes.of + ', items ' + c.out.items.kind + ' ' + c.out.items.list.length + '/' + c.out.items.total + ', counts ' + JSON.stringify(c.out.counts) :
+    c.out.check ? c.out.inscription.id + ': ' + c.out.verdict :
+    c.out.watching ? c.out.watching + ' | ' + c.out.now + ' | looked ' + c.out.looked + ' | ' + c.out.events.map(e => e.title).join(' / ') :
+    c.out.totals ? c.out.day + ': ' + c.out.totals.blocks + ' blocks, ' + c.out.totals.transactions + ' transactions | ' + (c.out.notes || []).join(' ') :
+    c.out.days ? c.out.days.length + ' days' : JSON.stringify(c.out).slice(0, 200)));
   results.calls = calls;
   results.summary = calls.map(c => c.name + ' ' + JSON.stringify(c.args) + ': ' + (c.error ? 'PROTOCOL ERROR ' + c.error.message : c.isError ? 'ERROR ' + c.out : 'ok') + ' (' + c.ms + ' ms)');
   fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 1));
@@ -89,6 +112,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Provenance checks:\n' + results.provenance.join('\n'));
   console.log('Watch:\n' + results.watch.join('\n'));
   console.log('Daily Data:\n' + results.daily.join('\n'));
+  console.log('Doge Cube (Dogecoin):\n' + results.doge.join('\n'));
   console.log('Collection Check:\n' + results.collection.join('\n'));
   server.kill();
   process.exit(0);

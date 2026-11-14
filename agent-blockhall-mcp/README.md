@@ -25,6 +25,19 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 | `dailyData` | Daily Data, made each night by GitHub: every block of a UTC day, read the Block Manifest way, with what was in it, its fees, who mined it and its checks. No day: the list of days; a day: every block; a block: that one |
 | `rareSats` | The rare sats board: each kind of rare sat and the price listed for one sat |
 
+### For Dogecoin: Doge Cube's tools
+
+[Doge Cube](https://bitmap22.github.io/my-ordinal-portal/doge-cube.html) is Agent Blockhall's Dogecoin twin. These four tools are the same tools for Dogecoin and its Doginals. They read the same files as the portal's Doge pages.
+
+| Tool | What it gives |
+| --- | --- |
+| `dogeBlockManifest` | Every transaction in a Dogecoin block, sorted into Doge Cube's kinds (Doginals and their file types, dogemaps, names, DRC-20, TAP, dunes etched, minted and moved, and the kinds of payment), with its fee (koinu) and size. Checked: the block's hash worked out from its own header and asked of Bitcore, its transaction list proved by the merkle root in that header, sizes and fees matched on Bitcore, and the transactions that carry something read from their own bytes |
+| `dogeProvenanceCheck` | Proof of where a Doginal came from: read from its own transactions' bytes (a Doginal can be written over many transactions, and each is followed), the file put back together and fingerprinted, matched with the explorer's copy and Doggy Market's copy, its block checked on Bitcore, and its trail of moves, each step checked on two sites |
+| `dogeWatch` | Alerts when something happens on Dogecoin, each checked: the next block, a Doginal moving, an address getting or sending DOGE, or a kind in a new block. Same `since` tokens as `watch`. There is no fee watch for Dogecoin: its fees barely move |
+| `dogeDailyData` | Doge Daily Data, made each night by GitHub: every Dogecoin block of a UTC day, with its hash checked from its own header and on Bitcore, its transaction list proved by its header, its size, fees, who mined it (where the coinbase names a pool) and its Doginals by file type |
+
+They read thedoginalsexplorer.com (the one Doginals list), Bitcore, Blockchair (a transaction's own bytes) and Doggy Market's copy of each file, at the pace each site says it allows.
+
 Trust: `feeAdvice` keeps score of itself, and every `chain`, `block` and `inscription` answer is checked against a second, separate site and says whether they agree (`checked.agrees`). `blockManifest` checks every item: each transaction's id and size are worked out from the block's own bytes and matched with a second site's list, its kinds are read twice (by this tool and by ordpool.space's tags), and its inscriptions are matched with ordinals.com's list. Its `sources` say which site gave each part. `provenanceCheck` gives a verdict and each check, with what it compared, against which site, and whether they agree. `collectionCheck` gives each child's three checks (`true`, `false`, or `null` when not reached yet) and why.
 
 Two things stay in the game's tablet: which inscription claimed a bitmap, and names like `satoshi.sats`.
@@ -56,7 +69,7 @@ Agent Blockhall itself has a full agent kit: open the page and call `await windo
 
 ## Privacy
 
-The tool sends nothing to bitmap22. It only asks the public sites above for Bitcoin data, from your computer.
+The tool sends nothing to bitmap22. It only asks the public sites above for Bitcoin and Dogecoin data, from your computer.
 
 ## Licence
 
