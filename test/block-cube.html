@@ -3566,7 +3566,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && pa
 // come late the 3D view is drawn a little smaller (the page stretches it to fill the screen; buttons and writing stay
 // sharp), and it goes back up to full size once there is time again. Always full size while you hold a block, and for a
 // saved picture or an agent's picture.
-const PIC = {K: [1, .9, .8, .75, .67, .6], i: 0, ts: 0, iv: [], n: 0, per: 0, win: [], hold: 0, calm: 0, up: 4000, tried: 0, cpu: 0, full: 0};
+const PIC = {K: [1, .9, .8, .75, .67, .6], i: 0, ts: 0, iv: [], n: 0, per: 0, win: [], lt: [], hold: 0, at: 0, up: 4000, tried: 0, cpu: 0, full: 0};
 const picFull = () => !!(room && room.held) || snapReq || performance.now() < PIC.full;
 const picK = () => picFull() ? 1 : PIC.K[PIC.i];
 function picTick(ts) {
@@ -3575,17 +3575,18 @@ function picTick(ts) {
   P.iv.push(d); if (P.iv.length > 240) P.iv.shift();
   if (++P.n % 30 === 0 || !P.per) { const s = P.iv.slice().sort((a, b) => a - b); P.per = s[Math.floor(s.length * .05)]; }   // the screen's own beat: the quickest of the recent gaps
   if (P.iv.length < 60) return;
-  if (picFull()) { P.win = []; P.hold = ts + 1000; return; }   // (full size on purpose: late pictures then do not count)
+  const fresh = () => { P.win = []; P.lt = []; P.hold = ts + 1000; P.at = ts; };
+  if (picFull()) { fresh(); return; }   // (full size on purpose: late pictures then do not count)
   if (d >= P.per * 4 || P.cpu > P.per * .6) return;   // (a long stall, or the page's own work that frame: a smaller picture would not help)
   if (ts < P.hold) return;   // (just changed size: let it settle)
-  const late = d > P.per * 1.5;
-  P.win.push(late ? 1 : 0); if (P.win.length > 60) P.win.shift();
-  if (late || !P.calm) P.calm = ts;
-  if (P.win.reduce((a, b) => a + b, 0) >= 6 && P.i < P.K.length - 1) {   // 1 picture in 10 late: draw a little smaller
+  const late = d > P.per * 1.5 ? 1 : 0;
+  P.win.push(late); if (P.win.length > 120) P.win.shift();
+  if (late) P.lt.push(ts); while (P.lt.length && P.lt[0] < ts - P.up) P.lt.shift();
+  if (P.i < P.K.length - 1 && P.win.reduce((a, b) => a + b, 0) >= (P.i < 3 ? 12 : 24)) {   // 1 picture in 10 late: a little smaller (below three quarters only when 1 in 5 are late)
     if (P.tried && ts - P.tried < 3000) P.up = Math.min(60000, P.up * 2);   // (it was just made bigger and could not keep up: wait longer before trying again)
-    P.i++; P.win = []; P.hold = ts + 1000; P.calm = ts; P.tried = 0;
-  } else if (P.i && ts - P.calm > P.up) {   // none late for a while: try a little bigger
-    P.i--; P.win = []; P.hold = ts + 1000; P.calm = ts; P.tried = ts;
+    P.i++; P.tried = 0; fresh();
+  } else if (P.i && ts - P.at > P.up && P.lt.length <= P.up / P.per * .01) {   // hardly any late for a while (1 in 100 or fewer): try a little bigger
+    P.i--; P.tried = ts; fresh();
   }
   if (P.tried && ts - P.tried > 10000) { P.tried = 0; P.up = 4000; }   // (bigger held up: the next try comes as soon as usual)
 }
