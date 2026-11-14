@@ -11966,7 +11966,7 @@ function gdFrame(W, H, tn, dpr) {
    hands. A crewmate's tag is only shown once this page has asked the chain that the inscription sits in their address
    (their page has already checked their signature). Inscriptions only: tokens are not marked. */
 const OWN_ID = /^[0-9a-f]{64}i\d{1,7}$/;
-const own = {addr: '', ids: new Set(), share: false, me: {p: 'P1', c: '#f7931a'}, nums: {}, mates: new Map(), ver: 0, sent: '', chk: new Map(), q: [], busy: 0, list: null, at: null, pool: [], card: 0};
+const own = {addr: '', ids: new Set(), share: false, me: {p: 'P1', c: '#f7931a'}, nums: {}, mates: new Map(), ver: 0, sent: '', chk: new Map(), q: [], busy: 0, fail: new Map(), asking: new Set(), list: null, at: null, pool: [], card: 0};
 const ownIdsOf = t => { if (!t) return []; if (t._oid) return t._oid; const L = folIds(t).filter(x => OWN_ID.test(x)); if (L.length) t._oid = L; return L; };
 function ownWallet(addr, ids, share) {
   own.addr = typeof addr === 'string' ? addr : ''; own.ids = new Set(own.addr && Array.isArray(ids) ? ids.filter(x => typeof x === 'string' && OWN_ID.test(x)) : []);
@@ -11991,16 +11991,19 @@ function ownMateList(id, h, ids) {
 // does this inscription sit in this address? asked of the chain (the reader, else ordinals.com and its backups), gently: two at a
 // time, each answer kept ten minutes
 const ownOk = (x, a) => { const r = own.chk.get(x); return !!r && r.a === a && performance.now() - r.t < 600000; };
-function ownAsk(x, a) { const r = own.chk.get(x); if (r && performance.now() - r.t < 600000) return; if (!own.q.includes(x)) own.q.push(x); ownRun(); }
+// (a question that got no answer waits before it is asked again: 10 s, 30 s, 1 min, 2 min, then every 5 min; never twice at once)
+const OWN_WAIT = [10000, 30000, 60000, 120000, 300000];
+function ownAsk(x, a) { const r = own.chk.get(x), pn = performance.now(); if (r && pn - r.t < 600000) return; const F = own.fail.get(x); if (F && pn < F.until) return; if (own.asking.has(x) || own.q.includes(x)) return; own.q.push(x); ownRun(); }
 async function ownRun() {
   while (own.busy < 2 && own.q.length) {
-    const x = own.q.shift(); own.busy++;
+    const x = own.q.shift(); own.busy++; own.asking.add(x);
     (async () => {
       let a = null, J = null;   // (whose it is, and also the block it was made in and its number)
       try { const j = await galGet('/r/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
       if (a == null) try { const j = await ordJson('/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
+      if (a == null) { const F = own.fail.get(x) || {n: 0}; F.n++; F.until = performance.now() + OWN_WAIT[Math.min(F.n, OWN_WAIT.length) - 1]; own.fail.set(x, F); if (own.fail.size > 4000) own.fail.delete(own.fail.keys().next().value); } else own.fail.delete(x);
       if (a != null) { own.chk.set(x, {a, t: performance.now(), h: Number.isInteger(J.height) ? J.height : null, n: Number.isInteger(J.number) ? J.number : null}); if (own.chk.size > 4000) own.chk.delete(own.chk.keys().next().value); own.ver++; }
-    })().finally(() => { own.busy--; ownRun(); });
+    })().finally(() => { own.busy--; own.asking.delete(x); ownRun(); });
   }
 }
 // the inscriptions you own in the room you are in, for the crew (only with the switch on; not in a collection room, where the
