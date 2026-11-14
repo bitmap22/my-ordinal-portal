@@ -126,7 +126,7 @@
     let raw; try { raw = U8F.decode(u); } catch (e) { return null; }
     const cs = [...raw]; let ok = 0; for (const ch of cs) { const c = ch.codePointAt(0); if ((c >= 32 && c !== 127 && !(c >= 0x80 && c < 0xa0)) || c === 10 || c === 9) ok++; }
     if (ok / cs.length < 0.95) return null;
-    const t = raw.replace(/[\u0000-\u001f\u007f�]+/g, ' ').trim();
+    const t = raw.replace(/[\u0000-\u001f\u007f\ufffd]+/g, ' ').trim();
     return /[a-z]{2}/i.test(t) ? (t.length > 300 ? t.slice(0, 300) + '…' : t) : null;
   }
   function coinbaseWords(u) {
