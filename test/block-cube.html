@@ -8384,15 +8384,17 @@ $cgal.onclick = () => {
   $cgl.classList.add('on'); fitCard();
 };
 // the tablet: an inscription that has children offers its collection
+let galOfferN = 0;   // (tablet lookups for a collection still out: an agent's search() waits for them)
 async function galOffer(rows, getId, live) {
   if (GAL_ST < 4) return;
+  galOfferN++;
   try {
     const id = await getId(); if (!live() || !/^[0-9a-f]{64}i\d+$/.test(id || '')) return;
     const j = await galQuick('/r/children/' + id); if (!live() || !j || !(j.ids || []).length) return;
     let n = j.ids.length; if (j.more) { const L = await galLast(id); n = L.page * 100 + L.ids.length; } if (!live()) return;
     rows.push({t: 'its collection', s: fmt(n) + (n === 1 ? ' piece' : ' pieces') + ' · in its gallery', btn: 'GALLERY', go: async () => { srClose(); galTravel(id); return null; }});
     srShow(rows);
-  } catch (e) {}
+  } catch (e) {} finally { galOfferN--; }
 }
 
 
@@ -14596,6 +14598,7 @@ window.AgentKit = window.AgentKit || (() => {
     const mk = ownWho(t);   // (the markers over it: who holds it, as a player sees them)
     if (t.gal) return {piece: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid || undefined, number: t.n || undefined, madeInBlock: t.h != null ? t.h : undefined, markers: mk.length ? mk : undefined};   // (a piece on a stand in a collection's hall: its card says the rest)
     const o = {n: t.idx, txid: t.id, feeRate: rf(t.rate), fee: t.fee, vsize: t.vsize, types: typesOf(t)};
+    if ((t.cat21 || t.labitbu) && t.art) o.shows = (t.cat21 ? 'its CAT-21 cat' : 'its Labitbu') + ', a picture on its box: hold it, then viewBig() and look({picture: true}) to see it';
     if (t.ins && t.ins.length) o.inscriptions = t.ins.map(x => x.ct);
     o.kindsReadFrom = typeof t.op === 'bigint' ? 'ordpool.space' : t.sc != null ? (t.live ? 'the transaction itself' : 'the block itself') : 'mempool.space tags';   // (where its kinds were read, as its card says)
     if (t.rnUnsure && ((t.sc >> TF.etch) & 1)) o.etching = 'an attempt: whether it made its rune is not known right now (ordinals.com, which confirms etchings, did not answer: health() says more)';
@@ -14863,10 +14866,10 @@ window.AgentKit = window.AgentKit || (() => {
     return L.join('\n');
   }
   // a collection room (gallery): its parent and its children, each a piece on the stands
-  const galPieces = () => { const C = room.at, p = room.p; return C.plan.items.filter(i => i.t && i.t.gal && !i.cp).map(i => { const t = i.t, dx = i.w[0] - p.x, dz = i.w[2] - p.z; return {n: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid, number: t.n, madeInBlock: t.h, metres: r1(Math.hypot(dx, dz)), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.n - b.n); };
+  const galPieces = () => { const C = room.at, p = room.p; return C.plan.items.filter(i => i.t && i.t.gal && !i.cp).map(i => { const t = i.t, dx = i.w[0] - p.x, dz = i.w[2] - p.z; return {n: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid, number: t.n, madeInBlock: t.h, shows: t.art ? 'a picture' : t.word && t.word.num ? 'its number' : t.word ? 'words (hold it to read them)' : undefined, metres: r1(Math.hypot(dx, dz)), where: K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw))}; }).sort((a, b) => a.n - b.n); };
   function galleryInfo() {
     const C = room.at, G = C.gal;
-    return {gallery: {parent: G.pid, parentNumber: G.num, children: G.n, shown: G.loaded, allShown: !!G.done}, pieces: galPieces(), door: 'the door you came in by takes you back to ' + (G.from === COMMON ? 'the common room' : 'block ' + fmtN(G.from)) + ': its middle is at x 0, z ' + r1(C.z0) + ', so walkTo({x: 0, z: ' + r1(C.z0 + 1.6) + '}) walks you out through it; the far end has no door', how: 'hold({n}) walks to a piece (n as listed: the parent is -1) and picks it up; or hold({txid}) with its inscription ID'};
+    return {gallery: {parent: G.pid, parentNumber: G.num, children: G.n, shown: G.loaded, allShown: !!G.done}, pieces: galPieces(), door: 'the door you came in by takes you back to ' + (G.from === COMMON ? 'the common room' : 'block ' + fmtN(G.from)) + ': its middle is at x 0, z ' + r1(C.z0) + ', so walkTo({x: 0, z: ' + r1(C.z0 + 1.6) + '}) walks you out through it; the far end has no door', how: 'hold({n}) walks to a piece (n as listed: the parent is -1) and picks it up; or hold({txid}) with its inscription ID. shows: what its box shows once loaded; held, viewBig() and look({picture: true}) show it to you'};
   }
   function contents() {
     if (inRoom() && room.at.gal) return galleryInfo();
@@ -15300,7 +15303,7 @@ window.AgentKit = window.AgentKit || (() => {
         const T = trail(); return {now: fol && fol.i, bar: text($fol), step: T && fol ? T.steps[fol.i] : null, where: inRoom() ? roomInfo() : undefined}; }},
     {name: 'stopFollow', does: 'End the follow-it-back line.', run: () => { folStop(); return {ok: true}; }},
     {name: 'search', untrusted: true, does: 'Search with the tablet: a block (840000 or 840000.bitmap), a parcel (12.840000.bitmap), an inscription (#1000 or its ID), a transaction ID, an address, or a name (satoshi.sats).', args: [{name: 'query', does: 'what to find', req: true}],
-      run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4; }, 20000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
+      run: async ({query}) => { if (!inRoom()) { const r = await walkIn(); if (!r.ok) return r; } srOpen(); $('sri').value = String(query); srFind(String(query)); let last = '', same = 0; await until(() => { const t = text($('srl')); if (t && t === last && !/looking|finding|reading|asking|…$/im.test(t)) same++; else same = 0; last = t; return same > 4 && !galOfferN; }, 30000, 200); return {results: [...$('srl').children].map((r, i) => ({n: i, untrusted: text(r)})).filter(r => r.untrusted)}; }},
     {name: 'go', does: 'Press GO on a tablet search result (travels there; an arrow then shows the way), or GALLERY on a collection (walks you into its hall).', args: [{name: 'n', type: 'number', does: 'result number from search() (default 0)'}],
       run: async ({n = 0}) => { const rows = [...$('srl').children].filter(r => text(r)), b = rows[n] && [...rows[n].querySelectorAll('button')].find(x => /\bgo\b|gallery/i.test(text(x))); if (!b) return {ok: false, error: 'no such result with GO or GALLERY'}; const from = room && room.at, was = srT; b.click();
         const fresh = () => srT !== was && (!srT || (text($('sra')) && (!srT.label || text($('sra')).includes(srT.label))));   // (the arrow's words name the new find, not the one before)
