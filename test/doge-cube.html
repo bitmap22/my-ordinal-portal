@@ -2470,6 +2470,7 @@ function select(t) {
   sel = t;
   if (hadFoc && !foc) rebuild();
   document.body.classList.toggle('cardon', !!t);
+  cardLinks(t);   // (the portal's Doge tools, opened on this parcel)
   if (!t) { $card.classList.remove('on', 'st', 'big'); const cm = document.getElementById('cm'); if (cm) cm.innerHTML = 'more &#9662;'; $cp.innerHTML = ''; $cp.style.display = 'none'; return; }
   if (t.show) { showCard(t); return; }
   if (t.gal) { galCard(t); return; }
@@ -2507,6 +2508,39 @@ function select(t) {
   preview(t); enrich(t);
   if (!t.id && t.raw && window.crypto && crypto.subtle) txidOf(t.raw).then(id => { t.id = id; if (sel === t) $ct.textContent = id; }, () => {});
   $card.classList.add('on'); stepShow(); fitCard();
+}
+
+/* ---- (14 Nov 2026) the portal's Doge tools, opened on this parcel: Doge Provenance Check and Doge Watch for a Doginal, the Doge
+   Block Manifest for its block (each opens in a new tab, so the game stays where it is), and COPY LINK: a link straight back to
+   this parcel (#find=), as Agent Blockhall has ---- */
+const $clk = document.createElement('div'); $clk.id = 'clk';
+{ const cn = document.getElementById('cn'); if (cn && cn.parentNode) cn.parentNode.insertBefore($clk, cn); else $card.appendChild($clk); }   // (just under the card's buttons, so it is seen without scrolling)
+document.head.insertAdjacentHTML('beforeend', '<style>#clk{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}#clk:empty{display:none}#clk a,#clk button{display:inline-flex;align-items:center;padding:5px 9px;border-radius:8px;border:1px solid rgba(227,179,65,.45);background:rgba(227,179,65,.08);color:#f2c95a;font:700 10.5px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;text-decoration:none;cursor:pointer}#clk a:hover,#clk button:hover{background:rgba(227,179,65,.2)}</style>');
+// what the links point at for a parcel: its first Doginal, its block, and the id that brings you back to it
+function cardLinkOf(t) {
+  if (!t) return null;
+  const ins = t.gal ? t.gid : t.ordIds && t.ordIds[0] || null;
+  const h = t.live ? null : (t.show || t.gal) ? (t.h != null ? t.h : null) : room && room.at && !room.at.common && !room.at.gal && room.at.h != null ? room.at.h : mode !== 'live' && cur && cur.height != null ? cur.height : null;   // (a parcel's block: the hall it is in, else the block on the cube; a gallery piece or a show piece knows its own)
+  const id = ins || (!t.live && t.id && /^[0-9a-f]{64}$/.test(t.id) ? t.id : null);
+  const page = location.href.split('#')[0];
+  return {inscription: ins || undefined, block: h != null ? h : undefined, link: id ? page + '#find=' + id : undefined,
+    provenanceCheck: ins ? 'doge-provenance-check.html?id=' + ins : undefined, watch: ins ? 'doge-watch.html?watch=inscription&value=' + ins : undefined,
+    blockManifest: h != null ? 'doge-block-manifest.html?block=' + h : undefined};
+}
+function cardLinks(t) {
+  $clk.textContent = ''; const L = cardLinkOf(t); if (!L) return;
+  const a = (txt, href, title) => { const e = document.createElement('a'); e.textContent = txt; e.href = href; e.target = '_blank'; e.rel = 'noopener'; e.title = title; $clk.appendChild(e); };
+  if (L.provenanceCheck) a('PROVENANCE ↗', L.provenanceCheck, 'Doge Provenance Check: where this Doginal came from, every step checked (opens in a new tab)');
+  if (L.watch) a('WATCH IT ↗', L.watch, 'Doge Watch: be told the moment this Doginal moves (opens in a new tab)');
+  if (L.blockManifest) a('BLOCK MANIFEST ↗', L.blockManifest, 'Doge Block Manifest: every transaction in block ' + fmt(L.block) + ', sorted and checked (opens in a new tab)');
+  if (L.link) { const b = document.createElement('button'); b.type = 'button'; b.textContent = 'COPY LINK'; b.title = 'Copy a link that brings anyone straight back to this parcel';
+    b.onclick = async e => { e.stopPropagation(); let ok = false; try { await navigator.clipboard.writeText(L.link); ok = true; } catch (er) {}
+      if (!ok) try { const ta = document.createElement('textarea'); ta.value = L.link; ta.style.cssText = 'position:fixed;opacity:0;left:0;top:0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch (er) {}
+      if (ok) { b.textContent = 'LINK COPIED'; setTimeout(() => { b.textContent = 'COPY LINK'; }, 1800); return; }
+      // (this browser will not let the page copy, e.g. inside a frame: show the link, picked out, to copy by hand)
+      let box = $clk.querySelector('input'); if (!box) { box = document.createElement('input'); box.readOnly = true; box.setAttribute('aria-label', 'link to this parcel'); box.style.cssText = 'flex:1 1 100%;min-width:0;padding:5px 8px;border-radius:8px;border:1px solid rgba(227,179,65,.45);background:rgba(0,0,0,.35);color:inherit;font:11px/1.3 ui-monospace,Menlo,Consolas,monospace'; $clk.appendChild(box); }
+      box.value = L.link; box.focus(); box.select(); b.textContent = 'COPY IT FROM THE BOX'; };
+    $clk.appendChild(b); }
 }
 
 /* ---------- header and buttons ---------- */
@@ -6956,6 +6990,10 @@ function srOpen() {
   if (!coarse) setTimeout(() => { $sri.focus(); $sri.select(); }, 30);
 }
 function srClose() { $sr.classList.remove('on'); $sri.blur(); try { cv.focus({preventScroll: true}); } catch (e) {} }
+// (14 Nov 2026) a link back to a parcel, as Agent Blockhall has: #find=<Doginal id or transaction id> walks you in and opens the tablet with it found
+const findBoot = BC_COMMON ? null : (/^#find=([0-9a-f]{64}(?:i\d+)?)$/i.exec(location.hash) || [])[1];
+if (findBoot) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  (async () => { const w = ms => new Promise(r => setTimeout(r, ms)); for (let i = 0; i < 600 && !(tipH >= 0); i++) await w(100); if (!room) await roomEnter(); for (let i = 0; i < 600 && !(room && room.at && room.at.ready); i++) await w(100); await w(400); srOpen(); $sri.value = findBoot; srFind(findBoot); })(); }
 $sri.addEventListener('focus', () => { if (coarse) setTimeout(() => { try { $sri.setSelectionRange(0, $sri.value.length); } catch (e) {} }, 60); });
 $sri.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') srFind($sri.value); else if (e.key === 'Escape') srClose(); });
 document.getElementById('srg').onclick = () => srFind($sri.value);
@@ -9543,6 +9581,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
     {name: 'controls', ro: true, does: 'The list a person sees behind the i button (top left, on a computer): the buttons and keys for where you are now, and how to: staying safe, who is who (people, AI agents, NPCs), muting, the common room and the block halls. You play with these kit tools, not keys.', args: [{name: 'page', does: '"keys" (the default) or "how to"'}],
       run: ({page}) => { const how = /how/i.test(String(page || '')), D = ciData(how ? 'how' : 'keys'); return {ok: true, where: D.where, page: how ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG, followOnX: CI_X}; }},
+    {name: 'links', ro: true, does: 'The links a player sees on the card of the parcel you hold (or have open on the cube): its Doge Provenance Check and Doge Watch pages (a Doginal), its block\'s Doge Block Manifest, and a link that brings anyone straight back to this parcel.', run: () => { const t = room && room.held ? room.held.it.t : sel; if (!t) return {ok: false, error: 'hold a parcel (or open one on the cube) first'}; const L = cardLinkOf(t); return Object.assign({ok: true}, L, {note: 'the tools\' pages are relative to this page (https://bitmap22.github.io/my-ordinal-portal/)'}); }},
     {name: 'credits', ro: true, does: 'Who Doge Cube credits on its two plaques, as a player reads them: in block 0\'s hall (in front of the 88 DOGE case), Dogecoin, made by Billy Markus and Jackson Palmer; in the hall with block 4,609,723 (the first Doginal, inscription #0), Doginals, made by apezord, with the link to the Doginals code on GitHub (apezord\'s own work, so a link, not a copy).',
       run: () => ({ok: true, plaques: [{where: "block 0's hall, on a small stand " + CRED.gen.where, says: CRED.gen.says}, {where: 'the hall with block ' + fmtN(DG0_H) + ', on a small stand ' + CRED.dg.where, says: CRED.dg.says, firstDoginal: {inscription: CRED_DG_ID, number: 0, block: DG0_H}, link: CRED_URL, note: 'a person clicks it, or presses E, for the link: the Doginals code is apezord\'s own work, so read it on GitHub'}]})},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block".', args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
@@ -9630,7 +9669,7 @@ window.AgentKit = window.AgentKit || (() => {
 <script>(() => {
   // shown inside the portal's own viewer: the portal has its own way round, so no second menu
   try { if (window.top !== window && /\/(index\.html)?$/.test(window.top.location.pathname)) return; } catch (e) {}
-  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = ["block-cube-people-blog.html", "block-cube-together.html", "block-cube.html", "block-manifest.html", "block-paint.html", "daily.html", "doge-cube-blog.html", "doge-cube-together.html", "doge-cube.html", "index.html", "index2.html", "inscription-cost-calculator.html", "llms.txt", "minitors-blog.html", "minitors-mint.html", "ordinal-view-tester.html", "provenance-check.html", "sentinel-id-viewer.html", "vizzy-tunes.html", "watch.html"], LOBBY = false;
+  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Doge tools", [["Doge Block Manifest", "doge-block-manifest.html"], ["Doge Provenance Check", "doge-provenance-check.html"], ["Doge Watch", "doge-watch.html"], ["Doge Daily Data", "doge-daily.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = ["block-cube-people-blog.html", "block-cube-together.html", "block-cube.html", "block-manifest.html", "block-paint.html", "collection-check.html", "daily.html", "doge-block-manifest.html", "doge-cube-blog.html", "doge-cube-together.html", "doge-cube.html", "doge-daily.html", "doge-provenance-check.html", "doge-watch.html", "index.html", "index2.html", "inscription-cost-calculator.html", "llms.txt", "minitors-blog.html", "minitors-mint.html", "ordinal-view-tester.html", "provenance-check.html", "sentinel-id-viewer.html", "vizzy-tunes.html", "watch.html"], LOBBY = false;
   const here = decodeURIComponent(location.pathname.split('/').pop() || 'index.html'), test = /\/test\//.test(location.pathname);
   const site = /(^|\.)github\.io$/.test(location.hostname) ? '' : 'https://bitmap22.github.io/my-ordinal-portal/';   // (a downloaded copy: the live pages)
   const b = document.createElement('button'); b.id = 'tm'; b.className = 'tl'; b.type = 'button'; b.title = 'Ordinal Portal menu'; b.setAttribute('aria-label', 'Ordinal Portal menu'); b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-controls', 'tmp');
