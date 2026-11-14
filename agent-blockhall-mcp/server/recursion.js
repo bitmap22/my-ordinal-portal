@@ -135,6 +135,8 @@
     else parts.push('it uses ' + fmt(others.length) + ' other inscription' + (others.length === 1 ? '' : 's') + (levels > 1 ? ' (' + levels + ' levels deep)' : ''));
     parts.push(missing.length ? fmt(missing.length) + ' of them could not be found' : others.length ? 'every one is on ordinals.com' : null);
     if (notOn2.length) parts.push(fmt(notOn2.length) + ' did not load on the second ord site');
+    const built = all.reduce((s, n) => s + (n.endpoints.content || 0), 0);
+    if (built) parts.push('its code builds /content/ paths in ' + fmt(built) + ' place' + (built === 1 ? '' : 's') + ' (what those load is picked when it runs)');
     if (endpoints.length) parts.push(fmt(endpoints.length) + ' /r/ endpoint' + (endpoints.length === 1 ? '' : 's') + (epNo.length ? ' (' + epNo.map(e => e.endpoint).join(', ') + ' not answered)' : endpoints.some(e => e.answers === null) ? ', some not asked' : ', all answered'));
     parts.push(outside.length ? fmt(new Set(outside.map(o => o.url)).size) + ' address' + (outside.length === 1 ? '' : 'es') + ' outside the chain written in its code' : 'nothing outside the chain');
     const onChain = !outside.length && !missing.length;
