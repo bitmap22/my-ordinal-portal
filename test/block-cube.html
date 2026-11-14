@@ -12293,7 +12293,7 @@ function clTextures(B) {
 // ---- the collection's own: its parent (its number, name, picture, colours), pictures for the frames and the lounge's TV ----
 async function clArt(C) {
   const B = clBuild(), K = C.cl, pid = K.pid, gone = () => !room || room.at !== C;
-  cl.mood = {a: [1, .5, .15], b: [1, .25, .45], from: 'warm (the parent is not a picture)'}; cl.pics = []; cl.picAt = 0;
+  cl.mood = {a: [1, .5, .15], b: [1, .25, .45], from: 'warm (reading the parent\'s picture…)'}; cl.pics = []; cl.picAt = 0;
   for (const F of B.frames) { F.tex = null; F.id = ''; F.info = null; }
   clPaintAll();
   try {
@@ -12305,7 +12305,7 @@ async function clArt(C) {
     clPaintAll(); head();
     // the parent: its picture on the show stand and its colours for the mood light
     const pp = await clPic(pid); if (gone()) return;
-    if (pp && pp.img) { cl.parPic = pp; const m = clMoodOf(pp.img); cl.mood = m || {a: cl.mood.a, b: cl.mood.b, from: 'warm (the parent picture has no strong colours)'}; } cl.parInfo = pp ? pp.info : null; clPaintShow();
+    if (pp && pp.img) { cl.parPic = pp; const m = clMoodOf(pp.img); cl.mood = m || {a: cl.mood.a, b: cl.mood.b, from: 'warm (the parent picture has no strong colours)'}; } else cl.mood = {a: cl.mood.a, b: cl.mood.b, from: pp ? 'warm (the parent is not a picture)' : 'warm (the parent could not be read just now)'}; cl.parInfo = pp ? pp.info : null; clPaintShow();
     // pieces for the frames: from the first pages, spread out; pictures only (a piece that is not a picture shows its number)
     const L = []; for (let p = 0; p < Math.min(K.pages || 1, 3) && L.length < 300; p++) { const j = await galQuick('/r/children/' + pid + '/inscriptions' + (p ? '/' + p : '')); for (const ch of (j && j.children) || []) if (/^[0-9a-f]{64}i\d+$/.test(ch.id || '')) L.push(ch); }
     if (gone()) return; cl.kids0 = L;
@@ -12411,7 +12411,7 @@ function clPaintShow() {
     clTexUp(B.tex.show, cv); }
   { const [cv, c] = clCv(512, 140); c.fillStyle = '#16121c'; c.fillRect(0, 0, 512, 140); c.strokeStyle = '#d8b45a'; c.lineWidth = 5; c.strokeRect(5, 5, 502, 130); c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillStyle = '#ffd36b'; c.font = '800 34px ' + CL_FONT; c.fillText(mine ? 'ON SHOW · #' + fmt(info && info.n || 0) : 'THE PARENT' + (K.num != null ? ' · #' + fmt(K.num) : ''), 256, 50);
-    c.fillStyle = '#e8dcc0'; c.font = '600 20px ' + CL_FONT; c.fillText(mine ? 'shown by ' + clName(S.by).slice(0, 18) + ' · their wallet holds it' : S.id ? 'checking the chain that it is theirs…' : 'press E to put your piece on show', 256, 100);
+    c.fillStyle = '#e8dcc0'; c.font = '600 20px ' + CL_FONT; c.fillText(mine ? (S.by === clMe() ? 'shown by you · the chain says your wallet holds it' : 'shown by ' + clName(S.by).slice(0, 18) + ' · the chain says their wallet holds it') : S.id ? 'checking the chain that it is theirs…' : 'press E to put your piece on show', 256, 100);
     clTexUp(B.tex.plaque, cv); }
 }
 // ---- the club's games, shared with the crew in the club: each is a state with a version (the newest one wins, as the
@@ -12954,14 +12954,14 @@ function clFrame(W, H, tn, dpr) {
 }
 // the camera's photo: the scene from the camera on its tripod (you in it too, as your crew sees you), read back as a picture
 function clSnapPass(B, W, H, Lt, tn, crewList) {
-  const c = CL_CAM, e = [c.x + .1, c.y, c.z], VP = mul(persp(.62, 4 / 3, .05, 60), look(e, [8.9, 1.25, c.z])), p = room.p, self = [];
+  const c = CL_CAM, e = [c.x + .26, c.y, c.z], VP = mul(persp(.62, 4 / 3, .05, 60), look(e, [8.9, 1.25, c.z])), p = room.p, self = [];
   if (p.x > 6.2 && Math.abs(p.z + 1.65) < 1.35) { const R = cl.selfR || (cl.selfR = {p: [0, 0, 0], yaw: 0, pitch: 0, look: crew.look || [0, 0, 1]}); R.p = [p.x, 0, p.z]; R.yaw = p.yaw + Math.PI; R.pitch = 0; R.look = crew.look || [0, 0, 1]; R.pint = !!cm.pint; R.sit = false; R.held = null;
-    try { self.push(...chPose(R, tn, 0)); } catch (er) {} }
+    try { if (!CHM.torso) chBuild(); self.push(...chPose(R, tn, 0)); } catch (er) {} }
   const w = Math.min(W, Math.round(H * 4 / 3)), h = Math.round(w * 3 / 4), ox = Math.round((W - w) / 2), oy = Math.round((H - h) / 2);
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(ox, oy, w, h); clDraw(B, VP, e, Lt, tn, crewList.concat(self), 1); gl.disable(gl.DEPTH_TEST);
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, RT.ms); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, RT.sf); gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.sf); const px = new Uint8Array(w * h * 4); gl.readPixels(ox, oy, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  const [cv, cx] = clCv(w, h), im = cx.createImageData(w, h); for (let y = 0; y < h; y++) { const s = (h - 1 - y) * w * 4; for (let x = 0; x < w * 4; x += 4) { const i = y * w * 4 + x; im.data[i] = Math.min(255, Math.pow(px[s + x] / 255, .85) * 285); im.data[i + 1] = Math.min(255, Math.pow(px[s + x + 1] / 255, .85) * 285); im.data[i + 2] = Math.min(255, Math.pow(px[s + x + 2] / 255, .85) * 285); im.data[i + 3] = 255; } }
+  const [cv, cx] = clCv(w, h), im = cx.createImageData(w, h); for (let y = 0; y < h; y++) { const s = (h - 1 - y) * w * 4; for (let x = 0; x < w * 4; x += 4) { const i = y * w * 4 + x; im.data[i] = px[s + x]; im.data[i + 1] = px[s + x + 1]; im.data[i + 2] = px[s + x + 2]; im.data[i + 3] = 255; } }
   cx.putImageData(im, 0, 0); return cv;
 }
 // everything in the room, from one eye
