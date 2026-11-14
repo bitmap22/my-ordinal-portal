@@ -159,6 +159,7 @@
   <div class="panel small">
     <h2>For AI agents</h2>
     <p>In this page: <code>await window.agent.help()</code>, then <code>agent.read({height})</code>, <code>agent.items({kind, from, limit})</code>, <code>agent.item({n})</code>, <code>agent.checked()</code> and <code>agent.see()</code>. Where the browser has WebMCP, the same commands are tools named <code>manifest_*</code>. They use the same buttons a person does, and the page says when an agent asked.</p>
+    <p>The bigger app is <a href="block-cube.html">Agent Blockhall</a>: walk into any block there in 3D, where these kinds are its hall's shelves (its kit's <code>walkIn({height})</code>). For any inscription in a block, the <a href="provenance-check.html">Provenance Check</a> proves where it came from.</p>
     <p>Without a browser: the free <a href="agent-blockhall-mcp/README.md">Agent Blockhall MCP tool</a> has the same Block Manifest as its <code>blockManifest</code> tool. The block reader is one file, <a href="agent-blockhall-mcp/server/manifest.js">manifest.js</a>, shared by this page and the tool. More in <a href="llms.txt">llms.txt</a>.</p>
   </div>
 
@@ -368,7 +369,8 @@
     if (it.inscriptions) {
       for (const x of it.inscriptions.slice(0, 3)) {
         const label = (x.contentType === 'unknown' ? 'inscription (no file type given)' : x.contentType === 'delegate' ? 'delegate inscription' : x.contentType || 'inscription') + (x.bytes ? ', ' + fmt(x.bytes) + ' bytes' : '') + (x.child ? ', child' : '') + (x.compressed ? ', compressed' : '');
-        if (x.id) { const a = el('a', null, label); a.href = 'https://ordinals.com/inscription/' + x.id; a.target = '_blank'; a.rel = 'noopener'; line(a); } else line(label);
+        if (x.id) { const a = el('a', null, label); a.href = 'https://ordinals.com/inscription/' + x.id; a.target = '_blank'; a.rel = 'noopener';
+          const pc = el('a', null, 'where it came from'); pc.href = 'provenance-check.html?id=' + x.id; pc.title = 'Provenance Check: prove where this inscription came from'; line(a, ' \u00b7 ', pc); } else line(label);
       }
       if (it.inscriptions.length > 3) line('and ' + (it.inscriptions.length - 3) + ' more inscriptions');
     }
@@ -396,7 +398,9 @@
   $('dlCsv').addEventListener('click', () => M && save('block-' + M.block.height + '-manifest.csv', BM.toCSV(M), 'text/csv'));
 
   /* ---------- the agent kit: window.agent (the same steps as the buttons; the page says when an agent asked) ---------- */
-  const brief = () => M && {manifest: M.manifest, block: M.block, counts: M.counts, checked: Object.assign({}, M.checked, {differences: M.checked.differences.slice(0, 20)}), sources: M.sources};
+  const GAME = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html', PROV = 'https://bitmap22.github.io/my-ordinal-portal/provenance-check.html';
+  const seeIt = h => ({agentBlockhall: GAME, walkIn: 'Walk into block ' + h + ' in 3D in Agent Blockhall: type ' + h + ' into its tablet, or in its agent kit, walkIn({height: ' + h + '}). These kinds are its hall\u2019s shelves.', provenanceCheck: PROV + '?id=<an inscription id from this block> proves where it came from, every step checked.'});
+  const brief = () => M && {manifest: M.manifest, block: M.block, counts: M.counts, checked: Object.assign({}, M.checked, {differences: M.checked.differences.slice(0, 20)}), sources: M.sources, seeIt: seeIt(M.block.height)};
   const need = () => { if (!M) throw new Error('no block read yet: call agent.read({height}) first'); };
   const kindOf = k => { if (k == null || String(k).trim() === '' || String(k).toLowerCase() === 'all') return ''; const n = BM.KIND_NAMES.find(x => x.toLowerCase() === String(k).trim().toLowerCase()); if (!n) throw new Error('kinds are: ' + BM.KIND_NAMES.join(', ')); return n; };
   const cmds = [
@@ -405,7 +409,7 @@
     {name: 'items', does: 'The transactions of the block on the page, a page at a time, or only one kind (as clicking a kind does). Each: n (its place in the block), txid, fee (sats), vsize, feeRate (sat/vB), kinds, what it carries, and checked.', untrusted: true,
       args: [{name: 'kind', does: 'one kind, as named in counts (e.g. "runes etched", "BRC-20", "images", "bitmaps", "regular"), or leave out for all'}, {name: 'from', type: 'integer', does: 'start this many items in (default 0)'}, {name: 'limit', type: 'integer', does: 'how many (default 50, most 500)'}],
       run: ({kind: k, from: f = 0, limit = 50}) => { need(); kind = kindOf(k); const L = listed(); f = Math.max(0, +f || 0); limit = Math.max(1, Math.min(500, +limit || 50)); from = Math.floor(f / PAGE) * PAGE; rows();
-        return {block: M.block.height, kind: kind || 'all', total: L.length, from: f, limit, more: f + limit < L.length, list: L.slice(f, f + limit), note: UNTRUSTED}; }},
+        return {block: M.block.height, kind: kind || 'all', total: L.length, from: f, limit, more: f + limit < L.length, list: L.slice(f, f + limit), seeIt: seeIt(M.block.height), note: 'Any inscription id here can go into the Provenance Check (' + PROV + '?id=...) to prove where it came from. ' + UNTRUSTED}; }},
     {name: 'item', does: 'One transaction of the block on the page, by its place in the block (n) or its txid.', untrusted: true, args: [{name: 'n', type: 'integer', does: 'its place in the block (0 is the coinbase)'}, {name: 'txid', does: 'or its transaction id'}],
       run: ({n, txid}) => { need(); const it = txid ? M.items.find(i => i.txid === String(txid).toLowerCase()) : M.items[+n]; if (!it) throw new Error('no such transaction in block ' + M.block.height); return Object.assign({block: M.block.height}, it, {note: UNTRUSTED}); }},
     {name: 'checked', does: 'Every check for the block on the page, with what each one compared and the differences (at most 50).', args: [], run: () => { need(); return {block: M.block.height, checked: M.checked, sources: M.sources}; }},
@@ -421,7 +425,9 @@
   api.help = async () => ['Block Manifest by bitmap22, always free: every transaction in a Bitcoin block, sorted into the same kinds as Agent Blockhall’s hall shelves, each one checked against a second site.',
     'Every command returns a promise. Call with one object of named arguments, e.g. agent.read({height: 840000}).', UNTRUSTED, '', 'Commands:']
     .concat(cmds.map(c => '  agent.' + c.name + '(' + (c.args || []).map(d => d.name + '?').join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : '')))
-    .concat(['', 'Without a browser, the free Agent Blockhall MCP tool (io.github.bitmap22/agent-blockhall) has the same Block Manifest as its blockManifest tool. The reader itself is window.BlockManifest (and agent-blockhall-mcp/server/manifest.js).']).join('\n');
+    .concat(['', 'The bigger app: Agent Blockhall (' + GAME + '), a 3D Bitcoin block explorer world for players and agents. Walk into any block there (its kit\u2019s walkIn({height})): these kinds are its hall\u2019s shelves.',
+      'For any inscription in a block, the Provenance Check (' + PROV + '?id=...) proves where it came from, every step checked.',
+      'Without a browser, the free Agent Blockhall MCP tool (io.github.bitmap22/agent-blockhall) has the same Block Manifest as its blockManifest tool, and provenanceCheck too. The reader itself is window.BlockManifest (and agent-blockhall-mcp/server/manifest.js).']).join('\n');
   api.commands = () => cmds.map(c => c.name);
   window.agent = api; window.blockManifestAgent = api;
 
