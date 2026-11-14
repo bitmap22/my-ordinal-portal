@@ -316,6 +316,7 @@ body.room.shw #gb{display:flex;align-items:center;position:fixed;left:50%;top:ca
 .om b{position:relative;font:800 11px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;color:#0b0806;background:var(--g,#f7931a);border-radius:6px;padding:3px 5px 2px;box-shadow:0 0 9px -1px var(--g,#f7931a),0 1px 0 rgba(255,255,255,.35) inset}
 .om b::after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-4px;border:4px solid transparent;border-top-color:var(--g,#f7931a);border-bottom:0}
 .otp{position:absolute;left:0;top:0;width:240px;height:84px;box-sizing:border-box;transform-origin:0 0;will-change:transform;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:3px solid var(--g,#f7931a);border-radius:8px;background:rgba(24,17,10,.9);color:#e8c98a;font:800 13px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;backface-visibility:hidden}.otp b{font-size:30px;letter-spacing:.04em;color:#fff1cf}
+.otd{position:absolute;left:0;top:0;width:240px;height:64px;box-sizing:border-box;transform-origin:0 0;will-change:transform;pointer-events:none;display:flex;align-items:center;justify-content:center;gap:7px;border:3px solid var(--g,#f7931a);border-radius:8px;background:rgba(24,17,10,.9);font:800 18px/1 ui-monospace,Menlo,Consolas,monospace;backface-visibility:hidden}.otd svg{width:34px;height:34px;flex:none}.otd b{color:#0b0806;border-radius:6px;padding:5px 7px}.otd.nw{animation:otdNew 1s ease-in-out infinite alternate}@keyframes otdNew{from{box-shadow:0 0 0 rgba(47,191,106,0)}to{box-shadow:0 0 26px rgba(47,191,106,.95)}}
 .otr{position:absolute;left:0;top:0;display:flex;gap:4px;align-items:center;will-change:transform;transform-origin:50% 100%;pointer-events:none;font:800 11px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em}.otr b{color:#0b0806;background:var(--g,#f7931a);border-radius:6px;padding:3px 6px 2px;box-shadow:0 0 9px -1px var(--g,#f7931a)}.otr i{font-style:normal;color:#f7efe3;text-shadow:0 1px 3px #000}.otr.e b{background:rgba(14,9,5,.82);color:var(--g,#f7931a);box-shadow:inset 0 0 0 1px var(--g,#f7931a)}
 .mt.talk b{box-shadow:0 0 0 2px var(--g,#27e1ff),0 0 16px var(--g,#27e1ff)}
 .mt b{pointer-events:auto;cursor:pointer}.mt.mu b{opacity:.6;text-decoration:line-through}
@@ -8844,26 +8845,45 @@ function tradePlaques(R, VP) {
   const cover = (room && room.held && !room.held.back) || vw || $sr.classList.contains('on') || $cmd.classList.contains('on');
   const pr = P => { const cx = VP[0] * P[0] + VP[4] * P[1] + VP[8] * P[2] + VP[12], cy = VP[1] * P[0] + VP[5] * P[1] + VP[9] * P[2] + VP[13], cw = VP[3] * P[0] + VP[7] * P[1] + VP[11] * P[2] + VP[15];
     return cw < .05 ? null : [(cx / cw * .5 + .5) * innerWidth, (.5 - cy / cw * .5) * innerHeight]; };
+  // one plaque: a W x H square of the page, laid on the stone (centre fx fy fz, half sizes hw hh, along rx rz)
+  const lay = (cls, key, fill, fx, fy, fz, rx, rz, hw, hh, W, H) => {
+    let q = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([a, b]) => pr([fx + rx * hw * a, fy + hh * b, fz + rz * hw * a])); if (q.some(v => !v)) return;
+    if ((q[1][0] - q[0][0]) * (q[2][1] - q[1][1]) - (q[1][1] - q[0][1]) * (q[2][0] - q[1][0]) < 0) q = [q[1], q[0], q[3], q[2]];   // (read the right way round)
+    const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q, dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2, sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3, den = dx1 * dy2 - dx2 * dy1;
+    if (Math.abs(den) < 1e-9 || Math.max(x0, x1, x2, x3) < -40 || Math.min(x0, x1, x2, x3) > innerWidth + 40 || Math.max(y0, y1, y2, y3) < -40 || Math.min(y0, y1, y2, y3) > innerHeight + 40) return;
+    const g = (sx * dy2 - dx2 * sy) / den, h = (dx1 * sy - sx * dy1) / den;   // (the plaque's square, mapped onto the four corners on the screen)
+    const m = [(x1 - x0 + g * x1) / W, (y1 - y0 + g * y1) / W, 0, g / W, (x3 - x0 + h * x3) / H, (y3 - y0 + h * y3) / H, 0, h / H, 0, 0, 1, 0, x0, y0, 0, 1];
+    let e = pool[n]; if (!e) { e = document.createElement('div'); e.setAttribute('aria-hidden', 'true'); $crt.append(e); pool[n] = e; } n++;
+    if (e._k !== key) { e._k = key; e.className = cls; fill(e); }
+    e.style.display = ''; e.style.transform = 'matrix3d(' + m.map(v => v.toFixed(10)).join(',') + ')';   // (full precision: its tiny perspective parts were rounded away, and the plaque came out askew)
+  };
   if (R && eye && VP && !cover) for (const o of trade.list) {
-    const c = o && o.s ? tradeCost(o.s.o[0]) : null; if (!c || c.v == null) continue;
+    if (!o || !o.s) continue;
+    const c = tradeCost(o.s.o[0]), D = dealsFor(o);
     const [bx, bd] = tradeAt(o.k), [px, pz] = cmW(R, bx, bd), [mx, mz] = cmW(R, 0, CM.PD); let nx = mx - px, nz = mz - pz; if (Math.abs(nx) >= Math.abs(nz)) { nx = Math.sign(nx) || 1; nz = 0; } else { nz = Math.sign(nz) || 1; nx = 0; }
     const fx = px + nx * (TRADE.W / 2 + .006), fz = R.z0 + pz + nz * (TRADE.W / 2 + .006), fy = TRADE_FLOOR + .1 + (TRADE.H - .22) * .55;
     if ((eye[0] - fx) * nx + (eye[2] - fz) * nz < .05 || Math.hypot(eye[0] - fx, eye[1] - fy, eye[2] - fz) > 16) continue;
     let hid = false; for (const M of crew.mates.values()) { const Q = M.R; if (!M.shown || !Q || !Q.p) continue; const ex = fx - eye[0], ez = fz - eye[2], t = ((Q.p[0] - eye[0]) * ex + (Q.p[2] - eye[2]) * ez) / (ex * ex + ez * ez || 1); if (t < .02 || t > .98) continue;
       const cy = eye[1] + (fy - eye[1]) * t; if (Math.hypot(Q.p[0] - eye[0] - ex * t, Q.p[2] - eye[2] - ez * t) < .32 && cy > Q.p[1] - .05 && cy < Q.p[1] + 1.85) { hid = true; break; } }
     if (hid) continue;
-    let rx = nz, rz = -nx; const hw = .24, hh = .085;
-    let q = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([a, b]) => pr([fx + rx * hw * a, fy + hh * b, fz + rz * hw * a])); if (q.some(v => !v)) continue;
-    if ((q[1][0] - q[0][0]) * (q[2][1] - q[1][1]) - (q[1][1] - q[0][1]) * (q[2][0] - q[1][0]) < 0) q = [q[1], q[0], q[3], q[2]];   // (read the right way round)
-    const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q, dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2, sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3, den = dx1 * dy2 - dx2 * dy1;
-    if (Math.abs(den) < 1e-9 || Math.max(x0, x1, x2, x3) < -40 || Math.min(x0, x1, x2, x3) > innerWidth + 40 || Math.max(y0, y1, y2, y3) < -40 || Math.min(y0, y1, y2, y3) > innerHeight + 40) continue;
-    const g = (sx * dy2 - dx2 * sy) / den, h = (dx1 * sy - sx * dy1) / den, W = 240, H = 84;   // (the plaque's square, mapped onto the four corners on the screen)
-    const m = [(x1 - x0 + g * x1) / W, (y1 - y0 + g * y1) / W, 0, g / W, (x3 - x0 + h * x3) / H, (y3 - y0 + h * y3) / H, 0, h / H, 0, 0, 1, 0, x0, y0, 0, 1];
-    let e = pool[n]; if (!e) { e = document.createElement('div'); e.className = 'otp'; e.setAttribute('aria-hidden', 'true'); $crt.append(e); pool[n] = e; } n++;
-    const key = c.v + o.who.c; if (e._k !== key) { e._k = key; e.innerHTML = '<span>SITS ON</span><b></b>'; const B = e.querySelector('b'), w = fmt(c.v) + ' SATS'; B.textContent = w; B.style.fontSize = Math.min(30, Math.floor(212 / (w.length * .62))) + 'px'; e.style.setProperty('--g', o.who.c); }
-    e.style.display = ''; e.style.transform = 'matrix3d(' + m.map(v => v.toFixed(10)).join(',') + ')';   // (full precision: its tiny perspective parts were rounded away, and the plaque came out askew)
+    const rx = nz, rz = -nx;
+    // how many sats it sits on
+    if (c && c.v != null) lay('otp', 's' + c.v + o.who.c, e => { e.innerHTML = '<span>SITS ON</span><b></b>'; const B = e.querySelector('b'), w = fmt(c.v) + ' SATS'; B.textContent = w; B.style.fontSize = Math.min(30, Math.floor(212 / (w.length * .62))) + 'px'; e.style.setProperty('--g', o.who.c); }, fx, fy, fz, rx, rz, .24, .085, 240, 84);
+    // under it, no words needed: a tick and the players who said LET'S MAKE A DEAL, each in their colour (it glows when one is new)
+    if (D.length) { const nw = D.some(x => performance.now() - x.t < 10000);
+      lay('otd' + (nw ? ' nw' : ''), 'd' + D.map(x => x.w.p + x.w.c).join() + o.who.c + (nw ? 1 : 0), e => { e.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#2fbf6a"/><path d="M6.5 12.5l3.6 3.6 7.4-8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        for (const x of D.slice(0, 5)) { const b = document.createElement('b'); b.textContent = x.w.p; b.style.background = x.w.c; e.append(b); } e.style.setProperty('--g', o.who.c); }, fx, fy - .2, fz, rx, rz, .24, .065, 240, 64); }
   }
   for (let k = n; k < pool.length; k++) if (pool[k].style.display !== 'none') pool[k].style.display = 'none';
+}
+// the crewmates who said LET'S MAKE A DEAL to a base's block (for that block only; muted crewmates left out), and when each was
+// first seen here
+function dealsFor(o) {
+  const out = []; if (!o || !o.s) return out; const W = o.who.id, A = o.s.at, T = trade.dealT || (trade.dealT = new Map());
+  const add = (id, w) => { const k = W + '|' + id + '|' + A; if (!T.has(k)) T.set(k, performance.now()); out.push({w, t: T.get(k)}); };
+  for (const [id, D] of trade.deals) { if (id === W || crewMuted.has(id)) continue; const x = D.get(W); if (x && x.at === A && x.a === 'deal') { const w = tradeOf(id); if (w) add(id, w); } }
+  if (!o.who.me && dealMine(o) === 'deal') { const w = tradeOf(crew.me || 'me'); if (w) add('me', w); }
+  return out;
 }
 // pointing at a base, and what it says
 function tradeLabel(k) {
@@ -15053,7 +15073,7 @@ window.AgentKit = window.AgentKit || (() => {
     trade.list = tradeList();
     return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), FOR SALE or FOR TRADE (setOffer), and putting it there tells your crew. At a crewmate\'s base you answer LET\'S MAKE A DEAL or NOT INTERESTED (answerDeal); they are told. Once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them. Nothing is bought, sold or swapped here: a deal is taken to another app (check there that the inscription id matches exactly: a copy can look the same). Each player is responsible for their own trades there; Agent Blockhall is not part of any trade and claims no liability for it. Each block shows what inscribing it cost (inscriptionFeeSats). You use a base standing at it, as a player does: these commands walk you there in the common room.',
       you: own.me.p, yourBase: tradeMyBase(), wallet: own.addr ? 'read status on' : 'none (a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve())',
-      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
+      bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, wantsADeal: o.s ? dealsFor(o).map(x => x.w.me ? 'you' : x.w.p) : undefined, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
   }
   function state() {
     const s = {page: 'Agent Blockhall', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
