@@ -10939,10 +10939,12 @@ function gdTrees() {
 const GD_KEEP = [{c: [0, -50], r: 9.5}, {x: [9, 41.5], z: [-61, -37]}, {x: [-33, -13], z: [-47, -32]}, {c: [-26, -74], r: 7.5}, {x: [15, 35], z: [-89, -71]},
   {x: [13, 37], z: [-27, -9]}, {x: [-39, -21], z: [-25, -9]}, {x: [-6, 6], z: [-9, 0]}];
 const GD_PATHS = [[[0, -1.6], [0, -41.6]], [[7.6, -50], [12, -50]], [[-6.5, -46], [-14.5, -40.5]], [[-5.6, -55.6], [-20.5, -69.5]], [[5.6, -55.6], [18.5, -72]], [[6, -45.2], [16.5, -26.5]], [[-6, -45.2], [-23, -24.5]]];
-// the chain data board: a notice board on the plaza beside the case, facing the path in from the gate (a: its turn; w, h: the
-// sheet's size; y: the sheet's middle)
-const GD_BOARD = {x: 2.6, z: -46.3, a: -.6, w: 1.4, h: 1.0, y: 1.32};
-const gdBoardU = [Math.cos(GD_BOARD.a), -Math.sin(GD_BOARD.a)], gdBoardN = [Math.sin(GD_BOARD.a), Math.cos(GD_BOARD.a)];   // (along the sheet; out of its face)
+// a garden bench on the plaza, facing your bitmap's case, and The Bitmap Gazette lying on it (ry: its turn; U: along the seat; F: the way
+// it faces, toward the case)
+const GD_BENCH = {x: 2.7, z: -45.32, ry: .5236};
+const gdBenchU = [Math.cos(GD_BENCH.ry), -Math.sin(GD_BENCH.ry)], gdBenchF = [-Math.sin(GD_BENCH.ry), -Math.cos(GD_BENCH.ry)];
+const gdBenchAt = (u, v) => [GD_BENCH.x + gdBenchU[0] * u - gdBenchF[0] * v, GD_BENCH.z + gdBenchU[1] * u - gdBenchF[1] * v];   // (u along the seat, v back from its front edge)
+const GD_PAPER = (() => { const [x, z] = gdBenchAt(.5, .02); return {x, z, y: .468, ry: GD_BENCH.ry + .22, w: .3, d: .42}; })();
 function gdPlan() {
   const {rnd, rr, reseed} = GDM; reseed(388067);
   const W = GD.W / 2, inner = W - GD.HT;
@@ -10977,7 +10979,7 @@ function gdPlan() {
   for (let i = 0; i < 4; i++) { const an = Math.PI / 4 + i * Math.PI / 2; lamps.push([Math.cos(an) * 6.6, -50 + Math.sin(an) * 6.6]); }
   for (const [x, z] of lamps) col.push({x, z, r: .28});
   col.push({x: 0, z: -50, r: GD.CR});
-  for (const k of [-.74, 0, .74]) col.push({x: GD_BOARD.x + gdBoardU[0] * k, z: GD_BOARD.z + gdBoardU[1] * k, r: .3});   // (the board: its two posts and its middle)
+  for (const k of [-.55, 0, .55]) { const [x, z] = gdBenchAt(k, .05); col.push({x, z, r: .32}); }   // (the bench)
   return {trees, shrubs, lamps, col};
 }
 // ---- drawing the garden: its own sky; one shader for everything in it (sun with real shadows, sky light, lamps at night, rain,
@@ -11411,13 +11413,15 @@ function gdBuild() {
       card(lf, [p[0], p[1] + rr(.06, .16), p[2]], nrm([Math.cos(a) * .5 + rr(-.3, .3), 1, Math.sin(a) * .5 + rr(-.3, .3)]), rr(.26, .36), 2, mixc(fl[0], fl[1], rnd()), .3, [0, 1, 0]); } }
   // the case's plinth: an eight-sided stone column, a gold band round its top; the glass case on it (drawn see-through, last)
   lathe(st, [[1.5, 0], [1.5, .2], [1.22, .26], [1.06, .34], [1.0, 1.0], [1.18, 1.07], [1.18, 1.17], [0, 1.17]], 8, () => mixc(C(0xded7c8), C(0xc9c0ae), rnd() * .5), 0, 0, TR([1, 1, 1], [0, Math.PI / 8, 0], [0, 0, -50]));
-  // the chain data board: two posts on stone feet, a backing board in a frame, a little roof (the sheet itself is drawn with its picture)
-  { const B = GD_BOARD, U = gdBoardU, Nn = gdBoardN, at = (u, n) => [B.x + U[0] * u + Nn[0] * n, B.z + U[1] * u + Nn[1] * n], oak = C(0x5a3b22), dark = C(0x3a2616);
-    for (const s2 of [-1, 1]) { const [x, z] = at(s2 * .76, -.02); box(st, x, 1.08, z, .1, 2.16, .1, oak, 8, B.a); box(st, x, .07, z, .22, .14, .22, C(0x9c9384), 2, B.a); }
-    { const [x, z] = at(0, -.05); box(st, x, B.y, z, 1.56, 1.16, .05, dark, 8, B.a); }
-    for (const [y, h] of [[B.y + .55, .07], [B.y - .55, .07]]) { const [x, z] = at(0, -.02); box(st, x, y, z, 1.56, h, .09, oak, 8, B.a); }
-    for (const s2 of [-1, 1]) { const [x, z] = at(s2 * .74, -.02); box(st, x, B.y, z, .07, 1.16, .09, oak, 8, B.a); }
-    { const [x, z] = at(0, -.02); box(st, x, 2.2, z, 1.84, .07, .5, dark, 8, B.a); box(st, x, 2.26, z, 1.84, .06, .12, oak, 8, B.a); } }
+  // the bench by the case: teak slats on cast-iron sides (The Bitmap Gazette on it is drawn with its picture)
+  { const B = GD_BENCH, at = gdBenchAt, teak = C(0x9a6436), iron = C(0x22262a);
+    for (const v of [-.17, -.06, .05, .16]) { const [x, z] = at(0, v); box(st, x, .44, z, 1.62, .035, .09, teak, 8, B.ry); }
+    for (const [y, v] of [[.6, .25], [.72, .27], [.84, .29]]) { const [x, z] = at(0, v); box(st, x, y, z, 1.62, .08, .03, teak, 8, B.ry); }
+    for (const u of [-.76, .76]) {
+      { const [x, z] = at(u, -.19); box(st, x, .21, z, .05, .42, .05, iron, 0, B.ry); }
+      { const [x, z] = at(u, .29); box(st, x, .47, z, .05, .94, .05, iron, 0, B.ry); }
+      { const [x, z] = at(u, .05); box(st, x, .405, z, .05, .05, .5, iron, 0, B.ry); box(st, x, .65, z, .06, .04, .48, iron, 0, B.ry); }
+      { const [x, z] = at(u, -.19); box(st, x, .54, z, .05, .24, .05, iron, 0, B.ry); } } }
   const gold = C(0xd9a440);
   lathe(st, [[1.19, 1.0], [1.21, 1.035], [1.19, 1.07]], 8, () => gold, 0, 0, TR([1, 1, 1], [0, Math.PI / 8, 0], [0, 0, -50]));
   const CY = 1.17, CS = 1.5, CH = 1.56;
@@ -11513,6 +11517,7 @@ const GD_SEATS = (() => {
   for (const x of [15.5, 18.5, 23, 26, 30.5]) for (const s of [-1, 1]) S.push({x: x + s * .2, z: -38.7, y: .42, f: [s, 0], o: [x + s * 1.0, -38.7], way: 'sit', r: 1.0, label: 'sit on the lounger'});
   S.push({x: -31, z: -16, y: .55, f: [0, -1], o: [-31, -17.3], way: 'sitBack', r: 1.7, label: 'get in the hammock', kind: 'hammock'});   // (in the middle, where it hangs lowest, looking into the garden)
   S.push({x: GD_SWING.bx, z: GD_SWING.z, y: .55, f: [0, -1], o: [GD_SWING.bx + .9, GD_SWING.z + .6], way: 'sit', r: 1.6, label: 'sit on the swing', kind: 'swing'});
+  for (const u of [-.4, .2]) { const [x, z] = gdBenchAt(u, .02); S.push({x, z, y: .465, f: gdBenchF.slice(), o: [x + gdBenchF[0] * .95, z + gdBenchF[1] * .95], way: 'sit', r: 1.2, label: 'sit on the bench', bench: 1}); }   // (the bench by the case)
   return S;
 })();
 function gdSeatAt(x, z) { for (const s of GD_SEATS) if (!s.kind && Math.hypot(x - s.x, z - s.z) < .35) return s; return null; }
@@ -11539,13 +11544,14 @@ function gdAct(sx, sy) {
   if (gd.hb >= 0) return gdChAct(p, ray);   // (a cornhole bag in your hand: throw it)
   if (p.swim) { if (cm.pint) { const M = gdCheersWho(p, ray); if (M) return {a: 'cheers', M, label: 'cheers with ' + (M.name || 'your crewmate')}; } return gdSwimAct(p, C, ray) || (cm.pint ? {a: 'sip', label: 'sip your pint'} : null); }   // (in the pool: climb out, a cheers, a sip)   // (carrying a chess piece: your arms are full)
   if (cm.pint) { const M = gdCheersWho(p, ray); if (M) return {a: 'cheers', M, label: 'cheers with ' + (M.name || 'your crewmate')}; }
+  if (p.sit && p.seat && p.seat.bench) { const Q = gdPaperAct(p, C, ray); if (Q) return Q; }   // (sitting on the bench, you can read the paper beside you)
   if (p.sit) return {a: 'stand', label: cm.pint ? 'sip your pint · move to stand up' : 'stand up (or just walk)'};
   if (!cm.pint && gdTapNear(p, C, ray)) return {a: 'pour', label: 'pour a pint'};
   { const Q = gdChessAct(p, C, ray); if (Q) return Q; }
   { const Q = gdPPAct(p); if (Q) return Q; }
   { const Q = gdChAct(p, ray); if (Q) return Q; }
   { const Q = gdSwimAct(p, C, ray); if (Q) return Q; }
-  { const Q = gdBoardAct(p, C, ray); if (Q) return Q; }   // (the chain data board)
+  { const Q = gdPaperAct(p, C, ray); if (Q) return Q; }   // (The Bitmap Gazette, on the bench)
   let best = null, bd = 9;
   for (const s of GD_SEATS) { const dx = s.x - p.x, dz = C.z0 + s.z - p.z, e = Math.hypot(dx, dz); if (e > s.r || e >= bd) continue;
     if (ray && e > .5) { const h = Math.hypot(ray.d[0], ray.d[2]) || 1; if ((dx * ray.d[0] + dz * ray.d[2]) / (h * e) < .5) continue; }   // (only a seat you are facing)
@@ -11559,7 +11565,7 @@ function gdDo(A) {
   const p = room && room.p, C = room && room.rooms[1]; if (!A || !p || !C || !C.gd) return;
   if (A.a === 'stand') { if (cm.pint) { cmSip(); return; } gdStand(C, p); return; }
   if (A.a === 'sip') { cmSip(); return; }
-  if (A.a === 'board') { gdChainOpen(); return; }
+  if (A.a === 'paper') { gdChainOpen(); return; }
   if (A.a === 'ask') { gdAskPick(A.M); return; }
   if (A.a === 'lift' || A.a === 'put' || A.a === 'reset') { gdChessDo(A); return; }
   if (A.a === 'ppup' || A.a === 'ppdown' || A.a === 'serve') { gdPPDo(A); return; }
@@ -11931,7 +11937,7 @@ function gdSigns(T, Lt, zo) {
 // ---- for AI agents (the agent kit): the garden's places to walk to, and everything going on, in words and numbers ----
 // each place: where to stand [x, z], and the point to face [x, y, z]
 const GD_GOTO = {
-  'your bitmap': [[0, -47.6], [0, 1.9, -50]], 'chain data board': [[1.7, -44.98], [2.6, 1.3, -46.3]], 'the gate': [[0, -6], [0, 1.4, -1.2]], 'bar cart': [[-31.4, -35.9], [-31.5, 1.15, -37.4]],
+  'your bitmap': [[0, -47.6], [0, 1.9, -50]], 'the bitmap gazette': [[2.25, -46.2], [GD_PAPER.x, GD_PAPER.y, GD_PAPER.z]], 'bench': [[2.2, -46.25], [GD_BENCH.x, .45, GD_BENCH.z]], 'the gate': [[0, -6], [0, 1.4, -1.2]], 'bar cart': [[-31.4, -35.9], [-31.5, 1.15, -37.4]],
   'pool': [[22, -42.2], [22, 0, -46]],
   'diving board': [[36.2, -49], [31.9, .7, -49]], 'slide': [[12.2, -40], [12.2, 1.4, -41.6]], 'hot tub': [[38, -43.6], [38, .8, -46]], 'koi pond': [[25, -72.4], [25, 0, -80]],
   'chess board': [[19, -12.6], [19, .4, -16]], 'ping-pong red end': [[26.5, -12.5], [28.5, .8, -12.5]], 'ping-pong black end': [[30.5, -12.5], [28.5, .8, -12.5]],
@@ -11964,7 +11970,7 @@ function gdAgentInfo() {
   const bags = gdBagList().map((b, i) => ({bag: i, colour: i < 4 ? 'red' : 'blue', where: b.st === 'x' ? 'in someone\'s hand' : b.st === 'h' ? 'in a hole' : b.st === 'b' ? 'on a board' : 'on the grass', x: r1(b.x), z: r1(b.z)}));
   const [cr, cb] = gdBagScore(), bats = [-1, 1].map(s => ({bat: gdPPName(s), heldBy: gd.pp && gd.pp.side === s ? 'you' : gdPPTaken(s) ? 'a crewmate' : 'nobody (on the table)'}));
   return {
-    yourBitmap: C.gd.bm + '.bitmap', chainData: 'bitmapData() reads your bitmap and its block from the chain (the board beside the case)', cameFrom: C.gd.from.h === COMMON ? 'the common room' : 'block ' + C.gd.from.h, backWay: 'leave() (or use() facing the case in the middle) takes you back the way you came',
+    yourBitmap: C.gd.bm + '.bitmap', chainData: 'bitmapData() reads The Bitmap Gazette: your bitmap and its block, from the chain (the newspaper on the bench by the case)', cameFrom: C.gd.from.h === COMMON ? 'the common room' : 'block ' + C.gd.from.h, backWay: 'leave() (or use() facing the case in the middle) takes you back the way you came',
     you: {sitting: p.sit ? (p.seat ? p.seat.label.replace(/^sit (on|at|by) the /, '').replace(/^get in the /, '') : 'yes') : false, swimming: !!p.swim, holding: cm.pint ? 'a pint (' + Math.round(cm.pint.fill * 100) + '% full)' : gd.pp ? 'the ' + gdPPName(gd.pp.side) + ' ping-pong bat' : gd.hb >= 0 ? 'the ' + gdBagName(gd.hb) : gd.hold ? 'the ' + gdPcName(gd.hold.c) : null},
     asks: gdAskInfo(),
     places: Object.keys(GD_GOTO), timeOfDay: gd.sun && gd.sun.dir[1] > 0 ? 'day' : 'night', weather: gd.wx ? gdWxWords(gd.wx) : undefined,
@@ -11997,12 +12003,12 @@ function gdBack() {
   (async () => { if (f.h === COMMON) { await srTravel(COMMON); return; } await roomEnter(f.h, {x: f.x, z: f.z}, {wait: true}); if (room && room.at && room.at.h === f.h) srT = {R: null, it: null, h: f.h, id: f.id.slice(0, 64), label: 'your bitmap'}; })();
 }
 $cbg.onclick = () => gdTravel();
-// ---- the chain data board: beside the case, your bitmap and its block as the chain says now ----
-//      Your bitmap (its inscription, when it was claimed, its sat, the wallet it is in, whether it is being sent right now), its
-//      block (when it was mined and by whom, its transactions: each one a parcel of the bitmap, its size, fees and middle fee),
-//      and the bitmaps here. Read from the chain when you come in (and again when you read the board, after two minutes); what
-//      cannot be read right now is not shown, never shown as nothing. A summary on the board; E opens it all; an agent reads the
-//      same with bitmapData().
+// ---- The Bitmap Gazette: a newspaper on the bench by the case, its front page your bitmap and its block as the chain says now ----
+//      (Bitcoin's first block carried a newspaper headline; this one is about yours.) Your bitmap (its inscription, when it was
+//      claimed, its sat, the wallet it is in, whether it is being sent right now), its block (when it was mined and by whom, its
+//      transactions: each one a parcel of the bitmap, its size, fees and middle fee), and the bitmaps here. Read from the chain
+//      when you come in (and again when you read it, after two minutes); what cannot be read right now is left out, never shown
+//      as nothing. E opens the front page; an agent reads the same with bitmapData().
 const gdc = {n: -1, id: '', ins: null, insAt: 0, send: null, sendAt: 0, busy: false, err: '', key: '', tex: null};
 const GD_FLOORS = [[1, 'ice'], [2, 'water'], [5, 'grass'], [20, 'desert'], [100, 'fire'], [500, 'lava storm'], [Infinity, 'plasma']];
 const gdFloorOf = r => r == null ? null : (GD_FLOORS.find(f => r < f[0]) || GD_FLOORS[6])[1];
@@ -12051,58 +12057,87 @@ function gdChainData(page) {
   }
   return out;
 }
-// the window (E at the board)
-function gdChainOpen(pg) {
-  pg = GD_CPAGES.includes(pg) ? pg : 'your bitmap'; gdChainLoad(false);
-  clWin(s => { const h = document.createElement('h3'); h.textContent = 'THE BITMAP GARDEN · CHAIN DATA'; s.appendChild(h); const b = document.createElement('div'); b.className = 'b'; s.appendChild(b);
-    for (const P of GD_CPAGES) { const x = document.createElement('button'); x.textContent = P.toUpperCase(); if (P === pg) x.className = 'on'; x.onclick = () => gdChainOpen(P); b.appendChild(x); }
-    const c = document.createElement('button'); c.textContent = 'CLOSE (Esc)'; c.onclick = clWinClose; b.appendChild(c);
-    const pre = document.createElement('pre'); pre.textContent = clTermText(gdChainData(pg)); s.appendChild(pre); gdc.pg = pg; }, 'g');
+// the front page (E at the paper): cream newsprint, black type, the bitmap's own picture in orange
+document.head.insertAdjacentHTML('beforeend', '<style>' +
+  '#clw .s.np{width:min(820px,94vw);padding:22px 26px 18px;background:radial-gradient(140% 100% at 50% 0%,#f7f0de 0%,#eadfc6 100%);border:0;border-radius:4px;box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 0 1px #cbbd9c;color:#1d1915;text-shadow:none;font:15px/1.5 Georgia,"Times New Roman",serif}' +
+  '#clw .np .mh{text-align:center;font:900 46px/1 Georgia,"Times New Roman",serif;letter-spacing:.01em;margin:2px 0 4px}#clw .np .tg{text-align:center;font-style:italic;font-size:13px;color:#4a4136;margin:0 0 8px}' +
+  '#clw .np .rl{display:flex;justify-content:space-between;gap:10px;border-top:3px double #1d1915;border-bottom:1px solid #1d1915;padding:4px 2px;font:700 11.5px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase;margin:0 0 12px}' +
+  '#clw .np h1{font:900 34px/1.08 Georgia,"Times New Roman",serif;margin:0 0 6px;text-transform:uppercase;letter-spacing:.01em}#clw .np .sh{font:italic 17px/1.35 Georgia,serif;color:#3a332a;margin:0 0 12px}' +
+  '#clw .np .cols{display:grid;grid-template-columns:240px 1fr;gap:18px;align-items:start}#clw .np figure{margin:0}#clw .np canvas{width:240px;height:240px;display:block;background:#0d0a08;border:1px solid #1d1915}#clw .np figcaption{font:italic 12.5px/1.35 Georgia,serif;color:#4a4136;margin:5px 0 0}' +
+  '#clw .np p{margin:0 0 10px;text-align:justify;hyphens:auto}#clw .np p:first-letter{font-weight:900}#clw .np h2{font:900 15px Georgia,serif;letter-spacing:.12em;text-transform:uppercase;border-top:2px solid #1d1915;padding:7px 0 0;margin:14px 0 6px}' +
+  '#clw .np .st{display:inline-block;margin:2px 0 8px;padding:3px 10px;border:2px solid #2f7a3a;color:#2f7a3a;font:800 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;transform:rotate(-2deg)}#clw .np .st.no{border-color:#a3301f;color:#a3301f}#clw .np .st.wa{border-color:#b7741a;color:#b7741a}' +
+  '#clw .np ul{margin:0;padding:0 0 0 18px}#clw .np .ft{border-top:1px solid #1d1915;margin:14px 0 0;padding:6px 0 0;font-size:12.5px;color:#5a4f40;display:flex;justify-content:space-between;gap:10px;align-items:center}' +
+  '#clw .np .ft button{font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;padding:6px 11px;border-radius:4px;border:1px solid #1d1915;background:#1d1915;color:#f3ead6;cursor:pointer}' +
+  '#clw .np .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}@media (max-width:620px){#clw .np .cols{grid-template-columns:1fr}#clw .np .mh{font-size:34px}#clw .np h1{font-size:26px}}</style>');
+function gdChainOpen() { gdChainLoad(false); gdc.pg = 'front'; clWin(s => gdChainFill(s), 'np'); }
+function gdChainFill(s) {
+  const C = room && room.at, n = C && C.gd ? C.gd.bm : -1, I = gdc.n === n ? gdc.ins : null, M = gdMeta.get(n), B = gdChainData('your bitmap'), K = gdChainData('its block'), H = gdChainData('bitmaps here');
+  const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+  s.textContent = '';
+  s.append(el('div', 'mh', 'The Bitmap Gazette'), el('div', 'tg', 'Bitcoin’s first block carried a newspaper headline. This one is about yours.'));
+  const rl = el('div', 'rl'); rl.append(el('span', '', 'Block ' + fmt(n)), el('span', '', M ? new Date(M.time * 1000).toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'}) : 'the chain is being read'), el('span', '', 'Price: free')); s.appendChild(rl);
+  s.appendChild(el('h1', '', 'Block ' + fmt(n) + (M && M.pool ? ' found by ' + M.pool : ' is mined')));
+  if (M) s.appendChild(el('div', 'sh', [fmt(M.count) + ' transactions', M.size ? (M.size / 1e6).toFixed(2) + ' MB' : '', M.median != null ? 'a ' + gdFloorOf(M.median) + ' floor in its hall' : ''].filter(Boolean).join(' · ')));
+  const cols = el('div', 'cols'), fig = el('figure'); let pic = null; try { if (gd.built && gd.built.mond) pic = gdBitmapCanvas(gd.built.mond, 480); } catch (e) {}
+  if (!pic) { pic = document.createElement('canvas'); pic.width = pic.height = 480; }
+  fig.append(pic, el('figcaption', '', n + '.bitmap: each orange square is one of the block’s transactions, sized by how much it moved (the bitmap standard).'));
+  const st = el('div');
+  if (M) { const sub = subsidy(n), t = new Date(M.time * 1000);
+    const at = t.toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'}) + ' at ' + t.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC';
+    st.appendChild(el('p', '', 'On ' + at + ', block ' + fmt(n) + ' joined the chain' + (tipH >= n ? ', ' + fmt(tipH - n) + ' blocks ago' : '') + '. It carried ' + fmt(M.count) + ' transactions, and each one is a parcel of the bitmap.'));
+    st.appendChild(el('p', '', M.fees != null ? 'Its miner took ' + gdBtc(sub + M.fees) + ': ' + gdBtc(sub) + ' in new coins and ' + gdBtc(M.fees) + ' in fees.' + (M.median != null ? ' Half of the block, by size, paid ' + (Math.round(M.median * 10) / 10) + ' sat/vB or more: its middle fee.' : '') : 'Its miner took ' + gdBtc(sub) + ' in new coins, plus the fees (not read right now).'));
+    if (n > 0 && n % EPOCH === 0) st.appendChild(el('p', '', 'It was a halving block: the first to pay only ' + gdBtc(sub) + ' in new coins.'));
+    if (M.big) st.appendChild(el('p', '', 'Its biggest single transaction moved ' + gdBtc(M.big.value) + '.'));
+  } else st.appendChild(el('p', '', 'The block’s own record is being read from the chain…'));
+  st.appendChild(el('h2', '', 'Your bitmap'));
+  if (I) {
+    const ok = I.addr && own.addr && I.addr === own.addr; st.appendChild(el('div', 'st' + (ok ? '' : ' no'), ok ? 'IN YOUR WALLET ✓' : 'NOT IN YOUR WALLET NOW'));
+    if (gdc.send && gdc.send.waiting) st.appendChild(el('div', 'st wa', 'BEING SENT RIGHT NOW'));
+    st.appendChild(el('p', '', n + '.bitmap is inscription #' + fmt(I.num) + (I.h != null ? ', claimed in block ' + fmt(I.h) + (I.h > n ? ', ' + fmt(I.h - n) + ' blocks after the block it claims' : ', the very block it claims') : '') + '. It is the first proper claim of block ' + fmt(n) + ', checked on the chain when you came in.' + (B.sat ? ' It sits on sat ' + B.sat.replace(' (', ', a sat that is ').replace(/\)$/, '') + '.' : '') + (B.moved ? ' It ' + (B.moved.startsWith('still') ? 'is still in the output it was made in.' : 'has changed hands or moved since it was made.') : '')));
+  } else st.appendChild(el('p', '', 'Your bitmap’s record is being read from the chain…'));
+  st.appendChild(el('h2', '', 'In the garden today'));
+  const ul = el('ul'); for (const r of H.here || []) ul.appendChild(el('li', '', r.who.replace(' (you)', '') + ' · ' + r.bitmap)); st.appendChild(ul);
+  if (M) { st.appendChild(el('h2', '', 'For the record')); st.appendChild(el('p', 'mono', 'block hash ' + M.hash)); if (C.gd.id) st.appendChild(el('p', 'mono', 'inscription ' + C.gd.id)); }
+  cols.append(fig, st); s.appendChild(cols);
+  const ft = el('div', 'ft'), cl = el('button', '', 'CLOSE (Esc)'); cl.onclick = clWinClose;
+  ft.append(el('span', '', 'Read live from the chain' + (B.read ? ' · ' + B.read : '') + '. Anything that cannot be read right now is left out.'), cl); s.appendChild(ft);
 }
 // still open while it is read: show the new facts as they come
-setInterval(() => { if (typeof $clw !== 'undefined' && $clw.classList.contains('on') && $clw.querySelector('.s.g') && gdc.pg) { const pre = $clw.querySelector('pre'), t = clTermText(gdChainData(gdc.pg)); if (pre && pre.textContent !== t) pre.textContent = t; } }, 1000);
-// what you are looking at: the board (close by, in front of it)
-function gdBoardAct(p, C, ray) {
-  const B = GD_BOARD, dx = B.x - p.x, dz = C.z0 + B.z - p.z, e = Math.hypot(dx, dz); if (e > 3.2) return null;
-  if ((-dx) * gdBoardN[0] + (-dz) * gdBoardN[1] < .1) return null;   // (only from its front)
-  if (ray && clRayRect(ray, B.x, B.y, C.z0 + B.z, gdBoardN, B.w + .2, B.h + .3, 4) < 0 && e > 1.4) return null;
-  return {a: 'board', ray: true, label: 'read the chain data board'};
+setInterval(() => { const S = typeof $clw !== 'undefined' && $clw.classList.contains('on') && $clw.querySelector('.s.np'); if (!S) return; const n = room && room.at && room.at.gd ? room.at.gd.bm : -1; const k = JSON.stringify([gdc.ins, gdMeta.get(n), !!(gd.built && gd.built.mond), gdc.send, gdc.busy]); if (k !== gdc.cardK) { gdc.cardK = k; gdChainFill(S); } }, 1000);
+// what you are looking at: The Bitmap Gazette on the bench (close by, and looked at)
+function gdPaperAct(p, C, ray) {
+  const P = GD_PAPER, dx = P.x - p.x, dz = C.z0 + P.z - p.z, e = Math.hypot(dx, dz); if (e > 2.6) return null;
+  if (ray && e > .9) { const ey = ray.e[1], v = [P.x - ray.e[0], P.y - ey, C.z0 + P.z - ray.e[2]], l = Math.hypot(...v) || 1; if ((v[0] * ray.d[0] + v[1] * ray.d[1] + v[2] * ray.d[2]) / l < .94) return null; }
+  return {a: 'paper', ray: true, label: 'read The Bitmap Gazette'};
 }
-// the sheet on the board: a summary in big letters (painted again when what it says changes)
-function gdBoardLines() {
-  const C = room && room.at, n = C && C.gd ? C.gd.bm : -1, I = gdc.n === n ? gdc.ins : null, M = gdMeta.get(n), L = [];
-  L.push(['CHAIN DATA · ' + n + '.bitmap', 'h']);
-  L.push([I && I.num != null ? 'inscription #' + fmt(I.num) + (I.h != null ? ' · claimed in block ' + fmt(I.h) : '') : 'reading the chain…', '']);
-  L.push([I ? (I.addr && own.addr && I.addr === own.addr ? 'in your wallet · the chain agrees' : 'not in your wallet now') + (gdc.send && gdc.send.waiting ? ' · being sent' : '') : '', 'g']);
-  L.push(['THE BLOCK', 's']);
-  L.push([M ? 'mined ' + new Date(M.time * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}) + (M.pool ? ' by ' + M.pool : '') : 'being read…', '']);
-  L.push([M ? fmt(M.count) + ' transactions = ' + fmt(M.count) + ' parcels' : '', '']);
-  L.push([M && M.median != null ? 'middle fee ' + (Math.round(M.median * 10) / 10) + ' sat/vB · ' + gdFloorOf(M.median) + ' floor' : M ? (M.size / 1e6).toFixed(2) + ' MB' : '', '']);
-  L.push(['press E to read it all', 'f']);
-  return L;
-}
-function gdBoardTex() {
-  const L = gdBoardLines(), key = JSON.stringify(L); if (gdc.tex && gdc.key === key) return gdc.tex; gdc.key = key;
-  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 732; const c = cv.getContext('2d'), mono = 'ui-monospace,Menlo,Consolas,monospace';
-  c.fillStyle = '#16231b'; c.fillRect(0, 0, 1024, 732); c.strokeStyle = '#d9a440'; c.lineWidth = 10; c.strokeRect(10, 10, 1004, 712); c.textAlign = 'center'; c.textBaseline = 'middle';
-  let y = 78;
-  for (const [t, k] of L) {
-    if (k === 'h') { c.font = '800 54px ' + mono; c.fillStyle = '#ffd36b'; c.fillText(t, 512, y); y += 40; c.fillStyle = 'rgba(217,164,64,.6)'; c.fillRect(60, y, 904, 3); y += 52; continue; }
-    if (k === 's') { y += 14; c.font = '800 34px ' + mono; c.fillStyle = '#ffb04a'; c.fillText(t, 512, y); y += 56; continue; }
-    if (k === 'f') { c.font = '600 28px ' + mono; c.fillStyle = 'rgba(232,211,164,.7)'; c.fillText(t, 512, 682); continue; }
-    c.font = (k === 'g' ? '700 ' : '600 ') + '36px ' + mono; c.fillStyle = k === 'g' ? '#8fe08a' : '#efe6cf';
-    let s = t; while (s && c.measureText(s).width > 940) s = s.slice(0, -2); c.fillText(s === t ? s : s + '…', 512, y); y += 62;
-  }
+// the paper's front page as it lies on the bench (painted again when what it says changes)
+function gdPaperTex() {
+  const C = room && room.at, n = C && C.gd ? C.gd.bm : -1, G = gd.built, M = gdMeta.get(n), I = gdc.n === n ? gdc.ins : null;
+  const key = JSON.stringify([n, M && [M.time, M.pool, M.count, M.median], I && [I.num, I.addr === own.addr], !!(G && G.mond)]); if (gdc.tex && gdc.key === key) return gdc.tex; gdc.key = key;
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 716; const c = cv.getContext('2d'), serif = 'Georgia,"Times New Roman",serif', mono = 'ui-monospace,Menlo,Consolas,monospace';
+  const bg = c.createRadialGradient(256, 200, 50, 256, 358, 520); bg.addColorStop(0, '#f6efdc'); bg.addColorStop(1, '#e2d5b8'); c.fillStyle = bg; c.fillRect(0, 0, 512, 716);
+  c.fillStyle = '#1d1915'; c.textAlign = 'center'; { let z = 50; c.font = '900 50px ' + serif; while (z > 30 && c.measureText('The Bitmap Gazette').width > 470) { z -= 2; c.font = '900 ' + z + 'px ' + serif; } } c.fillText('The Bitmap Gazette', 256, 70);
+  c.fillRect(24, 88, 464, 3); c.fillRect(24, 94, 464, 1); c.font = '700 15px ' + mono; c.fillText(('BLOCK ' + fmt(n) + (M ? ' · ' + new Date(M.time * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).toUpperCase() : '')), 256, 116); c.fillRect(24, 126, 464, 1);
+  const fit = (t, w, px, wt) => { let z = px; c.font = wt + ' ' + z + 'px ' + serif; while (z > 14 && c.measureText(t).width > w) { z -= 2; c.font = wt + ' ' + z + 'px ' + serif; } };
+  fit(('BLOCK ' + fmt(n)).toUpperCase(), 464, 52, '900'); c.fillText('BLOCK ' + fmt(n), 256, 182); const h2 = M && M.pool ? 'FOUND BY ' + M.pool.toUpperCase() : 'IS MINED'; fit(h2, 464, 40, '900'); c.fillText(h2, 256, 228);
+  c.fillStyle = '#0d0a08'; c.fillRect(24, 252, 220, 220); try { if (G && G.mond) c.drawImage(gdBitmapCanvas(G.mond, 212), 28, 256); } catch (e) {}
+  c.textAlign = 'left'; c.fillStyle = '#1d1915'; let y = 276;
+  for (const t of [M ? fmt(M.count) + ' transactions' : 'being read…', M && M.size ? (M.size / 1e6).toFixed(2) + ' MB' : '', M && M.fees != null ? 'fees ' + (Math.round(M.fees / 1e6) / 100) + ' BTC' : '', M && M.median != null ? 'middle fee ' + (Math.round(M.median * 10) / 10) + ' sat/vB' : '', M && M.median != null ? gdFloorOf(M.median) + ' floor' : '']) { if (!t) continue; fit(t, 220, 24, '700'); c.fillText(t, 260, y); y += 38; }
+  c.fillRect(24, 490, 464, 2); c.font = '900 20px ' + serif; c.fillText('YOUR BITMAP', 24, 522);
+  c.font = '600 21px ' + serif; c.fillText(n + '.bitmap' + (I && I.num != null ? ' · #' + fmt(I.num) : ''), 24, 556);
+  if (I) { const ok = I.addr && own.addr && I.addr === own.addr; c.strokeStyle = c.fillStyle = ok ? '#2f7a3a' : '#a3301f'; c.lineWidth = 3; c.save(); c.translate(24, 578); c.rotate(-.03); c.strokeRect(0, 0, ok ? 230 : 300, 36); c.font = '800 18px ' + mono; c.fillText(ok ? 'IN YOUR WALLET ✓' : 'NOT IN YOUR WALLET NOW', 10, 25); c.restore(); }
+  c.fillStyle = '#1d1915'; for (let k = 0; k < 4; k++) c.fillRect(24, 640 + k * 14, k === 3 ? 300 : 464, 5);   // (the rest of the page, too small to read from here)
+  c.globalAlpha = .07; c.fillStyle = '#000'; c.fillRect(255, 0, 2, 716); c.globalAlpha = 1;   // (the fold)
   if (gdc.tex) gl.deleteTexture(gdc.tex);
   const tx = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tx); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv); gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   return gdc.tex = tx;
 }
-// drawn with the garden's picture program (its plaque shape, made the sheet's size, turned to face the path)
-function gdBoardDraw(T, Lt, zo, G) { try { gdBoardDraw1(T, Lt, zo, G); } catch (e) {} }   // (the garden is never stopped by its board)
-function gdBoardDraw1(T, Lt, zo, G) {
-  const B = GD_BOARD, sx = B.w / 1.3, sy = B.h / .46, U = gdBoardU, Nn = gdBoardN;
-  gl.bindTexture(gl.TEXTURE_2D, gdBoardTex()); gl.uniform1f(T.u.uGlow, .14 + Lt.night * .4);
-  gl.uniformMatrix4fv(T.u.uM, false, [U[0] * sx, 0, U[1] * sx, 0, 0, sy, 0, 0, Nn[0], 0, Nn[1], 0, B.x + Nn[0] * .002, B.y, zo + B.z + Nn[1] * .002, 1]);
+// drawn with the garden's picture program (its plaque shape, made the paper's size, laid flat on the seat; its top toward the case)
+function gdPaperDraw(T, Lt, zo, G) { try { gdPaperDraw1(T, Lt, zo, G); } catch (e) {} }   // (the garden is never stopped by its paper)
+function gdPaperDraw1(T, Lt, zo, G) {
+  const P = GD_PAPER, c = Math.cos(P.ry), s = Math.sin(P.ry), sx = P.w / 1.3, sy = P.d / .46;
+  gl.bindTexture(gl.TEXTURE_2D, gdPaperTex()); gl.uniform1f(T.u.uGlow, .1 + Lt.night * .3);
+  gl.uniformMatrix4fv(T.u.uM, false, [c * sx, 0, -s * sx, 0, -s * sy, 0, -c * sy, 0, 0, 1, 0, 0, P.x, P.y - .01, zo + P.z, 1]);
   gl.bindVertexArray(G.plaque.vao); gl.drawArrays(gl.TRIANGLES, 0, G.plaque.n);
 }
 function gdFrame(W, H, tn, dpr) {
@@ -12185,7 +12220,7 @@ function gdFrame(W, H, tn, dpr) {
     gl.useProgram(T.p); gl.uniformMatrix4fv(T.u.uVP, false, VP); gl.uniform3fv(T.u.uSun, ld); gl.uniform3fv(T.u.uSunC, Lt.sunC); gl.uniform3fv(T.u.uSkyA, Lt.skyA); gl.uniform1i(T.u.uTex, 0); gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, G.tex); gl.uniform1f(T.u.uGlow, .35 + Lt.night * .5); gl.uniformMatrix4fv(T.u.uM, false, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, y, zo - 50, 1]); gl.bindVertexArray(G.cube.vao); gl.drawArrays(gl.TRIANGLES, 0, G.cube.n);
     for (let i = 0; i < (G.mail.n || 0); i++) { const [x, z, f] = G.mail.at[i]; gl.bindTexture(gl.TEXTURE_2D, G.mail.tex[i]); gl.uniform1f(T.u.uGlow, .15 + Lt.night * .25); gl.uniformMatrix4fv(T.u.uM, false, [0, 0, -.22 * f, 0, 0, .26, 0, 0, f, 0, 0, 0, x + f * .055, .72, zo + z, 1]); gl.bindVertexArray(G.plaque.vao); gl.drawArrays(gl.TRIANGLES, 0, G.plaque.n); }
-    gl.bindVertexArray(G.plaque.vao); gdSigns(T, Lt, zo); gdBoardDraw(T, Lt, zo, G);
+    gl.bindVertexArray(G.plaque.vao); gdSigns(T, Lt, zo); gdPaperDraw(T, Lt, zo, G);
     if (G.plaqueTex) { gl.bindTexture(gl.TEXTURE_2D, G.plaqueTex); gl.uniform1f(T.u.uGlow, .12 + Lt.night * .35); gl.uniformMatrix4fv(T.u.uM, false, [1, 0, 0, 0, 0, Math.cos(-.12), Math.sin(-.12), 0, 0, -Math.sin(-.12), Math.cos(-.12), 0, 0, .62, zo - 50 + .985, 1]); gl.bindVertexArray(G.plaque.vao); gl.drawArrays(gl.TRIANGLES, 0, G.plaque.n); } }
   // people
   gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); if (crewList.length) chDraw(crewList, VP, eye, 0, 0); if (crew.hum && crew.hum.length) ppSafe(() => BCH.draw(crew.hum, VP, eye, {mir: 0, rf: 0})); gl.disable(gl.CULL_FACE);
@@ -12996,7 +13031,6 @@ document.head.insertAdjacentHTML('beforeend', '<style>#clw{position:fixed;inset:
   '#clw .s{width:min(760px,94vw);max-height:84vh;overflow:auto;padding:18px 20px;border-radius:14px;background:#031207;border:3px solid #6f6a55;box-shadow:0 0 0 6px #cfc6ac,0 0 40px rgba(60,255,120,.25) inset;color:#55ff7a;font:14px/1.45 ui-monospace,Menlo,Consolas,monospace;text-shadow:0 0 6px rgba(80,255,120,.6)}' +
   '#clw .s.p{background:#110d18;color:#f2e8d0;border-color:#d8b45a;box-shadow:0 0 0 4px #2a1e08;text-shadow:none}#clw h3{margin:0 0 8px;font-size:16px;letter-spacing:.08em}#clw .b{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}' +
   '#clw button{font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;padding:6px 9px;border-radius:7px;border:1px solid #2f8a45;background:#062a12;color:#7dff9a;cursor:pointer}#clw button.on{background:#2fd35a;color:#031207}' +
-  '#clw .s.g{background:#16231b;color:#efe6cf;border-color:#d9a440;box-shadow:0 0 0 4px #3a2616;text-shadow:none}#clw .s.g button{border-color:#8a6a2a;background:#22331f;color:#ffd36b}#clw .s.g button.on{background:#ffd36b;color:#16231b}' +
   '#clw .s.p button{border-color:#8a6a2a;background:#2a1e08;color:#ffd36b}#clw .s.p button.on{background:#ffd36b;color:#2a1e08}#clw pre{margin:0;white-space:pre-wrap;font:inherit}#clw img{max-width:100%;border-radius:8px;display:block;margin:0 auto 10px}</style>');
 function clWin(build, cls) { if (document.pointerLockElement) document.exitPointerLock(); $clw.innerHTML = ''; const s = document.createElement('div'); s.className = 's' + (cls ? ' ' + cls : ''); $clw.appendChild(s); build(s); $clw.classList.add('on'); }
 function clWinClose() { $clw.classList.remove('on'); $clw.innerHTML = ''; }
@@ -13482,7 +13516,7 @@ function ciData(tab) {
         ['draughts', 'sit on a sofa ([E]), click your piece, then a marked square'], ['four in a row', 'sit on a sofa ([E]), then click a column'],
         ['light switch', 'changes the lights for everyone: once every 3 minutes each'], ['jukebox, terminal, pictures', '[E] opens them, [Esc] closes']]});
       if (w === 'garden') S.push({t: 'the garden', rows: [['[E] (or click)', 'sit, swing, slide, swim, pour a drink, play a game: the words near the middle say what'],
-        ['the chain data board', 'beside the case: [E] reads your bitmap and its block, from the chain'], ['your bitmap in its case', 'click it to go back the way you came']]});
+        ['The Bitmap Gazette', 'the newspaper on the bench by the case: [E] reads your bitmap and its block, from the chain'], ['your bitmap in its case', 'click it to go back the way you came']]});
       if (crewOn) S.push({t: 'with a crew', rows: [['[Enter]', 'crew chat'], ['[Q]', 'moves and emotes ([Tab] for the next set, [1] to [9] to do one)'], ['click a crewmate\'s name', 'mute or unmute them (their voice, chat and trade messages)']]
         .concat(w === 'garden' || w === 'club' ? [['look at a crewmate + [E]', 'ask them to play: then [1] [2] [3] picks the game, [Esc] stops'], ['[Y] / [N]', 'yes or no, when someone asks you']] : [])});
     }
@@ -14841,6 +14875,10 @@ window.AgentKit = window.AgentKit || (() => {
       run: ({page}) => { const D = ciData(/how/i.test(String(page || '')) ? 'how' : 'keys'); return {ok: true, where: D.where, page: /how/i.test(String(page || '')) ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG}; }},
     {name: 'bitmapData', ro: true, untrusted: true, does: 'In the bitmap garden: the chain data board beside the case, as data. Your bitmap (its inscription, when it was claimed, its sat and how rare, whether the chain says it is in your wallet, whether it is being sent right now), its block (when it was mined and by which pool, its transactions: each one a parcel of the bitmap, its size, fees, middle fee and floor, what the miner got) and the bitmaps here. Read fresh from the chain (again after two minutes); what cannot be read right now is left out.', args: [{name: 'refresh', type: 'boolean', does: 'true to read the chain again now'}],
       run: async ({refresh}) => { if (!(inRoom() && room.at.gd)) return {ok: false, error: 'you are not in the bitmap garden: bitmapGarden() goes in'}; await gdChainLoad(!!refresh); if (!gdMeta.has(room.at.gd.bm)) await until(() => gdMeta.has(room.at.gd.bm), 20000); return {ok: true, yourBitmap: gdChainData('your bitmap'), itsBlock: gdChainData('its block'), bitmapsHere: gdChainData('bitmaps here'), board: 'goTo({place: "chain data board"}) then use() opens it on your screen, as a player reads it'}; }},
+    {name: 'controls', ro: true, does: 'The list a person sees behind the i button (top left, on a computer): the buttons and keys for where you are now, and how to: staying safe, who is who (people, AI agents, NPCs), muting, the wallet (read only), getting into the bitmap garden and the clubs, the trade floor (nothing is ever traded here: trades happen off this app), and the block halls. You play with these kit tools, not keys.', args: [{name: 'page', does: '"keys" (the default) or "how to"'}],
+      run: ({page}) => { const D = ciData(/how/i.test(String(page || '')) ? 'how' : 'keys'); return {ok: true, where: D.where, page: /how/i.test(String(page || '')) ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG}; }},
+    {name: 'bitmapData', ro: true, untrusted: true, does: 'In the bitmap garden: The Bitmap Gazette (the newspaper on the bench by the case), as data. Your bitmap (its inscription, when it was claimed, its sat and how rare, whether the chain says it is in your wallet, whether it is being sent right now), its block (when it was mined and by which pool, its transactions: each one a parcel of the bitmap, its size, fees, middle fee and floor, what the miner got) and the bitmaps here. Read fresh from the chain (again after two minutes); what cannot be read right now is left out.', args: [{name: 'refresh', type: 'boolean', does: 'true to read the chain again now'}],
+      run: async ({refresh}) => { if (!(inRoom() && room.at.gd)) return {ok: false, error: 'you are not in the bitmap garden: bitmapGarden() goes in'}; await gdChainLoad(!!refresh); if (!gdMeta.has(room.at.gd.bm)) await until(() => gdMeta.has(room.at.gd.bm), 20000); return {ok: true, yourBitmap: gdChainData('your bitmap'), itsBlock: gdChainData('its block'), bitmapsHere: gdChainData('bitmaps here'), paper: 'goTo({place: "the bitmap gazette"}) then use() opens it on your screen, as a player reads it'}; }},
     {name: 'club', ro: true, untrusted: true, does: 'In a collection\'s members\' club: the collection, who is here, where each place is (for goTo), the darts scores, the draughts board and its legal moves, the four-in-a-row frame, the show stand, the jukebox, the lights, asks to play, and how to play each.', run: () => { const I = clAgentInfo(); return I ? Object.assign(I, {room: roomInfo()}) : {ok: false, error: 'you are not in a club: clubEnter() goes in'}; }},
     {name: 'clubEnter', does: 'Go into a collection\'s members\' club, as a player does: hold the collection\'s parent (on its pedestal in its gallery) and press ENTER THE CLUB. Your wallet must hold the parent or one of its children, and the chain must agree the piece is in your wallet now (an agent proves its own wallet with walletProve() on the play together page). In a gallery it walks to the pedestal and picks the parent up; give the parent\'s inscription id to go to that collection\'s gallery first.', args: [{name: 'collection', does: 'the parent\'s inscription id (leave it out in a gallery: that gallery\'s collection)'}],
       run: async ({collection}) => {
