@@ -3904,6 +3904,7 @@ function rmMake(h, of, side) {
       it.w = [p.s * (RW / 2 - DEEP + it.e / 2 + .05), PLANKS[it.row] + it.e / 2, R.z0 + p.zs + p.dz * (.05 + it.u)];
       it.t0 = t0 + (n > 1 ? i / (n - 1) : 0) * Math.min(2.2, .6 + n * .0006); it.m = 1;
       if (h === 0 && i === 0) { it.e = .26; it.w = [0, 1.44, R.z0 - R.L / 2]; }
+      else if (h === I0_H && it.t && it.t.id === I0_TX) { it.e = .3; it.w = [0, 1.5, R.z0 - R.L / 2]; it.ins0 = true; R.ins0 = it; }   // inscription 0: off its shelf, on show in the middle of the hall
     });
     if (h === 0) tribLoad().then(() => { if (!R.gen || !room || !room.rooms.includes(R)) return; tribPaint(R); labUp(R.gen.trib.x, R.gen.trib.y, 1024, 128); rmFix(R); room.fixDirty = room.dirty = true; });
     await yieldNow(); if (gone()) return;
@@ -4043,6 +4044,21 @@ function rmFix(R) {
     if (G.hash) { tiles(-(RW / 2 - .345), 4.85, zc, 1, 0, .5, G.hash.x, G.hash.y, 128, 12); box(-(RW / 2 - .35), 4.55, zc, .02, .02, 6.1, GD, 2); }
     tiles(RW / 2 - .345, 4.85, zc, -1, 0, .5, G.trib.x, G.trib.y, 128, 8); box(RW / 2 - .35, 4.55, zc, .02, .02, 4.1, GD, 2);
   }
+  if (R.ins0) {   // inscription 0: no glass. It floats over a black-and-white stand in a beam of white light from a lamp overhead,
+    // a ring of light on the floor where the beam lands, its plaque on two sides (Satoshi's 50 BTC in block 0 sits in a gold case)
+    const BK = LC('#0d0d0f'), WH = LC('#e8e6e1'), LW0 = LC('#ffffff'), zc = -L / 2;
+    box(0, .04, zc, .9, .08, .9, BK);
+    box(0, .55, zc, .6, .94, .6, WH);
+    box(0, 1.05, zc, .7, .06, .7, BK);
+    for (const sd of [-1, 1]) { box(0, 1.016, zc + sd * .352, .7, .012, .012, LW0, 2); box(sd * .352, 1.016, zc, .012, .012, .7, LW0, 2); }
+    if (R.ins0lab) for (const sd of [-1, 1]) {
+      for (let r = 0; r < 2; r++) tiles(0, .79 - r * .14, zc + sd * .305, 0, sd, .14, R.ins0lab.x, R.ins0lab.y + r * 128, 128, 4);
+      const zf = zc + sd * .305; for (const yy of [.864, .576]) box(0, yy, zf, .58, .008, .018, BK); for (const sx of [-1, 1]) box(sx * .284, .72, zf, .012, .296, .018, BK);   // (a slim black frame round it)
+    }
+    for (let k = 0; k < 64; k++) { const a = k / 64 * 6.2832; box(Math.cos(a) * .8, .006, zc + Math.sin(a) * .8, .05, .008, .05, LW0, 2); }
+    box(0, (RH - .3 + 4.2) / 2, zc, .015, RH - .3 - 4.2, .015, BK);
+    box(0, 4.12, zc, .3, .16, .3, BK); box(0, 4.034, zc, .22, .012, .22, LW0, 2);
+  }
   R.fix = new Float32Array(d);
 }
 // the block's facts, on boards either side of each door (the counts per tab say which shelves they are on)
@@ -4096,6 +4112,10 @@ function* rmLabelsG(R) {
     const n = R.h / 210000, th = n % 10 === 1 && n !== 11 ? 'ST' : n % 10 === 2 && n !== 12 ? 'ND' : n % 10 === 3 && n !== 13 ? 'RD' : 'TH';
     const [x, y] = place(512, 128); R.halv = {x, y};
     labPaint(x, y, 512, 128, n + th + ' HALVING', '#ffd36b', null, 'REWARD ' + 50 / 2 ** (n - 1) + ' → ' + 50 / 2 ** n + ' BTC · ' + utc(B.time), '#ffd36b');
+  }
+  R.ins0lab = null;
+  if (R.ins0) {   // inscription 0's plaque (on two sides of its stand)
+    const [x, y] = place(512, 256); R.ins0lab = {x, y}; labIns0(x, y, utc(B.time));
   }
   R.gen = null;
   if (G0) {
@@ -4202,6 +4222,7 @@ function rmFill(tn) {
     else if (R.B === cur && t.artR && t.artG === artGen) { d[o + 15] = t.artR[0]; d[o + 16] = t.artR[1]; d[o + 17] = t.artR[2]; d[o + 18] = t.artS || 1; }
   });
   gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferData(gl.ARRAY_BUFFER, d, gl.DYNAMIC_DRAW); room.nPar = its.length; room.fl = its; room.fa = d;
+  room.ins0 = []; its.forEach(([, it], i) => { if (it.ins0) room.ins0.push(i); });
   if (room.fixDirty) {
     room.fixDirty = false;
     const C = room.rooms[1], fs = [C, room.rooms[0], room.rooms[2]].filter(R => R && R.ready).map(R => R.fix), n = fs.reduce((a, f) => a + f.length, 0), all = new Float32Array(Math.max(1, n));
@@ -4326,6 +4347,10 @@ function rmStep(dt) {
     const zc = C.z0 - C.L / 2, rad = trib && trib.gifts && trib.gifts.length ? 1.48 : .78, dx = nx, dz = nz - zc, dd = Math.hypot(dx, dz);
     if (dd < rad) { const k = dd > 1e-4 ? rad / dd : 0; nx = k ? dx * k : 0; nz = zc + (k ? dz * k : rad); }
   }
+  if (C && C.ready && C.ins0) {   // inscription 0's stand and its ring of light: you walk round it
+    const zc = C.ins0.w[2], rad = .85, dx = nx, dz = nz - zc, dd = Math.hypot(dx, dz);
+    if (dd < rad) { const k = dd > 1e-4 ? rad / dd : 0; nx = k ? dx * k : 0; nz = zc + (k ? dz * k : rad); }
+  }
   if (C && C.ready) {
     const xi = RW / 2 - DEEP - .3, xd = DOOR / 2 - .3, zb = C.z0, zf = C.z0 - C.L;
     const openB = C.back.o > .85 && rmNear(C, 'back'), openF = C.front.o > .85 && rmNear(C, 'front');
@@ -4350,7 +4375,7 @@ function roomFrame(W, H, tn, dpr) {
   room.view = {eye, dir, fov, asp};
   rmDoors(dt);
   if (room.dirty && tn - (room.filled || 0) > .2) rmFill(tn); else if (room.artDirty && tn - (room.filled || 0) > .2) rmArt(tn);
-  nearTick(tn); galArtTick(tn); tradeTick(tn, VP);
+  nearTick(tn); galArtTick(tn); tradeTick(tn, VP); i0Bob(tn);
   if (room.held && room.held.back && tn > room.held.back) { room.held.it.c = room.held.it.f = null; room.held.it.m = 1; room.held.it.t0 = -9; if (room.held.it.cp) room.held.it.gone = true; room.held = null; room.dirty = true; }
   rmHover();
   const crewList = crew.on && crew.mates.size ? crewPose(tn, dt, VP, W, H) : (crew.hum = [], []); crewSend(tn); srArrow(VP); ownTick(VP);
@@ -4415,6 +4440,7 @@ function roomFrame(W, H, tn, dpr) {
   gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, tn, LW, false));
   cmDraw(VP, eye, tn); cmQDraw(VP, eye, tn);
   folDraw(VP, eye, tn);
+  i0Draw(VP, eye);
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); rings(() => lifeDust(VP, tn, LW, H)); gl.depthMask(true); gl.disable(gl.BLEND);
   gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
   cmOverlays(VP, W, H);
@@ -7320,6 +7346,55 @@ function folDraw(VP, eye, tn) {
   gl.bindVertexArray(folVA); gl.bindBuffer(gl.ARRAY_BUFFER, folVB); gl.bufferData(gl.ARRAY_BUFFER, folBuf.subarray(0, n), gl.DYNAMIC_DRAW);
   for (const [f, c] of firsts) gl.drawArrays(gl.TRIANGLE_STRIP, f, c);
   gl.bindVertexArray(null); gl.depthMask(true); gl.disable(gl.BLEND);
+}
+/* ---- inscription 0 (the first inscription, Casey Rodarmor's pixel skull, in block 767,430): it floats over its stand in a
+   soft cone of white light from the lamp to the floor, drawn as a sheet that always turns to face you ---- */
+const I0_TX = '6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799', I0_H = 767430;
+let i0P = null; try { i0P = prog('#version 300 es\nprecision highp float;\nlayout(location=0) in vec3 aP;layout(location=1) in vec3 aS;uniform mat4 uVP;out vec3 vS;void main(){vS=aS;gl_Position=uVP*vec4(aP,1.);}',
+  '#version 300 es\nprecision highp float;\nin vec3 vS;out vec4 o;void main(){float x=vS.x,v=vS.y,a=1.-pow(abs(x),4.);float al=clamp(a*mix(.3,.22,v)*smoothstep(0.,.03,v)*(1.-smoothstep(.97,1.,v)),0.,1.);o=vec4(vec3(.97,.98,1.)*al,al);}'); } catch (e) { console.warn('beam', e); }
+const i0VB = gl.createBuffer(), i0VA = gl.createVertexArray(), i0Buf = new Float32Array(3 * 25 * 2 * 6);
+gl.bindVertexArray(i0VA); gl.bindBuffer(gl.ARRAY_BUFFER, i0VB);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+gl.bindVertexArray(null);
+function i0Draw(VP, eye) {
+  if (!i0P || !room) return;
+  let n = 0; const firsts = [];
+  for (const R of room.rooms) {
+    if (!R || !R.ready || !R.ins0 || R.common || R.gal) continue;
+    const cx = R.ins0.w[0], cz = R.ins0.w[2], y0 = 4.03, y1 = .012, r0 = .11, r1 = .8;
+    let sx = -(cz - eye[2]), sz = cx - eye[0]; const l = Math.hypot(sx, sz) || 1; sx /= l; sz /= l;   // (across the beam, as you see it)
+    firsts.push([n / 6, 50]);
+    for (let k = 0; k < 25; k++) { const v = k / 24, y = y0 + (y1 - y0) * v, r = r0 + (r1 - r0) * v;
+      for (const sd of [-1, 1]) { i0Buf[n++] = cx + sd * sx * r; i0Buf[n++] = y; i0Buf[n++] = cz + sd * sz * r; i0Buf[n++] = sd; i0Buf[n++] = v; i0Buf[n++] = 1; } }
+  }
+  if (!firsts.length) return;
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(i0P.p); gl.uniformMatrix4fv(i0P.u.uVP, false, VP);
+  gl.bindVertexArray(i0VA); gl.bindBuffer(gl.ARRAY_BUFFER, i0VB); gl.bufferData(gl.ARRAY_BUFFER, i0Buf.subarray(0, n), gl.DYNAMIC_DRAW);
+  for (const [f, c] of firsts) gl.drawArrays(gl.TRIANGLE_STRIP, f, c);
+  gl.bindVertexArray(null); gl.depthMask(true); gl.disable(gl.BLEND);
+}
+// its plaque: two rows of tiles on the stand, big enough to read from where you stand
+function labIns0(x, y, when) {
+  const c = labCx, w = 512, h = 256, F = (wt, sz) => wt + ' ' + sz + 'px ui-monospace,Menlo,Consolas,monospace';
+  const fit = (t, sz, wt) => { let f = sz; c.font = F(wt, f); while (f > 8 && c.measureText(t).width > w - 48) c.font = F(wt, --f); };
+  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#0d0805'; c.fillRect(x, y, w, h);
+  c.strokeStyle = '#ffffff'; c.lineWidth = 8; c.strokeRect(x + 4, y + 4, w - 8, h - 8);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = '#f4f1ea'; fit('INSCRIPTION 0', 66, 800); c.fillText('INSCRIPTION 0', x + w / 2, y + 62);
+  c.fillStyle = '#ffffff'; fit('THE FIRST INSCRIPTION', 34, 700); c.fillText('THE FIRST INSCRIPTION', x + w / 2, y + 126);
+  c.fillStyle = '#cdbca3'; fit('made by Casey Rodarmor', 32, 600); c.fillText('made by Casey Rodarmor', x + w / 2, y + 172);
+  fit(when, 28, 600); c.fillText(when, x + w / 2, y + 214);
+  c.restore();
+}
+// it rises and falls a little, slowly (only its own place in the list of parcels is rewritten)
+function i0Bob(tn) {
+  const L = room.ins0, d = room.fa; if (!L || !L.length || !d) return;
+  for (const i of L) {
+    const q = room.fl[i], it = q && q[1]; if (!it || it.gone || it.c || it.m !== 1 || tn - it.t0 < 1) continue;
+    const o = i * NF + 1; d[o] = it.w[1] + .045 * Math.sin(tn * 1.1);
+    gl.bindBuffer(gl.ARRAY_BUFFER, rmParBuf); gl.bufferSubData(gl.ARRAY_BUFFER, o * 4, d, o, 1);
+  }
 }
 const $sraB = $sra.querySelector('b'), $sraS = $sra.querySelector('svg');
 const srHide = () => { if ($sra.style.display !== 'none') $sra.style.display = 'none'; };
@@ -12652,6 +12727,7 @@ window.AgentKit = window.AgentKit || (() => {
           const dx = -p.x, dz = zz - p.z, off = Math.abs(p.x) >= .4 ? 'its middle is ' + r1(Math.abs(p.x)) + ' m ' + K.bearing(deg(Math.atan2(-dx, 0)) - deg(p.yaw)).replace(' (out of view)', '') + ': ' : '';
           return 'the door to ' + (to === COMMON ? 'the common room' : to >= 0 ? 'block ' + fmtN(to) : 'nowhere yet') + ' ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m (' + off + 'walkTo({x: 0, z: ' + r1(zz + out) + '}) walks you through it)'; };
         if (C.back && C.front) L.push(C.h === 0 ? 'Doors: ' + door(C.z0 - (R.plan.L || 30), C.front.to, -1.6) + '. The hall has no back door: nothing comes before the genesis block (that wall shows the newspaper headline the block carries).' : 'Doors: ' + door(C.z0, C.back.to, 1.6) + '; ' + door(C.z0 - (R.plan.L || 30), C.front.to, -1.6) + '.');
+        if (R.ins0 && R.ins0.t) { const it = R.ins0, dx = it.w[0] - p.x, dz = it.w[2] - p.z; L.push('In the middle of the hall: inscription 0, the first inscription (made by Casey Rodarmor), floats over a black-and-white stand in a beam of white light: parcel ' + it.t.idx + ', ' + K.bearing(deg(Math.atan2(-dx, -dz)) - deg(p.yaw)) + ', ' + Math.round(Math.hypot(dx, dz)) + ' m (hold({n: ' + it.t.idx + '}) picks it up; the stand and its ring of light are walked round).'); }
         // 5. the floor: players see the block's fee heat underfoot
         const fr = medianRate(R.plan.items.filter(i => i.t && !i.cp).map(i => i.t)), hv = blockHeat.has(C.h) ? blockHeat.get(C.h) : heatOf(fr);
         const th = tetherHere(); if (th) L.push('The follow-back line (a glowing tether) is fastened to parcel ' + th.n + ' here (step ' + th.step + ': ' + th.what + '), ' + th.where + ', ' + Math.round(th.metres) + ' m: ' + th.how + '.');
