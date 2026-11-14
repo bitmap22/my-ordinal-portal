@@ -50,6 +50,10 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   calls.push(await call('blockManifest', {height: 99999999}));
   const tip = calls.find(c => c.name === 'chain' && c.out && c.out.newestBlock);
   if (tip) calls.push(await call('blockManifest', {height: tip.out.newestBlock - 1, limit: 5}));
+  // the Provenance Check: inscription 0, #1000, a child in a batch, a delegate, one stored packed, and one that does not exist
+  for (const id of ['#0', '#1000', 'cdf08dc642ac8b8cc905417cc7b5cc4d4c2d77eb97941f0472e1ffae30ba012ei1', '2bb85f4b004be6da54f766c17c1e855187327112c231ef2ff35ebad0ea67c69ei0', 'd7f15bda17b289b59873857d03a00bd3ca90bfa3ac9bcf27cd2030cf3f1b6519i0', '#999999999'])
+    calls.push(await call('provenanceCheck', {id}));
+  results.provenance = calls.filter(c => c.name === 'provenanceCheck').map(c => c.args.id + ' (' + c.ms + ' ms): ' + (c.out && c.out.verdict ? c.out.verdict + ' | ' + Object.entries(c.out.checked).map(([k, v]) => k + '=' + v.agrees + (v.against ? '@' + v.against.replace('https://', '') : '')).join(' ') + ' | trail ' + c.out.trail.length : 'ERROR ' + c.out));
   results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {
     const k = c.out.checked;
     return c.out.block.height + ' (' + c.ms + ' ms): hash ' + k.blockHash.fromItsOwnBytes + '/' + (k.blockHash.secondSite && k.blockHash.secondSite.agrees) + ', ids ' + k.transactions.matched + '/' + k.transactions.of +
@@ -61,6 +65,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 1));
   console.log(results.summary.join('\n'));
   if (results.manifestChecks.length) console.log('Block Manifest checks:\n' + results.manifestChecks.join('\n'));
+  console.log('Provenance checks:\n' + results.provenance.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });
