@@ -57,12 +57,12 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   // Watch: the next block from two blocks back, a fee level far above today's, an address, a kind, and a bad kind
   const tipNow = calls.find(c => c.name === 'chain' && c.out && c.out.newestBlock);
   const wb = await call('watch', {what: 'block'}); calls.push(wb);
-  if (wb.out && wb.out.since) { const o = JSON.parse(Buffer.from(wb.out.since, 'base64').toString()); o.s.tip -= 2; const t = Buffer.from(JSON.stringify(o)).toString('base64'); calls.push(await call('watch', {since: t})); }
+  if (wb.out && wb.out.since) { const o = JSON.parse(Buffer.from(wb.out.since, 'base64').toString()); o.s.hash = null; o.s.tip -= 2; const t = Buffer.from(JSON.stringify(o)).toString('base64'); calls.push(await call('watch', {since: t})); }
   const wf = await call('watch', {what: 'fee', value: '500'}); calls.push(wf);
   if (wf.out && wf.out.since) { const o = JSON.parse(Buffer.from(wf.out.since, 'base64').toString()); o.s.under = false; calls.push(await call('watch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
   calls.push(await call('watch', {what: 'inscription', value: '#0'}));
   const wk = await call('watch', {what: 'kind', value: 'inscriptions'}); calls.push(wk);
-  if (wk.out && wk.out.since) { const o = JSON.parse(Buffer.from(wk.out.since, 'base64').toString()); o.s.tip -= 1; calls.push(await call('watch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
+  if (wk.out && wk.out.since) { const o = JSON.parse(Buffer.from(wk.out.since, 'base64').toString()); o.s.hash = null; o.s.tip -= 1; calls.push(await call('watch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
   calls.push(await call('watch', {what: 'kind', value: 'shoes'}));
   calls.push(await call('watch', {what: 'block', wait: 30}));
   results.watch = calls.filter(c => c.name === 'watch').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.out && c.out.watching ? c.out.watching + ' | ' + c.out.now + ' | looked ' + c.out.looked + ' | ' + c.out.events.map(e => e.title + (e.checked ? ' ' + JSON.stringify(Object.fromEntries(Object.entries(e.checked).map(([k, v]) => [k, v && v.agrees]))) : '')).join(' / ') : 'ERROR ' + c.out));

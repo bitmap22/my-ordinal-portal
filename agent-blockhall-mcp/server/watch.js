@@ -87,7 +87,7 @@
     if (w.what === 'block' || w.what === 'kind') {
       const tip = await tipHeight(io);
       // a block replaced at the top (two miners found one at once): say so, and carry on from the new top
-      if (tip >= s.tip) { const hNow = await hashAt(io, s.tip); if (hNow !== s.hash) { E('Block ' + fmt(s.tip) + ' was replaced by another miner’s block', {facts: {height: s.tip, was: s.hash, now: hNow}, links: blockLinks(s.tip, hNow)}); if (tip === s.tip) return {state: {tip, hash: hNow}, events: ev}; } }
+      if (s.hash && tip >= s.tip) { const hNow = await hashAt(io, s.tip); if (hNow !== s.hash) { E('Block ' + fmt(s.tip) + ' was replaced by another miner’s block', {facts: {height: s.tip, was: s.hash, now: hNow}, links: blockLinks(s.tip, hNow)}); if (tip === s.tip) return {state: {tip, hash: hNow}, events: ev}; } }
       if (tip <= s.tip) return {state: tip < s.tip ? {tip, hash: await hashAt(io, tip)} : s, events: ev};
       const heights = []; for (let h = s.tip + 1; h <= tip; h++) heights.push(h);
       const told = heights.slice(-MAX_NEW), skipped = heights.length - told.length;
