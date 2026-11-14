@@ -519,8 +519,10 @@ const inPaintSt = s => !!(s && s.g === 'paint');
 const toGame = m => {
   if (m.type === 'state') {
     const g = inPaintSt(m.s) ? 'paint' : 'cube', was = mateG.get(m.id); mateG.set(m.id, g);
-    if (was && was !== g) (was === 'paint' ? toPaint : toCube)({ type: 'left', id: m.id });   // (they went through the door)
-    (g === 'paint' ? toPaint : toCube)(m); return;
+    if (was && was !== g) (was === 'paint' ? toPaint : toCube)({ type: 'left', id: m.id, door: 1 });   // (they went through the door: still in the crew)
+    (g === 'paint' ? toPaint : toCube)(m);
+    if (was === 'paint' && g === 'cube' && walMates.has(m.id)) toCube({ type: 'mwal', id: m.id, addr: walMates.get(m.id) });   // (back in the cube: their wallet card again)
+    return;
   }
   if (m.type === 'go') { if (inPaintSt(voice.st[m.id])) swapTo('paint'); else if (inPaint) swapTo('cube').then(() => toCube(m)); else toCube(m); return; }
   if (m.type === 'left' || m.type === 'off' || m.type === 'say' || m.type === 'talk') { toCube(m); toPaint(m); if (m.type === 'left') mateG.delete(m.id); return; }
