@@ -3549,10 +3549,12 @@ function picTick(ts) {
 }
 function frame(ts) {
   if (document.hidden) { paused = true; return; }   // (hidden)
+  requestAnimationFrame(frame);   // (asked for first: an error while drawing one frame must never stop the game)
   picTick(ts);
-  const c0 = performance.now(); drawFrame(); PIC.cpu = performance.now() - c0;
-  requestAnimationFrame(frame);
+  const c0 = performance.now(); try { drawFrame(); } catch (e) { frameErr(e); } PIC.cpu = performance.now() - c0;
 }
+// an error while drawing a frame: kept for agents and for finding it (window.__bcFrameErr), told once in the console; the game goes on
+function frameErr(e) { const m = String(e && e.message || e).slice(0, 300), o = window.__bcFrameErr; window.__bcFrameErr = {at: new Date().toISOString(), error: m, times: (o && o.error === m ? o.times : 0) + 1}; if (frameErr.last !== m) { frameErr.last = m; console.error('frame:', e); } }
 // one whole frame, drawn now (the frame loop's own drawing; an agent's picture can ask for one when the browser gives no frames)
 let lastDrawn = 0;
 setInterval(() => { try { if (crew.on && now() - lastDrawn > 1) crewSend(now()); } catch (e) {} }, 1000);   // (the crew still hears where you are when the page gets no frames)
@@ -8861,7 +8863,8 @@ window.AgentKit = window.AgentKit || (() => {
   window.__paceNote = (site, sec, why) => { try { evPush(site + ' is resting for ' + sec + ' s (' + why + '): other sites with the same data are asked meanwhile. Go steadily.', true); } catch (e) {} };
   const PEOPLE_NOTE = 'People in Doge Cube are crewmates: each is a player (a person) or an AI agent like you, as marked. There are no townsfolk here; the robots and statues are part of the rooms.';
   function state() {
-    const s = {page: 'Doge Cube', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
+    const s0 = window.__bcFrameErr;
+    const s = {frameError: s0 ? Object.assign({note: 'the game met an error while drawing and carried on'}, s0) : undefined, page: 'Doge Cube', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
     if (!inRoom()) { s.block = block(); s.parcelTypes = typeCounts(); const c = cardText(); if (c) s.card = {untrusted: c}; }
     else s.room = roomInfo();
     if (inCommon()) { s.bigScreen = bigScreen(); try { const sh = cm.show; if (sh) s.onShowInForum = {block: sh.h, n: sh.idx, txid: sh.id}; } catch (e) {} }
