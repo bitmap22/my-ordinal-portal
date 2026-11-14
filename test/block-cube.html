@@ -7500,13 +7500,14 @@ function vwRender() {
   document.getElementById('vwp').disabled = document.getElementById('vwx').disabled = n < 2;
   $vwm.textContent = vw.live ? 'LIVE VIEW' : 'SAFE VIEW'; $vw.classList.toggle('live', vw.live);
   const lb = document.getElementById('vwl'); lb.textContent = vw.live ? 'BACK TO SAFE' : 'GO LIVE';
-  let what = '', runs = false;
+  let what = '', runs = false, quiet = false;
   if (it.k === 'ins') {
     const url = 'https://ordinals.com/content/' + it.id, ty = it.type || '';
     what = 'inscription ' + (it.num != null ? '#' + fmt(it.num) : srShort ? srShort(it.id) : it.id.slice(0, 10)) + (ty ? ' · ' + ty.split(';')[0] : '') + (it.del ? ' · shows a delegate' : '');
     if (STL_RE.test(ty) && !it.del) { what += ' \u00b7 drag it to turn it'; vwStl(it); }   // (an STL model: ordinals.com shows none, so it is drawn here from the model and turned by dragging: nothing of it runs)
     else if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
-      if (vw.live) { runs = true; $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'})); }
+      runs = true; quiet = true;   // (GO LIVE is how it turns, so its button shows in SAFE VIEW too; the words below already say so)
+      if (vw.live) $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'}));
       else $vwc.innerHTML = '<div class="inf"><h3>A 3D MODEL</h3><div><span>to turn it</span><b>GO LIVE: ordinals.com\u2019s own 3D viewer shows it (that runs ordinals.com\u2019s code)</b></div></div>';
     } else if (/^image\//.test(ty) && !it.del) { const im = new Image(); im.src = url; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $vwc.appendChild(im); }
     else { runs = !/^text\/(plain|markdown|csv)|json/.test(ty); $vwc.appendChild(vwFrame({src: url, sandbox: vw.live ? 'allow-scripts allow-forms allow-same-origin' : '', title: 'inscription', allow: 'autoplay; fullscreen'})); }
@@ -7529,7 +7530,7 @@ function vwRender() {
     $vwo.style.display = $vwv.style.display = 'none';
   }
   lb.style.display = runs ? '' : 'none';
-  if (runs && !vw.live) { const h = document.createElement('div'); h.className = 'vh'; h.textContent = 'SAFE VIEW: nothing runs, so it may look blank or still. GO LIVE to see it work.'; $vwc.appendChild(h); }
+  if (runs && !vw.live && !quiet) { const h = document.createElement('div'); h.className = 'vh'; h.textContent = 'SAFE VIEW: nothing runs, so it may look blank or still. GO LIVE to see it work.'; $vwc.appendChild(h); }
   $vwn.textContent = (n > 1 ? (vw.i + 1) + ' of ' + n + ' · ' : '') + what;
 }
 function vwGo(d) { if (!vw || vw.items.length < 2) return; vw.i = (vw.i + d + vw.items.length) % vw.items.length; vw.live = false; $vwa.classList.remove('on'); vwRender(); }
