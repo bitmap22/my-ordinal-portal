@@ -1393,7 +1393,7 @@ function sniffImg(b) {
   return b[0] === 0x89 && b[1] === 0x50 ? 'image/png' : b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 ? 'image/gif' : b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg'
     : top.slice(0, 4) === 'RIFF' && top.slice(8, 12) === 'WEBP' ? 'image/webp' : b[0] === 0x42 && b[1] === 0x4d ? 'image/bmp' : /<svg[\s>]/i.test(top) && !/<html/i.test(top) ? 'image/svg+xml' : null;
 }
-// a Labitbu's control block starts with this shared key (github.com/stutxo/labitbu); its picture fills the rest
+// a Labitbu's control block (4,129 bytes) starts with this shared key (github.com/stutxo/labitbu); its picture fills the rest. All 10,000 were minted in blocks 908,072 to 908,196 (as Ordpool reads them)
 const LAB_KEY = '96053db5b18967b5a410326ecca687441579225a6d190f398e2180deec6e429e'.match(/../g).map(h => parseInt(h, 16));
 // a small CBOR reader (Atomicals keep their files in CBOR)
 function cbor(b) {
@@ -1552,7 +1552,7 @@ async function scanBytes(X, h) {
       if (w.length === 1 && (ll === 64 || ll === 65)) { tap = true; continue; }   // taproot key spend
       if (w.length >= 2 && ll >= 33 && (ll - 33) % 32 === 0 && (X[lw[0]] & 0xfe) === 0xc0) {   // taproot script spend: look for envelopes
         tap = true;
-        if (ll > 33 && !r.art && artN < 2048 && artB < 64e6 && LAB_KEY.every((v, j) => X[lw[0] + 1 + j] === v)) { const b = X.slice(lw[0] + 33, lw[1]), ct = sniffImg(b); if (ct) { r.art = {ct, bytes: b}; r.labitbu = true; artN++; artB += b.length; } }   // (a Labitbu: its picture is the rest of the control block)
+        if (ll === 4129 && h >= 908072 && h <= 908196 && !r.art && artN < 2048 && artB < 64e6 && LAB_KEY.every((v, j) => X[lw[0] + 1 + j] === v)) { const b = X.slice(lw[0] + 33, lw[1]), ct = sniffImg(b); if (ct) { r.art = {ct, bytes: b}; r.labitbu = true; artN++; artB += b.length; } }   // (a Labitbu: its picture is the rest of the control block)
         const [sa, sb] = w[w.length - 2], P = pushes(X, sa, sb);
         if (X[lw[0] - 1] === 0xae) set(TF.msig);
         for (let k = 0; k + 2 < P.length; k++) {
@@ -1620,7 +1620,7 @@ async function scanBytes(X, h) {
       if (ll > 3 && X[lw[1] - 1] === 0xae && X[lw[0]] >= 0x51 && X[lw[0]] <= 0x60) set(TF.msig);   // P2WSH multisig
     }
     p += 4; r.z = p;
-    if (t && ((X[p - 4] | X[p - 3] << 8 | X[p - 2] << 16 | X[p - 1] << 24) >>> 0) === 21) { r.cat21 = true; r.w = (8 + r.e - r.s) * 3 + (r.z - r.a); }   // (a CAT-21 mint: lock time 21)
+    if (t && h >= 824205 && ((X[p - 4] | X[p - 3] << 8 | X[p - 2] << 16 | X[p - 1] << 24) >>> 0) === 21) { r.cat21 = true; r.w = (8 + r.e - r.s) * 3 + (r.z - r.a); }   // (a CAT-21 mint: lock time 21)
     if (!t) { set(TF.cb); cb = isc[0] ? coinbaseWords(X.subarray(isc[0][0], isc[0][1])) : ''; }
     else {
       set(tap ? TF.taproot : sw ? TF.segwit : TF.legacy);
@@ -7075,6 +7075,7 @@ function vwItems(t, tx) {
     rows.push(...vwRows(t._marks || []));
     const pay = vwPay(t); L.push({k: 'info', title: pay ? (t._x.tx.vin[0] && t._x.tx.vin[0].is_coinbase ? 'NEW COINS \u00b7 NO INSCRIPTION OR STAMP' : 'A PAYMENT \u00b7 NO INSCRIPTION OR STAMP') : 'NO INSCRIPTION OR STAMP TO SHOW', rows, svg: pay});
   }
+  if ((t.cat21 || t.labitbu) && t.art) L.unshift({k: 'pic', bytes: t.art.bytes, type: t.art.ct, what: t.cat21 ? 'its CAT-21 cat · drawn from this transaction and its block' : 'its Labitbu · the picture in its taproot control block'});
   return L;
 }
 function vwPay(t) {
@@ -7123,6 +7124,10 @@ function vwRender() {
     if (/^image\//.test(ty) && ty !== 'image/svg+xml') { vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: ty})); const im = new Image(); im.src = vwUrl; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); }
     else if (ty === 'text/html' || ty === 'image/svg+xml') { runs = true; $vwc.appendChild(vwFrame({srcdoc: RR.utf8(it.bytes), sandbox: vw.live ? 'allow-scripts' : '', title: 'stamp'})); }   // (never our page's own origin)
     else { const p = document.createElement('pre'); p.textContent = RR.utf8(it.bytes.subarray(0, 200000)); $vwc.appendChild(p); }
+    $vwo.style.display = 'none';
+  } else if (it.k === 'pic') {   // (a picture made or read here: shown as a picture, where nothing can run)
+    what = it.what + ' · ' + vwKind(it.type) + ' · ' + fmt(it.bytes.length) + ' bytes';
+    vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: it.type})); const im = new Image(); im.src = vwUrl; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im);
     $vwo.style.display = 'none';
   } else {
     what = it.title.toLowerCase();
@@ -14747,7 +14752,7 @@ window.AgentKit = window.AgentKit || (() => {
   // Its file is read once (one ask of ordinals.com, or the next site the cube reads from), then kept.
   const SEEN = new WeakMap();
   async function seeFile(it) {
-    let bytes = it.k === 'stamp' ? it.bytes : null, ty = it.type || '';
+    let bytes = it.k === 'stamp' || it.k === 'pic' ? it.bytes : null, ty = it.type || '';
     if (/^(audio|video|model)\//.test(ty)) return {ty, why: 'the big view plays or shows it (' + ty + '): the kit cannot hear or watch it'};
     if (!bytes) {
       const r = await ordFetch('/content/' + it.id, 20000), len = +(r.headers.get('content-length') || 0);
