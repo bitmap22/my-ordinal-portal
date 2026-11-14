@@ -8010,9 +8010,15 @@ function galMake(pid, focus, from) {
       if (gone()) return;
       R.ready = true; room.dirty = room.fixDirty = true;
       if (R === room.rooms[1]) rmCurrent(R);
-      if (GAL_ST >= 3) for (let p = 0; p < G.pages; p++) {   // then every other page, one after another (a few tries each)
-        if (p === fp) continue;
-        for (let k = 0; k < 4; k++) { if (gone()) return; try { await galPage(R, p); break; } catch (e) { await new Promise(r => setTimeout(r, 3000 * (k + 1))); } }
+      if (GAL_ST >= 3) {   // then every other page: the shelves nearest you first (chosen again for each page, so it follows you as you
+        // walk), three on the way at once, straight from the site at the pace every player and agent keeps (the reader's own slow
+        // line only when the site does not answer); a few tries each
+        const todo = new Set(), pos = new Float32Array(G.pages * 2);
+        for (let p = 0; p < G.pages; p++) { if (p === fp) continue; todo.add(p); const w = galSlot(R.lay, Math.min(G.n - 1, p * 100 + 50)); pos[2 * p] = w[0]; pos[2 * p + 1] = w[2]; }
+        const next = () => { const q = room && room.at === R ? room.p : null; let best = -1, bd = Infinity; for (const p of todo) { const d = q ? (pos[2 * p] - q.x) ** 2 + (pos[2 * p + 1] - q.z) ** 2 : p; if (d < bd) { bd = d; best = p; } } todo.delete(best); return best; };
+        const one = async () => { for (let p; !gone() && todo.size && (p = next()) >= 0; ) for (let k = 0; k < 4; k++) { if (gone()) return; try { await galPage(R, p, true); break; } catch (e) { await new Promise(r => setTimeout(r, 3000 * (k + 1))); } } };
+        await Promise.all([one(), one(), one()]);
+        if (gone()) return;
       }
       G.done = true; R.nl = null; if (room) room.dirty = true; if (room && room.at === R) head();
     } catch (e) { if (!R.ready) R.failed = true; }
@@ -8074,7 +8080,7 @@ function galHead(msg) {
   $tgt.textContent = G.num != null ? 'COLLECTION #' + fmt(G.num) : 'A COLLECTION';
   if (document.activeElement !== $h) $h.value = '';
   $ot.innerHTML = ''; $mn.textContent = '';
-  $st.textContent = msg || (!G.n ? 'reading the collection…' : G.done || GAL_ST < 3 ? fmt(G.n) + (G.n === 1 ? ' piece' : ' pieces') + ' · the parent stands in the middle, on the red carpet' : 'hanging the pieces: ' + fmt(G.loaded) + ' of ' + fmt(G.n) + ' · a page at a time');
+  $st.textContent = msg || (!G.n ? 'reading the collection…' : G.done || GAL_ST < 3 ? fmt(G.n) + (G.n === 1 ? ' piece' : ' pieces') + ' · the parent stands in the middle, on the red carpet' : 'hanging the pieces: ' + fmt(G.loaded) + ' of ' + fmt(G.n) + ' · the shelves nearest you first');
   document.body.classList.remove('halv');
   $gb.textContent = '← ' + (G.from === COMMON ? 'COMMON ROOM' : 'BLOCK ' + fmt(G.from));
 }
