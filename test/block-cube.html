@@ -7798,35 +7798,75 @@ async function galGet(path, as) {
   const r = await ordFetch(path, 20000);
   return as === 'bytes' ? new Uint8Array(await r.arrayBuffer()) : as === 'text' ? r.text() : r.json();
 }
-// the hall for n pieces: the smallest square whose shelves hold them all (30 to a bookcase: 6 shelves of 5)
+// the hall for n pieces: only as many bookcases as they need (30 to a bookcase: 6 shelves of 5), in the smallest square that holds
+// them. The bookcases go up in mirrored groups (a row's two sides together, left and right alike; the far wall from its middle),
+// nearest the parent's pedestal first, so the room is symmetric; then the pieces are shared out evenly: every bookcase the same,
+// every shelf the same, centred on it. No bookcase stands empty, and none is left half full at the end.
 function galLayout(n) {
-  const need = Math.ceil(Math.max(1, n) / GAL.PER);
-  for (let S = 14; ; S += 2) { const L = galTry(S); if (L.bays >= need || S >= 600) return L; }
+  n = Math.max(1, n); const need = Math.ceil(n / GAL.PER);
+  for (let S = 6; ; S += 2) { const L = galTry(S, true); if (L.room >= need || S >= 600) return galPick(galTry(S), n, need); }   // (sizes are tried by counting places alone)
 }
-// runs of bookcase ("faces"), each along a wall or one side of a row, facing its aisle; filled in order: the rows by the carpet
-// first (their carpet side, then their far side), then the walls
-function galTry(S) {
+// every place a bookcase can stand in a hall of side S: runs of bookcase ("faces"), each along a wall or one side of a row, facing
+// its aisle, the bookcases centred on each run (so the room is the same on both sides); and the groups they go up in
+function galTry(S, count) {
   const H = S / 2, D = DEEP, faces = [], rows = [];
-  const run = (bx, bz, ax, az, nx, nz, len) => { const nb = Math.floor((len - .1) / BAY); if (nb > 0) faces.push({bx, bz, ax, az, nx, nz, len, nb}); };
+  const run = (bx, bz, ax, az, nx, nz, len, tag) => { const nb = Math.floor((len - .1) / BAY); if (nb > 0) faces.push(Object.assign({bx, bz, ax, az, nx, nz, len, nb, off: (len - .1 - nb * BAY) / 2}, tag)); };
   const z1 = -(D + GAL.AW), z2 = -S + D + GAL.AW, mid = -S / 2;
   const segs = z1 - z2 > 20 ? [[z1, mid + GAL.AW / 2], [mid - GAL.AW / 2, z2]] : [[z1, z2]];   // (a long hall gets an aisle across the middle)
   const xs = []; for (let x = H - D - GAL.AW - GAL.ROWD / 2; x - GAL.ROWD / 2 >= GAL.CA / 2 - .01; x -= GAL.AW + GAL.ROWD) xs.push(x);
   xs.reverse();   // (nearest the carpet first)
-  for (const x of xs) for (const s of [-1, 1]) for (const [za, zb] of segs) rows.push({x: s * x, za, zb});
-  for (const x of xs) for (const far of [0, 1]) for (const s of [-1, 1]) for (const [za, zb] of segs) { const n = far ? s : -s; run(s * x + n * .03, za - .05, 0, -1, n, 0, za - zb - .1); }
+  xs.forEach((x, xi) => { for (const s of [-1, 1]) segs.forEach(([za, zb], si) => rows.push({x: s * x, za, zb, id: xi + ':' + si + ':' + s})); });
+  xs.forEach((x, xi) => { for (const far of [0, 1]) for (const s of [-1, 1]) segs.forEach(([za, zb], si) => { const n = far ? s : -s; run(s * x + n * .03, za - .05, 0, -1, n, 0, za - zb - .1, {row: xi + ':' + si + ':' + s}); }); });
   run(-H, -D - .1, 0, -1, 1, 0, S - 2 * D - .2);
   run(-H + D + .1, -S, 1, 0, 0, 1, S - 2 * D - .2);
   run(H, -S + D + .1, 0, 1, -1, 0, S - 2 * D - .2);
   run(H - D - .1, 0, -1, 0, 0, -1, H - D - .1 - (DOOR / 2 + .5));
   run(-DOOR / 2 - .5, 0, -1, 0, 0, -1, H - D - .1 - (DOOR / 2 + .5));
-  let bays = 0; for (const f of faces) { f.start = bays * GAL.PER; bays += f.nb; }
-  return {S, faces, rows, bays, cap: bays * GAL.PER};
+  if (count) return {room: faces.reduce((a, f) => a + f.nb, 0)};
+  // each bookcase's middle; its mirror across the carpet; for a row, the bookcase back to back with it
+  const bays = [], at = new Map(), cell = (i, j) => i + ',' + j;
+  faces.forEach((f, fi) => { for (let b = 0; b < f.nb; b++) { const c = f.off + .05 + b * BAY + BAY / 2, B = {fi, b, x: f.bx + f.ax * c + f.nx * D / 2, z: f.bz + f.az * c + f.nz * D / 2}; bays.push(B); const k = cell(Math.floor(B.x * 10), Math.floor(B.z * 10)); (at.get(k) || at.set(k, []).get(k)).push(B); } });
+  const mirror = q => { const x = -q.x, i0 = Math.floor(x * 10), j0 = Math.floor(q.z * 10); for (let i = i0 - 1; i <= i0 + 1; i++) for (let j = j0 - 1; j <= j0 + 1; j++) for (const B of at.get(cell(i, j)) || []) if (Math.abs(B.x - x) + Math.abs(B.z - q.z) < .05) return B; return null; };   // (the bookcase at the same place across the carpet)
+  const back = new Map(); faces.forEach((f, fi) => { if (f.row) { const o = faces.findIndex((g, gi) => gi !== fi && g.row === f.row); if (o >= 0) back.set(fi, o); } });
+  const byFace = faces.map(() => []); for (const B of bays) byFace[B.fi][B.b] = B;
+  const units = [], done = new Set();
+  for (const B of bays) {
+    if (done.has(B)) continue;
+    const u = [B], add = q => { if (q && !done.has(q) && !u.includes(q)) u.push(q); };
+    if (back.has(B.fi)) add(byFace[back.get(B.fi)][B.b]);
+    for (const q of u.slice()) add(mirror(q));
+    for (const q of u.slice()) if (back.has(q.fi)) add(byFace[back.get(q.fi)][q.b]);
+    for (const q of u) done.add(q);
+    const zc = -S / 2; u.d = Math.min(...u.map(q => Math.hypot(q.x, q.z - zc))); u.z = Math.min(...u.map(q => q.z)); units.push(u);
+  }
+  units.sort((a, b) => a.d - b.d || a.z - b.z || a.length - b.length);   // (nearest the pedestal first; then the further from the door)
+  return {S, faces, rows, units, room: bays.length};
 }
-// where piece i stands: its run, bookcase, shelf (top first) and place on the shelf
+// the bookcases this collection uses, and how many pieces each holds
+function galPick(L, n, need) {
+  const use = []; for (const u of L.units) { if (use.reduce((a, v) => a + v.length, 0) >= need) break; use.push(u); }
+  const K = use.reduce((a, v) => a + v.length, 0), base = Math.floor(n / K); let extra = n - base * K;
+  for (const u of use) for (const B of u) B.m = base;
+  for (const u of use) if (u.length > 1 && extra >= u.length) { for (const B of u) B.m++; extra -= u.length; }   // (the few left over: a whole mirrored group at a time, so it stays even;
+  for (const u of use) if (u.length === 1 && extra >= 1) { u[0].m++; extra--; }                                   //  then a bookcase in the middle of the far wall; any last one where it must go)
+  for (const u of use) for (const B of u) if (extra > 0 && B.m === base) { B.m++; extra--; }
+  const sel = use.flat().filter(B => B.m > 0).sort((a, b) => a.fi - b.fi || a.b - b.b);   // (numbered in reading order: run by run, along each run)
+  let s = 0; for (const B of sel) { B.start = s; s += B.m; }
+  // a row stops (to walk round) where its bookcases end
+  const rows = []; for (const r of L.rows) {
+    let za = -1e9, zb = 1e9; for (const B of sel) { const f = L.faces[B.fi]; if (f.row !== r.id) continue; const a0 = f.off + .05 + B.b * BAY; za = Math.max(za, f.bz - a0); zb = Math.min(zb, f.bz - a0 - BAY); }
+    if (za > zb) rows.push({x: r.x, za, zb});
+  }
+  return {S: L.S, faces: L.faces, rows, sel, bays: sel.length, cap: n};
+}
+// how the pieces of one bookcase sit: shared out over its six shelves (any extra on the middle shelves first), centred on each shelf
+const GAL_SH = (() => { const T = []; for (let m = 0; m <= 30; m++) { const c = Array(6).fill(Math.floor(m / 6)); [2, 3, 1, 4, 0, 5].slice(0, m % 6).forEach(r => c[r]++); const L = []; c.forEach((k, r) => { for (let q = 0; q < k; q++) L.push([r, (5 - k) / 2 + q]); }); T.push(L); } return T; })();
+// which bookcase holds piece i (its place in the hall's list)
+function galBay(L, i) { let lo = 0, hi = L.sel.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (L.sel[m].start <= i) lo = m; else hi = m - 1; } return lo; }
+// where piece i stands: its bookcase, shelf and place on the shelf
 function galSlot(L, i) {
-  let lo = 0, hi = L.faces.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (L.faces[m].start <= i) lo = m; else hi = m - 1; }
-  const f = L.faces[lo], k = i - f.start, b = Math.floor(k / GAL.PER), r = Math.floor(k % GAL.PER / 5), j = k % 5, E = GAL.E;
-  const along = .1 + b * BAY + (j + .5) * ((BAY - .1) / 5), dep = DEEP - E / 2 - .05;
+  const B = L.sel[galBay(L, i)], f = L.faces[B.fi], [r, j] = GAL_SH[Math.min(30, B.m)][Math.max(0, Math.min(B.m - 1, i - B.start))] || [0, 2], E = GAL.E;
+  const along = f.off + .1 + B.b * BAY + (j + .5) * ((BAY - .1) / 5), dep = DEEP - E / 2 - .05;
   return [f.bx + f.ax * along + f.nx * dep, PLANKS[r] + E / 2, f.bz + f.az * along + f.nz * dep];
 }
 // the room's labels: its name over the door, the way back, the parent's plaque, and a sign over each run of bookcases
@@ -7836,12 +7876,12 @@ function galLabels(R) {
   R.gT = {x: 0, y: y0}; labPaint(0, y0, 512, 128, 'COLLECTION #' + fmt(G.num), '#ffd36b', null, fmt(G.n) + (G.n === 1 ? ' PIECE' : ' PIECES') + (G.name ? ' · ' + G.name : ''), '#ffd36b');
   R.gB = {x: 512, y: y0}; labPaint(512, y0, 512, 128, 'BACK TO ' + (G.from === COMMON ? 'THE COMMON ROOM' : 'BLOCK ' + fmt(G.from)), '#ff9a2e', null, 'walk through the door');
   R.gP = {x: 1024, y: y0}; labPaint(1024, y0, 512, 128, '#' + fmt(G.num) + (G.name ? ' · ' + G.name : ''), '#ffd36b', null, 'the parent of ' + fmt(G.n) + (G.n === 1 ? ' piece' : ' pieces'), '#ffd36b');
-  const n = L.faces.length, every = Math.max(1, Math.ceil(n / 84)); R.gS = [];
-  for (let fi = 0, k = 0; fi < n; fi += every, k++) {
-    const f = L.faces[fi], a = f.start + 1; if (a > G.n) break;
-    const lf = L.faces[Math.min(n - 1, fi + every - 1)], b = Math.min(G.n, lf.start + lf.nb * GAL.PER), x = (k % 6) * 256, y = y0 + 128 + Math.floor(k / 6) * 64;
+  const runs = []; for (const B of L.sel) { const q = runs[runs.length - 1]; if (q && q.fi === B.fi) q.last = B; else runs.push({fi: B.fi, first: B, last: B}); }
+  const every = Math.max(1, Math.ceil(runs.length / 84)); R.gS = [];
+  for (let i = 0, k = 0; i < runs.length; i += every, k++) {
+    const q = runs[i], lq = runs[Math.min(runs.length - 1, i + every - 1)], a = q.first.start + 1, b = lq.last.start + lq.last.m, f = L.faces[q.fi], x = (k % 6) * 256, y = y0 + 128 + Math.floor(k / 6) * 64;
     labPaint(x, y, 256, 64, a === b ? 'PIECE ' + fmt(a) : 'PIECES ' + fmt(a) + '–' + fmt(b), '#ff9a2e');
-    R.gS.push({fi, x, y});
+    R.gS.push({fi: q.fi, x, y, c: f.off + .05 + q.first.b * BAY + Math.min(q.last.b - q.first.b + 1, 2) * BAY / 2});
   }
   // the patterns (the right quarter of the sheet): the carpet, the damask on the walls, the velvet behind the shelves
   const c = labCx, rnd = (() => { let q = 7; return () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296; })();
@@ -7921,22 +7961,23 @@ function galFix(R) {
   for (let z = zc, k = 0; z > -S + 1 && k < 400; z -= 5.2, k++) for (const zz of k ? [z, -S - z] : [z]) if (zz < -1 && zz > -S + 1) {   // ribs over the hall (one right over the middle, for the lamp)
     box(0, RH - .15, zz, S, .3, .26, K.pillar); box(0, RH - .315, zz, S - .3, .025, .06, K.neon, 2);
   }
-  for (const f of L.faces) {   // every bookcase: back, top, foot, shelves with a light under each edge, posts
-    const alongX = f.ax !== 0;
+  const inUse = new Set(L.sel.map(q => q.fi + ':' + q.b));
+  for (const q of L.sel) {   // every bookcase in use: back, top, foot, shelves with a light under each edge, posts
+    const f = L.faces[q.fi], b = q.b, alongX = f.ax !== 0;
     const B = (along, dep, y, l, dd, h, k, g, m, a) => { const x = f.bx + f.ax * along + f.nx * dep, z = f.bz + f.az * along + f.nz * dep; box(x, y, z, alongX ? l : dd, h, alongX ? dd : l, k, g, a || null, m); };
-    for (let b = 0; b < f.nb; b++) {
-      const c = .05 + b * BAY + BAY / 2, lit = f.start + b * GAL.PER < R.gal.n ? galGold : K.dim;
+    {
+      const c = f.off + .05 + b * BAY + BAY / 2, lit = galGold;
       for (const y of [CASEH / 4, CASEH * 3 / 4]) B(c, .012, y, BAY, .012, CASEH / 2, K.sign, 0, 0, T(R.tVelvet));   // velvet behind the shelves
       B(c, DEEP / 2, CASEH + .03, BAY + .05, DEEP + .04, .06, galPost, 0, 1);
       B(c, DEEP + .025, CASEH + .065, BAY + .05, .014, .014, galGold, 2);   // a gold edge along the top
       B(c, DEEP / 2, .04, BAY, DEEP + .02, .08, galPost, 0, 1);
       B(c, DEEP + .006, .045, BAY - .1, .012, .02, lit, 2);
       for (const y of PLANKS) { B(c, DEEP / 2, y - .015, BAY, DEEP, .03, galWood, 0, 1); B(c, DEEP - .004, y - .034, BAY - .08, .008, .008, lit, 2); }
-      for (const e of b === f.nb - 1 ? [0, 1] : [0]) { const a = .05 + (b + e) * BAY; B(a, DEEP / 2, CASEH / 2, .05, DEEP, CASEH, galPost, 0, 1); B(a, DEEP / 2, CASEH + .095, .08, DEEP + .03, .03, galGoldB); }   // posts, a gold cap on each
+      for (const e of inUse.has(q.fi + ':' + (b + 1)) ? [0] : [0, 1]) { const a = f.off + .05 + (b + e) * BAY; B(a, DEEP / 2, CASEH / 2, .05, DEEP, CASEH, galPost, 0, 1); B(a, DEEP / 2, CASEH + .095, .08, DEEP + .03, .03, galGoldB); }   // posts, a gold cap on each
     }
   }
   for (const g of R.gS) {   // the signs over the runs of bookcases
-    const f = L.faces[g.fi], c = .05 + Math.min(f.nb, 2) * BAY / 2;
+    const f = L.faces[g.fi], c = g.c;
     tiles(f.bx + f.ax * c + f.nx * DEEP / 2, CASEH + .3, f.bz + f.az * c + f.nz * DEEP / 2, f.nx, f.nz, .22, g.x, g.y, 64, 4);
   }
   if (GAL_ST >= 2) {   // the parent: alone on a pedestal in the middle, in a case edged with light, a lamp over it, its plaque on two sides
@@ -8139,7 +8180,7 @@ async function galArtTick(tn) {
   // first the parent on its pedestal and the bookcase holding your piece (the one the arrow leads to), however far, so they
   // are ready when you get there; then what is near you, the shelves you are facing before the ones behind you
   if (!G.fq && C.plan.items.length) { const pa = C.plan.items.find(x => x.t.par), own = !G.focus || G.focus === G.pid, f = own ? null : C.plan.items.find(x => x.t.gid === G.focus && !x.t.par);
-    if (f || own || G.loaded >= G.n) { const b = f ? Math.floor(f.t.gi / GAL.PER) : -1; G.fq = (pa ? [pa] : []).concat(f ? C.plan.items.filter(x => x.t.gal && !x.t.par && Math.floor(x.t.gi / GAL.PER) === b).sort((a, c) => Math.abs(a.t.gi - f.t.gi) - Math.abs(c.t.gi - f.t.gi)) : []); } }
+    if (f || own || G.loaded >= G.n) { const b = f ? galBay(C.lay, f.t.gi) : -1; G.fq = (pa ? [pa] : []).concat(f ? C.plan.items.filter(x => x.t.gal && !x.t.par && galBay(C.lay, x.t.gi) === b).sort((a, c) => Math.abs(a.t.gi - f.t.gi) - Math.abs(c.t.gi - f.t.gi)) : []); } }
   const hi = room.held && !room.held.back && room.held.it;
   let best = hi && hi.t.gid && !hi.t.gTry && !hi.t.art ? hi : G.fq ? G.fq.find(x => !x.t.gTry && !x.gone && x.t0 <= tn) || null : null, bd = 13; const hx = -Math.sin(p.yaw), hz = -Math.cos(p.yaw), vc = viewCos();
   if (!best) for (const it of C.plan.items) { if (it.t.gTry || it.gone || it.t0 > tn || (GAL_ST < 3 && !it.t.par) || !galSees(C, it, p.x)) continue; const ax = it.w[0] - p.x, az = it.w[2] - p.z, d0 = Math.hypot(ax, az), dd = d0 + (ax * hx + az * hz < vc * d0 ? 6 : 0); if (dd < bd) { bd = dd; best = it; } }
