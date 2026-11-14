@@ -1,0 +1,47 @@
+# Doge Cube's Daily Data: every night, every Dogecoin block of the day before (UTC), each one checked, saved as one JSON and one
+# CSV file on the doge-daily-data branch, with an index of all the days. Free: GitHub runs it (the repository is public).
+# It only writes to the doge-daily-data branch. To make a day by hand: Actions > Doge Daily Data > Run workflow (give the day).
+name: Doge Daily Data
+
+on:
+  # (the nightly time, 00:47 UTC, is added when Doge Daily Data goes live: until then, days are made by hand to test)
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'The UTC day to make (YYYY-MM-DD). Leave empty for yesterday.'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: doge-daily-data
+  cancel-in-progress: false
+
+jobs:
+  day:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Open the doge-daily-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin doge-daily-data:doge-daily-data; then git worktree add data doge-daily-data; else
+            git worktree add --detach data && cd data && git checkout --orphan doge-daily-data && git rm -rfq . && cd ..; fi
+      - name: Read the day
+        run: |
+          DAY="${{ github.event.inputs.day }}"; [ -n "$DAY" ] || DAY="$(date -u -d yesterday +%F)"
+          echo "DAY=$DAY" >> "$GITHUB_ENV"
+          node .github/doge-daily-data/build-day.js "$DAY" data
+      - name: Save it
+        run: |
+          cd data
+          [ -f README.md ] || cp ../.github/doge-daily-data/README.md README.md
+          git add -A
+          git commit -qm "Doge Daily Data: $DAY" || exit 0
+          git push origin doge-daily-data

@@ -442,5 +442,6 @@
     return m;
   }
 
-  return {VERSION, KIND_NAMES, KIND_GROUPS, MERGE_MINED_FROM, sha256, hashHex, fromHex, headerHash, merkleRoot, readTx, explorerKinds, fileKind, buildManifest, toCSV, gather};
+  const poolOf = words => { for (const [re, nm] of POOLS) if (re.test(words || '')) return nm; return null; };   // (only where the coinbase's own words name one)
+  return {VERSION, KIND_NAMES, KIND_GROUPS, MERGE_MINED_FROM, sha256, hashHex, fromHex, headerHash, merkleRoot, readTx, explorerKinds, fileKind, buildManifest, toCSV, gather, poolOf};
 });
