@@ -9,7 +9,7 @@ GAME = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html'; HOST = 'h
 VT = open(os.path.join(HERE, 'vt.js')).read()
 HIDE = "addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '[data-agentbox]{display:none!important}'; document.head.appendChild(s); });"
 NAMES = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia']; TONES = [0, 3, 1, 1, 0, 0, 4, 1, 1, 1]
-N = {'title': 240, 'next': 240, 'help': 150, 'hall': 210, 'hold': 240, 'genesis': 240, 'ins0': 180, 'common': 300, 'forum': 420}[SC]
+N = {'title': 240, 'next': 240, 'help': 150, 'hall': 210, 'hold': 210, 'genesis': 240, 'ins0': 180, 'common': 300, 'forum': 420}[SC]
 LOG = []
 def log(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.append(s)
@@ -91,11 +91,10 @@ async def main():
         async def step(n=1):
             for i in range(n): await g.evaluate("__vtStep(1000 / 30)")
         async def go(js): await g.evaluate("js => { (async () => { try { await eval(js); } catch (e) { console.error(e); } })(); }", js)
-        await step(30)
+        await step(150 if SC in ('title', 'next', 'help') else 30)   # (a cube's floor and colours settle first)
         X0, Y0 = int(W * .82), int(H * .78)
         PE = "([t, x, y, b]) => { const c = document.getElementById('c'); c.dispatchEvent(new PointerEvent(t, {clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: b, button: 0, bubbles: true, cancelable: true})); }"
-        if SC == 'common': fac0 = await g.evaluate("agent.state().room.facing")
-        if SC == 'forum': fac0 = await g.evaluate("agent.state().room.facing")
+        if SC in ('common', 'forum', 'hold'): fac0 = await g.evaluate("async () => (await agent.state()).room.facing")
         shots = set(range(N)) if not PROBE else {0, N // 2, N - 1}
         tt = time.time()
         for f in range(N):
@@ -118,8 +117,8 @@ async def main():
                 z0, z1 = st['z']; k = f / (N - 1); k = k * k * (3 - 2 * k)
                 await g.evaluate("z => { room.p.z = z; }", z0 + (z1 - z0) * k)
                 if SC == 'ins0' and f == 105: await g.evaluate("otOpen()")
-            elif SC in ('common', 'forum'):
-                await go(f"agent.turn({{facing: {fac0 + (0.22 if SC == 'common' else 0.06) * (f + 1):.3f}}})")
+            elif SC in ('common', 'forum', 'hold'):
+                await go(f"agent.turn({{facing: {fac0 + {'common': 0.22, 'forum': 0.06, 'hold': 0.05}[SC] * (f + 1):.3f}}})")
                 if 'states' in st and f % 6 == 0:
                     for m in st['states'](3 + f / 30): await pg.evaluate("m => send(m)", m)
             await step()
