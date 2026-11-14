@@ -7,8 +7,9 @@ SC, OUT = sys.argv[1], sys.argv[2]; PROBE = len(sys.argv) > 3 and sys.argv[3] ==
 W, H = 1920, 1080
 GAME = 'https://bitmap22.github.io/my-ordinal-portal/' + os.environ.get('GAME', 'block-cube.html'); HOST = 'http://127.0.0.1:8000/host.html'
 DOGE = 'doge' in GAME
+DOGEF = 'true' if DOGE and SC in ('forum', 'common2') else 'false'
 VT = open(os.path.join(HERE, 'vt.js')).read()
-HIDE = "addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '[data-agentbox]{display:none!important}'; document.head.appendChild(s); });"
+HIDE = "const DOGEFORUM = " + DOGEF + "; addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '[data-agentbox]{display:none!important}' + (DOGEFORUM ? '#rl{display:none!important}' : ''); document.head.appendChild(s); });"
 NAMES = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia']; TONES = [0, 3, 1, 1, 0, 0, 4, 1, 1, 1]
 N = {'title': 240, 'next': 240, 'help': 150, 'hall': 210, 'hold': 210, 'genesis': 240, 'ins0': 180, 'common': 300, 'common2': 300, 'forum': 420}[SC]
 if DOGE and SC == 'forum': N = 270
@@ -79,17 +80,28 @@ async def main():
             log('me', me)
             mx, md = (me or {}).get('x', 2.4), -((me or {}).get('z', -28.5))
             MATES = [('n', 9, 'macarena', mx - 1.5, md + 4.2), ('m', 3, 'chicken', mx, md + 4.8), ('y', 7, 'twist', mx + 1.5, md + 4.2)]
+            DLOOK = {'n': [1, 0, 3], 'm': [2, 0, 1], 'y': [3, 0, 0]}   # (Doge Cube's runners: Spark, Relay and Cipher, each with its own skin tone)
+            DWALK = {'n': (3.0, 3.3, 5.8), 'y': (3.6, 4.0, 7.0)}         # (Doge Cube has no dances: two of them walk up to you instead, metres back and from/to seconds)
             for mid, i, em, x, d in MATES:
-                if not DOGE: await pg.evaluate("m => send(m)", {'type': 'look', 'id': mid, 'look': [i, 0, TONES[i]]})
+                await pg.evaluate("m => send(m)", {'type': 'look', 'id': mid, 'look': DLOOK[mid] if DOGE else [i, 0, TONES[i]]})
             yaw = ((me or {}).get('y', 0) or 0) + math.pi
+            def back(mid, t):
+                if not DOGE or mid not in DWALK: return 0
+                b, a, e = DWALK[mid]; k = min(1, max(0, (t - a) / (e - a))); return b * (1 - k)
             def states(t):
-                return [{'type': 'state', 'id': mid, 'name': NAMES[i], 's': {'in': 1, 'h': -2, 'x': x, 'z': -d, 'y': yaw, 'p': 0, 'hk': -1, 'lv': 0, 'sit': 0, 'em': em, 'en': 1, 'ea': round(t, 2), 'ai': 1}} for mid, i, em, x, d in MATES]
+                return [{'type': 'state', 'id': mid, 'name': NAMES[i], 's': {'in': 1, 'h': -2, 'x': x, 'z': -(d + back(mid, t)), 'y': yaw, 'p': 0, 'hk': -1, 'lv': 0, 'sit': 0, 'em': em, 'en': 1, 'ea': round(t, 2), 'ai': 1}} for mid, i, em, x, d in MATES]
             for k in range(12):   # (their people load: real seconds)
                 for m in states(k * .2): await pg.evaluate("m => send(m)", m)
                 await pg.wait_for_timeout(2500)
             await A("agent.turn({pitch: -12})", 2000)
             st['states'] = states
         # ---- film: the page's clocks move one frame at a time from here
+        if DOGE:
+            async def hold(route):
+                h = route.request.url.split('/')[2] if '://' in route.request.url else ''
+                if route.request.resource_type in ('fetch', 'xhr') and h not in ('127.0.0.1:8000', 'bitmap22.github.io'): await route.abort()
+                else: await route.continue_()
+            await ctx.route('**/*', hold)
         await g.evaluate(f"__vtStart({time.time() * 1000})"); WSOK[0] = False
         async def step(n=1):
             for i in range(n): await g.evaluate("__vtStep(1000 / 30)")
@@ -123,7 +135,7 @@ async def main():
                 if SC == 'ins0' and f == 105: await g.evaluate("otOpen()")
             elif SC in ('common', 'common2', 'forum', 'hold'):
                 await go(f"agent.turn({{facing: {fac0 + {'common': 0.22, 'common2': 0.1, 'forum': 0.06, 'hold': 0.05}[SC] * (f + 1):.3f}}})")
-                if 'states' in st and f % 6 == 0:
+                if 'states' in st and f % (2 if DOGE else 6) == 0:
                     for m in st['states'](3 + f / 30): await pg.evaluate("m => send(m)", m)
             await step()
             if f in shots:
