@@ -1,0 +1,32 @@
+# Tests the Agent Blockhall MCP tool on live Bitcoin data, the way an agent uses it, and saves what it got back.
+# Runs only when the mcp-tool-test branch is pushed. It changes nothing else.
+name: Agent Blockhall MCP live test
+
+on:
+  push:
+    branches: [mcp-tool-test]
+
+permissions:
+  contents: write
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Use the tool like an agent
+        run: node agent-blockhall-mcp/test/live.js
+      - name: Check it with the official MCP Inspector
+        run: |
+          npx -y @modelcontextprotocol/inspector@0.15.0 --cli node agent-blockhall-mcp/server/index.js --method tools/list > agent-blockhall-mcp/test/inspector-tools.json
+          npx -y @modelcontextprotocol/inspector@0.15.0 --cli node agent-blockhall-mcp/server/index.js --method tools/call --tool-name chain > agent-blockhall-mcp/test/inspector-chain.json
+      - name: Save the results on this branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add agent-blockhall-mcp/test/results.json agent-blockhall-mcp/test/inspector-*.json
+          git commit -m "MCP live test results [skip ci]" && git push origin HEAD:mcp-tool-test
