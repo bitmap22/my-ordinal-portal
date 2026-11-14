@@ -89,6 +89,7 @@
     <div class="panel">
       <h2>Checked, across the day</h2>
       <div class="facts" id="checks"></div>
+      <div class="small" id="notes" style="margin-top:12px"></div>
     </div>
 
     <div class="panel">
@@ -186,9 +187,10 @@
     }
     const C = $('checks'); C.textContent = '';
     for (const [k, v] of [['Hash from its bytes', fmt(K.hashFromItsBytes) + ' of ' + fmt(T.blocks - K.notRead)], ['Hash on a second site', fmt(K.secondSiteAgrees) + ' of ' + fmt(K.secondSiteAsked)],
-      ['Transaction ids', pair(K.ids)], ['Sizes', pair(K.sizes)], ['Kinds (ordpool.space)', pair(K.kinds)], ['Inscriptions (ordinals.com)', pair(K.inscriptions)], ['Runes etched made', pair(K.runesEtched)], ['Blocks not read', fmt(K.notRead)]]) {
+      ['Transaction ids', pair(K.ids)], ['Sizes', pair(K.sizes)], ['Kinds (ordpool.space)', pair(K.kinds)], ['Inscriptions (ordinals.com)', !K.inscriptions || (K.inscriptions[1] === 0 && ((T.counts || {}).inscriptions || 0) > 0) ? 'not checked: ordinals.com did not answer' : pair(K.inscriptions)], ['Runes etched made', pair(K.runesEtched)], ['Blocks not read', fmt(K.notRead)]]) {
       const f = el('div', 'fact'); f.appendChild(el('b', null, k)); f.appendChild(el('span', null, v)); C.appendChild(f);
     }
+    const N = $('notes'); N.textContent = ''; for (const t of T.notes || []) N.appendChild(el('div', null, t));
     const KS = $('kinds'); KS.textContent = '';
     for (const [k, n] of Object.entries(T.counts || {}).sort((a, b) => b[1] - a[1])) { const c = el('span', 'chip', k); c.appendChild(el('i', null, fmt(n))); KS.appendChild(c); }
     $('listTitle').textContent = 'Its blocks (' + fmt(d.blocks.length) + ')';
@@ -212,12 +214,13 @@
   }
 
   /* ---------- the agent kit: window.agent (the same steps as the day buttons; the page says when an agent asked) ---------- */
+  const NULL_NOTE = 'In checked, [matched, of] pairs say how many agreed. null means that check could not be made because a site did not answer: it is not a disagreement. The day\u2019s totals.notes say it in plain words.';
   const cmds = [
     {name: 'days', does: 'Every day there is a file for, newest last, with its totals (blocks, transactions, fees, inscriptions, runes, BRC-20) and links to its JSON and CSV.', args: [], run: async () => { await loadIndex(); return {days: INDEX.days, updated: INDEX.updated, licence: INDEX.licence}; }},
     {name: 'day', does: 'Open one day on the page (as clicking it does) and give its totals, its checks across the day, and its blocks, each with what was in it, its fees, who mined it and its checks. Leave day out for the newest.', args: [{name: 'day', does: 'the UTC day, YYYY-MM-DD'}],
-      run: async ({day}) => { await openDay(day, true); return {day: D.day, totals: D.totals, blocks: D.blocks, links: D.links, licence: D.licence, what: D.what}; }},
+      run: async ({day}) => { await openDay(day, true); return {day: D.day, notes: D.totals.notes || [], totals: D.totals, blocks: D.blocks, links: D.links, licence: D.licence, what: D.what, note: NULL_NOTE}; }},
     {name: 'block', does: 'One block from the day on the page, by its height, with a link to every transaction in it (the Block Manifest) and how to walk into it in Agent Blockhall.', args: [{name: 'height', type: 'integer', does: 'the block number'}],
-      run: ({height}) => { if (!D) throw new Error('open a day first: agent.day({day})'); const b = D.blocks.find(x => x.height === +height); if (!b) throw new Error('block ' + height + ' is not in ' + D.day + ' (' + D.totals.firstBlock + ' to ' + D.totals.lastBlock + ')'); return Object.assign({}, b, {walkIn: 'In Agent Blockhall (' + PORTAL + 'block-cube.html): type ' + b.height + ' into the tablet, or walkIn({height: ' + b.height + '}) in its agent kit.'}); }},
+      run: ({height}) => { if (!D) throw new Error('open a day first: agent.day({day})'); const b = D.blocks.find(x => x.height === +height); if (!b) throw new Error('block ' + height + ' is not in ' + D.day + ' (' + D.totals.firstBlock + ' to ' + D.totals.lastBlock + ')'); return Object.assign({}, b, {walkIn: 'In Agent Blockhall (' + PORTAL + 'block-cube.html): type ' + b.height + ' into the tablet, or walkIn({height: ' + b.height + '}) in its agent kit.', note: NULL_NOTE}); }},
     {name: 'see', does: 'What the page shows now: the status line and the day open.', args: [], run: () => ({status: $('status').textContent, day: D ? D.day : null, totals: D ? D.totals : null})}
   ];
   const plain = r => JSON.parse(JSON.stringify(r));

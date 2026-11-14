@@ -35,11 +35,14 @@ jobs:
           if git fetch origin daily-data:daily-data; then git worktree add data daily-data; else
             git worktree add --detach data && cd data && git checkout --orphan daily-data && git rm -rfq . && cd ..; fi
       - name: Read the day
-        run: node .github/daily-data/build-day.js "${{ github.event.inputs.day }}" data
+        run: |
+          DAY="${{ github.event.inputs.day }}"; [ -n "$DAY" ] || DAY="$(date -u -d yesterday +%F)"
+          echo "DAY=$DAY" >> "$GITHUB_ENV"
+          node .github/daily-data/build-day.js "$DAY" data
       - name: Save it
         run: |
           cd data
           [ -f README.md ] || cp ../.github/daily-data/README.md README.md
           git add -A
-          git commit -qm "Daily Data: $(ls days/*.json | tail -1 | sed 's#days/##; s#.json##')" || exit 0
+          git commit -qm "Daily Data: $DAY" || exit 0
           git push origin daily-data

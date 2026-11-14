@@ -97,7 +97,8 @@ async function main() {
   console.log('Daily Data for ' + day);
   const list = await blocksOfDay(t0, t1);
   console.log(list.length + ' blocks: ' + (list.length ? list[0].height + ' to ' + list[list.length - 1].height : 'none'));
-  const blocks = [], T = {transactions: 0, totalFees: 0, counts: {}, pools: {}, checked: {hashFromItsBytes: 0, secondSiteAgrees: 0, secondSiteAsked: 0, ids: [0, 0], sizes: [0, 0], kinds: [0, 0], inscriptions: [0, 0], inscriptionsListed: 0, runesEtched: [0, 0], differences: 0, notRead: 0}};
+  const blocks = [], T = {transactions: 0, totalFees: 0, counts: {}, pools: {}, checked: {hashFromItsBytes: 0, secondSiteAgrees: 0, secondSiteAsked: 0, ids: [0, 0], sizes: [0, 0], kinds: [0, 0], inscriptions: [0, 0], inscriptionsListed: 0, runesEtched: [0, 0], differences: 0, notRead: 0,
+    secondSiteNotAsked: 0, kindsNotChecked: 0, inscriptionsNotChecked: 0, runesEtchedNotChecked: 0}};
   for (const b of list) {
     let M = null, err = null;
     for (let tries = 0; tries < 3 && !M; tries++) { try { M = await readBlock(b.height, b.id); } catch (e) { err = e; await sleep(15000); } }
@@ -116,12 +117,28 @@ async function main() {
     for (const k of ['ids', 'sizes', 'kinds', 'inscriptions', 'runesEtched']) if (rec.checked[k] && rec.checked[k][0] != null) { K[k][0] += rec.checked[k][0]; K[k][1] += rec.checked[k][1]; }
     if (rec.checked.inscriptions) K.inscriptionsListed += rec.checked.inscriptions[2];
     K.differences += rec.checked.differences;
+    // (where a site did not answer, that check was not made: counted, so a reader never takes it for "0 of 0")
+    if (!rec.checked.secondSite) K.secondSiteNotAsked++;
+    if (!rec.checked.kinds) K.kindsNotChecked++;
+    if (!rec.checked.inscriptions && (rec.counts.inscriptions || 0) > 0) K.inscriptionsNotChecked++;
+    if (rec.checked.runesEtched && rec.checked.runesEtched[0] == null) K.runesEtchedNotChecked++;
     console.log('  ' + b.height + ': ' + rec.transactions + ' txs, ids ' + rec.checked.ids.join('/') + ', kinds ' + (rec.checked.kinds || ['-']).join('/') + ', inscriptions ' + (rec.checked.inscriptions || ['-']).slice(0, 2).join('/') + ', differences ' + rec.checked.differences);
   }
+  // plain words for every check that could not be made, and pairs that were never filled set to null
+  const K = T.checked, notes = [];
+  if (K.notRead) notes.push(K.notRead + ' block' + (K.notRead === 1 ? ' was' : 's were') + ' not read at all (no site gave its bytes or transaction list): see notRead on each.');
+  if (K.secondSiteNotAsked) notes.push('For ' + K.secondSiteNotAsked + ' block' + (K.secondSiteNotAsked === 1 ? '' : 's') + ', no second site answered, so the hash was only checked against its own bytes.');
+  if (K.kindsNotChecked) notes.push('For ' + K.kindsNotChecked + ' block' + (K.kindsNotChecked === 1 ? '' : 's') + ', ordpool.space did not answer, so their kinds were read once and not checked (null on those blocks).');
+  if (K.inscriptionsNotChecked) notes.push('For ' + K.inscriptionsNotChecked + ' block' + (K.inscriptionsNotChecked === 1 ? '' : 's') + ' with inscriptions, ordinals.com did not answer, so their inscriptions were not checked (null on those blocks). It was not a disagreement.');
+  if (K.runesEtchedNotChecked) notes.push('For ' + K.runesEtchedNotChecked + ' block' + (K.runesEtchedNotChecked === 1 ? '' : 's') + ', ordinals.com did not say which runes were made, so etchings were not checked.');
+  if (K.differences) notes.push(K.differences + ' difference' + (K.differences === 1 ? '' : 's') + ' between this reader and the second sites across the day: open a block in the Block Manifest to see each one.');
+  for (const k of ['kinds', 'inscriptions', 'runesEtched']) if (K[k] && K[k][1] === 0) K[k] = null;   // (nothing was checked: null, not [0, 0])
+  if (!notes.length) notes.push('Every block was read and every check was made.');
+  T.notes = notes;
   const file = {
     data: 'Agent Blockhall Daily Data ' + VERSION, day, utc: {from: new Date(t0 * 1000).toISOString().replace('.000', ''), to: new Date(t1 * 1000).toISOString().replace('.000', '')},
     made: new Date().toISOString().replace(/\.\d{3}/, ''), licence: LICENCE,
-    what: 'Every Bitcoin block whose time falls in this UTC day, read the Block Manifest way: each block’s transactions sorted into Agent Blockhall’s hall kinds (counts), its fees and who mined it, and its checks: its hash worked out from its own bytes and asked of a second site, each transaction’s id and size worked out from the bytes against mempool.space’s list, its kinds against ordpool.space’s tags, its inscriptions against ordinals.com’s list, and rune etchings against the runes ordinals.com says the block made. [matched, of] pairs; null where a site did not answer.',
+    what: 'Every Bitcoin block whose time falls in this UTC day, read the Block Manifest way: each block’s transactions sorted into Agent Blockhall’s hall kinds (counts), its fees and who mined it, and its checks: its hash worked out from its own bytes and asked of a second site, each transaction’s id and size worked out from the bytes against mempool.space’s list, its kinds against ordpool.space’s tags, its inscriptions against ordinals.com’s list, and rune etchings against the runes ordinals.com says the block made. [matched, of] pairs. null means that check could not be made because a site did not answer: it is not a disagreement. totals.notes says in plain words which checks could not be made.',
     totals: Object.assign({blocks: blocks.length, firstBlock: blocks.length ? blocks[0].height : null, lastBlock: blocks.length ? blocks[blocks.length - 1].height : null}, T),
     blocks,
     links: {page: PORTAL + 'daily.html?day=' + day, blockManifest: PORTAL + 'block-manifest.html?block=<height>', watch: PORTAL + 'watch.html?watch=block', agentBlockhall: PORTAL + 'block-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', csv: RAW + 'days/' + day + '.csv'}
@@ -142,11 +159,12 @@ async function main() {
   let index = {data: 'Agent Blockhall Daily Data', licence: LICENCE, days: []}; try { index = JSON.parse(fs.readFileSync(ip, 'utf8')); } catch (e) {}
   index.days = (index.days || []).filter(d => d.day !== day);
   index.days.push({day, blocks: blocks.length, firstBlock: file.totals.firstBlock, lastBlock: file.totals.lastBlock, transactions: T.transactions, totalFees: T.totalFees,
-    inscriptions: T.counts.inscriptions || 0, runes: T.counts.runes || 0, 'BRC-20': T.counts['BRC-20'] || 0, notRead: T.checked.notRead, json: RAW + 'days/' + day + '.json', csv: RAW + 'days/' + day + '.csv'});
+    inscriptions: T.counts.inscriptions || 0, runes: T.counts.runes || 0, 'BRC-20': T.counts['BRC-20'] || 0, notRead: T.checked.notRead, notes, json: RAW + 'days/' + day + '.json', csv: RAW + 'days/' + day + '.csv'});
   index.days.sort((a, b) => a.day < b.day ? -1 : 1);
   index.updated = file.made; index.licence = LICENCE;
   index.links = {page: PORTAL + 'daily.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', agentBlockhall: PORTAL + 'block-cube.html'};
   fs.writeFileSync(ip, JSON.stringify(index, null, 1));
-  console.log('Wrote ' + day + ': ' + blocks.length + ' blocks, ' + T.transactions + ' transactions, ids ' + T.checked.ids.join('/') + ', kinds ' + T.checked.kinds.join('/') + ', inscriptions ' + T.checked.inscriptions.join('/') + ', not read ' + T.checked.notRead);
+  console.log('Wrote ' + day + ': ' + blocks.length + ' blocks, ' + T.transactions + ' transactions, ids ' + T.checked.ids.join('/') + ', kinds ' + (T.checked.kinds || ['not checked']).join('/') + ', inscriptions ' + (T.checked.inscriptions || ['not checked']).join('/') + ', not read ' + T.checked.notRead);
+  console.log('Notes: ' + notes.join(' | '));
 }
 main().catch(e => { console.error(e); process.exit(1); });
