@@ -7799,12 +7799,12 @@ async function galGet(path, as) {
   return as === 'bytes' ? new Uint8Array(await r.arrayBuffer()) : as === 'text' ? r.text() : r.json();
 }
 // the hall for n pieces: only as many bookcases as they need (30 to a bookcase: 6 shelves of 5), in the smallest square that holds
-// them. The bookcases go up in mirrored groups (a row's two sides together, left and right alike; the far wall from its middle),
+// them (10 m at the least, so the parent's pedestal is not in your face at the door). The bookcases go up in mirrored groups (a row's two sides together, left and right alike; the far wall from its middle),
 // nearest the parent's pedestal first, so the room is symmetric; then the pieces are shared out evenly: every bookcase the same,
 // every shelf the same, centred on it. No bookcase stands empty, and none is left half full at the end.
 function galLayout(n) {
   n = Math.max(1, n); const need = Math.ceil(n / GAL.PER);
-  for (let S = 6; ; S += 2) { const L = galTry(S, true); if (L.room >= need || S >= 600) return galPick(galTry(S), n, need); }   // (sizes are tried by counting places alone)
+  for (let S = 10; ; S += 2) { const L = galTry(S, true); if (L.room >= need || S >= 600) return galPick(galTry(S), n, need); }   // (sizes are tried by counting places alone)
 }
 // every place a bookcase can stand in a hall of side S: runs of bookcase ("faces"), each along a wall or one side of a row, facing
 // its aisle, the bookcases centred on each run (so the room is the same on both sides); and the groups they go up in
@@ -7837,9 +7837,9 @@ function galTry(S, count) {
     for (const q of u.slice()) add(mirror(q));
     for (const q of u.slice()) if (back.has(q.fi)) add(byFace[back.get(q.fi)][q.b]);
     for (const q of u) done.add(q);
-    const zc = -S / 2; u.d = Math.min(...u.map(q => Math.hypot(q.x, q.z - zc))); u.z = Math.min(...u.map(q => q.z)); units.push(u);
+    const zc = -S / 2; u.d = Math.round(Math.min(...u.map(q => Math.hypot(q.x, q.z - zc))) * 20); u.x = Math.max(...u.map(q => Math.abs(q.x))); u.z = Math.min(...u.map(q => q.z)); units.push(u);
   }
-  units.sort((a, b) => a.d - b.d || a.z - b.z || a.length - b.length);   // (nearest the pedestal first; then the further from the door)
+  units.sort((a, b) => a.d - b.d || b.x - a.x || a.z - b.z);   // (nearest the pedestal first; then those at the sides, which you see from the door, before those behind it)
   return {S, faces, rows, units, room: bays.length};
 }
 // the bookcases this collection uses, and how many pieces each holds
