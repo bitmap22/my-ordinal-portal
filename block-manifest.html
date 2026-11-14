@@ -306,7 +306,10 @@
     const facts = $('facts'); facts.textContent = '';
     const when = b.time ? new Date(b.time).toLocaleString('en-GB', {timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' UTC' : '–';
     for (const [k, v] of [['Bitmap', b.bitmap], ['Mined', when], ['Mined by', b.minedBy || 'unknown'], ['Transactions', fmt(b.transactions)], ['Fees', fmt(b.totalFees) + ' sats'], ['Hash', b.hash]]) {
-      const f = el('div', 'fact'); f.appendChild(el('b', null, k)); f.appendChild(el('span', k === 'Hash' ? 'hash' : null, v)); facts.appendChild(f);
+      const f = el('div', 'fact'); f.appendChild(el('b', null, k));
+      if (k === 'Mined' && b.time) { const sp = el('span'); const a = el('a', null, v); a.href = 'daily.html?day=' + b.time.slice(0, 10); a.title = 'Daily Data: every block of ' + b.time.slice(0, 10) + ' (UTC)'; sp.appendChild(a); f.appendChild(sp); }
+      else f.appendChild(el('span', k === 'Hash' ? 'hash' : null, v));
+      facts.appendChild(f);
     }
     const c = m.checked, checks = $('checks'); checks.textContent = '';
     const tile = (title, state, n, w) => { const d = el('div', 'check ' + state); d.appendChild(el('div', 'mark', state === 'ok' ? '✓' : state === 'no' ? '✗' : '·')); d.appendChild(el('div', 't', title)); d.appendChild(el('div', 'n', n)); d.appendChild(el('div', 'w', w)); checks.appendChild(d); };
@@ -401,7 +404,7 @@
 
   /* ---------- the agent kit: window.agent (the same steps as the buttons; the page says when an agent asked) ---------- */
   const GAME = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html', PROV = 'https://bitmap22.github.io/my-ordinal-portal/provenance-check.html';
-  const seeIt = h => ({agentBlockhall: GAME, walkIn: 'Walk into block ' + h + ' in 3D in Agent Blockhall: type ' + h + ' into its tablet, or in its agent kit, walkIn({height: ' + h + '}). These kinds are its hall\u2019s shelves.', provenanceCheck: PROV + '?id=<an inscription id from this block> proves where it came from, every step checked.', watch: 'https://bitmap22.github.io/my-ordinal-portal/watch.html?watch=kind&value=<a kind> tells you when a new block has that kind (the MCP tool: watch({what: "kind", value})).'});
+  const seeIt = h => ({agentBlockhall: GAME, walkIn: 'Walk into block ' + h + ' in 3D in Agent Blockhall: type ' + h + ' into its tablet, or in its agent kit, walkIn({height: ' + h + '}). These kinds are its hall\u2019s shelves.', provenanceCheck: PROV + '?id=<an inscription id from this block> proves where it came from, every step checked.', dailyData: 'https://bitmap22.github.io/my-ordinal-portal/daily.html?day=<the day it was mined> has every block of its day (the MCP tool: dailyData({block: ' + h + '})).', watch: 'https://bitmap22.github.io/my-ordinal-portal/watch.html?watch=kind&value=<a kind> tells you when a new block has that kind (the MCP tool: watch({what: "kind", value})).'});
   const brief = () => M && {manifest: M.manifest, block: M.block, counts: M.counts, checked: Object.assign({}, M.checked, {differences: M.checked.differences.slice(0, 20)}), sources: M.sources, seeIt: seeIt(M.block.height)};
   const need = () => { if (!M) throw new Error('no block read yet: call agent.read({height}) first'); };
   const kindOf = k => { if (k == null || String(k).trim() === '' || String(k).toLowerCase() === 'all') return ''; const n = BM.KIND_NAMES.find(x => x.toLowerCase() === String(k).trim().toLowerCase()); if (!n) throw new Error('kinds are: ' + BM.KIND_NAMES.join(', ')); return n; };

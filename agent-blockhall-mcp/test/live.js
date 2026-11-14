@@ -66,6 +66,9 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   calls.push(await call('watch', {what: 'kind', value: 'shoes'}));
   calls.push(await call('watch', {what: 'block', wait: 30}));
   results.watch = calls.filter(c => c.name === 'watch').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.out && c.out.watching ? c.out.watching + ' | ' + c.out.now + ' | looked ' + c.out.looked + ' | ' + c.out.events.map(e => e.title + (e.checked ? ' ' + JSON.stringify(Object.fromEntries(Object.entries(e.checked).map(([k, v]) => [k, v && v.agrees]))) : '')).join(' / ') : 'ERROR ' + c.out));
+  // Daily Data: the list of days, one day, one block, and a day with no file
+  for (const a of [{}, {day: '2026-11-13'}, {block: 975657}, {day: '2001-01-01'}]) calls.push(await call('dailyData', a));
+  results.daily = calls.filter(c => c.name === 'dailyData').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : c.out.days ? c.out.days.length + ' days' : c.out.totals ? c.out.day + ': ' + c.out.totals.blocks + ' blocks, ' + c.out.blocks.length + ' listed' : c.out.height ? 'block ' + c.out.height + ', ' + c.out.transactions + ' txs' : JSON.stringify(c.out).slice(0, 100)));
   results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {
     const k = c.out.checked;
     return c.out.block.height + ' (' + c.ms + ' ms): hash ' + k.blockHash.fromItsOwnBytes + '/' + (k.blockHash.secondSite && k.blockHash.secondSite.agrees) + ', ids ' + k.transactions.matched + '/' + k.transactions.of +
@@ -79,6 +82,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   if (results.manifestChecks.length) console.log('Block Manifest checks:\n' + results.manifestChecks.join('\n'));
   console.log('Provenance checks:\n' + results.provenance.join('\n'));
   console.log('Watch:\n' + results.watch.join('\n'));
+  console.log('Daily Data:\n' + results.daily.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });

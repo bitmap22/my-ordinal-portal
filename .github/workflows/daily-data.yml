@@ -1,0 +1,45 @@
+# Agent Blockhall's Daily Data: every night, every Bitcoin block of the day before (UTC), read the Block Manifest way and
+# saved as one JSON and one CSV file on the daily-data branch, with an index of all the days. Free: GitHub runs it.
+# It only writes to the daily-data branch. To make a day by hand: Actions > Daily Data > Run workflow (give the day).
+name: Daily Data
+
+on:
+  schedule:
+    - cron: '20 0 * * *'   # 00:20 UTC: the day before has just finished
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'The UTC day to make (YYYY-MM-DD). Leave empty for yesterday.'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-data
+  cancel-in-progress: false
+
+jobs:
+  day:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Open the daily-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin daily-data:daily-data; then git worktree add data daily-data; else
+            git worktree add --detach data && cd data && git checkout --orphan daily-data && git rm -rfq . && cd ..; fi
+      - name: Read the day
+        run: node .github/daily-data/build-day.js "${{ github.event.inputs.day }}" data
+      - name: Save it
+        run: |
+          cd data
+          [ -f README.md ] || cp ../.github/daily-data/README.md README.md
+          git add -A
+          git commit -qm "Daily Data: $(ls days/*.json | tail -1 | sed 's#days/##; s#.json##')" || exit 0
+          git push origin daily-data
