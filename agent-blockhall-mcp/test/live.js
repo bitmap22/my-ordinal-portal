@@ -69,6 +69,12 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   // Daily Data: the list of days, one day, one block, and a day with no file
   for (const a of [{}, {day: '2026-11-13'}, {block: 975657}, {day: '2001-01-01'}]) calls.push(await call('dailyData', a));
   results.daily = calls.filter(c => c.name === 'dailyData').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : c.out.days ? c.out.days.length + ' days' : c.out.totals ? c.out.day + ': ' + c.out.totals.blocks + ' blocks, ' + c.out.blocks.length + ' listed' : c.out.height ? 'block ' + c.out.height + ', ' + c.out.transactions + ' txs' : JSON.stringify(c.out).slice(0, 100)));
+  // Collection Check: a small, a middling and a big collection (the big one carried on over calls), a list of pieces without a parent, and mistakes
+  const BIG = '219d87f0d44ab4a1bf79f87ee11ee5ce90ea9e4efaa263052b2fa309e119ff3fi0';
+  for (const a of [{parent: '#126744012'}, {parent: 'd7dc12d0df773e1cbf9605ae8b1e09f38f7cde5f9fb797651fb698aa7964e794i0', limit: 3}, {parent: BIG, limit: 2}, {parent: BIG, limit: 2}, {parent: BIG, filter: 'notProven', limit: 2},
+    {ids: '7f4d1f0087ad8d6a4fc6311f20588ab53e8694d2660268863bccc483fff12afdi0,27dac2dbc7e20bdbd4d36b5ef720773c5d64379ca5224e1228f05e135b49fb75i0,7a093647258f5bc65cba949df517cf67084f9350bcb1ae40d9636b4f241acb40i0,a6369134c840ccf4c4b65074bd3e50cea1b3ef2532ec3cd43307bf3e80194908i0'},
+    {parent: '#0'}, {}]) calls.push(await call('collectionCheck', a));
+  results.collection = calls.filter(c => c.name === 'collectionCheck').map(c => JSON.stringify(c.args).slice(0, 50) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : c.out.verdict + ' | ' + JSON.stringify(c.out.counts) + (c.out.trail ? ' | trail ' + JSON.stringify(c.out.trail) + ' | lists ' + JSON.stringify(c.out.lists) + ' | first ' + JSON.stringify((c.out.children || [])[0] || null) : ' | ' + JSON.stringify((c.out.pieces || []).map(p => [p.id.slice(0, 8), p.namesParents, p.ordParents, p.result]))) + (c.out.carryOn ? ' | ' + c.out.carryOn : '')));
   results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {
     const k = c.out.checked;
     return c.out.block.height + ' (' + c.ms + ' ms): hash ' + k.blockHash.fromItsOwnBytes + '/' + (k.blockHash.secondSite && k.blockHash.secondSite.agrees) + ', ids ' + k.transactions.matched + '/' + k.transactions.of +
@@ -83,6 +89,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Provenance checks:\n' + results.provenance.join('\n'));
   console.log('Watch:\n' + results.watch.join('\n'));
   console.log('Daily Data:\n' + results.daily.join('\n'));
+  console.log('Collection Check:\n' + results.collection.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });
