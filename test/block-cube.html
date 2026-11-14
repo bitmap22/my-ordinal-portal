@@ -1883,7 +1883,7 @@ function mdlDir(o) {
   return [Math.sin(y) * Math.cos(q), Math.sin(q), Math.cos(y) * Math.cos(q)];
 }
 const MDL_N = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16}, MDL_B = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}, MDL_MAX = {5120: 127, 5121: 255, 5122: 32767, 5123: 65535};
-function mdlAcc(M, i) {
+async function mdlAcc(M, i) {
   const a = M.j.accessors && M.j.accessors[i]; if (!a) return null;
   const nc = MDL_N[a.type], bs = MDL_B[a.componentType]; if (!nc || !bs || !(a.count >= 0)) return null;
   const out = new Float32Array(a.count * nc); if (a.bufferView == null) return {d: out, nc, n: a.count};
@@ -1891,7 +1891,7 @@ function mdlAcc(M, i) {
   const st = v.byteStride || nc * bs, off = b.byteOffset + (v.byteOffset || 0) + (a.byteOffset || 0), dv = new DataView(b.buffer);
   if ((v.byteOffset || 0) + (a.byteOffset || 0) + (a.count ? (a.count - 1) * st + nc * bs : 0) > b.byteLength) return null;
   const ct = a.componentType, get = ct === 5126 ? o => dv.getFloat32(o, true) : ct === 5125 ? o => dv.getUint32(o, true) : ct === 5123 ? o => dv.getUint16(o, true) : ct === 5122 ? o => dv.getInt16(o, true) : ct === 5121 ? o => dv.getUint8(o) : o => dv.getInt8(o);
-  for (let k = 0; k < a.count; k++) for (let c = 0; c < nc; c++) out[k * nc + c] = get(off + k * st + c * bs);
+  for (let k = 0; k < a.count; k++) { if (k && !(k % 40000)) await new Promise(r => setTimeout(r)); for (let c = 0; c < nc; c++) out[k * nc + c] = get(off + k * st + c * bs); }   // (a short rest every 40,000)
   if (a.normalized && MDL_MAX[ct]) for (let q = 0; q < out.length; q++) out[q] = Math.max(out[q] / MDL_MAX[ct], -1);
   return {d: out, nc, n: a.count};
 }
@@ -1912,9 +1912,9 @@ async function mdlTris(M) {
     const W = mdlMul(P, mdlLocal(nd)), me = nd.mesh != null && j.meshes && j.meshes[nd.mesh];
     if (me) for (const pr of me.primitives || []) {
       const mode = pr.mode == null ? 4 : pr.mode; if (mode < 4 || pr.attributes == null || pr.attributes.POSITION == null) continue;
-      const P0 = mdlAcc(M, pr.attributes.POSITION); if (!P0 || P0.nc !== 3) continue;
-      const N0 = pr.attributes.NORMAL != null ? mdlAcc(M, pr.attributes.NORMAL) : null, U0 = pr.attributes.TEXCOORD_0 != null ? mdlAcc(M, pr.attributes.TEXCOORD_0) : null, K0 = pr.attributes.COLOR_0 != null ? mdlAcc(M, pr.attributes.COLOR_0) : null;
-      let ix = pr.indices != null ? mdlAcc(M, pr.indices) : null; ix = ix ? Array.from(ix.d) : Array.from({length: P0.n}, (_, q) => q);
+      const P0 = await mdlAcc(M, pr.attributes.POSITION); if (!P0 || P0.nc !== 3) continue;
+      const N0 = pr.attributes.NORMAL != null ? await mdlAcc(M, pr.attributes.NORMAL) : null, U0 = pr.attributes.TEXCOORD_0 != null ? await mdlAcc(M, pr.attributes.TEXCOORD_0) : null, K0 = pr.attributes.COLOR_0 != null ? await mdlAcc(M, pr.attributes.COLOR_0) : null;
+      let ix = pr.indices != null ? await mdlAcc(M, pr.indices) : null; if (ix) ix = ix.d; else { ix = new Uint32Array(P0.n); for (let q = 0; q < ix.length; q++) ix[q] = q; }   // (numbers kept as they are: no copy)
       if (mode === 5) { const t = []; for (let q = 0; q + 2 < ix.length; q++) t.push(...(q % 2 ? [ix[q + 1], ix[q], ix[q + 2]] : [ix[q], ix[q + 1], ix[q + 2]])); ix = t; }
       else if (mode === 6) { const t = []; for (let q = 1; q + 1 < ix.length; q++) t.push(ix[0], ix[q], ix[q + 1]); ix = t; }
       total += ix.length; if (total > 9e5) return;
