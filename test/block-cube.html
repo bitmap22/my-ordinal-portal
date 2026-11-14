@@ -351,6 +351,7 @@ body.bc-common #th{display:none!important}   /* the common-room download: no way
 body{background:transparent}#cmu{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:6;display:none;align-items:center;gap:10px;padding:8px 10px 8px 14px;background:#120c08ee;border:1px solid #c9952e;border-radius:12px;font:600 12px ui-monospace,Menlo,Consolas,monospace;color:#ffd36b;letter-spacing:.06em}body.cmusing #cmu{display:flex}#cmu button{font:inherit;color:#1a1008;background:#f2b544;border:0;border-radius:8px;padding:7px 11px;cursor:pointer;letter-spacing:0}#cmu button[data-k=x]{background:#3a2a1a;color:#ffe2b0}.cmov{position:fixed;left:0;top:0;border:0;transform-origin:0 0;z-index:-1;background:#000;visibility:hidden;pointer-events:none}
 #cmd{display:none}#cmd.on{display:block;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;width:min(560px,calc(100vw - 24px));box-sizing:border-box;padding:16px 18px;border-radius:16px;background:rgba(14,9,5,.95);border:1px solid rgba(247,147,26,.45);box-shadow:0 0 40px rgba(247,147,26,.25);font:600 12px ui-monospace,Menlo,Consolas,monospace;color:#ffb04a;letter-spacing:.12em;text-align:center}
 #cmd .r{display:flex;gap:8px;justify-content:center;margin-top:12px}#cmd .r:empty{display:none}
+#cmd .trd{max-height:min(78vh,760px);overflow-y:auto;text-align:left;margin:-4px -8px;padding:2px 8px;letter-spacing:.02em}#cmd .trd .tt{text-align:center;font-size:13px;letter-spacing:.16em;color:#ffd36b;margin:2px 0 10px}#cmd .trd .ts{border-top:1px solid rgba(247,147,26,.22);padding:10px 2px 8px}#cmd .trd .th{font-size:10.5px;letter-spacing:.18em;color:#f7931a;margin-bottom:7px}#cmd .trd .tk{display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;font-size:11.5px}#cmd .trd .tk span{color:#a8957a}#cmd .trd .tk b{color:#f7efe3;font-weight:600;overflow-wrap:anywhere}#cmd .trd p{margin:3px 0;color:#e8dcc8;font-size:11.5px;line-height:1.5}#cmd .trd ol{margin:2px 0 0;padding-left:20px;color:#e8dcc8;font-size:11.5px;line-height:1.6}#cmd .trd .pic{display:block;margin:2px auto 10px;width:200px;height:200px;object-fit:contain;border-radius:12px;background:#0b0705;border:1px solid rgba(247,147,26,.3)}#cmd .trd .r{justify-content:flex-start;flex-wrap:wrap;margin-top:8px}#cmd .trd .fine{color:#a8957a;font-size:10.5px;line-height:1.5}
 #cmd input{width:100%;box-sizing:border-box;font:600 15px ui-monospace,Menlo,Consolas,monospace;text-align:center;color:#f7efe3;background:#0b0705;border:1px solid rgba(247,147,26,.4);border-radius:10px;padding:9px}
 #cmd button{min-width:44px;padding:8px 12px;font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;color:#ffb04a;background:rgba(247,147,26,.1);border:1px solid rgba(247,147,26,.4);border-radius:10px;cursor:pointer}
 #cmd button.go,#cmd button.on{background:rgba(247,147,26,.85);color:#140c05}#cmd .n{margin-top:8px;color:#cdbca3;font-size:11px;min-height:1em;letter-spacing:.04em}
@@ -8848,6 +8849,9 @@ function tradePlaques(R, VP) {
     const [bx, bd] = tradeAt(o.k), [px, pz] = cmW(R, bx, bd), [mx, mz] = cmW(R, 0, CM.PD); let nx = mx - px, nz = mz - pz; const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
     const fx = px + nx * (TRADE.W / 2 + .006), fz = R.z0 + pz + nz * (TRADE.W / 2 + .006), fy = TRADE_FLOOR + .1 + (TRADE.H - .22) * .55;
     if ((eye[0] - fx) * nx + (eye[2] - fz) * nz < .05 || Math.hypot(eye[0] - fx, eye[1] - fy, eye[2] - fz) > 16) continue;
+    let hid = false; for (const M of crew.mates.values()) { const Q = M.R; if (!M.shown || !Q || !Q.p) continue; const ex = fx - eye[0], ez = fz - eye[2], t = ((Q.p[0] - eye[0]) * ex + (Q.p[2] - eye[2]) * ez) / (ex * ex + ez * ez || 1); if (t < .02 || t > .98) continue;
+      const cy = eye[1] + (fy - eye[1]) * t; if (Math.hypot(Q.p[0] - eye[0] - ex * t, Q.p[2] - eye[2] - ez * t) < .32 && cy > Q.p[1] - .05 && cy < Q.p[1] + 1.85) { hid = true; break; } }
+    if (hid) continue;
     let rx = nz, rz = -nx; const hw = .24, hh = .085;
     let q = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([a, b]) => pr([fx + rx * hw * a, fy + hh * b, fz + rz * hw * a])); if (q.some(v => !v)) continue;
     if ((q[1][0] - q[0][0]) * (q[2][1] - q[1][1]) - (q[1][1] - q[0][1]) * (q[2][0] - q[1][0]) < 0) q = [q[1], q[0], q[3], q[2]];   // (read the right way round)
@@ -8889,39 +8893,56 @@ function tradeSignal(to, dry) {
 function tradeAsk(k) {
   if (document.pointerLockElement) document.exitPointerLock();
   trade.list = tradeList();
-  const o = trade.list[k], who = o && o.who, mine = !!(who && who.me), p = 'P' + (k + 1);
-  $cmd.innerHTML = '<div class="t"></div><div class="n i"></div><div class="r tunes"></div><div class="r b"></div><div class="n"></div>';
-  $cmd.querySelector('.t').textContent = 'THE TRADE FLOOR · ' + p + (mine ? ' · YOUR BASE' : who ? ' · ' + String(who.name).toUpperCase() : '');
-  const info = $cmd.querySelector('.i'), chips = $cmd.querySelector('.tunes'), row = $cmd.querySelector('.b'), close = () => $cmd.classList.remove('on');
+  const o = trade.list[k], who = o && o.who, mine = !!(who && who.me), p = 'P' + (k + 1), close = () => $cmd.classList.remove('on');
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
   const btn = (t, f, on, c) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; if (on) b.className = 'on'; if (c) { b.style.borderColor = c; b.style.color = on ? '#140c05' : c; if (on) b.style.background = c; } b.onclick = f; return b; };
   const nm = w => w.me ? 'you' : w.p + ' · ' + w.name;
-  if (!who) info.textContent = 'No one is ' + p + ' in this crew yet. Each player in the crew has a base here, in the order of the strip across the top.';
-  else if (mine && o.s) {
-    const D = dealsToMe(), dw = D.filter(x => x.a === 'deal').map(x => nm(x.w)), dn = D.filter(x => x.a === 'no').map(x => nm(x.w));
-    const offer = document.createElement('div'); offer.className = 'r'; chips.before(offer);
-    offer.append(btn('FOR TRADE', () => { tradeOffer('trade'); tradeAsk(k); }, o.w !== 'sale'), btn('FOR SALE', () => { tradeOffer('sale'); tradeAsk(k); }, o.w === 'sale'));
-    chips.style.flexWrap = 'wrap';
-    for (let j = 0; j < TRADE.N; j++) { const w = trade.list[j] && trade.list[j].who; if (w && !w.me && trade.list[j].s) chips.append(btn(tradeChip(w), () => { tradeSignal(w.p); tradeAsk(k); }, !!(o.to && o.to.id === w.id), w.c)); }
-    const L = ['Your block: ' + showName(o.s) + ' · ' + tradeWord(o.w).toUpperCase() + '. Your crew can see it.', tradeCostWords(o)];
-    if (dw.length) L.push('Wants a deal: ' + dw.join(', ') + '. Swap on another app: nothing is swapped here.');
-    if (dn.length) L.push('Not interested: ' + dn.join(', ') + '.');
-    L.push(o.to ? 'Your base shows ' + o.to.p + '’s colour: you would like to trade with ' + nm(o.to) + '.' : chips.children.length ? 'To ask a crewmate to trade, press their name.' : 'No crewmate has a block on their base yet.');
-    info.textContent = L.filter(Boolean).join('\n'); info.style.whiteSpace = 'pre-line';
-    row.append(btn('MY OWN COLOUR', () => { tradeSignal('none'); tradeAsk(k); }, !o.to), btn('TAKE MY BLOCK BACK', () => { tradeSet(null); close(); }));
-  } else if (mine) info.textContent = 'Your base is empty. Only a block your own wallet holds can go on it: ' + (own.addr ? 'hold a parcel with an inscription your wallet holds (your marker shows over it), then press PUT ON MY TRADE BASE.' : 'connect your wallet (read only) on the play together page, hold a parcel with an inscription it holds, then press PUT ON MY TRADE BASE.');
-  else if (o.s) {
-    const my = dealMine(o), deal = document.createElement('div'); deal.className = 'r'; chips.before(deal);
-    deal.append(btn('LET\u2019S MAKE A DEAL', () => { tradeDeal(k, my === 'deal' ? '' : 'deal'); tradeAsk(k); }, my === 'deal'), btn('NOT INTERESTED', () => { tradeDeal(k, my === 'no' ? '' : 'no'); tradeAsk(k); }, my === 'no'));
-    const L = [nm(who) + '’s block: ' + tradeName(o) + ' · ' + tradeWord(o.w).toUpperCase() + '.', tradeCostWords(o), 'Their wallet holds it (the chain says so).'];
-    if (o.to) L.push('They would like to trade with ' + nm(o.to) + '.');
-    L.push(my === 'deal' ? 'You said: let’s make a deal. Now swap on another app (nothing is swapped here). There, check it is the same inscription: a copy can look the same.' : my === 'no' ? 'You said: not interested.' : 'Would you like to make a deal?');
-    if (o.w !== 'sale' && !trade.list.some(q => q && q.who.me && q.s)) L.push('To trade, put a block of yours on your base too.');
-    info.textContent = L.filter(Boolean).join('\n'); info.style.whiteSpace = 'pre-line';
+  $cmd.innerHTML = ''; const W = el('div', 'trd'); $cmd.append(W);
+  W.append(el('div', 'tt', 'THE TRADE FLOOR · ' + p + (mine ? ' · YOUR BASE' : who ? ' · ' + String(who.name).toUpperCase() : '')));
+  const sec = title => { const s = el('div', 'ts'); if (title) s.append(el('div', 'th', title)); W.append(s); return s; };
+  const kv = (s, rows) => { const t = el('div', 'tk'); for (const [a, v] of rows) if (v != null && v !== '') t.append(el('span', '', a), el('b', '', v)); s.append(t); };
+  const row = (s, list) => { const r = el('div', 'r'); for (const b of list) if (b) r.append(b); s.append(r); return r; };
+  const b = o && (o.s || o.wait), X = b ? (b.g || b.o[0]) : '', R = room && room.rooms.find(q => q && q.ready && q.common), I = R && R.trdIt && R.trdIt[k], t = I && I.it.t, r = (X && own.chk.get(X)) || {}, c = X ? tradeCost(X) : null;
+  if (X) ownAsk(X);
+  if (!who) sec().append(el('p', '', 'No one is ' + p + ' in this crew yet. Each player in the crew has a base here, in the order of the strip across the top.'));
+  else if (!b) sec().append(el('p', '', mine ? (own.addr ? 'Your base is empty. Hold a parcel with an inscription your wallet holds (your marker shows over it), then press PUT ON MY TRADE BASE.' : 'Your base is empty. Connect your wallet (read only) on the play together page, hold a parcel with an inscription it holds, then press PUT ON MY TRADE BASE.') : nm(who) + ' has nothing on their base yet.'));
+  else {
+    // the block: its picture (or model), and everything the chain says about it
+    const s = sec((mine ? 'YOUR BLOCK' : String(nm(who)).toUpperCase() + '’S BLOCK') + ' · ' + tradeWord(o.w).toUpperCase());
+    if (t && t.art && t.art.bytes && /^image\//.test(t.art.ct || '')) { if (trade.picUrl) URL.revokeObjectURL(trade.picUrl); trade.picUrl = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct})); const im = el('img', 'pic'); im.alt = ''; im.src = trade.picUrl; s.append(im); }
+    kv(s, [['inscription', r.n != null ? '#' + fmt(r.n) : b.n ? '#' + fmt(b.n) : ''], ['inscription id', X],
+      ['what it is', t && t.art && t.art.mdl ? '3D model (' + (r.ct || 'glTF') + '), drawn here from the model' : r.ct ? r.ct.split(';')[0] : ''], ['size', r.len ? fmt(r.len) + ' bytes' : ''],
+      ['made', (r.ts ? new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' · ' : '') + (r.h != null ? 'block ' + fmt(r.h) : '')],
+      ['inscription fee', c ? fmt(c.fee) + ' sats · what inscribing it cost (as ordinals.com lists it)' : 'being read…'], ['sits on', c && c.v != null ? fmt(c.v) + ' sats' : ''],
+      ['held by', o.s ? (mine ? 'your wallet: the chain says so' : 'their wallet: the chain says so') : 'being checked on the chain…']]);
+    row(s, [I && !room.held ? btn('PICK IT UP TO LOOK CLOSER', () => { close(); rmHold(I.it); }) : null, X ? btn('OPEN ON ORDINALS.COM ↗', () => { try { window.open('https://ordinals.com/inscription/' + X, '_blank', 'noopener'); } catch (e) {} }) : null]);
+    s.append(el('p', 'fine', 'Picked up, it shows on your tablet; VIEW BIG shows it full size' + (t && t.art && t.art.mdl ? ', and GO LIVE turns the 3D model.' : '.')));
+    if (mine && o.s) {
+      const D = dealsToMe(), dw = D.filter(x => x.a === 'deal').map(x => nm(x.w)), dn = D.filter(x => x.a === 'no').map(x => nm(x.w));
+      const s2 = sec('YOUR OFFER');
+      row(s2, [btn('FOR TRADE', () => { tradeOffer('trade'); tradeAsk(k); }, o.w !== 'sale'), btn('FOR SALE', () => { tradeOffer('sale'); tradeAsk(k); }, o.w === 'sale')]);
+      s2.append(el('p', '', 'Your crew sees ' + tradeWord(o.w).toUpperCase() + ' over your base.'));
+      const s3 = sec('ANSWERS FROM YOUR CREW');
+      s3.append(el('p', '', dw.length || dn.length ? (dw.length ? 'Would like to make a deal: ' + dw.join(', ') + '.' : '') + (dn.length ? (dw.length ? ' ' : '') + 'Not interested: ' + dn.join(', ') + '.' : '') : 'No answers yet.'));
+      const s4 = sec('SIGNAL A CREWMATE'), chips = row(s4, []);
+      for (let j = 0; j < TRADE.N; j++) { const w = trade.list[j] && trade.list[j].who; if (w && !w.me && trade.list[j].s) chips.append(btn(tradeChip(w), () => { tradeSignal(w.p); tradeAsk(k); }, !!(o.to && o.to.id === w.id), w.c)); }
+      chips.append(btn('MY OWN COLOUR', () => { tradeSignal('none'); tradeAsk(k); }, !o.to));
+      s4.append(el('p', '', o.to ? 'Your base shows ' + o.to.p + '’s colour: you would like to trade with ' + nm(o.to) + '.' : chips.children.length > 1 ? 'Press a crewmate’s name to turn your base to their colour: it tells them you would like to trade with them.' : 'Once a crewmate has a block on their base too, you can turn yours to their colour.'));
+    } else if (o.s) {
+      const my = dealMine(o), s2 = sec('YOUR ANSWER');
+      row(s2, [btn('LET’S MAKE A DEAL', () => { tradeDeal(k, my === 'deal' ? '' : 'deal'); tradeAsk(k); }, my === 'deal'), btn('NOT INTERESTED', () => { tradeDeal(k, my === 'no' ? '' : 'no'); tradeAsk(k); }, my === 'no')]);
+      s2.append(el('p', '', my === 'deal' ? 'You told them you would like to make a deal. Now arrange the swap on another app. There, check the inscription id is exactly this one: a copy can look the same.' : my === 'no' ? 'You told them you are not interested.' : 'Would you like to make a deal? They are told your answer.'));
+      if (o.to) s2.append(el('p', '', 'Their base shows ' + (o.to.me ? 'your' : o.to.p + '’s') + ' colour: they would like to trade with ' + nm(o.to) + '.'));
+      if (o.w !== 'sale' && !trade.list.some(q => q && q.who.me && q.s)) s2.append(el('p', 'fine', 'To trade a block of yours for it, put yours on your base too.'));
+    } else sec().append(el('p', '', (mine ? 'You' : nm(who)) + ' put a block here: the chain is being asked whether ' + (mine ? 'your' : 'their') + ' wallet holds it…'));
   }
-  else if (o.wait) info.textContent = nm(who) + ' put a block here: checking the chain that their wallet holds it…';
-  else info.textContent = nm(who) + ' has nothing on their base yet.';
-  if (who) row.append(btn('EXPLAIN TO MY AGENT', () => tradeCopy(k)));
-  row.append(btn('CLOSE', close));
+  // how it works, and who is responsible
+  const h = sec('HOW IT WORKS'), ol = el('ol');
+  for (const x of ['Put a block your own wallet holds on your base (your wallet is only read, never used).', 'Mark it FOR SALE or FOR TRADE. Your crew sees it, with what inscribing it cost.', 'Crewmates answer LET’S MAKE A DEAL or NOT INTERESTED. You are told.', 'Agree the swap on another app. Nothing is bought, sold or swapped in Agent Blockhall.', 'There, check the inscription id matches exactly, and prefer a swap where both sides go in one transaction, so nobody sends first.']) ol.append(el('li', '', x));
+  h.append(ol);
+  sec('RESPONSIBILITY').append(el('p', 'fine', 'Every trade or sale happens off Agent Blockhall, between the players, on another app. Each player is responsible for their own trades. Agent Blockhall is not part of any trade and claims no liability for it.'));
+  const f = sec(); row(f, [mine && o && o.s ? btn('TAKE MY BLOCK BACK', () => { tradeSet(null); close(); }) : null, who ? btn('EXPLAIN TO MY AGENT', () => tradeCopy(k)) : null, btn('CLOSE', close)]);
+  f.append(el('div', 'n'));
   $cmd.classList.add('on');
 }
 // EXPLAIN TO MY AGENT: this base's details and plain steps, copied for a person to paste into their own AI agent's chat
@@ -8941,7 +8962,7 @@ function tradeExplain(k) {
     if (who.me) { const D = dealsToMe(); L.push('- answers from my crew: ' + (D.length ? D.map(d => '"' + d.w.name + '" (' + d.w.p + '): ' + DEAL_WORD[d.a]).join('; ') : 'none yet')); }
   } else L.push(who.me ? 'My base is empty.' : 'Their base is empty.');
   L.push('', 'My buttons here: ' + (who.me ? (b ? 'FOR TRADE or FOR SALE, a crewmate\'s colour (to signal I would like to trade with them), TAKE MY BLOCK BACK.' : 'none yet: I hold a block my wallet holds and press PUT ON MY TRADE BASE.') : b ? 'LET\'S MAKE A DEAL or NOT INTERESTED.' : 'none yet.'));
-  L.push('Nothing is bought, sold or swapped inside the game. A deal means we take it to another app to swap.', '');
+  L.push('Nothing is bought, sold or swapped inside the game. A deal means we take it to another app to swap. Each player is responsible for their own trades there; Agent Blockhall is not part of any trade and claims no liability for it.', '');
   L.push('Steps for you, my agent:');
   L.push(who.me ? '1. Explain what my block is and what inscribing it cost.' : '1. Explain what this inscription is and what inscribing it cost.');
   L.push(who.me ? '2. Help me choose FOR SALE or FOR TRADE, and what to say to anyone who wants a deal.' : '2. Help me decide: LET\'S MAKE A DEAL or NOT INTERESTED.');
@@ -8955,7 +8976,7 @@ async function tradeCopy(k) {
   let ok = false; try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {}
   if (!ok) try { const a = document.createElement('textarea'); a.value = text; a.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.append(a); a.select(); ok = document.execCommand('copy'); a.remove(); } catch (e) {}
   if (ok) note('copied · paste it into your AI agent\u2019s chat (ChatGPT, Claude or another): it has this base\u2019s details and plain steps', 10);
-  else { const box = document.createElement('textarea'); box.readOnly = true; box.value = text; box.style.cssText = 'width:100%;height:9em;margin-top:6px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace'; $cmd.querySelector('.n:last-child').replaceChildren(box); box.select(); note('select all and copy it, then paste it into your AI agent\u2019s chat', 10); }
+  else { const box = document.createElement('textarea'); box.readOnly = true; box.value = text; box.style.cssText = 'width:100%;height:9em;margin-top:6px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace'; ($cmd.querySelector('.trd .n') || $cmd).replaceChildren(box); box.select(); note('select all and copy it, then paste it into your AI agent\u2019s chat', 10); }
   return {ok, text};
 }
 // its picture, for anyone who did not put it there (or after a reload): read through the reader, one ask at a time
@@ -8982,9 +9003,10 @@ function showCard(t) {
   const w = t.who;
   $cn.textContent = w ? (w.me ? 'on your trade base · ' + w.p : 'on ' + w.p + ' · ' + w.name + '’s trade base') : 'on a trade base';
   const rows = [];
+  const X = t.gal ? t.gid : t.ordIds && t.ordIds[0], r = (X && own.chk.get(X)) || {}; if (X) ownAsk(X);
   if (t.mate) {   // (a crewmate's block: only what the chain said)
-    if (t.n != null) rows.push(['inscription', '#' + fmt(t.n)]);
-    if (t.ch != null) rows.push(['made in block', fmt(t.ch)]);
+    if (t.n != null || r.n != null) rows.push(['inscription', '#' + fmt(r.n != null ? r.n : t.n)]);
+    if (t.ch != null || r.h != null) rows.push(['made in block', fmt(r.h != null ? r.h : t.ch)]);
     rows.push(['checked', 'their wallet holds it: the chain says so']);
   } else if (t.gal) {
     rows.push(['collection', t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)]);
@@ -8995,7 +9017,12 @@ function showCard(t) {
     rows.push(['from block', fmt(t.h)]); rows.push(['transaction', fmt(t.idx) + ' in that block']);
     rows.push(['kind', TYPES[t.kk] ? TYPES[t.kk].name : '?']);
     if (t.ordIds) rows.push(['inscriptions', fmt(t.ordIds.length) + (t.ordIds.length >= 4 ? ' or more' : '')]);
+    if (r.n != null) rows.push(['inscription', '#' + fmt(r.n)]);
   }
+  if (X) rows.push(['inscription id', X]);
+  if (r.ts && !t.gal) rows.push(['made', new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
+  if (!t.ct && r.ct) rows.push(['type', r.ct + (r.len ? ' · ' + fmt(r.len) + ' bytes' : '')]);
+  if (t.art && t.art.mdl) rows.push(['picture', 'its 3D model, drawn here from the model · VIEW BIG, then GO LIVE, turns the model']);
   if (t.who && t.w) rows.splice(0, 0, ['offered', tradeWord(t.w)]);
   { const c = tradeCost(t.gal ? t.gid : t.ordIds && t.ordIds[0]); if (c) { rows.push(['inscription fee', fmt(c.fee) + ' sats · what inscribing it cost (ordinals.com)']); if (c.v != null) rows.push(['sits on', fmt(c.v) + ' sats']); } }
   if (t.who && t.who.me) { const D = dealsToMe(); if (D.length) rows.push(['answers', D.map(x => x.w.p + ' · ' + x.w.name + ': ' + DEAL_WORD[x.a]).join(' · ')]); }
@@ -9004,6 +9031,7 @@ function showCard(t) {
   if (t.word && t.word.a && !t.art && !t.word.num) rows.push(['it says', t.word.a.length > 64 ? t.word.a.slice(0, 63) + '…' : t.word.a]);
   $cr.innerHTML = ''; addRows(rows); if (t._held && t._held.length && room && room.held && room.held.it.t === t) addRows(t._held);
   $ct.textContent = t.mate && t.ordIds ? t.ordIds[0] : t.gal ? t.gid : t.id; $cp.innerHTML = ''; $cp.style.display = 'none';
+  if (room && room.held && room.held.it.t === t) preview(t);   // (in your hands: its picture or model, as any parcel's)
   $card.classList.remove('st'); $card.classList.add('on'); fitCard();
 }
 // the button: put the parcel in your hands on your trade base (only one your wallet holds), then go and see it
@@ -14502,7 +14530,9 @@ async function ownRun() {
       try { const j = await galGet('/r/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
       if (a == null) try { const j = await ordJson('/inscription/' + x); a = j && typeof j.address === 'string' ? j.address : null; if (a != null) J = j; } catch (e) {}
       if (a == null) { const F = own.fail.get(x) || {n: 0}; F.n++; F.until = performance.now() + OWN_WAIT[Math.min(F.n, OWN_WAIT.length) - 1]; own.fail.set(x, F); if (own.fail.size > 4000) own.fail.delete(own.fail.keys().next().value); } else own.fail.delete(x);
-      if (a != null) { own.chk.set(x, {a, t: performance.now(), h: Number.isInteger(J.height) ? J.height : null, n: Number.isInteger(J.number) ? J.number : null, fee: Number.isInteger(J.fee) ? J.fee : null, v: Number.isInteger(J.value) ? J.value : null}); if (own.chk.size > 4000) own.chk.delete(own.chk.keys().next().value); own.ver++; }
+      if (a != null) { own.chk.set(x, {a, t: performance.now(), h: Number.isInteger(J.height) ? J.height : null, n: Number.isInteger(J.number) ? J.number : null, fee: Number.isInteger(J.fee) ? J.fee : null, v: Number.isInteger(J.value) ? J.value : null, ts: Number.isFinite(J.timestamp) ? J.timestamp : null, ct: typeof J.content_type === 'string' ? J.content_type.slice(0, 80) : null, len: Number.isInteger(J.content_length) ? J.content_length : null});
+        try { if (sel && $card.classList.contains('on') && (sel.gal ? sel.gid === x : sel.ordIds && sel.ordIds[0] === x)) select(sel); } catch (e) {}   // (the tablet in your hands shows it as it comes)
+        if (own.chk.size > 4000) own.chk.delete(own.chk.keys().next().value); own.ver++; }
     })().finally(() => { own.busy--; own.asking.delete(x); ownRun(); });
   }
 }
@@ -15021,7 +15051,7 @@ window.AgentKit = window.AgentKit || (() => {
   function tradeInfo() {
     try { tradeKeep(); } catch (e) {}
     trade.list = tradeList();
-    return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), FOR SALE or FOR TRADE (setOffer), and putting it there tells your crew. At a crewmate\'s base you answer LET\'S MAKE A DEAL or NOT INTERESTED (answerDeal); they are told. Once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them. Nothing is bought, sold or swapped here: a deal is taken to another app (check there that the inscription id matches exactly: a copy can look the same). Each block shows what inscribing it cost (inscriptionFeeSats). You use a base standing at it, as a player does: these commands walk you there in the common room.',
+    return {about: 'Six bases in a ring on the Forum\'s sunken floor (common room), one per crew player, P1 to P6 in the order of the strip across the top. Only a block your own wallet holds can go on yours (putOnTradeBase), FOR SALE or FOR TRADE (setOffer), and putting it there tells your crew. At a crewmate\'s base you answer LET\'S MAKE A DEAL or NOT INTERESTED (answerDeal); they are told. Once a crewmate has a block on their base too, turning your base to their colour (signalTrade) says you would like to trade with them. Nothing is bought, sold or swapped here: a deal is taken to another app (check there that the inscription id matches exactly: a copy can look the same). Each player is responsible for their own trades there; Agent Blockhall is not part of any trade and claims no liability for it. Each block shows what inscribing it cost (inscriptionFeeSats). You use a base standing at it, as a player does: these commands walk you there in the common room.',
       you: own.me.p, yourBase: tradeMyBase(), wallet: own.addr ? 'read status on' : 'none (a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve())',
       bases: trade.list.map((o, k) => !o ? {base: 'P' + (k + 1), player: null} : {base: o.who.p, colour: o.col, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, offer: o.s || o.wait ? tradeWord(o.w) : undefined, block: o.s ? tradeBlockOf(k) : null, answers: o.who.me && o.s ? dealsToMe().map(x => ({from: {untrusted: x.w.name}, base: x.w.p, answer: DEAL_WORD[x.a]})) : undefined, yourAnswer: !o.who.me && dealMine(o) ? DEAL_WORD[dealMine(o)] : undefined, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined, wouldTradeWith: o.to ? (o.to.me ? 'you (' + o.to.p + ')' : o.to.p) : null})};
   }
