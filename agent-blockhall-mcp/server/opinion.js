@@ -54,10 +54,20 @@
     for (const [re, f] of SAY) { const m = t.match(new RegExp(re.source, 'i')); if (m) { const c = f(m); for (const k of ['subject', 'value']) if (typeof c[k] === 'string' && /^(#|[0-9a-f]{64})/i.test(c[k])) c[k] = c[k].toLowerCase(); return Object.assign(c, {text: t0}, approx && typeof c.value === 'number' ? {approx: true} : {}); } }
     throw new Error('this claim is not one of the kinds it can check. It checks: ' + Object.values(KINDS).join('; ') + '. Write it like "block 840000 has 3,000 inscriptions" or "#1000 was made in block 767,753"');
   }
+  // a claim given as {kind, subject, value}, said back in plain words (so a link to it can be read again)
+  const WORDS = {'block.inscriptions': (s, v) => 'block ' + s + ' has ' + fmt(v) + ' inscriptions', 'block.transactions': (s, v) => 'block ' + s + ' has ' + fmt(v) + ' transactions', 'block.hash': (s, v) => 'block ' + s + '\'s hash is ' + v,
+    'block.fees': (s, v) => 'block ' + s + ' paid ' + fmt(v) + ' sats in fees', 'block.miner': (s, v) => 'block ' + s + ' was mined by ' + v, 'ins.block': (s, v) => s + ' was made in block ' + fmt(v), 'ins.number': (s, v) => s + ' is #' + v,
+    'ins.sat': (s, v) => s + ' is on sat ' + v, 'ins.type': (s, v) => s + ' is ' + v, 'ins.size': (s, v) => s + ' is ' + fmt(v) + ' bytes', 'ins.holder': (s, v) => s + ' is held by ' + v, 'ins.parent': (s, v) => s + ' is a child of ' + v,
+    'coll.count': (s, v) => 'collection ' + s + ' has ' + fmt(v) + ' children', 'addr.holds': (s, v) => 'address ' + s + ' holds ' + v, 'addr.balance': (s, v) => 'address ' + s + ' has ' + fmt(v) + ' sats'};
   function normal(c) {
     if (typeof c === 'string') return parse(c);
     if (!c || !KINDS[c.kind]) throw new Error('kind must be one of: ' + Object.keys(KINDS).join(', '));
-    return Object.assign({}, c, {text: c.text || c.kind + ' ' + c.subject + ' = ' + c.value});
+    const insLike = t => /^-?\d+$/.test(String(t)) ? '#' + t : String(t).toLowerCase();
+    const subject = /^(ins\.|coll\.)/.test(c.kind) ? insLike(c.subject) : /^block\./.test(c.kind) ? num(c.subject) : String(c.subject);
+    let value = c.value; if (/^(block\.(inscriptions|transactions|fees)|ins\.(block|size|number|sat)|coll\.count|addr\.balance)$/.test(c.kind)) value = num(value);
+    if (/^(ins\.parent|addr\.holds)$/.test(c.kind)) value = insLike(value);
+    if (c.kind === 'ins.type') value = TYPES[String(value).toLowerCase()] || String(value).toLowerCase();
+    return Object.assign({}, c, {subject, value, text: c.text || WORDS[c.kind](subject, value)});
   }
 
   /* ---------- the sources ---------- */
@@ -66,11 +76,12 @@
   async function blockHash(h, io) { const x = await io.mpText('/api/block-height/' + h); return {hash: x.t.trim(), site: x.site}; }
   async function blockBytes(hash, io) { return io.mpBytes('/api/block/' + hash + '/raw'); }
   const S = (source, says, agrees, how, kind) => ({source, says, agrees, how, kind});
-  let APPROX = false;   // (set for the claim being checked: "about 37.6 BTC" agrees within 1%)
-  const same = (v, want) => typeof v === 'number' && typeof want === 'number' ? (APPROX ? Math.abs(v - want) <= Math.abs(want) * 0.01 : v === want) : v === want;
+
 
   async function gather(c, io, say) {
     const out = [], note = [];
+    // (each claim's own rule: "about 37.6 BTC" agrees within 1%; so two claims checked at once never mix)
+    const same = (v, want) => typeof v === 'number' && typeof want === 'number' ? (c.approx ? Math.abs(v - want) <= Math.abs(want) * 0.01 : v === want) : v === want;
     const tryIt = async (f, label) => { try { await f(); } catch (e) { out.push(S(label, null, null, 'did not answer: ' + String(e && e.message || e).slice(0, 100), null)); } };
     const k = c.kind;
     if (k.startsWith('block.')) {
@@ -172,13 +183,13 @@
   /* ---------- the answer ---------- */
   async function check(claim, io, progress) {
     const say = (k, v) => { try { progress && progress(k, v); } catch (e) {} };
-    const c = normal(claim); say('read', c.kind); APPROX = !!c.approx;
+    const c = normal(claim); say('read', c.kind);
     const {sources, notes} = await gather(c, io, say);
     const show = v => typeof v === 'number' ? (/fees|balance/.test(c.kind) ? fmt(v) + ' sats (' + (v / 1e8).toLocaleString('en-GB', {maximumFractionDigits: 8}) + ' BTC)' : fmt(v)) : /^\d+$/.test(String(v)) && String(v).length < 16 ? fmt(+v) : String(v);
     const used = sources.filter(s => s.agrees !== null), yes = used.filter(s => s.agrees), no = used.filter(s => s.agrees === false), chain = used.filter(s => s.kind === 'chain');
     let answer, verdict;
     if (!used.length) { answer = 'unknown'; verdict = 'Could not be checked: no source answered it'; }
-    else if (!no.length) { answer = 'true'; verdict = 'True: ' + (yes.length === 1 ? 'the one source that answered agrees' : yes.length === 2 ? 'both sources agree' : 'all ' + yes.length + ' sources agree') + (c.approx ? ' (within 1%)' : '') + (chain.length ? ', the chain itself included' : ''); }
+    else if (!no.length) { answer = 'true'; verdict = 'True: ' + (yes.length === 1 ? 'the one source that answered agrees' : yes.length === 2 ? 'both sources agree' : 'all ' + yes.length + ' sources agree') + (c.approx ? ' (within 1%: ' + show(yes[0].says) + ')' : '') + (chain.length ? ', the chain itself included' : ''); }
     else if (!yes.length) { const vals = [...new Set(no.map(s => show(s.says)))]; answer = 'false'; verdict = 'False: ' + (vals.length === 1 ? (no.length === 1 ? 'the source says ' : no.length === 2 ? 'both sources say ' : 'all ' + no.length + ' sources say ') + vals[0] : 'the sources say ' + vals.join(' / ')); }
     else { answer = chain.length ? (chain.every(s => s.agrees) ? 'true' : 'false') : 'mixed'; verdict = 'The sources differ: ' + yes.length + ' agree, ' + no.length + ' don\'t' + (chain.length ? '; the chain itself says ' + (chain.every(s => s.agrees) ? 'it is true' : show(chain[0].says)) : ''); }
     const r = {check: 'Agent Blockhall Second Opinion ' + VERSION, claim: {text: c.text, kind: c.kind, means: KINDS[c.kind], subject: c.subject, value: c.value, approx: c.approx || undefined, inscription: c._id, parent: c._pid},
