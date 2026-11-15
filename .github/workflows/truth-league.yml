@@ -1,0 +1,70 @@
+# Truth League: every few hours, prove one Bitcoin block and one Dogecoin block from their own bytes, ask each data site the
+# portal's tools read a few facts about them, mark each answer right or wrong against the bytes, and keep 30 days of it on the
+# truth-league branch (remade each time, so it holds only the newest copy). Free: GitHub runs it.
+# It only writes to the truth-league branch. To run it by hand: Actions > Truth League > Run workflow.
+name: Truth League
+
+on:
+  schedule:
+    # GitHub starts this repo's timed jobs late, sometimes by hours (see source-health.yml). So it is asked four times an hour,
+    # and the first step skips the check unless the last one was saved 170 minutes ago or more: it checks about every 3 hours.
+    # The keeper (keeper.yml) also starts it on pushes to main when it is due.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      ifDue:
+        description: 'yes: only check if the last check is 170 minutes old or more (the keeper uses this). Leave empty to always check.'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: truth-league
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Was there a check in the last 170 minutes?
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/truth-league" --jq .commit.committer.date 2>/dev/null || true)
+          age=999999
+          if [ -n "$last" ]; then age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) )); fi
+          if { [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.ifDue }}" = "yes" ]; } && [ "$age" -lt 10200 ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "The last check was saved $((age / 60)) minutes ago: not due yet."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.due.outputs.go == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.due.outputs.go == 'true'
+        with:
+          node-version: 20
+      - name: The record so far
+        if: steps.due.outputs.go == 'true'
+        run: |
+          mkdir -p league
+          if git fetch -q --depth 1 origin truth-league; then git show FETCH_HEAD:league.json > league/league.json || rm -f league/league.json; fi
+      - name: Prove the blocks and ask each site
+        if: steps.due.outputs.go == 'true'
+        run: node .github/truth-league/check.js league
+      - name: Save it
+        if: steps.due.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp .github/truth-league/README.md league/README.md
+          cd league
+          git init -q -b truth-league
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Truth League: $(date -u +%FT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" truth-league
