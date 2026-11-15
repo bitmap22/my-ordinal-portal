@@ -223,7 +223,12 @@ body #tools{display:grid;grid-template-columns:repeat(2,auto);gap:6px;left:auto;
 #fb{height:44px;border-radius:22px;padding:0 16px}#h{min-height:44px}}
 @media (pointer:coarse) and (max-width:640px){#tools{bottom:72px}#kinds{bottom:124px}#card{bottom:calc(136px + var(--kh,0px))}#feed{bottom:max(192px,calc(124px + var(--kh,0px)))}}
 /* phones: the round buttons in one row, used when two rows would reach up into the block's details */
-@media (max-width:640px){body.tl1 #tools{grid-template-columns:none;grid-auto-flow:column}}
+@media (max-width:640px){body.tl1 #tools{grid-template-columns:none;grid-auto-flow:column}
+/* (15 Nov 2026) phones: the block cards strip sits between the round home and menu buttons; on a short screen the lines under the
+   block number show on one line each (tap them for all of it), so the round buttons and the cube have room */
+@media (max-width:640px){body #strip{max-width:calc(100vw - 104px)}
+body.cmp:not(.cmpo) #st,body.cmp:not(.cmpo) #ot,body.cmp:not(.cmpo) #mn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.cmp #st,body.cmp #ot,body.cmp #mn{cursor:pointer}}}
 /* phones: the parcel-type tabs wrap onto a second line instead of running off the screen */
 @media (max-width:640px){#kh{display:flex;flex-wrap:wrap;align-items:center;row-gap:5px;white-space:normal}}
 /* short phones: the parcel-type chips sit in one row you can slide sideways, so the cube keeps its room */
@@ -3479,7 +3484,12 @@ function drawKinds() {
 function toolsFit() {
   const T = document.getElementById('tools'), P = document.getElementById('top');
   if (!T || !P) return;
-  if (!matchMedia('(max-width:640px)').matches) { document.body.classList.remove('tl1'); return; }
+  if (!matchMedia('(max-width:640px)').matches) { document.body.classList.remove('tl1', 'cmp', 'cmpo'); return; }
+  // a short screen: with the lines under the block number in full, the round buttons come within 120 px of them (no room for
+  // the cube), so those lines show on one line each (decided with them in full, so it never flips back and forth)
+  { const B = document.body, had = B.classList.contains('cmp'); B.classList.remove('cmp');
+    const t0 = T.getBoundingClientRect(), p0 = P.getBoundingClientRect();
+    if (t0.height && p0.height) B.classList.toggle('cmp', t0.top - p0.bottom < 120); else if (had) B.classList.add('cmp'); }
   const r = T.getBoundingClientRect(), p = P.getBoundingClientRect();
   const shown = [...T.children].filter(b => b.offsetWidth > 0);
   if (!r.height || !p.height || !shown.length) return;   // hidden right now (a parcel open, inside a room): check again later
@@ -3487,6 +3497,8 @@ function toolsFit() {
   document.body.classList.toggle('tl1', rows > 1 && r.bottom - (rows * bh + (rows - 1) * 6) < p.bottom + 8);
 }
 addEventListener('resize', toolsFit);
+// a tap on the shortened lines shows them in full (and folds them again)
+['st', 'ot', 'mn'].forEach(id => { const e = document.getElementById(id); if (e) e.addEventListener('click', () => { if (document.body.classList.contains('cmp')) document.body.classList.toggle('cmpo'); }); });
 if (window.ResizeObserver) { const ro = new ResizeObserver(() => toolsFit()); ['top', 'kinds', 'tools'].forEach(id => { const e = document.getElementById(id); if (e) ro.observe(e); }); }
 setTimeout(toolsFit, 0);
 
