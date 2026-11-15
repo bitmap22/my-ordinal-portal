@@ -291,8 +291,8 @@
         const agree = res ? P.reserved === 'true' : theirs != null && +theirs === ours;
         return Object.assign(R, {answer: 'not etched', rune: {name: name.spaced, letters: name.letters},
           verdict: res ? 'Nobody has etched ' + name.spaced + ', and nobody can: a name this long (27 letters from AAAAAAAAAAAAAAAAAAAAAAAAAAA up) is reserved. ord gives such names itself, to etchings that don\'t choose one.'
-            : 'Nobody has etched ' + name.spaced + ' yet (ordinals.com has no rune by that name). ' + (ours === 0 ? 'A name of ' + name.letters.length + ' letters could be etched from the start of runes.' : 'A name like this can be etched from block ' + group(ours) + '.') + (agree ? ' ordinals.com says the same.' : ' ordinals.com says ' + (theirs ? 'block ' + group(theirs) : 'something else') + ': they differ.'),
-          unlock: {block: ours, ordinals: theirs == null ? null : +theirs, same: agree, reserved: res}, sources: [...sources]});
+            : 'Nobody has etched ' + name.spaced + ' yet (ordinals.com has no rune by that name). ' + (ours === 0 ? 'A name of ' + name.letters.length + ' letters could be etched from the start of runes.' : 'A name like this can be etched from block ' + group(ours) + '.') + (agree ? ' ordinals.com says the same' + (!P['unlock time'] || ours === 0 ? '.' : /expected/.test(P['unlock time']) ? ', and expects that block around ' + P['unlock time'].replace(/\s*\(expected\)$/, '') + '.' : ': that block came on ' + P['unlock time'] + '.') : ' ordinals.com says ' + (theirs ? 'block ' + group(theirs) : 'something else') + ': they differ.'),
+          unlock: {block: ours, ordinals: theirs == null ? null : +theirs, same: agree, reserved: res, when: P['unlock time'] || null}, sources: [...sources]});
       }
       page = readPage(x.t);
       if (!page) throw new Error('ordinals.com\'s page for ' + t0 + ' could not be read');
