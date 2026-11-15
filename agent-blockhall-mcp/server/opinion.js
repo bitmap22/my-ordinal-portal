@@ -5,18 +5,24 @@
    - an inscription's block, number, sat, file type, size, holder or parent   ("#1000 was made in block 767,753", "#1000 is a child of #0")
    - a collection's size                                             ("collection #126744012 has 2 children")
    - what an address holds                                           ("address bc1q... holds #1000", "address bc1q... has 0.5 BTC")
+   - a rune's block, ID, symbol, decimal places, premine, mint cap, mint amount, turbo, number, mints or supply
+                                                                     ("DOG•GO•TO•THE•MOON was etched in block 840,000", "UNCOMMON•GOODS's symbol is ⧉")
+     Rune claims need Rune Proof's reader (runeproof.js) loaded too. ordinals.com is the only free site with rune pages a web
+     page can read, so for a rune the other source is the chain itself: its etching transaction's own bytes, proven to be in
+     its block. What only an index can count (mints, supply, its number) comes from ordinals.com alone, and the answer says so.
    Each source says what it says; the chain's own bytes (a block or a transaction, worked out to its own hash) count for most.
    It uses the Block Manifest's block reader (manifest.js), the Provenance Check's transaction reader (provenance.js) and the
-   Collection Check's trail (collection.js). The same file is for the portal's Second Opinion page and the free Agent Blockhall
+   Collection Check's trail (collection.js), and for runes Rune Proof's reader (runeproof.js). The same file is for the portal's Second Opinion page and the free Agent Blockhall
    MCP tool. Fetching is left to whoever uses it (the io object: ordJson, ord2Json, ordText, ordList(height) -> ord's list of the
-   block's inscription IDs, mpJson, mp2Json(path, notThisSite), mpText, mpBytes). No other packages.
+   block's inscription IDs, mpJson, mp2Json(path, notThisSite), mpText, mpBytes; for runes also ordPage(path) -> {status, t, site}
+   for ordinals.com's pages, 200 and 404). No other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
 (function (root, make) {
-  if (typeof module === 'object' && module.exports) module.exports = make(require('./provenance.js'), require('./manifest.js'), require('./collection.js'));
-  else root.SecondOpinion = make(root.ProvenanceCheck, root.BlockManifest, root.CollectionCheck);
-})(typeof self !== 'undefined' ? self : this, function (PV, BM, CC) {
+  if (typeof module === 'object' && module.exports) { let RP = null; try { RP = require('./runeproof.js'); } catch (e) {} module.exports = make(require('./provenance.js'), require('./manifest.js'), require('./collection.js'), RP); }
+  else root.SecondOpinion = make(root.ProvenanceCheck, root.BlockManifest, root.CollectionCheck, root.RuneProof);
+})(typeof self !== 'undefined' ? self : this, function (PV, BM, CC, RP) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = RP ? '1.1.0' : '1.0.0';   // (1.1.0: rune claims, when Rune Proof's reader is loaded too)
   if (!PV || !BM || !CC) throw new Error('the Second Opinion needs provenance.js, manifest.js and collection.js loaded first');
   const fmt = n => Number(n).toLocaleString('en-GB');
   const ID = '(#?-?\\d+|[0-9a-f]{64}i\\d+)', ADDR = '(bc1[02-9ac-hj-np-z]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})';
@@ -28,6 +34,11 @@
     'block.fees': 'the fees a block paid (in sats)', 'block.miner': 'who mined a block', 'ins.block': 'the block an inscription was made in', 'ins.number': 'an inscription\'s number',
     'ins.sat': 'the sat an inscription sits on', 'ins.type': 'an inscription\'s file type', 'ins.size': 'an inscription\'s size (bytes)', 'ins.holder': 'who holds an inscription (its address)',
     'ins.parent': 'an inscription is a child of a parent (belongs to its collection)', 'coll.count': 'how many children a parent has', 'addr.holds': 'an address holds an inscription', 'addr.balance': 'how much bitcoin an address has (sats)'};
+  // runes (15 Nov 2026): what a rune's etching says, checked against ordinals.com, and what only ordinals.com can count
+  if (RP) Object.assign(KINDS, {'rune.block': 'the block a rune was etched in', 'rune.id': 'a rune\'s ID (its block and its place in it, like 840000:3)', 'rune.symbol': 'a rune\'s symbol',
+    'rune.divisibility': 'how many decimal places a rune has', 'rune.premine': 'how much of a rune went to its etcher at the start (its premine)', 'rune.cap': 'how many times a rune can be minted (its cap)',
+    'rune.amount': 'how much each mint of a rune makes', 'rune.turbo': 'whether a rune is turbo (takes part in future rune upgrades early)', 'rune.number': 'a rune\'s number (the order runes were etched in)',
+    'rune.mints': 'how many times a rune has been minted so far', 'rune.supply': 'how much of a rune there is now (its supply)'});
 
   /* ---------- reading a claim written in plain words ---------- */
   const SAY = [
@@ -47,6 +58,32 @@
     [new RegExp('^(?:collection|parent|inscription)\\s+' + ID + '\\s+has\\s+([\\d,]+)\\s+(?:children|child|pieces?|items?)$'), m => ({kind: 'coll.count', subject: m[1], value: num(m[2])})],
     [new RegExp('^(?:inscription\\s+)?' + ID + '\\s+is\\s+(?:an?\\s+)?([a-z0-9.+-]+\\/[a-z0-9.+-]+|' + Object.keys(TYPES).join('|') + ')(?:\\s+file|\\s+image)?$'), m => ({kind: 'ins.type', subject: m[1], value: TYPES[m[2].toLowerCase()] || m[2].toLowerCase()})]
   ];
+  // a rune: its name (• or a dot between words, or nothing) or its ID (840000:3), with or without "rune" before it
+  const RN = '(?:the\\s+)?(?:rune\\s+)?([a-z]+(?:[•.·][a-z]+)*|\\d+:\\d+)', POS = '(?:\'s|’s)?', AMT = '([\\d,]*\\.?\\d+)(?:\\s+\\S{1,12})?';
+  const runeLike = t => /^\d+:\d+$/.test(String(t).trim()) ? String(t).trim() : String(t).trim().replace(/^#/, '').toUpperCase().replace(/[.·]/g, '•');
+  const digits = t => String(t).replace(/[,_\s]/g, '');
+  if (RP) SAY.push(
+    [new RegExp('^' + RN + '\\s+(?:was\\s+)?(?:etched|made|created|launched)\\s+in\\s+block\\s+([\\d,]+)$'), m => ({kind: 'rune.block', subject: runeLike(m[1]), value: num(m[2])})],
+    [new RegExp('^' + RN + POS + '\\s+(?:rune\\s+)?id\\s+is\\s+(\\d+:\\d+)$'), m => ({kind: 'rune.id', subject: runeLike(m[1]), value: m[2]})],
+    [new RegExp('^' + RN + '\\s+is\\s+rune\\s+(\\d+:\\d+)$'), m => ({kind: 'rune.id', subject: runeLike(m[1]), value: m[2]})],
+    [new RegExp('^' + RN + '\\s+has\\s+no\\s+symbol$'), m => ({kind: 'rune.symbol', subject: runeLike(m[1]), value: '(none)'})],
+    [new RegExp('^' + RN + POS + '\\s+symbol\\s+is\\s+(\\S{1,8})$'), m => ({kind: 'rune.symbol', subject: runeLike(m[1]), value: m[2]})],
+    [new RegExp('^' + RN + POS + '\\s+divisibility\\s+is\\s+(\\d{1,2})$'), m => ({kind: 'rune.divisibility', subject: runeLike(m[1]), value: num(m[2])})],
+    [new RegExp('^' + RN + '\\s+has\\s+(\\d{1,2}|no)\\s+decimal\\s+places?$'), m => ({kind: 'rune.divisibility', subject: runeLike(m[1]), value: /^no$/i.test(m[2]) ? 0 : num(m[2])})],
+    [new RegExp('^' + RN + '\\s+has\\s+no\\s+premine$'), m => ({kind: 'rune.premine', subject: runeLike(m[1]), value: '0'})],
+    [new RegExp('^' + RN + POS + '\\s+premine\\s+(?:is|was)\\s+' + AMT + '$'), m => ({kind: 'rune.premine', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^' + RN + '\\s+(?:has|had)\\s+a\\s+premine\\s+of\\s+' + AMT + '$'), m => ({kind: 'rune.premine', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^' + RN + '\\s+can(?:not|\'t|’t)\\s+be\\s+minted$'), m => ({kind: 'rune.cap', subject: runeLike(m[1]), value: '0'})],
+    [new RegExp('^' + RN + '\\s+can\\s+be\\s+minted\\s+([\\d,]+)\\s+times?$'), m => ({kind: 'rune.cap', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^' + RN + POS + '\\s+(?:mint\\s+)?cap\\s+is\\s+([\\d,]+)(?:\\s+mints?)?$'), m => ({kind: 'rune.cap', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^each\\s+mint\\s+of\\s+' + RN + '\\s+(?:makes|gives|is)\\s+' + AMT + '$'), m => ({kind: 'rune.amount', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^' + RN + POS + '\\s+(?:mint\\s+)?amount(?:\\s+per\\s+mint)?\\s+is\\s+' + AMT + '$'), m => ({kind: 'rune.amount', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^' + RN + '\\s+is\\s+(not\\s+)?turbo$'), m => ({kind: 'rune.turbo', subject: runeLike(m[1]), value: !m[2]})],
+    [new RegExp('^' + RN + '\\s+is\\s+rune\\s+(?:number\\s+)?#\\s?([\\d,]+)$'), m => ({kind: 'rune.number', subject: runeLike(m[1]), value: num(m[2])})],
+    [new RegExp('^' + RN + POS + '\\s+(?:rune\\s+)?number\\s+is\\s+#?([\\d,]+)$'), m => ({kind: 'rune.number', subject: runeLike(m[1]), value: num(m[2])})],
+    [new RegExp('^' + RN + '\\s+(?:has\\s+been|was)\\s+minted\\s+([\\d,]+)\\s+times?$'), m => ({kind: 'rune.mints', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^' + RN + '\\s+has\\s+([\\d,]+)\\s+mints?$'), m => ({kind: 'rune.mints', subject: runeLike(m[1]), value: digits(m[2])})],
+    [new RegExp('^' + RN + POS + '\\s+supply\\s+is\\s+' + AMT + '$'), m => ({kind: 'rune.supply', subject: runeLike(m[1]), value: digits(m[2])})]);
   function parse(text) {
     const t0 = String(text || '').trim().replace(/[.?!]+$/, '').replace(/\s+/g, ' ');
     let t = t0.replace(/^(?:is it true that|is it true|check that|check|claim:)\s+/i, '');
@@ -58,13 +95,21 @@
   const WORDS = {'block.inscriptions': (s, v) => 'block ' + s + ' has ' + fmt(v) + ' inscriptions', 'block.transactions': (s, v) => 'block ' + s + ' has ' + fmt(v) + ' transactions', 'block.hash': (s, v) => 'block ' + s + '\'s hash is ' + v,
     'block.fees': (s, v) => 'block ' + s + ' paid ' + fmt(v) + ' sats in fees', 'block.miner': (s, v) => 'block ' + s + ' was mined by ' + v, 'ins.block': (s, v) => s + ' was made in block ' + fmt(v), 'ins.number': (s, v) => s + ' is #' + v,
     'ins.sat': (s, v) => s + ' is on sat ' + v, 'ins.type': (s, v) => s + ' is ' + v, 'ins.size': (s, v) => s + ' is ' + fmt(v) + ' bytes', 'ins.holder': (s, v) => s + ' is held by ' + v, 'ins.parent': (s, v) => s + ' is a child of ' + v,
-    'coll.count': (s, v) => 'collection ' + s + ' has ' + fmt(v) + ' children', 'addr.holds': (s, v) => 'address ' + s + ' holds ' + v, 'addr.balance': (s, v) => 'address ' + s + ' has ' + fmt(v) + ' sats'};
+    'coll.count': (s, v) => 'collection ' + s + ' has ' + fmt(v) + ' children', 'addr.holds': (s, v) => 'address ' + s + ' holds ' + v, 'addr.balance': (s, v) => 'address ' + s + ' has ' + fmt(v) + ' sats',
+    'rune.block': (s, v) => s + ' was etched in block ' + fmt(v), 'rune.id': (s, v) => s + '\'s ID is ' + v, 'rune.symbol': (s, v) => v === '(none)' ? s + ' has no symbol' : s + '\'s symbol is ' + v,
+    'rune.divisibility': (s, v) => s + ' has ' + v + ' decimal place' + (+v === 1 ? '' : 's'), 'rune.premine': (s, v) => s + '\'s premine is ' + v, 'rune.cap': (s, v) => String(v) === '0' ? s + ' can\'t be minted' : s + ' can be minted ' + group(v) + ' times',
+    'rune.amount': (s, v) => 'each mint of ' + s + ' makes ' + v, 'rune.turbo': (s, v) => s + ' is ' + (v ? '' : 'not ') + 'turbo', 'rune.number': (s, v) => s + ' is rune #' + fmt(v),
+    'rune.mints': (s, v) => s + ' has been minted ' + group(v) + ' times', 'rune.supply': (s, v) => s + '\'s supply is ' + v};
+  const group = t => String(t).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   function normal(c) {
     if (typeof c === 'string') return parse(c);
     if (!c || !KINDS[c.kind]) throw new Error('kind must be one of: ' + Object.keys(KINDS).join(', '));
     const insLike = t => /^-?\d+$/.test(String(t)) ? '#' + t : String(t).toLowerCase();
-    const subject = /^(ins\.|coll\.)/.test(c.kind) ? insLike(c.subject) : /^block\./.test(c.kind) ? num(c.subject) : String(c.subject);
-    let value = c.value; if (/^(block\.(inscriptions|transactions|fees)|ins\.(block|size|number|sat)|coll\.count|addr\.balance)$/.test(c.kind)) value = num(value);
+    const subject = /^(ins\.|coll\.)/.test(c.kind) ? insLike(c.subject) : /^block\./.test(c.kind) ? num(c.subject) : /^rune\./.test(c.kind) ? runeLike(c.subject) : String(c.subject);
+    let value = c.value; if (/^(block\.(inscriptions|transactions|fees)|ins\.(block|size|number|sat)|coll\.count|addr\.balance|rune\.(block|divisibility|number))$/.test(c.kind)) value = num(value);
+    if (/^rune\.(cap|mints|premine|amount|supply)$/.test(c.kind)) value = digits(value);   // (kept as written: a cap can be bigger than a JavaScript number holds)
+    if (c.kind === 'rune.turbo') value = value === true || /^(true|yes|1)$/i.test(String(value));
+    if (c.kind === 'rune.symbol' || c.kind === 'rune.id') value = String(value).trim() || '(none)';
     if (/^(ins\.parent|addr\.holds)$/.test(c.kind)) value = insLike(value);
     if (c.kind === 'ins.type') value = TYPES[String(value).toLowerCase()] || String(value).toLowerCase();
     return Object.assign({}, c, {subject, value, text: c.text || WORDS[c.kind](subject, value)});
@@ -172,6 +217,68 @@
         note.push('a count is what ord lists; the Collection Check proves each child on the chain');
       }
     }
+    if (k.startsWith('rune.')) {
+      if (!RP) throw new Error('rune claims need Rune Proof\'s reader (runeproof.js) loaded too');
+      if (!io.ordPage) throw new Error('rune claims need io.ordPage (ordinals.com\'s rune pages)');
+      const R = await RP.prove(c.subject, {mpJson: io.mpJson, mpText: io.mpText, ordJson: io.ordJson, ordPage: io.ordPage}, kk => say('rune', kk));
+      say('sources', 3);
+      const U = R.rune || {}; c._rune = {name: U.name || null, id: U.id || null, etching: U.etching || null, block: U.block != null ? U.block : null};
+      const ORDC = 'https://ordinals.com', goods = U.id === '1:0' && !U.etching;
+      if (!R.compare) {   // no such rune (or not made, or not mined yet): every claim about it fails, and the answer says why
+        out.push(S(ORDC, R.answer === 'waiting' ? 'not etched yet: its etching waits to be mined' : 'no such rune', R.answer === 'waiting' ? null : false, 'Rune Proof: ' + R.verdict, 'ord'));
+        note.push('Rune Proof shows the whole proof: ' + R.answer);
+        return {sources: out, notes: note};
+      }
+      const rule = key => (R.rules || []).find(r => r.key === key), byted = goods || !!(rule('bytes') && rule('bytes').ok);
+      const placed = goods || !!(rule('place') && rule('place').ok && rule('block') && rule('block').ok);
+      const mpHost = (R.sources || []).find(x => !/ordinals\.com/.test(x)) || 'mempool.space';
+      const CH = goods ? 'ord\'s own code (UNCOMMON•GOODS is set there, never etched)' : 'the chain (its etching\'s own bytes, from ' + String(mpHost).replace(/^https?:\/\//, '') + ')';
+      const field = f => R.compare.find(x => x.field === f) || null, E = R.etching || {}, div = goods ? 0 : +(E.divisibility || 0);
+      const units = v => { if (v == null) return null; const x = RP.unpile(String(v).replace(/,/g, ''), div); return x == null ? null : x; };
+      const want = /^rune\.(premine|amount|supply)$/.test(k) ? units(c.value) : null;
+      if (/^rune\.(premine|amount|supply)$/.test(k) && want == null) throw new Error('that amount has more decimal places than ' + (U.name || c.subject) + ' has (' + div + ')');
+      const both = (f, eq, how) => { const x = field(f); if (!x) return;
+        out.push(S(CH, x.chain, byted ? eq(x.chain) : null, how + (byted ? '' : ' (its bytes could not be trusted)'), 'chain'));
+        out.push(S(ORDC, x.ordinals == null ? 'not shown' : x.ordinals, x.ordinals == null ? null : eq(x.ordinals), how.replace(/, read out of.*$/, '') + ', as ordinals.com shows it', 'ord')); };
+      if (k === 'rune.block') {
+        const ob = field('id') && field('id').ordinals, ordB = ob && /^\d+:\d+$/.test(ob) ? +ob.split(':')[0] : null;
+        if (goods) out.push(S(CH, 'never etched: its ID, 1:0, is set in ord\'s code', null, 'UNCOMMON•GOODS was not etched in a transaction', 'chain'));
+        else out.push(S(CH, U.block != null ? U.block : 'not in a block', placed ? U.block === c.value : null, 'the block its etching sits in, proven: the block\'s header hashes to its hash and the etching\'s merkle path leads to it', 'chain'));
+        out.push(S(ORDC, ordB != null ? ordB : 'not shown', ordB != null ? ordB === c.value : null, 'the block in its ID, as ordinals.com shows it', 'ord'));
+        if (U.etching) await tryIt(async () => { const x = await io.mp2Json('/api/tx/' + U.etching + '/status', 'https://' + String(mpHost).replace(/^https?:\/\//, '')); const v = x.j.confirmed ? x.j.block_height : null;
+          out.push(S(x.site, v == null ? 'not in a block yet' : v, v == null ? false : v === c.value, 'the block its etching transaction is in, as a second, separate mempool site has it', 'mempool')); }, 'a second mempool site');
+      }
+      if (k === 'rune.id') {
+        if (!goods) out.push(S(CH, U.id || 'not in a block', placed && U.id ? U.id === c.value : null, 'its block and its place in the block (counting from 0), proven by the etching\'s merkle path to the block\'s header', 'chain'));
+        else both('id', v => String(v) === c.value, 'its ID, set in ord\'s code');
+        if (!goods) { const x = field('id'); out.push(S(ORDC, x && x.ordinals != null ? x.ordinals : 'not shown', x && x.ordinals != null ? x.ordinals === c.value : null, 'its ID, as ordinals.com shows it', 'ord')); }
+      }
+      const symOf = v => String(v == null ? '' : v).trim() || '(none)';
+      if (k === 'rune.symbol') both('symbol', v => symOf(v) === (c.value === '(none)' ? '(none)' : c.value) || (c.value === '(none)' && symOf(v) === '¤'), 'its symbol, read out of its etching');
+      if (k === 'rune.divisibility') both('divisibility', v => +v === c.value, 'how many decimal places it has, read out of its etching');
+      if (k === 'rune.turbo') both('turbo', v => String(v) === String(c.value), 'whether it is turbo, read out of its etching');
+      if (k === 'rune.premine') both('premine', v => units(v) === want, 'how much went to its etcher at the start, read out of its etching');
+      if (k === 'rune.cap' || k === 'rune.amount') {
+        const m = field('mint'), terms = !!(R.etching && R.etching.terms) || goods;
+        if (!terms && m) { out.push(S(CH, 'no mint terms: it can\'t be minted', byted ? (k === 'rune.cap' ? c.value === '0' : want === 0n) : null, 'its etching gives no mint terms', 'chain'));
+          out.push(S(ORDC, m.ordinals == null ? 'not shown' : 'mint: ' + m.ordinals, m.ordinals == null ? null : m.ordinals === 'no' ? (k === 'rune.cap' ? c.value === '0' : want === 0n) : false, 'whether it can be minted, as ordinals.com shows it', 'ord')); }
+        else if (k === 'rune.cap') both('cap', v => digits(v) === c.value, 'how many times it can be minted, read out of its etching');
+        else both('amount', v => units(v) === want, 'how much each mint makes, read out of its etching');
+      }
+      const O = R.ordinalsOnly || {};
+      if (k === 'rune.number') { out.push(S(ORDC, O.number != null ? O.number : 'not shown', O.number != null ? O.number === c.value : null, 'its number, as ordinals.com shows it', 'ord')); note.push('a rune\'s number is not written on the chain: it is the order ord\'s index saw runes etched in, so only ordinals.com can say it'); }
+      if (k === 'rune.mints') {
+        out.push(S(ORDC, O.mints != null ? group(O.mints) : 'not shown', O.mints != null ? digits(O.mints) === c.value : null, 'its mints so far, as ordinals.com shows it', 'ord'));
+        note.push('mints are counted by ord\'s index, block by block, so only ordinals.com can say how many');
+      }
+      if (k === 'rune.supply') {
+        out.push(S(ORDC, O.supply || 'not shown', O.supply ? units(O.supply) === want : null, 'how much of it there is now, as ordinals.com shows it', 'ord'));
+        if (!(R.etching && R.etching.terms) && !goods && R.etching) out.push(S(CH, R.etching.premineShown, byted ? units(R.etching.premineShown) === want : null, 'its premine, read out of its etching: with no mint terms, that is all there will ever be (unless some is burned)', 'chain'));
+        else note.push('supply is counted by ord\'s index (the premine plus every mint so far), so the chain alone can\'t say it');
+      }
+      for (const a of R.addsUp || []) if (/^rune\.(mints|supply)$/.test(k)) note.push((a.ok ? 'ordinals.com\'s counts add up: ' : 'ordinals.com\'s counts DON\'T add up: ') + a.what);
+      if (R.answer === 'differs') note.push('Rune Proof found the etching and ordinals.com differ on something: ' + R.verdict);
+    }
     if (k === 'addr.balance') {
       let first = null;
       await tryIt(async () => { const x = await io.mpJson('/api/address/' + c.subject); first = x.site; const s = x.j.chain_stats, v = s.funded_txo_sum - s.spent_txo_sum; out.push(S(x.site, v, same(v, c.value), 'its confirmed balance in sats, as this mempool site has it' + (x.j.mempool_stats && (x.j.mempool_stats.funded_txo_sum || x.j.mempool_stats.spent_txo_sum) ? ' (more is waiting to be mined)' : ''), 'mempool')); }, 'mempool.space');
@@ -192,7 +299,7 @@
     else if (!no.length) { answer = 'true'; verdict = 'True: ' + (yes.length === 1 ? 'the one source that answered agrees' : yes.length === 2 ? 'both sources agree' : 'all ' + yes.length + ' sources agree') + (c.approx ? ' (within 1%: ' + show(yes[0].says) + ')' : '') + (chain.length ? ', the chain itself included' : ''); }
     else if (!yes.length) { const vals = [...new Set(no.map(s => show(s.says)))]; answer = 'false'; verdict = 'False: ' + (vals.length === 1 ? (no.length === 1 ? 'the source says ' : no.length === 2 ? 'both sources say ' : 'all ' + no.length + ' sources say ') + vals[0] : 'the sources say ' + vals.join(' / ')); }
     else { answer = chain.length ? (chain.every(s => s.agrees) ? 'true' : 'false') : 'mixed'; verdict = 'The sources differ: ' + yes.length + ' agree, ' + no.length + ' don\'t' + (chain.length ? '; the chain itself says ' + (chain.every(s => s.agrees) ? 'it is true' : show(chain[0].says)) : ''); }
-    const r = {check: 'Agent Blockhall Second Opinion ' + VERSION, claim: {text: c.text, kind: c.kind, means: KINDS[c.kind], subject: c.subject, value: c.value, approx: c.approx || undefined, inscription: c._id, parent: c._pid},
+    const r = {check: 'Agent Blockhall Second Opinion ' + VERSION, claim: {text: c.text, kind: c.kind, means: KINDS[c.kind], subject: c.subject, value: c.value, approx: c.approx || undefined, inscription: c._id, parent: c._pid, rune: c._rune},
       answer, verdict, sources, why: notes, checkedAt: new Date().toISOString().replace(/\.\d{3}/, '')};
     say('done', true);
     return r;
