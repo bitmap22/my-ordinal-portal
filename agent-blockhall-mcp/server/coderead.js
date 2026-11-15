@@ -114,13 +114,18 @@
     for (const L of loads) {
       try { const j = (await io.ordJson('/r/inscription/' + L)).j; if (!isCode(j.content_type)) continue; say('reading', L); texts.set(L, await get(L)); files.push({id: L, role: 'loaded by it', contentType: j.content_type, number: j.number}); } catch (e) { files.push({id: L, role: 'loaded by it', error: 'could not be read'}); }
     }
-    for (const f of files) { const t = texts.get(f.id); if (t == null) continue; f.bytes = new TextEncoder().encode(t).length; f.lines = t.split('\n').length; out.findings.push(...scan(t, f.id)); }
+    const addr = new Map();
+    for (const f of files) { const t = texts.get(f.id); if (t == null) continue; f.bytes = new TextEncoder().encode(t).length; f.lines = t.split('\n').length; out.findings.push(...scan(t, f.id));
+      for (const u of RM.scan(t).outside) if (!addr.has(u) && addr.size < 50) addr.set(u, f.id); }
+    // every address outside the chain written in the code: links and names as well as loads (the loads are among the findings)
+    out.outsideAddresses = [...addr].map(([url, file]) => ({url, file}));
     out.files = files; out.sources = [...new Set(out.sources.filter(Boolean))];
     out.loadsMore = S.loads.size - 1 > MAX_LOADED ? S.loads.size - 1 - MAX_LOADED : 0;
     out.isCode = true; out.kinds = summary(out.findings);
     const found = out.kinds.filter(k => k.found);
     const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
     out.verdict = found.length ? found.map(k => cap(k.says) + (k.whats.length ? ': ' + k.whats.slice(0, 3).join('; ') : '')).join('. ') + '.' : 'None of these were found in its code' + (files.length > 1 ? ' or the code it loads' : '') + '.';
+    if (out.outsideAddresses.length) out.verdict += ' Its code also has ' + out.outsideAddresses.length + ' address' + (out.outsideAddresses.length === 1 ? '' : 'es') + ' outside the chain in it (links or names; a link only opens if you click it).';
     out.note = 'Code Read reads code without running it. It can\'t prove code is safe, only say what it found. On ordinals.com, ord\'s own rules let an inscription load only from the chain; other sites may not.';
     return out;
   }
