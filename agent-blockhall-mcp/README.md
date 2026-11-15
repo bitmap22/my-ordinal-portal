@@ -28,6 +28,8 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 | `sourceHealth` | Source Health: which data sites these tools read are answering, how fast, and whether they are up to date, for Bitcoin and Dogecoin. Each site is asked one small thing now, from your computer (most: the newest block's height), and GitHub's computers ask the same about once an hour and keep a week: each site's last day and week. With what it means, in words |
 | `rareSats` | The rare sats board: each kind of rare sat and the price listed for one sat |
 
+`provenanceCheck` and `dogeProvenanceCheck` also say what is in the file (`whatIsInIt`), read from the file's own bytes by the Media Reader (`server/media.js`): a picture's resolution, colours used, colour depth, palette and frames; a sound's length, samples a second and channels; a video's resolution, length and frames a second; a 3D model's points, triangles, real size, textures and animations. Every number is read or counted from the bytes, never guessed.
+
 ### For Dogecoin: Doge Cube's tools
 
 [Doge Cube](https://bitmap22.github.io/my-ordinal-portal/doge-cube.html) is Agent Blockhall's Dogecoin twin. These four tools are the same tools for Dogecoin and its Doginals. They read the same files as the portal's Doge pages.

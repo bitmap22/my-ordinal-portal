@@ -30,7 +30,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
 const GAME = PORTAL + 'block-cube.html';
