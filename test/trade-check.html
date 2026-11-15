@@ -163,7 +163,7 @@
   <footer>
     Free, with no keys or accounts. It only reads: nothing is signed, sent or bought.<br>
     <a href="index.html">Back to the Ordinal Portal</a> · by bitmap22 · <a href="https://x.com/BitmapPlotz" target="_blank" rel="me noopener noreferrer">@BitmapPlotz</a> on X<br>
-    © 2026 bitmap22. All rights reserved. Free to use in your browser, under the <a href="https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE">Ordinal Portal's licence</a>. Inscriptions belong to their own creators. Not made by or affiliated with any of the sites it asks. Not financial advice.
+    © 2026 bitmap22. All rights reserved. Free to use in your browser, under the <a href="https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE">Ordinal Portal's licence</a>. A file stored packed is unpacked with Google's <a href="https://github.com/google/brotli">Brotli decoder</a> (© the Brotli Authors, <a href="https://opensource.org/licenses/MIT">MIT licence</a>). Inscriptions belong to their own creators. Not made by or affiliated with any of the sites it asks. Not financial advice.
   </footer>
 </div>
 
@@ -220,6 +220,11 @@
     throw err || new Error('no site answered');
   }
   // one set of steps for every check it runs (the same as each tool's own page)
+  // (15 Nov 2026) a file stored packed (Brotli, as ord allows) is unpacked here, with Google's Brotli decoder (vendor/brotli,
+  // MIT licence, unchanged), loaded only when such a file is met; the MCP tool unpacks with Node's own
+  let BR = null;
+  const unpack = {decompress: (b, enc) => { if (enc !== 'br' || typeof BR !== 'function') throw new Error('not ready'); return new Uint8Array(BR(new Int8Array(b.buffer, b.byteOffset, b.byteLength))); },
+    prepareUnpack: async enc => { if (enc !== 'br') return false; if (!BR) { try { BR = (await import(new URL((/\/test\//.test(location.pathname) ? '../' : '') + 'vendor/brotli/decode.min.js', location.href).href)).BrotliDecode; } catch (e) { return false; } } return typeof BR === 'function'; }};
   function makeIo() {
     let ordAt = null;
     return {
@@ -233,7 +238,7 @@
       mpBytes: async p => { const x = await mpFetch(p, 90000); return {bytes: new Uint8Array(await x.r.arrayBuffer()), site: x.site}; },
       ord2Head: async p => { let err = null; for (const b of SECOND) { try { const r = await fetchT(b + p, 15000, {method: 'HEAD'}); return {ok: r.ok, status: r.status, site: b}; } catch (e) { err = e; if (/http 404/.test(String(e))) return {ok: false, status: 404, site: b}; } } throw err || new Error('no second site'); },
       ordStatus: async p => { try { await fetchT(ORD_R[0] + p, 15000); return {status: 200, site: ORD_R[0]}; } catch (e) { const m = String(e).match(/http (\d+)/); if (m) return {status: +m[1], site: ORD_R[0]}; throw e; } },
-      sleep, decompress: null, media: window.MediaReader || null};   // (no browser can unpack brotli yet: the MCP tool can)
+      sleep, decompress: unpack.decompress, prepareUnpack: unpack.prepareUnpack, media: window.MediaReader || null};
   }
   // Dogecoin's sites (the Doge Provenance Check's steps)
   const DX = 'https://thedoginalsexplorer.com', BTC = 'https://api.bitcore.io/api/DOGE/mainnet', BCR = 'https://api.blockchair.com/dogecoin', DOGGY = 'https://cdn.doggy.market';
