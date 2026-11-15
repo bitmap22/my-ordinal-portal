@@ -127,9 +127,12 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   // Code Read: a game, a globe that names outside sites, a picture, one that isn't there
   for (const a of [{id: '#127512326'}, {id: '#126744012'}, {id: '#0'}, {id: '#999999999'}]) calls.push(await call('codeRead', a));
   results.code = calls.filter(c => c.name === 'codeRead').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 100) : c.out.verdict.slice(0, 220) + ' | found ' + (c.out.kinds || []).filter(k => k.found).map(k => k.key + ' ' + k.count).join(', ') + ' | files ' + (c.out.files || []).length));
+  // Rune Proof: a premined rune, one open to mint, UNCOMMON•GOODS, a try that made no rune, a mint, a name not etched yet, an ID that isn't there, not a name
+  for (const a of [{rune: 'DOG•GO•TO•THE•MOON'}, {rune: 'satoshi.nakamoto'}, {rune: 'UNCOMMON•GOODS'}, {rune: 'c74d618c4b5035a3c5dba96618ca7184f989912c72cd18d0a2f445c15bb7d2c2'}, {rune: '1b12b6246a56aa6d95c715a95f596f8b274ee253d89f53f287534a1d6fb1f56a'}, {rune: 'DOGGY'}, {rune: '99999999:1'}, {rune: 'newest'}, {rune: 'not a name!'}]) calls.push(await call('runeProof', a));
+  results.rune = calls.filter(c => c.name === 'runeProof').map(c => JSON.stringify(c.args).slice(0, 50) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.answer + ' | ' + c.out.verdict.slice(0, 230) + (c.out.compare ? ' | same ' + c.out.compare.filter(x => x.same).length + '/' + c.out.compare.length : '') + (c.out.rules ? ' | rules kept ' + c.out.rules.filter(x => x.ok === true).length + '/' + c.out.rules.length : '')));
   // Citable checks: take the cite link from checks above and check them again; then one with a doctored fact (the holder), and one that is not a link
   const cites = calls.filter(c => !c.isError && c.out && c.out.cite && c.out.cite.link).map(c => c.out.cite.link);
-  const pick = [...new Set([cites.find(l => /block-manifest/.test(l)), cites.find(l => /provenance-check/.test(l)), cites.find(l => /collection-check/.test(l)), cites.find(l => /recursion-map/.test(l)), cites.find(l => /second-opinion/.test(l)), cites.find(l => /\/daily\.html/.test(l)), cites.find(l => /doge-block-manifest/.test(l)), cites.find(l => /doge-provenance-check/.test(l)), cites.find(l => /doge-daily/.test(l)), cites.find(l => /stuck-transaction/.test(l)), cites.find(l => /code-read/.test(l))].filter(Boolean))];
+  const pick = [...new Set([cites.find(l => /block-manifest/.test(l)), cites.find(l => /provenance-check/.test(l)), cites.find(l => /collection-check/.test(l)), cites.find(l => /recursion-map/.test(l)), cites.find(l => /second-opinion/.test(l)), cites.find(l => /\/daily\.html/.test(l)), cites.find(l => /doge-block-manifest/.test(l)), cites.find(l => /doge-provenance-check/.test(l)), cites.find(l => /doge-daily/.test(l)), cites.find(l => /stuck-transaction/.test(l)), cites.find(l => /code-read/.test(l)), cites.find(l => /rune-proof/.test(l))].filter(Boolean))];
   const prov = cites.find(l => /provenance-check/.test(l));
   if (prov) { const u = new URL(prov), f = JSON.parse(Buffer.from(u.searchParams.get('f').replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()); f.holder = 'bc1qpretendthiswastheholderthen'; f.moves = (f.moves || 0) - 1; u.searchParams.set('f', Buffer.from(JSON.stringify(f)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')); pick.push(u.toString()); }
   for (const link of pick.concat(['https://bitmap22.github.io/my-ordinal-portal/provenance-check.html?id=%230'])) calls.push(await call('checkAgain', {link}));
@@ -147,6 +150,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Source Health:\n' + results.health.join('\n'));
   console.log('Stuck Transaction Doctor:\n' + results.stuck.join('\n'));
   console.log('Code Read:\n' + results.code.join('\n'));
+  console.log('Rune Proof:\n' + results.rune.join('\n'));
   console.log('Citable checks:\n' + results.cite.join('\n'));
   server.kill();
   process.exit(0);
