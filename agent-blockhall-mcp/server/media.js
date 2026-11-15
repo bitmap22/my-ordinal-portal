@@ -132,7 +132,7 @@
       else if (t === 'tRNS') trns = d;
       else if (t === 'IDAT') { idat.push(d); sawIDAT = true; }
       else if (t === 'gAMA') P.gamma = +(be32(d, 0) / 100000).toFixed(5);
-      else if (t === 'sRGB') P.profile = 'sRGB (rendering intent ' + d[0] + ')';
+      else if (t === 'sRGB') P.profile = 'sRGB colours';
       else if (t === 'cHRM') P.chromaticities = true;
       else if (t === 'cICP') P.profile = 'coded colour (cICP: primaries ' + d[0] + ', transfer ' + d[1] + ')';
       else if (t === 'iCCP') { let z = 0; while (z < d.length && d[z]) z++; P.profile = 'an ICC colour profile named "' + clean(latin1(d.subarray(0, z)), 80) + '"'; }
