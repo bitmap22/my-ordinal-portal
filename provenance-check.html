@@ -99,7 +99,7 @@
 <div class="shell">
   <h1>Provenance Check</h1>
   <div class="sub">Where a Bitcoin inscription came from, every step checked</div>
-  <p class="lead">Give an inscription's number or ID. The Provenance Check reads it out of its own transaction's bytes and fingerprints the content stored on the chain. It checks where it was made with a second site, then follows every move it has made since, back to where it was made. It's free, for people and AI agents. Then walk its trail in 3D in <a href="block-cube.html">Agent Blockhall</a>, or see every transaction in the block it was made in with the <a href="block-manifest.html">Block Manifest</a>.</p>
+  <p class="lead">Give an inscription's number or ID. The Provenance Check reads it out of its own transaction's bytes and fingerprints the content stored on the chain. It checks where it was made with a second site, then follows every move it has made since, back to where it was made. It's free, for people and AI agents. Then walk its trail in 3D in <a href="block-cube.html">Agent Blockhall</a>, or see every transaction in the block it was made in with the <a href="block-manifest.html">Block Manifest</a>. The Dogecoin twin is the <a href="doge-provenance-check.html">Doge Provenance Check</a>.</p>
 
   <div class="panel">
     <form class="ask" id="ask" autocomplete="off">
@@ -154,11 +154,11 @@
       <div class="panel">
         <h2>Walk its trail</h2>
         <p class="small" id="walkNote">In Agent Blockhall, find it with the tablet, hold its parcel and press FOLLOW IT BACK to see this trail as a tether from cube to cube.</p>
-        <a class="btn" href="block-cube.html" target="_blank" rel="noopener">Open Agent Blockhall</a>
+        <a class="btn" id="walk" href="block-cube.html" target="_blank" rel="noopener">Open Agent Blockhall</a>
       </div>
     </div>
 
-    <div class="panel small" id="sources"></div>
+    <div class="panel small"><span id="sources"></span> <span>How these sites are doing: <a href="source-health.html">Source Health</a>. Which of them tell the truth: <a href="truth-league.html">the Truth League</a>.</span></div>
   </div>
 
   <div class="panel small">
@@ -170,7 +170,7 @@
 
   <footer>
     Free, with no keys or accounts. It reads free public sites: ordinals.com (and its back-ups) and mempool.space (and its copies), gently: at most 30 asks at once, then 6 a second per site. Inscriptions belong to their creators: this page links to them and doesn't show them.<br>
-    <a href="index.html">Back to the Ordinal Portal</a> · by bitmap22 · <a href="https://x.com/BitmapPlotz" target="_blank" rel="me noopener noreferrer">@BitmapPlotz</a> on X<br>
+    <a href="index.html">Back to the Ordinal Portal</a> · <a href="block-cube.html">Agent Blockhall</a> · <a href="doge-cube.html">Doge Cube</a> · by bitmap22 · <a href="https://x.com/BitmapPlotz" target="_blank" rel="me noopener noreferrer">@BitmapPlotz</a> on X<br>
     © 2026 bitmap22. All rights reserved. Free to use in your browser, under the <a href="https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE">Ordinal Portal's licence</a>. Bitcoin's data is public and isn't part of it. Not made by or affiliated with ordinals.com, mempool.space or UniSat.
   </footer>
 </div>
@@ -297,7 +297,9 @@
     const vi = $('viewIt'); vi.textContent = ''; vi.appendChild(document.createTextNode('See it where it’s shown: ')); vi.appendChild(link('ordinals.com', 'https://ordinals.com/inscription/' + I.id));
     vi.appendChild(document.createTextNode(' \u00b7 ')); const wl = el('a', null, 'Watch it for moves'); wl.href = 'watch.html?watch=inscription&value=' + I.id; vi.appendChild(wl);
     vi.appendChild(document.createTextNode(' \u00b7 ')); const rl = el('a', null, 'What it loads'); rl.href = 'recursion-map.html?id=' + I.id; vi.appendChild(rl);
+    if (/^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i.test(I.contentType || '')) { vi.appendChild(document.createTextNode(' \u00b7 ')); const cr = el('a', null, 'What its code asks for'); cr.href = 'code-read.html?id=' + I.id; vi.appendChild(cr); }   // (Code Read: the addresses written in its code)
     if (I.parents.length) { vi.appendChild(document.createTextNode(' \u00b7 ')); const cl = el('a', null, 'Check its parent\u2019s collection'); cl.href = 'collection-check.html?parent=' + I.parents[0]; vi.appendChild(cl); }
+    if (I.number != null && I.block != null) { vi.appendChild(document.createTextNode(' \u00b7 ')); const so = el('a', null, 'A second opinion'); so.href = 'second-opinion.html?claim=' + encodeURIComponent('#' + I.number + ' was made in block ' + I.block); so.title = 'The Second Opinion checks a claim about it against several sites'; vi.appendChild(so); }
     const facts = $('facts'); facts.textContent = '';
     const when = I.time ? new Date(I.time).toLocaleString('en-GB', {timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' UTC' : '–';
     const F = [['Number', '#' + fmt(I.number)], ['Made in block', fmt(I.block)], ['Made', when], ['File type', I.contentType || (I.delegate ? 'shows its delegate' : '–')], ['Size', I.bytes != null ? fmt(I.bytes) + ' bytes' + (I.packed ? ' (packed)' : '') : '–'],
@@ -327,9 +329,12 @@
       li.appendChild(document.createElement('br'));
       li.appendChild(el('span', 'd', 'to ' + short(s.to, 10, 6) + ' · '));
       li.appendChild(link('transaction ' + short(s.txid, 8, 4), 'https://mempool.space/tx/' + s.txid));
+      if (!s.time) { li.appendChild(el('span', 'd', ' · ')); const st = el('a', null, 'is it stuck?'); st.href = 'stuck-transaction.html?tx=' + s.txid; st.target = '_blank'; st.rel = 'noopener'; li.appendChild(st); }   // (a move still waiting: the Stuck Transaction Doctor)
       tr.appendChild(li);
     }
     $('sources').textContent = 'Where each part came from: its details from ' + host(r.sources.inscription) + ', the second ord site was ' + host(r.sources.secondOrdSite) + ', its transactions and their bytes from ' + host(r.sources.transactions) + ', and the file shown from ' + (r.sources.file ? host(r.sources.file) : 'no site (not fetched)') + '. ' + r.check + '.';
+    $('walk').href = 'block-cube.html#find=' + I.id; $('walk').textContent = 'Open it in Agent Blockhall';   // (walks in with it found, ready to hold)
+    $('walkNote').textContent = 'Open it in Agent Blockhall: it walks you in with this inscription found. Hold its parcel and press FOLLOW IT BACK to see this trail as a tether from cube to cube.';
     try { history.replaceState(null, '', location.pathname + '?id=' + I.id); } catch (e) {}
     try { Cite.show('provenance', R, document.getElementById('cite')); } catch (e) {}
     showMedia(R.whatIsInIt);
@@ -345,11 +350,12 @@
   /* ---------- the agent kit: window.agent (the same steps as the Check button; the page says when an agent asked) ---------- */
   const WATCHP = 'https://bitmap22.github.io/my-ordinal-portal/watch.html';
   const GAME = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html', MANIFEST = 'https://bitmap22.github.io/my-ordinal-portal/block-manifest.html';
-  const seeIt = r => ({agentBlockhall: GAME, followBack: 'Walk its trail in 3D in Agent Blockhall: find it with the tablet (search({query: "' + r.inscription.id + '"}) in its agent kit), hold its parcel, then followBack(): the trail shows as a tether from cube to cube.',
+  const seeIt = r => ({agentBlockhall: GAME + '#find=' + r.inscription.id, dogeTwin: 'https://bitmap22.github.io/my-ordinal-portal/doge-provenance-check.html' + ' is the same for a Doginal (the MCP tool: dogeProvenanceCheck({id})).', followBack: 'Walk its trail in 3D in Agent Blockhall: find it with the tablet (search({query: "' + r.inscription.id + '"}) in its agent kit), hold its parcel, then followBack(): the trail shows as a tether from cube to cube.',
     watch: WATCHP + '?watch=inscription&value=' + r.inscription.id + ' tells the moment it moves (the MCP tool: watch({what: "inscription", value})).',
     blockManifest: r.inscription.block != null ? MANIFEST + '?block=' + r.inscription.block + ' lists every transaction in the block it was made in, sorted and checked.' : null,
     recursionMap: 'https://bitmap22.github.io/my-ordinal-portal/recursion-map.html?id=' + r.inscription.id + ' maps everything it loads from the chain, each piece checked (the MCP tool: recursionMap({id})).',
-    collectionCheck: r.inscription.parents.length ? 'https://bitmap22.github.io/my-ordinal-portal/collection-check.html?parent=' + r.inscription.parents[0] + ' proves which pieces are its parent\u2019s real children (the MCP tool: collectionCheck({parent})).' : null});
+    collectionCheck: r.inscription.parents.length ? 'https://bitmap22.github.io/my-ordinal-portal/collection-check.html?parent=' + r.inscription.parents[0] + ' proves which pieces are its parent\u2019s real children (the MCP tool: collectionCheck({parent})).' : null,
+    codeRead: /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i.test(r.inscription.contentType || '') ? 'https://bitmap22.github.io/my-ordinal-portal/code-read.html?id=' + r.inscription.id + ' reads what its code asks for, without running it (the MCP tool: codeRead({id})).' : null});
   const cmds = [
     {name: 'check', does: 'Check where an inscription came from and show it on the page (as the Check button does): a verdict, each check (what it compared, with which site, and whether they agree: true, false, or null when it could not be made), its facts, what is in its file (whatIsInIt: resolution, colours, length, triangles and more, read from the file’s own bytes) and its trail, oldest first. Takes some seconds, longer for one that has moved many times.', args: [{name: 'id', does: 'inscription number (e.g. "#1000") or ID'}],
       run: async ({id}) => { await check(id, true); return Object.assign({}, R, {seeIt: seeIt(R), note: UNTRUSTED}); }},
@@ -367,6 +373,7 @@
     .concat(cmds.map(c => '  agent.' + c.name + '(' + (c.args || []).map(d => d.name).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : '')))
     .concat(['', 'The bigger app: Agent Blockhall (' + GAME + '), a 3D Bitcoin block explorer world for players and agents. Walk an inscription\u2019s trail there as a tether from cube to cube (hold its parcel, then followBack()).',
       'The Block Manifest (' + MANIFEST + '?block=...) lists every transaction in the block an inscription was made in, sorted and checked.',
+      'The Dogecoin twin: the Doge Provenance Check (https://bitmap22.github.io/my-ordinal-portal/doge-provenance-check.html).',
       'Without a browser, the free Agent Blockhall MCP tool (io.github.bitmap22/agent-blockhall) has the same check as its provenanceCheck tool (it can unpack inscriptions stored packed), and blockManifest too. The reader itself is window.ProvenanceCheck (and agent-blockhall-mcp/server/provenance.js).']).join('\n');
   api.commands = () => cmds.map(c => c.name);
   window.agent = api; window.provenanceAgent = api;

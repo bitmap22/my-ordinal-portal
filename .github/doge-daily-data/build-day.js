@@ -138,7 +138,7 @@ async function main() {
     what: 'Every Dogecoin block whose time falls in this UTC day: its hash (worked out from its own header, and on Bitcore), its transaction list (proved by the merkle root in that header, and matched with Bitcore\'s list), its size and fees (Bitcore), its coinbase (read from its own bytes: the miner\'s words, untrusted, and the pool they name), and its inscriptions and their file types (the explorer\'s list). Fees are in koinu (1 DOGE = 100,000,000 koinu).',
     totals: Object.assign({blocks: blocks.length, firstBlock: blocks.length ? blocks[0].height : null, lastBlock: blocks.length ? blocks[blocks.length - 1].height : null}, T),
     blocks,
-    links: {page: PORTAL + 'doge-daily.html?day=' + day, dogeBlockManifest: PORTAL + 'doge-block-manifest.html?block=<height>', dogeWatch: PORTAL + 'doge-watch.html?watch=block', dogeCube: PORTAL + 'doge-cube.html', bitcoinTwin: PORTAL + 'daily.html'}
+    links: {page: PORTAL + 'doge-daily.html?day=' + day, dogeBlockManifest: PORTAL + 'doge-block-manifest.html?block=<height>', dogeWatch: PORTAL + 'doge-watch.html?watch=block', dogeCube: PORTAL + 'doge-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dogeDailyData)', bitcoinTwin: PORTAL + 'daily.html?day=' + day}
   };
   fs.mkdirSync(path.join(out, 'days'), {recursive: true});
   fs.writeFileSync(path.join(out, 'days', day + '.json'), JSON.stringify(file));
@@ -157,7 +157,7 @@ async function main() {
   index.days.push({day, blocks: blocks.length, firstBlock: file.totals.firstBlock, lastBlock: file.totals.lastBlock, transactions: T.transactions, totalFees: T.totalFees, inscriptions: T.counts.inscriptions || 0, notRead: K.notRead, notes, json: RAW + 'days/' + day + '.json', csv: RAW + 'days/' + day + '.csv'});
   index.days.sort((a, b) => a.day < b.day ? -1 : 1);
   index.updated = file.made; index.licence = LICENCE;
-  index.links = {page: PORTAL + 'doge-daily.html', dogeCube: PORTAL + 'doge-cube.html', bitcoinTwin: RAW.replace('doge-daily-data', 'daily-data') + 'index.json'};
+  index.links = {page: PORTAL + 'doge-daily.html', dogeCube: PORTAL + 'doge-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dogeDailyData)', bitcoinTwin: RAW.replace('doge-daily-data', 'daily-data') + 'index.json'};
   fs.writeFileSync(ip, JSON.stringify(index, null, 1));
   console.log('Wrote ' + day + ': ' + blocks.length + ' blocks, ' + T.transactions + ' transactions, hash ' + K.hashFromItsHeader + '/' + read + ', second site ' + K.secondSiteAgrees + '/' + K.secondSiteAsked + ', lists proved ' + K.listProved + '/' + read + ', coinbases ' + K.coinbaseFromItsBytes + '/' + read);
   console.log('Notes: ' + notes.join(' | '));
