@@ -117,9 +117,21 @@
     }
     const addr = new Map();
     for (const f of files) { const t = texts.get(f.id); if (t == null) continue; f.bytes = new TextEncoder().encode(t).length; f.lines = t.split('\n').length; out.findings.push(...scan(t, f.id));
-      for (const u of RM.scan(t).outside) if (!addr.has(u) && addr.size < 50) addr.set(u, f.id); }
+      for (const u of RM.scan(t).outside) if (!addr.has(u) && addr.size < 50) addr.set(u, f.id);
+      // an address the code names, in code that fetches, and not only as a link: it may load from it (the address is kept in a name, so where it is loaded can't be seen)
+      if (/\bfetch\s*\(|XMLHttpRequest|\bnew\s+WebSocket\b|\bimport\s*\(/.test(t)) {
+        const lines = t.split('\n');
+        for (const u of RM.scan(t).outside) {
+          if (out.findings.some(x => x.kind === 'outside' && x.file === f.id && x.code.untrusted.includes(u))) continue;
+          const i = lines.findIndex(L => L.includes(u) && !new RegExp('<a\\b[^>]*href\\s*=\\s*["\']?' + u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(L)); if (i < 0) continue;
+          const at = lines[i].indexOf(u);
+          out.findings.push({kind: 'outside', what: 'an address it may load from (named in code that fetches)', file: f.id, line: i + 1, code: {untrusted: lines[i].slice(Math.max(0, at - 40), at + u.length + 30).trim()}});
+        }
+      }
+    }
     // every address outside the chain written in the code: links and names as well as loads (the loads are among the findings)
     out.outsideAddresses = [...addr].map(([url, file]) => ({url, file}));
+    out.kinds = summary(out.findings);
     out.files = files; out.sources = [...new Set(out.sources.filter(Boolean))];
     out.loadsMore = S.loads.size - 1 > MAX_LOADED ? S.loads.size - 1 - MAX_LOADED : 0;
     out.isCode = true; out.kinds = summary(out.findings);
@@ -128,7 +140,7 @@
     const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
     out.verdict = found.length ? found.map(k => cap(k.says) + (k.whats.length ? ': ' + k.whats.slice(0, 3).join('; ') : '')).join('. ') + '.' : 'None of these were found in its code' + (files.length > 1 ? ' or the code it loads' : '') + '.';
     if (out.keepsThingsInYourBrowser) out.verdict += ' It keeps things in your browser (its own storage, like saved progress): that stays on your computer.';
-    if (out.outsideAddresses.length) out.verdict += ' Its code also names ' + out.outsideAddresses.length + ' address' + (out.outsideAddresses.length === 1 ? '' : 'es') + ' outside the chain: each a link, or somewhere it may load from (a load is flagged only when the address is written right where it is loaded).';
+    if (out.outsideAddresses.length) out.verdict += ' Its code also names ' + out.outsideAddresses.length + ' address' + (out.outsideAddresses.length === 1 ? '' : 'es') + ' outside the chain in all: links, or places it may load from.';
     out.note = 'Code Read reads code without running it. It can\'t prove code is safe, only say what it found. On ordinals.com, ord\'s own rules let an inscription load only from the chain; other sites may not.';
     return out;
   }
