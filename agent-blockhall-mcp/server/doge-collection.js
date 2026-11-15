@@ -91,11 +91,14 @@
     let J = null;
     try { J = await io.dx('/v1/inscription/' + id); } catch (e) { if (/404/.test(String(e))) { r.checks.real = false; r.why = 'the explorer lists it for the collection, but knows no such Doginal'; r.ok = false; return r; } r.error = String(e && e.message || e); }
     if (J) { r.checks.real = true; r.number = J.number != null ? J.number : null; r.block = J.genesis_height != null ? J.genesis_height : null; r.time = iso(J.genesis_time); r.type = J.contentType || null; r.holder = J.address || null; r.satpoint = J.satpoint || null; }
-    const gen = id.slice(0, 64);
-    const [F, L, K] = await Promise.all([
+    const gen = id.slice(0, 64), sp = String(r.satpoint || '').split(':'), lost = !!J && (+sp[1] === 4294967295 || !r.holder);
+    const [F, L, K, T] = await Promise.all([
       Promise.allSettled([io.file(id), io.file2(id)]),
       r.block != null ? blockList(run, io, r.block) : null,
-      r.satpoint ? coinsOf(run, io, r.satpoint.split(':')[0]) : null]);
+      r.satpoint && !lost ? coinsOf(run, io, sp[0]) : null,
+      lost && /^[0-9a-f]{64}$/.test(sp[0]) ? io.btc('/tx/' + sp[0]).catch(() => null) : null]);
+    // lost: the explorer says no one holds it, because a transaction passed it on in its fee (its place is past all its outputs)
+    if (lost) { r.lost = {tx: sp[0] || null, at: +sp[2] >= 0 ? +sp[2] : null}; if (T && T.value != null && r.lost.at != null) { r.lost.outputsHold = T.value; r.lost.confirmed = r.lost.at >= T.value; } }
     const a = F[0].status === 'fulfilled' ? F[0].value : null, b = F[1].status === 'fulfilled' ? F[1].value : null;
     const fa = a && a.length ? fp(a) : null, fb = b && b.length ? fp(b) : null;
     r.fingerprint = fa || fb; r.bytes = a && a.length ? a.length : b && b.length ? b.length : null;
@@ -111,7 +114,7 @@
       try { const t = await io.btc('/tx/' + gen); if (t && t.blockHeight > 0) { r.startedBlock = t.blockHeight; r.checks.inBlock = t.blockHeight <= r.block; } else if (t) r.checks.inBlock = false; }
       catch (e) { if (/404/.test(String(e))) r.checks.inBlock = false; }
     }
-    if (K && r.satpoint) {
+    if (K && r.satpoint && !lost) {
       const vout = +r.satpoint.split(':')[1], o = (K.outputs || []).find(x => x.mintIndex === vout);
       r.checks.heldThere = !!o && !o.spentTxid && (!r.holder || o.address === r.holder);
       if (o && o.spentTxid) r.movedOn = o.spentTxid;
@@ -122,10 +125,12 @@
     if (c.inBlock === false) bad.push(r.startedBlock ? 'the second site has the transaction that started it in block ' + fmt(r.startedBlock) + ', after block ' + fmt(r.block) + ' that the explorer gives' : 'the second site has no such transaction in a block');
     if (c.sameFile === false) bad.push('the explorer\'s copy of its file and Doggy Market\'s copy are different files');
     if (c.heldThere === false) bad.push(r.movedOn ? 'the second site says the output the explorer has it in was spent since (it may just have moved: the explorer may be behind)' : 'the second site has it held at a different address');
-    const open = Object.entries(c).filter(([k, v]) => v === null).map(([k]) => k === 'sameFile' && r.fileNote ? 'its file on two sites (' + r.fileNote + ')' : ({real: 'whether it is a Doginal', inBlock: 'its block', sameFile: 'its file on two sites', heldThere: 'where it is held'})[k] + ' (a site did not answer)');
+    if (r.lost && r.lost.confirmed === false) bad.push('the explorer says it was lost in a fee, but on the second site its transaction\'s outputs hold it');
+    const open = Object.entries(c).filter(([k, v]) => v === null && !(k === 'heldThere' && r.lost && r.lost.confirmed)).map(([k]) => k === 'sameFile' && r.fileNote ? 'its file on two sites (' + r.fileNote + ')' : ({real: 'whether it is a Doginal', inBlock: 'its block', sameFile: 'its file on two sites', heldThere: 'where it is held'})[k] + ' (a site did not answer)');
     r.ok = bad.length ? false : open.length ? null : true;
     r.why = r.ok === true ? 'real: in its block, the same file on two sites, and held where the explorer says' + (r.startedBlock && r.startedBlock !== r.block ? ' (written from block ' + fmt(r.startedBlock) + ' to ' + fmt(r.block) + ')' : '')
       : bad.length ? bad.join('; ') + (open.length ? '; not checked: ' + open.join(', ') : '') : 'not fully checked: ' + open.join(', ');
+    if (r.lost && r.lost.confirmed) { r.why = (r.ok === true ? 'real: in its block and the same file on two sites, but' : r.why + ';') + ' lost: no one holds it, because transaction ' + r.lost.tx.slice(0, 10) + '… passed it on in its fee (it was at ' + fmt(r.lost.at) + ' koinu, past the ' + fmt(r.lost.outputsHold) + ' its outputs hold; the second site shows it)'; }
     if (r.listedTwice) r.why += '; listed more than once';
     return r;
   }
@@ -173,7 +178,7 @@
       collection: {name: C.name, slug: C.slug, supply: C.supply != null ? C.supply : null, listed: total, holders: C.holders != null ? C.holders : null, verifiedByExplorer: !!C.verified, standard: C.standard || null,
         description: C.description ? {untrusted: String(C.description).slice(0, 400)} : null, page: 'https://thedoginalsexplorer.com/collections/' + C.slug},
       belongs: NOTE,
-      counts: {listed: total, checked: uniq.length, real: ok, problems: bad, notFullyChecked: open, listedTwice: twice.length, sameFileAsAnother: copies, left: Math.max(0, total - uniq.length),
+      counts: {listed: total, checked: uniq.length, real: ok, problems: bad, notFullyChecked: open, lost: uniq.filter(r => r.lost && r.lost.confirmed).length, listedTwice: twice.length, sameFileAsAnother: copies, left: Math.max(0, total - uniq.length),
         checks: Object.fromEntries(['real', 'inBlock', 'sameFile', 'heldThere'].map(k => [k, uniq.filter(r => r.checks[k] === true).length]))},
       listedTwice: twice.slice(0, 50),
       page: {filter: opts.filter || 'all', from, limit, total: want.length, more: from + limit < want.length},
