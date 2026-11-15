@@ -5,8 +5,8 @@
    Anyone who opens the link gets the same check made again, now, and is told whether it is the same, or what changed
    (the holder was X, now Y). Nothing is stored anywhere: the link itself is the record.
    Tools: manifest (Block Manifest), provenance (Provenance Check), collection (Collection Check), recursion (Recursion Map),
-   opinion (Second Opinion), health (Source Health), daily (Daily Data), and Doge Cube's dogemanifest, dogeprovenance and
-   dogedaily. The same file is for the portal's pages and the free
+   opinion (Second Opinion), health (Source Health), daily (Daily Data), stuck (Stuck Transaction Doctor), code (Code Read), and Doge Cube's
+   dogemanifest, dogeprovenance and dogedaily. The same file is for the portal's pages and the free
    Agent Blockhall MCP tool (its checkAgain tool reads a link and makes the check again). No other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
 (function (root, make) {
@@ -87,6 +87,21 @@
       facts: r => { const T = r.totals || {}; return Object.assign({blocks: T.blocks, firstBlock: T.firstBlock, lastBlock: T.lastBlock, transactions: T.transactions, fees: T.totalFees}, Object.fromEntries(Object.entries(T.counts || {}).map(([k, v]) => ['kind: ' + k, v]))); },
       sources: () => ['github.com/bitmap22/my-ordinal-portal (the daily-data branch)']}
   };
+
+  // the Stuck Transaction Doctor: where a transaction is (waiting, or mined in a block) and what it pays
+  TOOLS.stuck = {coreName: 'where it stands', name: 'Stuck Transaction Doctor', page: 'stuck-transaction.html', mcp: 'stuckTx', subject: r => ({tx: r.txid}), label: r => 'transaction ' + r.txid.slice(0, 10) + '…' + r.txid.slice(-6),
+    coreIs: 'where it is: waiting, mined (and in which block) or not found',
+    core: r => [r.txid, r.state === 'mined' ? 'mined' : r.state === 'not found' ? 'not found' : 'waiting', r.facts && r.facts.block != null ? r.facts.block : null],
+    facts: r => { const F = r.facts || {}, w = r.state === 'mined' ? 'mined' : r.state === 'not found' ? 'not found' : null;
+      return {state: r.state, feeRate: F.feeRate != null ? F.feeRate : w, withParents: F.effectiveFeeRate != null ? F.effectiveFeeRate : w, inWaitingBlock: F.inWaitingBlock != null ? F.inWaitingBlock : w || 'under every block waiting', block: F.block != null ? F.block : w ? w : 'not yet'}; },
+    sources: r => r.sources || []};
+
+  // Code Read: what an inscription's code (and the code it loads) asks for
+  TOOLS.code = {coreName: 'the code read', name: 'Code Read', page: 'code-read.html', mcp: 'codeRead', subject: r => ({id: r.id}), label: r => 'the code of ' + (r.number != null ? '#' + fmt(r.number) : r.id),
+    coreIs: 'the code read: the inscription and each inscription of code it loads, with its size',
+    core: r => [r.id, (r.files || []).map(f => [f.id, f.bytes || null])],
+    facts: r => Object.assign({isCode: r.isCode, files: (r.files || []).length, outsideAddresses: (r.outsideAddresses || []).length}, Object.fromEntries((r.kinds || []).map(k => [k.name, k.count]))),
+    sources: r => r.sources || []};
 
   // Doge Cube's twins of three of them (Dogecoin's blocks, Doginals and days), read the same way
   TOOLS.dogemanifest = Object.assign({}, TOOLS.manifest, {name: 'Doge Block Manifest', page: 'doge-block-manifest.html', mcp: 'dogeBlockManifest', label: r => 'Dogecoin block ' + fmt(r.block.height)});

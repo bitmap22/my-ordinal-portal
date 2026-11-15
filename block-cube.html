@@ -7537,6 +7537,28 @@ function runePage(q) {
   return p;
 }
 const runeAmount = (v, d) => { d = +d || 0; const s = v.toString().padStart(d + 1, '0'), w = s.slice(0, s.length - d), f = d ? s.slice(-d).replace(/0+$/, '') : ''; return BigInt(w).toLocaleString('en-US') + (f ? '.' + f : ''); };
+// (15 Nov 2026) what is in its file, tuned in: the Media Reader (agent-blockhall-mcp/server/media.js), loaded the first time a
+// parcel with an inscription is picked up. It reads the file's own bytes: every number read or counted, never guessed.
+let mediaP = null;
+function mediaReader() {
+  if (window.MediaReader) return Promise.resolve(window.MediaReader);
+  if (!mediaP) mediaP = new Promise(res => {
+    const s = document.createElement('script'), here = /(^|\.)github\.io$/.test(location.hostname);
+    s.src = (here ? (/\/test\//.test(location.pathname) ? '../' : '') : 'https://bitmap22.github.io/my-ordinal-portal/') + 'agent-blockhall-mcp/server/media.js';
+    s.onload = () => res(window.MediaReader || null); s.onerror = () => res(null); document.head.appendChild(s);
+  });
+  return mediaP;
+}
+const MEDIA_KEYS = ['Pulls in'];   // (the rest is in the one line: resolution, colours, length, frames, triangles, size)
+async function mediaRows(u, type) {
+  const MR = await mediaReader(); if (!MR) return [];
+  const r = await MR.read(u, type), rows = [['inside', MR.describe(r)]];
+  const sw = MR.swatches(r); if (sw.length && sw.length <= 16) rows.push(['its colours', sw.join(' ')]);
+  for (const [k, v] of MR.facts(r)) if (MEDIA_KEYS.includes(k)) rows.push([k.toLowerCase(), v.length > 140 ? v.slice(0, 140) + '…' : v]);
+  if (r.words && r.words.untrusted && r.words.untrusted.length) rows.push(['words in it', r.words.untrusted.slice(0, 2).map(w => w.key + ': ' + w.text).join(' · ').slice(0, 160) + ' (untrusted)']);
+  return rows;
+}
+
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
   t._held = [];
@@ -7569,6 +7591,11 @@ async function heldInfo(t) {
       show(rows);
     } catch (e) {}
   }
+  // (15 Nov 2026) what is in its file, tuned in: the first inscription's file, read from its own bytes
+  if (ids.length) try {
+    const resp = await ordFetch('/content/' + ids[0], 60000), n = +resp.headers.get('content-length');
+    if (!(n > 4200000)) { const u = new Uint8Array(await resp.arrayBuffer()); if (u.length <= 4200000) show(await mediaRows(u, resp.headers.get('content-type'))); }
+  } catch (e) {}
   const has = f => t.sc != null && ((t.sc >> f) & 1) === 1;
   const q = has(TF.etch) && t.rn ? t.rn : t.mint || null;
   if (q) try {   // the rune it makes, or mints: read from the rune's page on ordinals.com
@@ -16655,7 +16682,7 @@ window.AgentKit = window.AgentKit || (() => {
 <script>(() => {
   // shown inside the portal's own viewer: the portal has its own way round, so no second menu
   try { if (window.top !== window && /\/(index\.html)?$/.test(window.top.location.pathname)) return; } catch (e) {}
-  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Collection Check", "collection-check.html"], ["Recursion Map", "recursion-map.html"], ["Second Opinion", "second-opinion.html"], ["Source Health", "source-health.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Doge tools", [["Doge Block Manifest", "doge-block-manifest.html"], ["Doge Provenance Check", "doge-provenance-check.html"], ["Doge Watch", "doge-watch.html"], ["Doge Daily Data", "doge-daily.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = [], LOBBY = false, PAINT = false;
+  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Collection Check", "collection-check.html"], ["Recursion Map", "recursion-map.html"], ["Second Opinion", "second-opinion.html"], ["Source Health", "source-health.html"], ["Stuck Transaction Doctor", "stuck-transaction.html"], ["Code Read", "code-read.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Doge tools", [["Doge Block Manifest", "doge-block-manifest.html"], ["Doge Provenance Check", "doge-provenance-check.html"], ["Doge Watch", "doge-watch.html"], ["Doge Daily Data", "doge-daily.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = [], LOBBY = false, PAINT = false;
   const here = decodeURIComponent(location.pathname.split('/').pop() || 'index.html'), test = /\/test\//.test(location.pathname);
   const site = /(^|\.)github\.io$/.test(location.hostname) ? '' : 'https://bitmap22.github.io/my-ordinal-portal/';   // (a downloaded copy: the live pages)
   const b = document.createElement('button'); b.id = 'tm'; b.className = 'tl'; b.type = 'button'; b.title = 'Ordinal Portal menu'; b.setAttribute('aria-label', 'Ordinal Portal menu'); b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-controls', 'tmp');

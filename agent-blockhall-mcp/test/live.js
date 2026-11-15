@@ -121,6 +121,19 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   results.calls = calls;
   results.summary = calls.map(c => c.name + ' ' + JSON.stringify(c.args) + ': ' + (c.error ? 'PROTOCOL ERROR ' + c.error.message : c.isError ? 'ERROR ' + c.out : 'ok') + ' (' + c.ms + ' ms)');
   fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 1));
+  // Stuck Transaction Doctor: one waiting now, one mined (#1000's reveal), one not found, one not an ID
+  for (const a of [{}, {txid: 'cbd62b57bc1b3ae8f6e0cfc402fbdbeb5ae4172f9200671f5f689f1af6d3332b'}, {txid: '0'.repeat(63) + '1'}, {txid: 'hello'}]) calls.push(await call('stuckTx', a));
+  results.stuck = calls.filter(c => c.name === 'stuckTx').map(c => JSON.stringify(c.args).slice(0, 40) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 100) : c.out.state + ' | ' + c.out.verdict + (c.out.fees ? ' | aims ' + c.out.fees.aims.map(a => a.name + ' ' + a.feeRate).join(', ') : '') + (c.out.fixes ? ' | replace ' + c.out.fixes.replace.options.map(o => o.newFee).join('/') + ' | children ' + c.out.fixes.child.options.length : '')));
+  // Code Read: a game, a globe that names outside sites, a picture, one that isn't there
+  for (const a of [{id: '#127512326'}, {id: '#126744012'}, {id: '#0'}, {id: '#999999999'}]) calls.push(await call('codeRead', a));
+  results.code = calls.filter(c => c.name === 'codeRead').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 100) : c.out.verdict.slice(0, 220) + ' | found ' + (c.out.kinds || []).filter(k => k.found).map(k => k.key + ' ' + k.count).join(', ') + ' | files ' + (c.out.files || []).length));
+  // Citable checks: take the cite link from checks above and check them again; then one with a doctored fact (the holder), and one that is not a link
+  const cites = calls.filter(c => !c.isError && c.out && c.out.cite && c.out.cite.link).map(c => c.out.cite.link);
+  const pick = [...new Set([cites.find(l => /block-manifest/.test(l)), cites.find(l => /provenance-check/.test(l)), cites.find(l => /collection-check/.test(l)), cites.find(l => /recursion-map/.test(l)), cites.find(l => /second-opinion/.test(l)), cites.find(l => /\/daily\.html/.test(l)), cites.find(l => /doge-block-manifest/.test(l)), cites.find(l => /doge-provenance-check/.test(l)), cites.find(l => /doge-daily/.test(l)), cites.find(l => /stuck-transaction/.test(l)), cites.find(l => /code-read/.test(l))].filter(Boolean))];
+  const prov = cites.find(l => /provenance-check/.test(l));
+  if (prov) { const u = new URL(prov), f = JSON.parse(Buffer.from(u.searchParams.get('f').replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()); f.holder = 'bc1qpretendthiswastheholderthen'; f.moves = (f.moves || 0) - 1; u.searchParams.set('f', Buffer.from(JSON.stringify(f)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')); pick.push(u.toString()); }
+  for (const link of pick.concat(['https://bitmap22.github.io/my-ordinal-portal/provenance-check.html?id=%230'])) calls.push(await call('checkAgain', {link}));
+  results.cite = calls.filter(c => c.name === 'checkAgain').map(c => String(c.args.link).replace('https://bitmap22.github.io/my-ordinal-portal/', '').slice(0, 70) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 100) : c.out.answer + ' | ' + c.out.words));
   console.log(results.summary.join('\n'));
   if (results.manifestChecks.length) console.log('Block Manifest checks:\n' + results.manifestChecks.join('\n'));
   console.log('Provenance checks:\n' + results.provenance.join('\n'));
@@ -132,6 +145,9 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Recursion Map:\n' + results.recursion.join('\n'));
   console.log('Second Opinion:\n' + results.opinion.join('\n'));
   console.log('Source Health:\n' + results.health.join('\n'));
+  console.log('Stuck Transaction Doctor:\n' + results.stuck.join('\n'));
+  console.log('Code Read:\n' + results.code.join('\n'));
+  console.log('Citable checks:\n' + results.cite.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });
