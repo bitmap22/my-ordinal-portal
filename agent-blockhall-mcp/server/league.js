@@ -210,15 +210,15 @@
     // the height written in the first transaction)
     let B = null, from = 'api.blockchair.com', why = '';
     const r = opt.dogeVia === 'explorer' ? {http: null, failed: 'not asked this time'} : await ask('https://api.blockchair.com/dogecoin/raw/block/' + h, opt, BLOCK_WAIT_MS);
-    try { if (r.http !== 200) throw new Error(r.failed || 'http ' + r.http); const raw = js(r.bytes).data; if (!raw || !raw[h] || !raw[h].raw_block) throw new Error('no bytes in its answer'); B = readBlock(P.fromHex(raw[h].raw_block), 'doge'); }
-    catch (e) { why = 'Blockchair: ' + e.message; B = null; }
+    try { if (r.failed) throw new Error('gave no answer (' + r.failed + ')'); if (r.http !== 200) throw new Error('answered with http ' + r.http); let raw; try { raw = js(r.bytes).data; } catch (e) { throw new Error(r.bytes && r.bytes.length ? 'gave an answer that could not be read' : 'gave an empty answer'); } if (!raw || !raw[h] || !raw[h].raw_block) throw new Error('gave no block bytes'); B = readBlock(P.fromHex(raw[h].raw_block), 'doge'); }
+    catch (e) { why = 'api.blockchair.com ' + e.message; B = null; }
     // an answer read as JSON, or a plain-words reason it could not be (which site, and what it gave)
     const jsFrom = (a, who) => { if (a.failed) throw new Error(who + ' gave no answer (' + a.failed + ')'); if (a.http !== 200) throw new Error(who + ' answered with http ' + a.http); try { return js(a.bytes); } catch (e) { throw new Error(who + (a.bytes && a.bytes.length ? ' gave an answer that could not be read' : ' gave an empty answer')); } };
     // a transaction's bytes: from BlockCypher, or else Blockchair (either way they must hash to its id)
-    const ins = [], docTx = async id => {
+    const used = new Set(), ins = [], docTx = async id => {
       const tries = [['api.blockcypher.com', 'https://api.blockcypher.com/v1/doge/main/txs/' + id + '?includeHex=true&limit=1', j => j.hex], ['api.blockchair.com', 'https://api.blockchair.com/dogecoin/raw/transaction/' + id, j => j.data && j.data[id] && j.data[id].raw_transaction]];
       const why = [];
-      for (const [who, url, pickHex] of tries) { try { const hx = pickHex(jsFrom(await ask(url, opt), who)); if (!hx) throw new Error(who + ' gave no bytes'); const u = P.fromHex(hx), t = P.parseTx(u); if (t.txid !== id) throw new Error(who + '\u2019s bytes are not transaction ' + id.slice(0, 12) + '\u2026'); return {t, u, hex: lower(hx)}; } catch (e) { why.push(e.message); } }
+      for (const [who, url, pickHex] of tries) { try { const hx = pickHex(jsFrom(await ask(url, opt), who)); if (!hx) throw new Error(who + ' gave no bytes'); const u = P.fromHex(hx), t = P.parseTx(u); if (t.txid !== id) throw new Error(who + '\u2019s bytes are not transaction ' + id.slice(0, 12) + '\u2026'); used.add(who); return {t, u, hex: lower(hx)}; } catch (e) { why.push(e.message); } }
       throw new Error(why.join('; '));
     };
     const addDoginal = (txid, u) => { try { const S = DP.inscriptionStart(DP.parseTx(u)); if (S && S.finished && S.body && S.body.length && S.contentType) { let n = 0; for (const x of S.body) n += x.length; const v = new Uint8Array(n); let o = 0; for (const x of S.body) { v.set(x, o); o += x.length; } ins.push({id: txid + 'i0', sha: fp(v), length: n, type: S.contentType}); } } catch (e) {} };
@@ -229,7 +229,6 @@
       for (const t of B.txs) addDoginal(t.txid, B.X.subarray(t.a, t.end));
       tx = sampleTx(B);
     } else {
-      from = 'thedoginalsexplorer.com (the header’s fields and the list) and api.blockcypher.com (transactions’ bytes), as ' + why;
       const pg = async n => jsFrom(await ask('https://thedoginalsexplorer.com/v1/block/' + h + '?limit=100&page=' + n, opt), 'thedoginalsexplorer.com');
       const H0 = await pg(1), list = (H0.txs || []).slice();
       for (let n = 2; list.length < (H0.total || 0) && n <= 60; n++) { const Q = await pg(n); if (!Q.txs || !Q.txs.length) break; list.push(...Q.txs); }
@@ -241,6 +240,7 @@
       const pickT = B.txs.length > 1 ? pickOne(B.txs.slice(1)) : B.txs[0], s1 = pickT === B.txs[0] ? cb : await docTx(pickT.txid);
       tx = {id: pickT.txid, hex: s1.hex};
       const cand = B.txs.find(t => t.ins); if (cand) { try { const d = await docTx(cand.txid); addDoginal(cand.txid, d.u); } catch (e) {} }
+      from = 'thedoginalsexplorer.com (the header’s fields and the list) and ' + [...used].join(' and ') + ' (transactions’ bytes), as ' + why;
     }
     // Doginal #0, put back together from the transactions that wrote it (each spends the one before)
     let zero = null;
