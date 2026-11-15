@@ -249,7 +249,7 @@
     const total = run.total != null ? run.total : null;
     say('Checking pieces ' + fmt(from + 1) + ' to ' + fmt(total != null ? Math.min(total, from + n) : from + n) + (total != null ? ' of ' + fmt(total) : '') + '…');
     await DC.walk(run, io, {from, limit: n, stop: () => stopNow}, (k, v) => { if (k === 'piece') { say('Checked ' + fmt(from + v[0]) + (run.total != null ? ' of ' + fmt(run.total) : '') + ' pieces…'); if (v[0] % 10 === 0) draw(); } });
-    draw();
+    draw(true);
     $('stop').classList.add('hidden');
     say((byAgent ? 'An AI agent checked ' : 'Checked ') + fmt(R.counts.checked) + ' of ' + fmt(R.counts.listed) + ' listed pieces of ' + R.collection.name + (stopNow ? ' (stopped)' : '') + '.');
   }
@@ -299,7 +299,7 @@
   }
   const pick = list => filter === 'problems' ? list.filter(r => r.ok === false) : filter === 'notChecked' ? list.filter(r => r.ok === null) : list;
   function drawHow(H) { const U = $('how'); U.textContent = ''; for (const k of ['listed', 'real', 'inBlock', 'sameFile', 'heldThere']) { if (!H[k]) continue; const li = el('li', k === 'listed' ? 'none' : 'ok'); li.appendChild(el('div', 'mark', k === 'listed' ? '•' : '✓')); const d = el('div'); d.appendChild(el('div', 't', {listed: 'Listed', real: 'A real Doginal', inBlock: 'In a block', sameFile: 'The same file on two sites', heldThere: 'Held where the explorer says'}[k])); d.appendChild(el('div', 'w', H[k])); li.appendChild(d); U.appendChild(li); } }
-  function draw() {
+  function draw(done) {
     if (!run) return;
     R = DC.report(run, {limit: 100000});
     $('out').classList.remove('hidden');
@@ -325,8 +325,9 @@
     add('its list on the explorer', 'https://thedoginalsexplorer.com/v1/collections/' + encodeURIComponent(C.slug) + '/items');
     const first = R.pieces[0]; if (first) { add('prove the first piece fully', 'doge-provenance-check.html?id=' + first.id, true); add('walk in Doge Cube', 'doge-cube.html#find=' + first.id, true); }
     add('a Bitcoin collection, proven by its parent', 'collection-check.html', true);
-    try { history.replaceState(null, '', location.pathname + '?collection=' + encodeURIComponent(C.slug)); } catch (e) {}
-    try { if (c.checked) Cite.show('dogecollection', R, $('cite')); } catch (e) {}
+    const fromCite = window.Cite && Cite.opened && Cite.opened() && Cite.opened().tool === 'dogecollection';
+    if (!fromCite) try { history.replaceState(null, '', location.pathname + '?collection=' + encodeURIComponent(C.slug)); } catch (e) {}
+    try { if (done && c.checked) Cite.show('dogecollection', R, $('cite')); } catch (e) {}   // (once a run of checks is done: a citation covers the pieces checked)
   }
   function drawList() {
     const r = L, c = r.counts; $('out').classList.remove('hidden'); $('ctl').classList.add('hidden');
