@@ -1,0 +1,50 @@
+# The keeper. GitHub starts this repo's timed jobs late, or not at all (15 Nov 2026: Source Health's, Daily Data's and Doge Daily
+# Data's starts had not come hours later). But pushes to main happen many times a day, and GitHub starts work for a push straight
+# away. So on every push to main (and on its own timed starts, in case of a quiet day) the keeper looks at what is due and starts
+# it: Source Health if its last check is 55 minutes old or more, Daily Data from 00:20 UTC and Doge Daily Data from 00:47 UTC if
+# the day before isn't saved yet. It only starts those workflows, each of which still checks for itself that there is something
+# to do. Free: GitHub runs it (the repository is public). © 2026 bitmap22. All rights reserved.
+name: Keeper
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '5,35 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: keeper
+  cancel-in-progress: true
+
+jobs:
+  keep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start what is due
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+        run: |
+          now=$(date -u +%s)
+          busy() { gh api "repos/$R/actions/workflows/$1/runs?per_page=10" --jq '[.workflow_runs[] | select(.status != "completed")] | length'; }
+          # Source Health: about once an hour
+          last=$(gh api "repos/$R/commits/source-health" --jq .commit.committer.date 2>/dev/null || true)
+          age=999999; [ -n "$last" ] && age=$(( now - $(date -u -d "$last" +%s) ))
+          if [ "$age" -lt 3300 ]; then echo "Source Health: not due (its last check was $((age / 60)) minutes ago)"
+          elif [ "$(busy source-health.yml)" != "0" ]; then echo "Source Health: already running"
+          else gh workflow run source-health.yml -R "$R" -f ifDue=yes && echo "Source Health: started (its last check was $((age / 60)) minutes ago)"; fi
+          # Daily Data (from 00:20 UTC) and Doge Daily Data (from 00:47 UTC): the day before, if it isn't saved yet
+          DAY=$(date -u -d yesterday +%F); mins=$(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) ))
+          for x in "daily-data.yml daily-data 20" "doge-daily-data.yml doge-daily-data 47"; do
+            set -- $x
+            if [ "$mins" -lt "$3" ]; then echo "$1: not yet (it starts at 00:$3 UTC)"; continue; fi
+            if gh api "repos/$R/contents/days/$DAY.json?ref=$2" --silent 2>/dev/null; then echo "$1: $DAY is saved"; continue; fi
+            if [ "$(busy "$1")" != "0" ]; then echo "$1: already running"; continue; fi
+            gh workflow run "$1" -R "$R" -f onlyIfMissing=yes && echo "$1: started for $DAY"
+          done
