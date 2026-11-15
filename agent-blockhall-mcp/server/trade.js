@@ -83,16 +83,18 @@
     if (!R) return [reason('its code', 'unknown', 'Its code could not be read this time.')];
     if (R.isCode === false) return [];
     const found = (R.kinds || []).filter(k => k.found || k.count), out = [];
-    for (const k of found) if (k.key !== 'outside') out.push(reason('its code', 'care', 'Its code ' + (k.says || k.name) + ' (Code Read found ' + fmt(k.count || 1) + (k.count === 1 ? ' place' : ' places') + '). Never sign anything it asks.', {kind: k.key, from: 'Code Read'}));
+    for (const k of found) out.push(reason('its code', 'care', 'Its code ' + String(k.says || k.name).replace(/^it /, '') + ' (Code Read found ' + fmt(k.count || 1) + (k.count === 1 ? ' place' : ' places') + '). Never sign anything it asks.', {kind: k.key, from: 'Code Read'}));
     if (!out.length) out.push(reason('its code', 'ok', 'Its code was read without running it: it asks no wallet for anything, sends nothing out, has no known tracking and hides nothing.', {from: 'Code Read'}));
     return out;
   }
-  function fromRecursion(M) {
+  function fromRecursion(M, codeLoadsOutside) {
     if (!M) return [reason('what it loads', 'unknown', 'What it loads could not be mapped this time.')];
     const C = M.counts || {}, out = [];
     if (C.missing) out.push(reason('what it loads', 'care', fmt(C.missing) + ' of the inscriptions it loads could not be found: it may not work fully.', {from: 'Recursion Map'}));
-    if (C.outside) out.push(reason('what it loads', 'care', 'Its code names ' + fmt(C.outside) + ' address' + (C.outside === 1 ? '' : 'es') + ' outside the chain: if it loads from them, it can change or stop working one day.', {from: 'Recursion Map'}));
-    if (!out.length) out.push(reason('what it loads', 'ok', C.inscriptions ? 'Everything it loads is on the chain: ' + fmt(C.inscriptions) + ' inscription' + (C.inscriptions === 1 ? '' : 's') + ', each found.' : 'It loads nothing else: it is all in its own file.', {from: 'Recursion Map'}));
+    // (the Recursion Map sees every address written in its code; Code Read says whether its code loads or asks from one)
+    if (C.outside && codeLoadsOutside === false) out.push(reason('what it loads', 'info', 'Its code names ' + fmt(C.outside) + ' address' + (C.outside === 1 ? '' : 'es') + ' outside the chain, as text or a link: Code Read found nothing it loads or asks from outside the chain.', {from: 'Recursion Map and Code Read'}));
+    else if (C.outside && codeLoadsOutside !== true) out.push(reason('what it loads', 'care', 'Its code names ' + fmt(C.outside) + ' address' + (C.outside === 1 ? '' : 'es') + ' outside the chain: if it loads from them, it can change or stop working one day.', {from: 'Recursion Map'}));
+    if (!out.some(r => r.mark !== 'info')) out.unshift(reason('what it loads', 'ok', C.inscriptions ? 'Everything it loads is on the chain: ' + fmt(C.inscriptions) + ' inscription' + (C.inscriptions === 1 ? '' : 's') + ', each found.' : 'It loads nothing else: it is all in its own file.', {from: 'Recursion Map'}));
     return out;
   }
 
@@ -139,7 +141,7 @@
     const type = I.contentType || '';
     if (chain === 'bitcoin' && CODE_TYPES.test(type)) {
       say('step', 'code'); let R = null; try { R = await io.code(id); } catch (e) {} ran.code = R ? {verdict: R.verdict, cite: R.cite && R.cite.link || null} : null; reasons.push(...fromCode(R));
-      say('step', 'loads'); let M = null; try { M = await io.recursion(id); } catch (e) {} ran.recursion = M ? {allOnChain: M.allOnChain, counts: M.counts, cite: M.cite && M.cite.link || null} : null; reasons.push(...fromRecursion(M));
+      say('step', 'loads'); let M = null; try { M = await io.recursion(id); } catch (e) {} ran.recursion = M ? {allOnChain: M.allOnChain, counts: M.counts, cite: M.cite && M.cite.link || null} : null; reasons.push(...fromRecursion(M, R && R.kinds ? (R.kinds || []).some(k => k.key === 'outside' && (k.found || k.count)) : null));
     } else if (chain === 'doge' && CODE_TYPES.test(type)) reasons.push(reason('its code', 'care', 'It is code (' + type + '), and Dogecoin has no Code Read yet: what its code asks for was not checked. Never sign anything it asks.'));
     const J = judge(reasons);
     const links = chain === 'doge'
