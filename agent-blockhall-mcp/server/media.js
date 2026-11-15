@@ -154,7 +154,7 @@
     const px = P.width * P.height;
     if (px > MAX_PIXELS) { P.coloursUsed = null; P.coloursNote = 'not counted: ' + px.toLocaleString('en-GB') + ' pixels is more than this reader counts one by one'; return; }
     let raw; try { raw = await inflate(cat(idat)); } catch (e) { P.coloursUsed = null; P.coloursNote = 'not counted: its picture data could not be unpacked (' + (e.message || e) + ')'; return; }
-    const C = colourCounter(), bd = P.bitsPerChannel, ct = P.colourType, ch = PNG_CH[ct], bpp = ch * bd, bytesPP = Math.max(1, bpp >> 3), max = (1 << bd) - 1;
+    const C = colourCounter(), bd = P.bitsPerIndex || P.bitsPerChannel, ct = P.colourType, ch = PNG_CH[ct], bpp = ch * bd, bytesPP = Math.max(1, bpp >> 3), max = (1 << bd) - 1;
     const tr = trns ? (ct === 0 ? be16(trns, 0) : ct === 2 ? [be16(trns, 0), be16(trns, 2), be16(trns, 4)] : null) : null;
     const used = ct === 3 ? new Uint8Array(256) : null;
     const passes = P.interlaced ? [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]] : [[0, 0, 1, 1]];
@@ -494,6 +494,7 @@
       if (P.coloursUsed != null) bits.push(fmt(P.coloursUsed) + ' colour' + (P.coloursUsed === 1 ? '' : 's') + ' used' + (P.framesWithOwnPalette ? ' (frames have palettes of their own)' : P.palette ? ' (palette of ' + fmt(P.palette.size) + ')' : ''));
       else if (P.palette) bits.push('a palette of ' + fmt(P.palette.size) + ' colours');
       if (P.seeThrough) bits.push('has see-through parts');
+      if (P.packing) bits.push(/lossless|every pixel stored as it is|exactly/.test(P.packing) ? 'every pixel kept exactly' : /squash/.test(P.packing) ? 'squashed (lossy)' : /as words/.test(P.packing) ? 'sharp at any size' : '');
       if (P.colourDetail) bits.push(P.colourDetail);
       if (P.profile) bits.push(P.profile);
       if (P.shapes != null) bits.push(fmt(P.shapes) + ' shapes');
@@ -501,7 +502,7 @@
     else bits.push((r.fromBytes && r.fromBytes.name) || 'a file');
     bits.push(fmt(r.bytes) + ' bytes');
     if (r.loads) bits.push('asks for ' + fmt(r.loads.count) + ' other file' + (r.loads.count === 1 ? '' : 's'));
-    return bits.join(' · ');
+    return bits.filter(Boolean).join(' · ');
   }
 
   return {VERSION, read, describe, sniff, typesAgree, MAX_PIXELS};
