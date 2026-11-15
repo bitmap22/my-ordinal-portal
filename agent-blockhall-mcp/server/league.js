@@ -60,7 +60,7 @@
   // the facts: what is asked (path, from the truth), how the answer is read, and what the bytes say it should be
   const F = {
     hash: {words: 'a block’s hash'}, bytes: {words: 'a transaction’s bytes'}, place: {words: 'which block a transaction is in'},
-    file: {words: 'an inscription’s file'}, record: {words: 'an inscription’s record (its block, size and type)'}, old: {words: 'inscription #0’s file'}
+    file: {words: 'an inscription’s file'}, record: {words: 'an inscription’s record'}, old: {words: 'inscription #0’s file'}
   };
   const FACTS = {
     mempool: [
@@ -327,6 +327,29 @@
     const what = (F[w.fact] || {}).words || w.fact, said = w.said && w.said.sha256 ? 'a file with fingerprint ' + w.said.sha256.slice(0, 16) + '…' : w.said, truth = w.truth && w.truth.sha256 ? 'fingerprint ' + w.truth.sha256.slice(0, 16) + '…' : w.truth;
     return when(w.at || new Date(w.t * 1000).toISOString()) + ': asked for ' + what + ' (' + w.asked + '), it said ' + said + '; the block’s own bytes say ' + truth + '.';
   }
+  // what it means, in words: only what the record shows (sum: summarise(); health: Source Health's summarise() of its week)
+  function findings(sum, chain, health) {
+    const out = [], name = CHAINS[chain] || 'the', days = sum && sum.days || 7, span = 'the last ' + (days === 1 ? 'day' : days + ' days');
+    if (!sum || !sum.checks) return [{trouble: false, says: 'GitHub’s record has no checks yet.'}];
+    const mine = (sum.sites || []).filter(s => s.chain === chain), checked = mine.filter(s => s.checkable);
+    const right = checked.reduce((a, s) => a + s.right, 0), answered = checked.reduce((a, s) => a + s.answered, 0);
+    const wrongs = checked.filter(s => s.wrong);
+    for (const s of wrongs) out.push({trouble: true, site: s.site, says: s.site + ' gave ' + fmt(s.wrong) + ' wrong answer' + (s.wrong === 1 ? '' : 's') + ' in ' + span + ' (of ' + fmt(s.answered) + ').' + (s.lastWrong.length ? ' The last: ' + wrongWords(s.lastWrong[s.lastWrong.length - 1]) : '')});
+    if (!wrongs.length && answered) out.push({trouble: false, says: 'Every answer ' + name + '’s sites gave in ' + span + ' was right: ' + fmt(right) + ' of ' + fmt(answered) + ', each checked against a block proved from its own bytes (' + fmt(sum.checks) + ' check' + (sum.checks === 1 ? '' : 's') + ').'});
+    const list = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0] || '';
+    for (const s of checked) {
+      const of = k => Object.entries(s.byFact || {}).filter(([, b]) => b[k] || (k === 'failed' && (b.noAnswer + b.errors))).map(([f, b]) => (F[f] ? F[f].words : f) + ' (' + fmt(k === 'failed' ? b.noAnswer + b.errors : b[k]) + ' of ' + fmt(b.asked) + ')');
+      const m = of('missing'), r = of('refused'), x = of('failed');
+      if (m.length) out.push({trouble: true, site: s.site, says: s.site + ' did not have ' + list(m) + ' in ' + span + ' (http 404). That is not counted as wrong: a tool that asks it falls back to another site.'});
+      if (r.length) out.push({trouble: true, site: s.site, says: s.site + ' refused GitHub\u2019s computers ' + fmt(s.refused) + ' of ' + fmt(s.asked) + ' times in ' + span + ', asked for ' + list(r) + '. A site can refuse one computer and answer another: press Check now to ask it from yours.'});
+      if (x.length) out.push({trouble: true, site: s.site, says: s.site + ' gave no answer or an error ' + fmt(s.noAnswer + s.errors) + ' of ' + fmt(s.asked) + ' times in ' + span + ', asked for ' + list(x) + '.'});
+    }
+    const h = new Map((health && health.sites || []).map(x => [x.site, x]));
+    for (const s of mine) { const w = h.get(s.site), wk = w && w.week; if (wk && wk.behind) out.push({trouble: true, site: s.site, says: 'From Source Health’s hourly record, ' + s.site + ' was behind in ' + fmt(wk.behind) + ' of ' + fmt(wk.checks) + ' checks this week' + (wk.mostBehind > 0 ? ', at most ' + fmt(wk.mostBehind) + ' blocks' : '') + ': its answers about the newest blocks were out of date then.'}); }
+    const unchecked = mine.filter(s => !s.checkable).map(s => s.site);
+    if (unchecked.length) out.push({trouble: false, says: unchecked.join(', ').replace(/, ([^,]*)$/, ' and $1') + ' give facts the portal can’t yet work out from the chain’s bytes, so the League shows only whether they answer and keep up (from Source Health).'});
+    return out;
+  }
   // the record itself, read from the portal's repository
   async function record(opt) {
     let err = null;
@@ -346,5 +369,5 @@
   }
 
   return {VERSION, SITES: SITES.map(s => Object.assign({}, s, {facts: factsOf(s).map(q => q.f)})), CHAINS, CODES, FACT_WORDS: Object.fromEntries(Object.entries(F).map(([k, v]) => [k, v.words])),
-    MIN_ZERO_BITS, DOGE_AGREE, KEEP_DAYS, RECORD_URLS, LICENCE, check, readBlock, merkle, addToRecord, summarise, rank, words, wrongWords, record, order, site, when};
+    MIN_ZERO_BITS, DOGE_AGREE, KEEP_DAYS, RECORD_URLS, LICENCE, check, readBlock, merkle, addToRecord, summarise, rank, findings, words, wrongWords, record, order, site, when};
 });
