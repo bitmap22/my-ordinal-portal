@@ -171,7 +171,7 @@
   <footer>
     Free, with no keys or accounts. It reads free public sites: ordinals.com (and its back-ups) and mempool.space (and its copies), gently: at most 30 asks at once, then 6 a second per site. Inscriptions belong to their creators: this page links to them and doesn't show them.<br>
     <a href="index.html">Back to the Ordinal Portal</a> · <a href="block-cube.html">Agent Blockhall</a> · <a href="doge-cube.html">Doge Cube</a> · by bitmap22 · <a href="https://x.com/BitmapPlotz" target="_blank" rel="me noopener noreferrer">@BitmapPlotz</a> on X<br>
-    © 2026 bitmap22. All rights reserved. Free to use in your browser, under the <a href="https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE">Ordinal Portal's licence</a>. Bitcoin's data is public and isn't part of it. Not made by or affiliated with ordinals.com, mempool.space or UniSat.
+    © 2026 bitmap22. All rights reserved. Free to use in your browser, under the <a href="https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE">Ordinal Portal's licence</a>. A file stored packed is unpacked with Google's <a href="https://github.com/google/brotli">Brotli decoder</a> (© the Brotli Authors, <a href="https://opensource.org/licenses/MIT">MIT licence</a>). Bitcoin's data is public and isn't part of it. Not made by or affiliated with ordinals.com, mempool.space or UniSat.
   </footer>
 </div>
 
@@ -222,6 +222,11 @@
     throw err || new Error('no site answered');
   }
   // the same steps as the MCP tool: ord details from ordinals.com (back-ups if it is down), the second ord site always another one
+  // (15 Nov 2026) a file stored packed (Brotli, as ord allows) is unpacked here, with Google's Brotli decoder (vendor/brotli,
+  // MIT licence, unchanged), loaded only when such a file is met; the MCP tool unpacks with Node's own
+  let BR = null;
+  const unpack = {decompress: (b, enc) => { if (enc !== 'br' || typeof BR !== 'function') throw new Error('not ready'); return new Uint8Array(BR(new Int8Array(b.buffer, b.byteOffset, b.byteLength))); },
+    prepareUnpack: async enc => { if (enc !== 'br') return false; if (!BR) { try { BR = (await import(new URL((/\/test\//.test(location.pathname) ? '../' : '') + 'vendor/brotli/decode.min.js', location.href).href)).BrotliDecode; } catch (e) { return false; } } return typeof BR === 'function'; }};
   function makeIo() {
     let ordAt = null;
     return {
@@ -231,7 +236,7 @@
       ordBytes: async p => { const x = await ordFetch(p, 60000); return {bytes: new Uint8Array(await x.r.arrayBuffer()), site: x.site}; },
       mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; },
       mpText: async p => { const x = await mpFetch(p, 60000); return {t: await x.r.text(), site: x.site}; },
-      sleep, decompress: null, media: window.MediaReader || null};   // (no browser can unpack brotli yet: the MCP tool can)
+      sleep, decompress: unpack.decompress, prepareUnpack: unpack.prepareUnpack, media: window.MediaReader || null};
   }
 
   /* ---------- checking ---------- */
