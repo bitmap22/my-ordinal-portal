@@ -910,7 +910,7 @@
       add('Samples a second', S.sampleRate ? fmt(S.sampleRate) : null);
       add('Bits a sample', S.bitsPerSample);
       add('Channels', chWords(S.channels));
-      add('Bitrate', S.bitrate && S.bitrate.kbps ? fmt(S.bitrate.kbps) + ' kbit/s (' + S.bitrate.kind + ')' : null);
+      add('Bitrate', S.bitrate && S.bitrate.kbps ? fmt(S.bitrate.kbps) + ' kbit/s' + (S.bitrate.kind === 'constant' ? ' (the same all through)' : ' (an average: it changes through the file)') : null);
       add('Format', [S.format, S.codec && !S.format.includes(S.codec) ? S.codec : null, S.version, S.profile].filter(Boolean).join(', '));
       add('Packing', S.packing);
       if (S.framesStopAt) add('Note', S.framesStopAt.note);
