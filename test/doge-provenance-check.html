@@ -191,7 +191,7 @@
 
   /* ---------- being gentle with the sites ---------- */
   // the explorer: 300 units a minute for everyone; Blockchair: 30 asks a minute, 1,800 an hour (it says so itself)
-  const PACE = {[DX]: {rate: 2.3, burst: 20}, [BCR]: {rate: 0.45, burst: 12}, [BTC]: {rate: 3, burst: 10}, [DOGGY]: {rate: 2, burst: 4}}, sites = new Map();
+  const PACE = {[DX]: {rate: 2.3, burst: 20}, [BCR]: {rate: 0.45, burst: 12}, [BTC]: {rate: 3, burst: 10}, [DOGGY]: {rate: 2, burst: 4}, ['https://api.blockcypher.com']: {rate: 1, burst: 3}}, sites = new Map();
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const base = u => Object.keys(PACE).find(b => u.startsWith(b)) || new URL(u).origin;
   async function paceWait(b) {
@@ -211,7 +211,13 @@
   const io = {
     dx: async p => (await get(DX + p, 25000)).json(),
     btc: async p => (await get(BTC + p, 25000)).json(),
-    raw: async id => { const j = await (await get(BCR + '/raw/transaction/' + id, 25000)).json(); const h = j && j.data && j.data[id] && j.data[id].raw_transaction; if (!h) throw new Error('Blockchair did not give its bytes'); return h; },
+    raw: async id => { const j = await (await get(BCR + '/raw/transaction/' + id, 25000)).json(); const h = j && j.data && j.data[id] && j.data[id].raw_transaction;
+      if (h) { io.rawFrom.set(id, 'https://api.blockchair.com'); return h; }
+      // Blockchair has no bytes for one too new for it yet: BlockCypher's copy, hashed to its id all the same
+      let c = null; try { c = await (await get('https://api.blockcypher.com/v1/doge/main/txs/' + id + '?includeHex=true&limit=1', 25000)).json(); } catch (e) {}
+      if (c && /^[0-9a-f]+$/i.test(c.hex || '')) { io.rawFrom.set(id, 'https://api.blockcypher.com'); return c.hex; }
+      throw new Error('neither Blockchair nor BlockCypher gave its bytes'); },
+    rawFrom: new Map(),
     file: id => fileOf(DX + '/content/' + id), file2: id => fileOf(DOGGY + '/content/' + id), sleep, media: window.MediaReader || null};
 
   /* ---------- checking ---------- */
@@ -247,7 +253,7 @@
 
   /* ---------- showing it ---------- */
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-  const host = u => u ? u.replace(/^https:\/\/(api\.|cdn\.)?/, '') : 'no site';
+  const host = u => u ? u.replace(/https:\/\/(api\.|cdn\.)?/g, '') : 'no site';
   const short = (t, a, b) => t && t.length > a + b + 1 ? t.slice(0, a) + '…' + t.slice(-b) : t || '–';
   const link = (text, href) => { const a = el('a', null, text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; };
   const NAMES = {transactionBytes: 'The bytes that wrote it', writtenChain: 'Written piece by piece', readFromItsBytes: 'Its file type, read from its bytes', contentFingerprint: 'Fingerprint: the explorer’s copy', secondCopy: 'Fingerprint: Doggy Market’s copy',
