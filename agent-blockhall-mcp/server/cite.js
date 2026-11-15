@@ -92,7 +92,9 @@
   function make(tool, r, at) {
     const T = TOOLS[tool]; if (!T) throw new Error('no such tool: the tools are ' + Object.keys(TOOLS).join(', '));
     const subject = T.subject(r), facts = T.facts(r), fp = fingerprint(T.core(r)), when = minute(at);
-    const src = [...new Set(T.sources(r).filter(Boolean).map(host))];
+    // (a source named in words, e.g. "the chain (its coinbase, from mempool.space)", is cited by the site it came from)
+    const site = u => { const h = host(u); if (/^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?$/i.test(h)) return h; const m = String(u).match(/[a-z0-9-]+(\.[a-z0-9-]+)+/i); return m ? m[0] : null; };
+    const src = [...new Set(T.sources(r).filter(Boolean).map(site).filter(Boolean))];
     const q = new URLSearchParams(Object.assign({}, subject, {cited: when, fp, src: src.join(','), f: b64(JSON.stringify(facts))}));
     return {tool, check: T.name, of: T.label(r), subject, at: when, fingerprint: fp, fingerprintOf: T.coreIs, facts, sources: src,
       link: PORTAL + T.page + '?' + q.toString().replace(/%2C/g, ',').replace(/%3A/g, ':'),
