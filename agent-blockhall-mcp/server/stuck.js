@@ -106,8 +106,9 @@
     if (T.status && T.status.confirmed) {
       let tip = null; try { tip = +String((await io.mpText('/api/blocks/tip/height')).t).trim(); } catch (e) {}
       const conf = tip != null ? tip - T.status.block_height + 1 : null;
+      let insM = 0; try { insM = PV.envelopes(PV.parseTx(PV.fromHex(String((await io.mpText('/api/tx/' + txid + '/hex')).t).trim()))).length; } catch (e) {}
       return Object.assign(out, {state: 'mined', verdict: 'Not stuck: it was mined in block ' + fmt(T.status.block_height) + (conf ? ' (' + fmt(conf) + ' confirmation' + (conf === 1 ? '' : 's') + ')' : '') + '.',
-        facts: {block: T.status.block_height, time: T.status.block_time ? new Date(T.status.block_time * 1000).toISOString().replace('.000', '') : null, fee: T.fee, vsize: Math.ceil(T.weight / 4), feeRate: +r1(T.fee / Math.ceil(T.weight / 4)), confirmations: conf}, why: [], fixes: null});
+        facts: {block: T.status.block_height, time: T.status.block_time ? new Date(T.status.block_time * 1000).toISOString().replace('.000', '') : null, fee: T.fee, vsize: Math.ceil(T.weight / 4), feeRate: +r1(T.fee / Math.ceil(T.weight / 4)), confirmations: conf, inscriptions: insM}, why: insM ? ['It wrote ' + insM + ' inscription' + (insM === 1 ? '' : 's') + '.'] : [], fixes: null});
     }
 
     // waiting: its fee, the transactions tied to it, where it sits, how long it has waited
@@ -172,10 +173,10 @@
     }
     const ok = eff >= (targets[0] ? targets[0].feeRate : Infinity) || where.block === 1;
     const verdict = ok ? 'Waiting, but not stuck: it pays enough for the next block (' + r1(eff) + ' sat/vB).'
-      : where.block ? 'Waiting: at ' + r1(eff) + ' sat/vB it sits in about block ' + where.block + ' of ' + where.of + ' waiting. To go in sooner, it needs about ' + targets[0].feeRate + ' sat/vB.'
+      : where.block ? 'Waiting: at ' + r1(eff) + ' sat/vB it sits in about block ' + where.block + ' of the ' + where.of + ' waiting. To be sure of the next block, it needs about ' + targets[0].feeRate + ' sat/vB (the next block takes from ' + r1(F0) + ' now).'
       : 'Stuck at the back: at ' + r1(eff) + ' sat/vB it is under every block waiting. For the next block it needs about ' + (targets[0] ? targets[0].feeRate : '?') + ' sat/vB.';
     out.sources = [...new Set(out.sources.concat(adv.sources))];
-    return Object.assign(out, {state: ok ? 'waiting, not stuck' : 'stuck', verdict, facts, why,
+    return Object.assign(out, {state: ok ? 'waiting, not stuck' : where.block ? 'waiting' : 'stuck', verdict, facts, why,
       fees: {aims: adv.fees, keepsScoreOfItself: adv.keepsScoreOfItself, newestBlock: adv.newestBlock, blocksRead: adv.blocksRead},
       fixes: {
         replace: {how: 'Make the same transaction again, spending the same coins, with a higher fee (most wallets call it "speed up" or "bump fee"; only the wallet that made it can). Bitcoin Core 28 and later accept it without the old opt-in signal.' + (desc.length ? ' It throws out the ' + desc.length + ' waiting on it, so they would have to be made again' + (ins.length ? '' : '') + '.' : '') + (anc.length ? ' Its parent still waits: the fee covers both.' : ''), rules: 'It must pay at least what it replaces (' + fmt(T.fee + descFee) + ' sats), plus its own size again at ' + INCREMENTAL + ' sat/vB, and a higher fee rate than before.', options: replace},
