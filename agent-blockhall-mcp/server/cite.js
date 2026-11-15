@@ -5,7 +5,7 @@
    Anyone who opens the link gets the same check made again, now, and is told whether it is the same, or what changed
    (the holder was X, now Y). Nothing is stored anywhere: the link itself is the record.
    Tools: manifest (Block Manifest), provenance (Provenance Check), collection (Collection Check), recursion (Recursion Map),
-   opinion (Second Opinion), health (Source Health), daily (Daily Data), stuck (Stuck Transaction Doctor), code (Code Read), and Doge Cube's
+   opinion (Second Opinion), health (Source Health), daily (Daily Data), stuck (Stuck Transaction Doctor), code (Code Read), league (Truth League), and Doge Cube's
    dogemanifest, dogeprovenance and dogedaily. The same file is for the portal's pages and the free
    Agent Blockhall MCP tool (its checkAgain tool reads a link and makes the check again). No other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
@@ -125,6 +125,13 @@
     facts: r => { const I = r.inscription, T = r.trail || []; return {number: I.number, block: I.block, type: I.contentType, bytes: I.bytes, file: I.fingerprint ? I.fingerprint.sha256.slice(0, 16) : null, holder: I.holder, moves: T.length ? T.length - 1 : 0, checks: r.verdict}; }});
   TOOLS.dogedaily = Object.assign({}, TOOLS.daily, {name: 'Doge Daily Data', page: 'doge-daily.html', mcp: 'dogeDailyData', label: r => 'Doge Daily Data for ' + r.day, sources: () => ['github.com/bitmap22/my-ordinal-portal (the doge-daily-data branch)']});
 
+  // Truth League: one check of every data site's answers, against blocks proved from their own bytes
+  TOOLS.league = {coreName: 'how every site answered', name: 'Truth League', page: 'truth-league.html', mcp: 'truthLeague', subject: r => r.chain && r.chain !== 'all' ? {chain: r.chain} : {},
+    label: r => r.chain === 'doge' ? 'Dogecoin\'s data sites' : r.chain === 'bitcoin' ? 'Bitcoin\'s data sites' : 'every data site',
+    coreIs: 'how every site answered: right, wrong or not answered, for each fact it was asked',
+    core: r => (r.results || []).filter(x => x.facts && x.facts.length).map(x => [x.site, x.facts.map(f => f.code === 'R' || f.code === 'W' || f.code === '-' ? f.code : 'N').join('')]),
+    facts: r => Object.fromEntries((r.results || []).filter(x => x.facts && x.facts.length).map(x => { const n = c => x.facts.filter(f => f.code === c).length; return [x.site, n('R') + ' right, ' + n('W') + ' wrong, of ' + x.facts.filter(f => f.code !== '-').length + ' asked']; })),
+    sources: r => (r.results || []).filter(x => x.facts && x.facts.length).map(x => x.site)};
   /* ---------- making a citation, reading one back, comparing ---------- */
   const minute = d => new Date(d || Date.now()).toISOString().slice(0, 16) + 'Z';
   function make(tool, r, at) {

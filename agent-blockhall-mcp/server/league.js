@@ -317,10 +317,10 @@
   function words(s) {
     if (!s.checkable) return 'Its facts can’t yet be worked out from the chain’s bytes here, so only whether it answers and keeps up is shown.';
     if (!s.asked) return 'Not asked yet.';
-    let w = s.answered ? 'Right ' + fmt(s.right) + ' of ' + fmt(s.answered) + ' answers' + (s.wrong ? ', wrong ' + fmt(s.wrong) : '') : 'No answers to score yet';
+    let w = s.answered ? 'Right ' + fmt(s.right) + ' of ' + fmt(s.answered) + ' answer' + (s.answered === 1 ? '' : 's') + (s.wrong ? ', wrong ' + fmt(s.wrong) : '') : 'No answers to score yet';
     const not = [['refused', s.refused], ['did not have it', s.missing], ['errors', s.errors], ['no answer', s.noAnswer]].filter(x => x[1]);
     if (not.length) w += ' (asked ' + fmt(s.asked) + ': ' + not.map(x => x[0] + ' ' + fmt(x[1])).join(', ') + ')';
-    return w + '.';
+    return w + '.' + (s.answered && s.answered < 3 ? ' Too few answers yet to place it fairly.' : '');
   }
   // what one wrong answer was, in words
   function wrongWords(w) {
