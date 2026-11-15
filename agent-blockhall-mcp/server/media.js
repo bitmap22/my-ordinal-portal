@@ -499,6 +499,7 @@
       frames++; samples += f.spf; brs.add(f.br); audioBytes += f.len; p += f.len;
     }
     if (!first) throw new Error('no MP3 sound frames were found');
+    if (p < u.length - 256 && ascii(u, p, 3) !== 'TAG' && ascii(u, p, 8) !== 'APETAGEX') S.framesStopAt = {byte: p, of: u.length, note: 'the sound frames stop before the file ends: the length counts the frames up to there'};
     S.version = first.version + ' layer ' + ['', 'I', 'II', 'III'][first.layer]; S.sampleRate = first.sr; S.channels = first.mode === 3 ? 1 : 2; S.channelMode = ['stereo', 'joint stereo', 'dual channel', 'mono'][first.mode];
     S.frames = frames; S.seconds = secs(samples, first.sr);
     if (info && info.delay != null) { const playable = samples - info.delay - info.padding; if (playable > 0) S.secondsPlayable = secs(playable, first.sr); S.encoder = info.encoder; }
@@ -516,6 +517,7 @@
       frames += blocks; bytes += len; p += len;
     }
     if (!first) throw new Error('no AAC frames were found');
+    if (p < u.length - 256) S.framesStopAt = {byte: p, of: u.length, note: 'the sound frames stop before the file ends: the length counts the frames up to there'};
     S.profile = ['Main', 'LC (low complexity)', 'SSR', 'LTP'][first.prof]; S.sampleRate = first.sr; S.channels = first.ch; S.frames = frames;
     S.note = 'the length counts every sound frame in the file, including the short start an AAC encoder always adds';
     S.seconds = secs(frames * 1024, first.sr); S.bitrate = {kbps: S.seconds ? Math.round(bytes * 8 / S.seconds / 1000) : null, kind: 'average'};
@@ -643,7 +645,7 @@
       else if (cur && id === 0xb5) cur.sr = ebmlFloat(u, a, b);
       else if (cur && id === 0x9f) cur.ch = ebmlUint(u, a, b);
       else if (cur && id === 0x6264) cur.bits = ebmlUint(u, a, b);
-      else if (id === 0xa3 || id === 0xa1) { const T = ebml(u, a); if (T) blocks[T.v] = (blocks[T.v] || 0) + 1; }
+      else if (id === 0xa3 || id === 0xa1) { const T = ebml(u, a); if (T) { const fl = u[a + T.n + 2], laced = fl & 0x06; blocks[T.v] = (blocks[T.v] || 0) + (laced ? u[a + T.n + 3] + 1 : 1); } }   // (a laced block holds several frames)
       p = b;
     } };
     walk(0, u.length);
@@ -655,7 +657,8 @@
       const X = out.video = {format: name, codec: CN[V.codec] || V.codec, width: V.w, height: V.h, seconds};
       if (V.dw && V.dh && (V.dw !== V.w || V.dh !== V.h)) X.shownAs = V.dw + ' × ' + V.dh;
       const nf = V.num != null ? blocks[V.num] : null; if (nf) X.frames = nf;
-      if (V.frameNs) X.framesPerSecond = +(1e9 / V.frameNs).toFixed(3); else if (nf && seconds) X.framesPerSecond = +(nf / seconds).toFixed(3);
+      if (nf && seconds) X.framesPerSecond = +(nf / seconds).toFixed(3); else if (V.frameNs) X.framesPerSecond = +(1e9 / V.frameNs).toFixed(3);   // (counted frames over its length; the rate it states can differ)
+      if (V.frameNs && nf && seconds && Math.abs(1e9 / V.frameNs - nf / seconds) > 0.02 * (1e9 / V.frameNs)) X.framesPerSecondStated = +(1e9 / V.frameNs).toFixed(3);
       X.hasSound = !!A; if (A) X.sound = {codec: CN[A.codec] || A.codec, channels: A.ch, sampleRate: A.sr};
       X.packing = name + ' squashes the picture and sound (lossy)';
     } else if (A) {
