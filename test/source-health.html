@@ -206,14 +206,20 @@
     if (busy) throw new Error('already checking: wait for it to finish');
     const wait = 30000 - (Date.now() - last);
     if (last && wait > 0) throw new Error('checked ' + Math.round((Date.now() - last) / 1000) + ' seconds ago: to be gentle with the sites, check again in ' + Math.ceil(wait / 1000) + ' seconds');
-    busy = true; byAgent = !!agent; $('again').disabled = true; last = Date.now();
+    busy = true; byAgent = !!agent; last = Date.now(); tick();
     try {
       say((agent ? 'An AI agent asked to check every site: ' : 'Asking every site one small thing: ') + '0 of ' + SH.SITES.length + ' answered…');
       NOW = await SH.check({progress: (n, of) => say((agent ? 'An AI agent asked to check every site: ' : 'Asking every site one small thing: ') + n + ' of ' + of + ' done…')});
       NOW.from = 'this browser';
       say((byAgent ? 'An AI agent checked every site' : 'Checked every site') + ' at ' + hhmm(NOW.at) + ': ' + NOW.counts.answers + ' answer' + (NOW.counts.slow ? ', ' + NOW.counts.slow + ' slowly' : '') + (NOW.counts.down ? ', ' + NOW.counts.down + ' not answering' : '') + (NOW.counts.behind ? ', ' + NOW.counts.behind + ' behind' : '') + '.');
       draw(); return NOW;
-    } finally { busy = false; setTimeout(() => { $('again').disabled = false; }, Math.max(0, 30000 - (Date.now() - last))); }
+    } finally { busy = false; tick(); }
+  }
+  // the button says how long until it can ask again (to be gentle with the sites: at most once every 30 seconds)
+  function tick() {
+    const left = Math.ceil((30000 - (Date.now() - last)) / 1000), b = $('again');
+    if (busy) { b.disabled = true; b.textContent = 'Checking…'; return; }
+    if (left > 0) { b.disabled = true; b.textContent = 'Check again in ' + left + ' s'; setTimeout(tick, 1000); } else { b.disabled = false; b.textContent = 'Check again'; }
   }
   async function loadRecord() {
     try { REC = await SH.record(); SUM = SH.summarise(REC); recErr = null; } catch (e) { recErr = String(e && e.message || e); }
