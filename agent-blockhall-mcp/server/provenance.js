@@ -175,17 +175,20 @@
       }
     } else chk('readFromItsBytes', null, null, 'not read: its transaction\'s bytes are needed first');
     // 3. the content's fingerprint
+    let fileForReading = null;
     let fp = null, fpNote = '';
     if (env) {
       fp = hex(sha256(env.body));
+      fileForReading = env.encoding || !env.body.length ? null : {bytes: env.body, type: env.contentType || J.content_type, from: 'the file stored in its own transaction'};
       if (env.delegate && !env.body.length) { fpNote = 'not needed: it has no content of its own, it shows its delegate\'s (' + env.delegate + ')'; chk('contentFingerprint', null, null, fpNote, {notNeeded: true}); }
       else if (!o.content) chk('contentFingerprint', null, null, o.contentNote || 'the file ordinals.com shows was not fetched (too big, or it did not answer)');
       else {
         let mine = env.body, how = 'the content stored in its transaction';
         if (env.encoding) {
-          if (o.decompress) { try { mine = o.decompress(env.body, env.encoding); how = 'the content stored in its transaction, unpacked (' + env.encoding + ')'; } catch (e) { mine = null; } }
+          if (o.decompress) { try { mine = o.decompress(env.body, env.encoding); how = 'the content stored in its transaction, unpacked (' + env.encoding + ')'; fileForReading = {bytes: mine, type: env.contentType || J.content_type, from: 'the file stored in its own transaction, unpacked (' + env.encoding + ')'}; } catch (e) { mine = null; } }
           else mine = null;
         }
+        if (!mine && o.content) fileForReading = {bytes: o.content, type: J.content_type, from: 'the copy ' + (o.contentSite || 'ordinals.com') + ' shows (it is stored packed, and could not be unpacked here to compare it with the chain)'};
         if (!mine) chk('contentFingerprint', null, null, 'stored packed (' + env.encoding + '): this browser cannot unpack it to compare it with the file shown. The free Agent Blockhall MCP tool can.');
         else { const theirs = hex(sha256(o.content)), ours = hex(sha256(mine)); chk('contentFingerprint', o.contentSite || 'https://ordinals.com', ours === theirs, how + ' against the file ' + (o.contentSite || 'ordinals.com') + ' shows (SHA-256 of each)', {fileShown: theirs, onChain: ours}); }
       }
@@ -207,7 +210,7 @@
       S2 ? 'its number, sat and block on ' + (o.secondSite || 'a second ord site') + ' against ordinals.com' : 'no second ord site answered');
     const used = Object.values(C).filter(c => !c.notNeeded), vals = used.map(c => c.agrees), nOk = vals.filter(v => v === true).length, nNo = vals.filter(v => v === false).length, nNone = vals.filter(v => v === null).length;
     const ctype = J.content_type || null;
-    return {
+    const R = {
       check: 'Agent Blockhall Provenance Check ' + VERSION,
       verdict: nNo ? nNo + ' of ' + vals.length + ' checks differ: ' + diffs.join(', ') : nOk + ' of ' + vals.length + ' checks agree' + (nNone ? ', ' + nNone + ' could not be made' : ''),
       inscription: {id, number: J.number, block: J.height, time: J.timestamp ? new Date(J.timestamp * 1000).toISOString().replace('.000', '') : null,
@@ -219,6 +222,8 @@
       trail: T && T.steps ? T.steps : [],
       sources: {inscription: o.infoSite || null, secondOrdSite: o.secondSite || null, transactions: o.trailSite || o.statusSite || null, bytes: o.hexSite || null, file: o.content ? o.contentSite : null}
     };
+    Object.defineProperty(R, '_file', {value: fileForReading || (J.delegate && !(J.content_length > 0) ? {none: 'it has no file of its own: it shows its delegate\'s'} : null), enumerable: false});
+    return R;
   }
 
   /* ---------- gathering everything, in the same steps for every host ----------
@@ -272,14 +277,25 @@
     T.steps.reverse();   // (oldest first)
     try { const sp = String(J.satpoint).split(':'); outspend = (await io.mpJson('/api/tx/' + sp[0] + '/outspend/' + sp[1])).j; } catch (e) {}
     say('done', true);
-    return buildProvenance({id, info: J, infoSite: info.site, parents: par.status === 'fulfilled' ? par.value.j.ids || [] : null,
+    return addWhatIsInIt(buildProvenance({id, info: J, infoSite: info.site, parents: par.status === 'fulfilled' ? par.value.j.ids || [] : null,
       second: second.status === 'fulfilled' ? second.value.j : null, secondSite: second.status === 'fulfilled' ? second.value.site : null,
       revealStatus: status.status === 'fulfilled' ? status.value.j.status : null, statusSite: status.status === 'fulfilled' ? status.value.site : null,
       revealHex: raw.status === 'fulfilled' ? raw.value.t : null, hexSite: raw.status === 'fulfilled' ? raw.value.site : null,
       content: file.status === 'fulfilled' ? file.value.bytes : null, contentSite: file.status === 'fulfilled' ? file.value.site : null,
       contentNote: J.content_length > FILE_MAX ? 'the file is over 2 MB, so it was not fetched to compare' : null,
-      decompress: io.decompress || null, trail: T, trailSite: T.site || null, outspend, nowTx});
+      decompress: io.decompress || null, trail: T, trailSite: T.site || null, outspend, nowTx}), io.media);
   }
+
+  // (15 Nov 2026) what is in the file it proved, read by the Media Reader (media.js) when the host gives it as io.media:
+  // the file put back together from the chain where it could be, else the copy shown (and it says which)
+  async function addWhatIsInIt(R, media) {
+    const f = R && R._file;
+    if (!media || !f || !f.bytes || !f.bytes.length) { if (R && media && f && f.none) R.whatIsInIt = {none: f.none}; return R; }
+    try { const r = await media.read(f.bytes, f.type); r.readFrom = f.from; r.says = media.describe(r); R.whatIsInIt = r; }
+    catch (e) { R.whatIsInIt = {readFrom: f.from, error: 'it could not be read: ' + (e.message || e)}; }
+    return R;
+  }
+
 
   return {VERSION, sha256, hex, fromHex, parseTx, envelopes, idFromField, stepBack, buildProvenance, resolve, gather};
 });

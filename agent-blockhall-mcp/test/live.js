@@ -116,6 +116,8 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
     c.out.watching ? c.out.watching + ' | ' + c.out.now + ' | looked ' + c.out.looked + ' | ' + c.out.events.map(e => e.title).join(' / ') :
     c.out.totals ? c.out.day + ': ' + c.out.totals.blocks + ' blocks, ' + c.out.totals.transactions + ' transactions | ' + (c.out.notes || []).join(' ') :
     c.out.days ? c.out.days.length + ' days' : JSON.stringify(c.out).slice(0, 200)));
+  // the Media Reader, through both Provenance Checks: what is in the file
+  results.media = calls.filter(c => /^(doge)?[pP]rovenanceCheck$/.test(c.name) && c.out && c.out.whatIsInIt).map(c => c.name + ' ' + c.args.id + ': ' + (c.out.whatIsInIt.says || c.out.whatIsInIt.none || c.out.whatIsInIt.error) + ' | read from ' + c.out.whatIsInIt.readFrom);
   results.calls = calls;
   results.summary = calls.map(c => c.name + ' ' + JSON.stringify(c.args) + ': ' + (c.error ? 'PROTOCOL ERROR ' + c.error.message : c.isError ? 'ERROR ' + c.out : 'ok') + ' (' + c.ms + ' ms)');
   fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 1));
@@ -125,6 +127,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Watch:\n' + results.watch.join('\n'));
   console.log('Daily Data:\n' + results.daily.join('\n'));
   console.log('Doge Cube (Dogecoin):\n' + results.doge.join('\n'));
+  console.log('What is in the file (Media Reader):\n' + results.media.join('\n'));
   console.log('Collection Check:\n' + results.collection.join('\n'));
   console.log('Recursion Map:\n' + results.recursion.join('\n'));
   console.log('Second Opinion:\n' + results.opinion.join('\n'));
