@@ -128,7 +128,7 @@
     const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
     out.verdict = found.length ? found.map(k => cap(k.says) + (k.whats.length ? ': ' + k.whats.slice(0, 3).join('; ') : '')).join('. ') + '.' : 'None of these were found in its code' + (files.length > 1 ? ' or the code it loads' : '') + '.';
     if (out.keepsThingsInYourBrowser) out.verdict += ' It keeps things in your browser (its own storage, like saved progress): that stays on your computer.';
-    if (out.outsideAddresses.length) out.verdict += ' Its code also has ' + out.outsideAddresses.length + ' address' + (out.outsideAddresses.length === 1 ? '' : 'es') + ' outside the chain in it (links or names; a link only opens if you click it).';
+    if (out.outsideAddresses.length) out.verdict += ' Its code also names ' + out.outsideAddresses.length + ' address' + (out.outsideAddresses.length === 1 ? '' : 'es') + ' outside the chain: each a link, or somewhere it may load from (a load is flagged only when the address is written right where it is loaded).';
     out.note = 'Code Read reads code without running it. It can\'t prove code is safe, only say what it found. On ordinals.com, ord\'s own rules let an inscription load only from the chain; other sites may not.';
     return out;
   }
