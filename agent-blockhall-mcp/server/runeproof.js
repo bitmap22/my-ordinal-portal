@@ -346,7 +346,7 @@
       const what = !D ? 'has no runestone' : D.cenotaph ? 'has a broken runestone that names no rune' : D.mint ? 'mints rune ' + D.mint + (D.edicts.length ? ' and moves runes' : '') : D.edicts.length ? 'moves runes' : 'has a runestone that etches nothing';
       if (mode === 'tx' && !page) {
         let id = null; if (confirmed) { const x = await ordRune(H + ':' + pos); if (x.status === 200) { page = readPage(x.t); id = H + ':' + pos; } }
-        if (!page) return Object.assign(R, {answer: 'no etching', verdict: 'This transaction doesn\'t etch a rune: it ' + what + '.' + (D && D.mint ? ' Give ' + D.mint + ' to prove that rune.' : ''), mintsRune: D && D.mint || null, rules, sources: [...sources]});
+        if (!page) return Object.assign(R, {answer: 'no etching', rune: {name: null, id: confirmed ? H + ':' + pos : null, etching: etchTx, block: confirmed ? H : null, position: confirmed ? pos : null}, verdict: 'This transaction doesn\'t etch a rune: it ' + what + '.' + (D && D.mint ? ' Give ' + D.mint + ' to prove that rune.' : ''), mintsRune: D && D.mint || null, rules, sources: [...sources]});
       } else if (page) return Object.assign(R, {answer: 'differs', verdict: 'ordinals.com says ' + page.name + ' was etched in ' + etchTx + ', but that transaction ' + what + '.', rules, sources: [...sources]});
     }
     let n = null, spacers = 0, nameOk = true;
@@ -386,7 +386,7 @@
       if (!confirmed) {
         const other = n != null ? (x => x.status === 200 ? readPage(x.t) : null)(await ordRune(letters(n))) : null, ok = nameOk && !other;
         return Object.assign(R, {answer: 'waiting', verdict: 'Waiting to be mined. If it is mined in the next block (' + group(H) + '), it ' + (n == null ? 'would make a rune with the reserved name ord gives it (worked out from its block and place, once it is mined).' : ok ? 'would make ' + wanted + '.' : 'would not make ' + wanted + ': ' + whyNot(rules, other) + '.'),
-          taken: other ? {name: other.name, id: other.id, etching: other.etching} : null, rules, sources: [...sources]});
+          taken: other ? {name: other.name, id: other.id, etching: other.etching, before: true} : null, rules, sources: [...sources]});
       }
       if (!page && n != null) {
         const x = await ordRune(letters(n));
@@ -396,7 +396,7 @@
         return Object.assign(R, {answer: ourNo ? 'not made' : 'differs',
           verdict: ourNo ? 'This transaction tried to etch ' + wanted + ', but no rune was made: ' + whyNot(rules, before ? other : null) + '.' + (other && !before ? ' (The name was etched later, by rune ' + other.id + '.)' : '') + ' ordinals.com agrees: it has no rune at ' + H + ':' + pos + '.'
             : 'By ord\'s rules this transaction should have made ' + wanted + ' (' + H + ':' + pos + '), but ordinals.com has no rune there.',
-          taken: other ? {name: other.name, id: other.id, etching: other.etching} : null, rules, sources: [...sources]});
+          taken: other ? {name: other.name, id: other.id, etching: other.etching, before} : null, rules, sources: [...sources]});
       }
       if (!page) return Object.assign(R, {answer: 'differs', verdict: 'ordinals.com has no rune at ' + H + ':' + pos + '.', rules, sources: [...sources]});
     }

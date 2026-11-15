@@ -99,7 +99,7 @@
   .checks li > div { min-width: 0; } .checks li.ok { border-color: rgba(61, 220, 132, .55); } .checks li.no { border-color: rgba(247, 147, 26, .6); }
   .checks .mark { font-size: 18px; line-height: 1; text-align: center; color: #aaa; } .checks li.ok .mark { color: var(--green); } .checks li.no .mark { color: var(--orange); }
   .checks .t { font-size: 14px; margin-bottom: 4px; color: #fff; } .checks .w { font-size: 13px; color: var(--dim); line-height: 1.45; word-break: break-word; white-space: pre-line; }
-  .row2 { align-items: stretch; }
+  .row2 { align-items: stretch; } .row2.single { grid-template-columns: 1fr; }
   @media (max-width: 760px) { .examples.grid { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -145,22 +145,22 @@
       <p class="small" id="note"></p>
     </div>
     <div class="row2" id="proofRow">
-      <div class="panel">
+      <div class="panel" id="cmpBox">
         <h2 id="cmpHead">The chain against ordinals.com</h2>
         <ul class="checks" id="compare"></ul>
       </div>
-      <div class="panel">
+      <div class="panel" id="rulesBox">
         <h2>The proof and the rules</h2>
         <ul class="checks" id="rules"></ul>
       </div>
     </div>
     <div class="row2" id="moreRow">
-      <div class="panel">
+      <div class="panel" id="onlyBox">
         <h2>Only ordinals.com counts these</h2>
         <p class="small">An index has to follow every transaction since the rune was made to count these, so they come from ordinals.com alone. What is checked is that they add up.</p>
         <ul class="checks" id="only"></ul>
       </div>
-      <div class="panel">
+      <div class="panel" id="etchBox">
         <h2>What its etching says</h2>
         <ul class="checks" id="etch"></ul>
       </div>
@@ -214,6 +214,8 @@
   const link = (text, href, here) => { const a = el('a', null, text); a.href = href; if (!here) { a.target = '_blank'; a.rel = 'noopener noreferrer'; } return a; };
   const short = id => id.slice(0, 10) + '…' + id.slice(-6);
   const cap1 = t => t.charAt(0).toUpperCase() + t.slice(1);
+  function fit(row, a, b) { const A = $(a), B = $(b), ha = A.querySelector('ul').childNodes.length > 0, hb = B.querySelector('ul').childNodes.length > 0;
+    A.classList.toggle('hidden', !ha); B.classList.toggle('hidden', !hb); $(row).classList.toggle('hidden', !ha && !hb); $(row).classList.toggle('single', ha !== hb); }
 
   /* ---------- being gentle with the sites (the same pace as Agent Blockhall and its MCP tool) ---------- */
   const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://mempool.bitaroo.net', 'https://blockstream.info'];
@@ -289,8 +291,18 @@
     const L = $('rules'); L.textContent = '';
     for (const x of r.rules || []) item(L, x.ok === true ? 'ok' : x.ok === false ? 'no' : 'none', x.ok === true ? '✓' : x.ok === false ? '!' : '•', null, x.what);
     if (goods) item(L, 'ok', '✓', null, 'UNCOMMON•GOODS has no etching transaction: ord writes it into its index itself (src/index.rs), so its rules are checked against ord\'s code.');
-    $('proofRow').classList.toggle('hidden', !(r.compare && r.compare.length) && !(r.rules && r.rules.length));
-    if (!(r.compare && r.compare.length)) item(C, 'none', '•', null, r.answer === 'not etched' ? 'Nothing to compare: no rune has this name yet.' : 'Nothing to compare: ordinals.com has no rune for it.');
+    if (!(r.compare && r.compare.length)) {
+      $('cmpHead').textContent = 'What ordinals.com says';
+      if (r.answer === 'not etched') {
+        item(C, 'ok', '✓', 'No rune has this name', 'ordinals.com has no rune named ' + U.name + '.');
+        const K = r.unlock || {};
+        if (K.reserved) item(C, K.same ? 'ok' : 'no', K.same ? '✓' : '!', 'A reserved name', 'Worked out here from ord\'s rules: reserved\nordinals.com: ' + (K.same ? 'reserved' : 'not reserved'));
+        else item(C, K.same ? 'ok' : 'no', K.same ? '✓' : '!', 'When a name like this unlocks', 'Worked out here from ord\'s rules: block ' + group(K.block) + '\nordinals.com: ' + (K.ordinals != null ? 'block ' + group(K.ordinals) : '(not shown)') + (K.when ? ', ' + K.when : ''));
+      } else if (r.answer === 'not found') item(C, 'none', '•', 'Not found', r.verdict);
+      else if (U.id) item(C, r.answer === 'differs' ? 'no' : 'ok', r.answer === 'differs' ? '!' : '✓', 'No rune at ' + U.id, 'ordinals.com has no rune with this transaction\'s place as its ID' + (r.answer === 'differs' ? ', but ord\'s rules say it should.' : ', as ord\'s rules say.'));
+      if (r.taken) item(C, 'none', '•', r.taken.name + ' is rune ' + r.taken.id, 'Etched ' + (r.taken.before ? 'before this try' : 'after this try') + ', in ' + short(r.taken.etching) + '.');
+    }
+    fit('proofRow', 'cmpBox', 'rulesBox');
     // only ordinals.com, and the etching
     const O = r.ordinalsOnly, P = $('only'); P.textContent = '';
     if (O) {
@@ -311,7 +323,7 @@
     if (S) item(E, S.cenotaph ? 'no' : 'none', S.cenotaph ? '!' : '•', 'The runestone', 'Output ' + S.output + (S.bytes != null ? ', ' + fmt(S.bytes) + ' bytes' : '') + (S.cenotaph ? ', broken (a cenotaph): ' + S.flawWords : '') + (S.mint ? '; it also mints ' + S.mint : '') + (S.edicts ? '; ' + fmt(S.edicts) + ' edict' + (S.edicts === 1 ? '' : 's') + ' moving runes' : '') + '.');
     if (r.commitment && r.commitment.commitTx) { const d = item(E, r.commitment.ok ? 'ok' : 'no', r.commitment.ok ? '✓' : '!', 'The commitment', 'The name as bytes, ' + r.commitment.bytes + ', in input ' + r.commitment.input + ', spending '); const w = d.lastChild; w.appendChild(link(short(r.commitment.commitTx), 'https://mempool.space/tx/' + r.commitment.commitTx)); w.appendChild(document.createTextNode(' (block ' + fmt(r.commitment.commitBlock) + ', ' + r.commitment.confirmations + ' confirmations).')); }
     if (!E.childNodes.length) item(E, 'none', '•', null, r.answer === 'set in ord\'s code' ? 'It has no etching: its rules are in ord\'s code (see the comparison).' : 'Nothing to show.');
-    $('moreRow').classList.toggle('hidden', !O && !X && !S);
+    fit('moreRow', 'onlyBox', 'etchBox');
     // look closer
     const Cl = $('closer'); Cl.textContent = ''; const add = (t, h, here) => { if (Cl.childNodes.length) Cl.appendChild(document.createTextNode(' · ')); Cl.appendChild(link(t, h, here)); };
     if (U.name && r.answer !== 'not made') add('on ordinals.com', 'https://ordinals.com/rune/' + encodeURIComponent(U.id || U.letters || U.name));
