@@ -91,7 +91,7 @@
   @media (max-width: 420px) { .facts { grid-template-columns: 1fr 1fr; } .fact span { font-size: 13px; } }
   .answer { display: inline-block; margin: 2px 0 8px; padding: 6px 18px; border-radius: 999px; font-size: clamp(18px, 4.6vw, 28px); letter-spacing: 2px; border: 2px solid #777; color: #ddd; }
   .answer.true { border-color: var(--green); color: var(--green); } .answer.mixed { border-color: var(--orange); color: var(--orange); }
-  .claim { font-size: 15px; color: #fff; margin: 2px 0 8px; word-break: break-word; } #verdict { line-height: 1.5; }
+  .claim { font-size: 15px; color: #fff; margin: 2px 0 8px; word-break: break-word; } #verdict { font-size: 15px; line-height: 1.55; max-width: 760px; margin: 4px auto 0; }
   .ask.one { flex-direction: row; flex-wrap: wrap; justify-content: center; } .ask.one input { width: min(640px, 100%); }
   .examples.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 760px; margin: 10px auto 0; } .examples.grid button { margin: 0; }
   .checks { list-style: none; padding: 0; margin: 0; text-align: left; }
@@ -276,7 +276,9 @@
     $('out').classList.remove('hidden');
     const [bt, bc] = BADGE[r.answer] || [r.answer.toUpperCase(), ''];
     const a = $('answer'); a.textContent = r.answer === 'not etched' && r.unlock && r.unlock.reserved ? 'RESERVED NAME' : bt; a.className = 'answer ' + bc;
-    $('title').textContent = [U.name, U.id ? 'ID ' + U.id : null, U.number != null ? 'rune #' + fmt(U.number) : null].filter(Boolean).join(' · ') || r.query;
+    const madeNone = ['not made', 'waiting', 'no etching'].includes(r.answer), tx = /^[0-9a-f]{64}$/i.test(r.query) ? r.query.toLowerCase() : null;
+    $('title').textContent = madeNone ? [U.name ? 'tried to etch ' + U.name : null, 'transaction ' + short(U.etching || tx || r.query)].filter(Boolean).join(' · ')
+      : [U.name, U.id ? 'ID ' + U.id : null, U.number != null ? 'rune #' + fmt(U.number) : null].filter(Boolean).join(' · ') || (tx ? 'transaction ' + short(tx) : r.query);
     $('verdict').textContent = r.verdict;
     $('note').textContent = r.answer === 'proven' || r.answer === 'differs' ? 'The rules are ord\'s own, from its code. Only ordinals.com counts the mints, the supply now and what was burned: it is checked that they add up.' : '';
     // the chain against ordinals.com, and the rules
@@ -323,7 +325,7 @@
     add('check a claim about it', 'second-opinion.html', true);
     try { history.replaceState(null, '', location.pathname + '?rune=' + encodeURIComponent(r.query)); } catch (e) {}
     try { Cite.show('rune', R, $('cite')); } catch (e) {}
-    say((byAgent ? 'An AI agent proved ' : 'Done: ') + (U.name || r.query) + ': ' + bt.toLowerCase() + '.');
+    say((byAgent ? 'An AI agent checked ' : 'Checked ') + (U.name || (tx ? 'transaction ' + short(tx) : r.query)) + ': ' + (a.textContent || bt).toLowerCase() + '.');
   }
 
   /* ---------- buttons ---------- */
