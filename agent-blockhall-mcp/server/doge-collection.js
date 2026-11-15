@@ -100,8 +100,8 @@
     r.checks.sameFile = fa && fb ? fa === fb : null;
     if (fa && fb && fa !== fb) r.fileCopies = {explorer: {bytes: a.length, fingerprint: fa}, doggyMarket: {bytes: b.length, fingerprint: fb}};
     if (!(fa && fb)) {
-      const said = (x, st, who) => x && !x.length ? who + ' gives no file for it (0 bytes)' : st.status === 'rejected' ? (/too big/.test(String(st.reason)) ? who + '\'s copy is too big to fetch here' : who + ' did not give its file') : null;
-      r.fileNote = [said(a, F[0], 'the explorer'), said(b, F[1], 'Doggy Market')].filter(Boolean).join('; ') || null;
+      const said = (x, st, who) => x && !x.length ? who + ' gives no file for it (0 bytes)' : st.status === 'rejected' ? (/too big/.test(String(st.reason)) ? who + '\'s copy is too big to fetch here (over ' + fmt(Math.round((DP.FILE_MAX || 3000000) / 1e6)) + ' MB)' : who + ' did not give its file') : null;
+      r.fileNote = [said(a, F[0], 'the explorer'), said(b, F[1], 'Doggy Market')].filter(Boolean).join(', and ') || null;
     }
     // the block the second site has the transaction that started it in: the explorer's block, or (for a file written over
     // several transactions) a block before the one the explorer says it was finished in
@@ -119,7 +119,7 @@
     if (c.sameFile === false) bad.push('the explorer\'s copy of its file and Doggy Market\'s copy are different files');
     if (c.heldThere === false) bad.push(r.movedOn ? 'the second site says the output the explorer has it in was spent since (it may just have moved: the explorer may be behind)' : 'the second site has it held at a different address');
     if (r.lost && r.lost.confirmed === false) bad.push('the explorer says it was lost in a fee, but on the second site its transaction\'s outputs hold it');
-    const open = Object.entries(c).filter(([k, v]) => v === null && !(k === 'heldThere' && r.lost && r.lost.confirmed)).map(([k]) => k === 'sameFile' && r.fileNote ? 'its file on two sites (' + r.fileNote + ')' : ({real: 'whether it is a Doginal', inBlock: 'its block', sameFile: 'its file on two sites', heldThere: 'where it is held'})[k] + ' (a site did not answer)');
+    const open = Object.entries(c).filter(([k, v]) => v === null && !(k === 'heldThere' && r.lost && r.lost.confirmed)).map(([k]) => k === 'sameFile' && r.fileNote ? 'its file on two sites: ' + r.fileNote : ({real: 'whether it is a Doginal', inBlock: 'its block', sameFile: 'its file on two sites', heldThere: 'where it is held'})[k] + ' (a site did not answer)');
     r.ok = bad.length ? false : open.length ? null : true;
     r.why = r.ok === true ? 'real: in its block, the same file on two sites, and held where the explorer says' + (r.startedBlock && r.startedBlock !== r.block ? ' (written from block ' + fmt(r.startedBlock) + ' to ' + fmt(r.block) + ')' : '')
       : bad.length ? bad.join('; ') + (open.length ? '; not checked: ' + open.join(', ') : '') : 'not fully checked: ' + open.join(', ');
@@ -194,7 +194,7 @@
     await Promise.all(Array.from({length: W}, async () => {
       while (next < L.length && !(opts.stop && opts.stop())) {
         const i = next++; let id = null;
-        try { id = await DP.resolve(L[i], io); } catch (e) { out[i] = {given: L[i], ok: false, checks: {real: false}, why: String(e && e.message || e)}; done++; say('piece', [done, L.length]); continue; }
+        try { id = await DP.resolve(L[i], io); } catch (e) { const m = String(e && e.message || e); out[i] = {given: L[i], ok: /did not answer/.test(m) ? null : false, checks: {real: /did not answer/.test(m) ? null : false}, why: /^give /.test(m) ? '"' + L[i].slice(0, 80) + '" is not a Doginal number or ID' : m}; done++; say('piece', [done, L.length]); continue; }
         const r = await piece(run, io, {id, n: null, name: null}); r.given = L[i];
         if (r.fingerprint) { const p = run.prints.get(r.fingerprint) || []; if (!p.includes(id)) p.push(id); run.prints.set(r.fingerprint, p); }
         out[i] = r; done++; say('piece', [done, L.length]);
