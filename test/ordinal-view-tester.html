@@ -2493,6 +2493,11 @@
         while (performance.now() - t0 < max && !currentMessages.some((item) => item.type === "lifecycle" && item.payload && item.payload.name === "telemetry-installed")) await sleep(25);
       }
 
+      async function waitForCheckpoint(delay, max) {   // until the page's check at that delay has come in, or max ms more
+        const t0 = performance.now();
+        while (performance.now() - t0 < max && !currentMessages.some((item) => item.type === "checkpoint" && item.payload && item.payload.delay === delay)) await sleep(25);
+      }
+
       async function runRuntimeTarget(target, mode, index, total) {
         currentToken = makeToken();
         currentMessages = [];
@@ -2501,6 +2506,7 @@
         renderTarget(target, mode, currentToken);
         await waitForStart(5000);   // (15 Nov 2026) the checks' times count from when the page inside starts, not from when its frame was made
         await sleep(mode === FULL_SCAN_MODE ? 3250 : 1250);
+        await waitForCheckpoint(mode === FULL_SCAN_MODE ? 3000 : 1000, 2000);   // (its last check, which a blank page's slowed timers can make late)
         return evaluateRuntimeResult(target, mode, currentMessages.slice());
       }
 
