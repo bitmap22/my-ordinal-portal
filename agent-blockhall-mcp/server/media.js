@@ -874,7 +874,7 @@
       if (S.bitrate && S.bitrate.kbps) bits.push(fmt(S.bitrate.kbps) + ' kbit/s' + (S.bitrate.kind === 'constant' ? '' : ' average'));
       if (S.packing) bits.push(/exactly/.test(S.packing) ? 'every sample kept exactly' : /squash/.test(S.packing) ? 'squashed (lossy)' : '');
       if (r.coverArt) bits.push('with cover art' + (r.coverArt.says ? ' (' + r.coverArt.says.split(' · ')[0] + ')' : ''));
-    } else if (r.text) bits.push(fmt(r.text.characters) + ' characters over ' + fmt(r.text.lines) + ' lines' + (r.text.validUTF8 ? '' : ' (not all valid UTF-8)'));
+    } else if (r.text) bits.push(fmt(r.text.characters) + ' character' + (r.text.characters === 1 ? '' : 's') + ' over ' + fmt(r.text.lines) + ' line' + (r.text.lines === 1 ? '' : 's') + (r.text.validUTF8 ? '' : ' (not all valid UTF-8)'));
     else bits.push((r.fromBytes && r.fromBytes.name) || 'a file');
     bits.push(fmt(r.bytes) + ' bytes');
     if (r.loads) bits.push('asks for ' + fmt(r.loads.count) + ' other file' + (r.loads.count === 1 ? '' : 's'));
