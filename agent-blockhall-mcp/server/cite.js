@@ -5,7 +5,8 @@
    Anyone who opens the link gets the same check made again, now, and is told whether it is the same, or what changed
    (the holder was X, now Y). Nothing is stored anywhere: the link itself is the record.
    Tools: manifest (Block Manifest), provenance (Provenance Check), collection (Collection Check), recursion (Recursion Map),
-   opinion (Second Opinion), health (Source Health), daily (Daily Data). The same file is for the portal's pages and the free
+   opinion (Second Opinion), health (Source Health), daily (Daily Data), and Doge Cube's dogemanifest, dogeprovenance and
+   dogedaily. The same file is for the portal's pages and the free
    Agent Blockhall MCP tool (its checkAgain tool reads a link and makes the check again). No other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
 (function (root, make) {
@@ -86,6 +87,13 @@
       facts: r => { const T = r.totals || {}; return Object.assign({blocks: T.blocks, firstBlock: T.firstBlock, lastBlock: T.lastBlock, transactions: T.transactions, fees: T.totalFees}, Object.fromEntries(Object.entries(T.counts || {}).map(([k, v]) => ['kind: ' + k, v]))); },
       sources: () => ['github.com/bitmap22/my-ordinal-portal (the daily-data branch)']}
   };
+
+  // Doge Cube's twins of three of them (Dogecoin's blocks, Doginals and days), read the same way
+  TOOLS.dogemanifest = Object.assign({}, TOOLS.manifest, {name: 'Doge Block Manifest', page: 'doge-block-manifest.html', mcp: 'dogeBlockManifest', label: r => 'Dogecoin block ' + fmt(r.block.height)});
+  TOOLS.dogeprovenance = Object.assign({}, TOOLS.provenance, {coreName: 'the Doginal itself', name: 'Doge Provenance Check', page: 'doge-provenance-check.html', mcp: 'dogeProvenanceCheck',
+    label: r => 'Doginal ' + (r.inscription.number != null ? '#' + fmt(r.inscription.number) : r.inscription.id), coreIs: 'the Doginal itself: its file\'s fingerprint (put back together from the transactions that wrote it), the block it was made in, its type, size and delegate',
+    facts: r => { const I = r.inscription, T = r.trail || []; return {number: I.number, block: I.block, type: I.contentType, bytes: I.bytes, file: I.fingerprint ? I.fingerprint.sha256.slice(0, 16) : null, holder: I.holder, moves: T.length ? T.length - 1 : 0, checks: r.verdict}; }});
+  TOOLS.dogedaily = Object.assign({}, TOOLS.daily, {name: 'Doge Daily Data', page: 'doge-daily.html', mcp: 'dogeDailyData', label: r => 'Doge Daily Data for ' + r.day, sources: () => ['github.com/bitmap22/my-ordinal-portal (the doge-daily-data branch)']});
 
   /* ---------- making a citation, reading one back, comparing ---------- */
   const minute = d => new Date(d || Date.now()).toISOString().slice(0, 16) + 'Z';
