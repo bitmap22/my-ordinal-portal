@@ -93,14 +93,16 @@
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 520px; margin: 0 auto 12px; } .pair .chip { margin: 0; font-size: 14px; padding: 8px 10px; }
   .facts.four { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; } .facts.four .fact span { font-size: clamp(18px, 4vw, 24px); }
   tr.grp td { color: var(--orange); text-transform: uppercase; letter-spacing: 1px; font-size: 11px; padding-top: 14px; border-bottom-color: #333; }
-  td.left b { font-weight: normal; color: #fff; word-break: break-word; } td.state { text-align: left; min-width: 150px; } td.rec { text-align: left; white-space: pre-line; font-size: 12px; min-width: 130px; }
+  td.left { width: 34%; } td.left b { font-weight: normal; color: #fff; font-size: 14px; word-break: normal; overflow-wrap: anywhere; } td.left .for { color: var(--dim); font-size: 12px; margin-top: 3px; word-break: normal; }
+  td.state { text-align: left; } td.rec { text-align: left; white-space: pre-line; font-size: 12px; }
+  .row2 { align-items: stretch; }
   td.rec.y { color: #cfe; } td.rec.x { color: #fd9; } .mark.y { color: var(--green); } .mark.x { color: var(--orange); } .mark.z { color: #666; } td .mark { font-size: 15px; }
   .checks { list-style: none; padding: 0; margin: 0; text-align: left; }
   .checks li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; border: 1px solid #2c2c2c; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
   .checks li.ok { border-color: rgba(61, 220, 132, .55); } .checks li.no { border-color: rgba(247, 147, 26, .85); }
   .checks .mark { font-size: 22px; line-height: 1; text-align: center; } .checks li.ok .mark { color: var(--green); } .checks li.no .mark { color: var(--orange); } .checks li.none .mark { color: #777; }
   .checks .w { font-size: 14px; line-height: 1.45; word-break: break-word; }
-  @media (max-width: 760px) { .facts.four { grid-template-columns: 1fr 1fr; } tr.grp { border: 0; padding: 0; margin: 10px 0 4px; } tr.grp td { padding: 0; border: 0; } td.state, td.rec { min-width: 0; } }
+  @media (max-width: 760px) { .facts.four { grid-template-columns: 1fr 1fr; } tr.grp { border: 0; padding: 0; margin: 10px 0 4px; } tr.grp td { padding: 0; border: 0; } td.left { width: auto; } }
 </style>
 </head>
 <body>
@@ -141,7 +143,7 @@
     <h2 id="tTitle">Bitcoin's data sites</h2>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Site</th><th>The tools use it for</th><th>Now, from your browser</th><th>GitHub's computers: last day</th><th>GitHub's computers: last week</th></tr></thead>
+        <thead><tr><th>Site, and what the tools use it for</th><th>Now, from your browser</th><th>GitHub's computers: last day</th><th>GitHub's computers: last week</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
@@ -227,7 +229,7 @@
       const sp = fmt(r.ms) + ' ms', slow = r.state === 'slow';
       if (r.upToDate === false) return {mark: '!', cls: 'x', text: r.sameAs ? 'a different file · ' + sp : fmt(r.behind) + ' blocks behind · ' + sp};
       if (r.sameAs && r.sameAs.same == null) return {mark: slow ? '!' : '✓', cls: slow ? 'x' : 'y', text: 'answers · ' + sp + ' (nothing to compare)'};
-      return {mark: slow ? '!' : '✓', cls: slow ? 'x' : 'y', text: (slow ? 'slow · ' : '') + (r.sameAs ? 'the same file' : r.says && r.says.name ? 'answers' : 'up to date') + ' · ' + sp};
+      return {mark: slow ? '!' : '✓', cls: slow ? 'x' : 'y', text: (slow ? 'slow' : r.sameAs ? 'the same file' : r.says && r.says.name ? 'answers' : 'up to date') + ' · ' + sp};
     }
     return {mark: '✗', cls: 'x', text: r.state + (r.http ? ' (http ' + r.http + ')' : '')};
   }
@@ -249,10 +251,9 @@
     const tb = $('rows'); tb.textContent = ''; let group = null;
     const sum = new Map(SUM && SUM.sites ? SUM.sites.map(s => [s.site, s]) : []);
     for (const s of SH.SITES.filter(x => x.chain === chain)) {
-      if (s.group !== group) { group = s.group; const tr = el('tr', 'grp'), td = el('td', null, group); td.colSpan = 5; tr.appendChild(td); tb.appendChild(tr); }
+      if (s.group !== group) { group = s.group; const tr = el('tr', 'grp'), td = el('td', null, group); td.colSpan = 4; tr.appendChild(td); tb.appendChild(tr); }
       const r = NOW && NOW.results.find(x => x.site === s.site), n = nowCell(busy && !r ? null : r), tr = el('tr'); tr.id = 'site-' + s.site.replace(/[^a-z0-9]/gi, '-');
-      const td1 = el('td', 'left'); td1.appendChild(el('b', null, s.site)); tr.appendChild(td1);
-      const td2 = el('td', 'why', s.what); td2.dataset.l = 'Used for'; tr.appendChild(td2);
+      const td1 = el('td', 'left'); td1.appendChild(el('b', null, s.site)); td1.appendChild(el('div', 'for', s.what)); tr.appendChild(td1);
       const td3 = el('td', 'state'); td3.dataset.l = 'Now'; td3.appendChild(el('span', 'mark ' + n.cls, n.mark)); td3.appendChild(document.createTextNode(' ' + n.text)); if (r) td3.title = r.words; tr.appendChild(td3);
       for (const span of ['day', 'week']) { const k = recCell(sum.get(s.site), span), td = el('td', 'rec ' + k.cls, k.text); td.dataset.l = span === 'day' ? 'Last day' : 'Last week'; tr.appendChild(td); }
       tb.appendChild(tr);
