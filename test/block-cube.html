@@ -7565,6 +7565,41 @@ async function mediaRows(u, type) {
   return rows;
 }
 
+/* (15 Nov 2026) CHECKED, against fake data: the transaction's own bytes, read from a second site that is not the one the
+   card's facts came from. Its ID is worked out from those bytes (no site can fake that: the ID is their fingerprint), and
+   the card's inputs, outputs and outputs total are checked against them. A wrong or lying site shows up as a difference. */
+async function txFromBytes(hex) {
+  hex = String(hex || '').trim();
+  if (!/^[0-9a-f]+$/i.test(hex) || hex.length % 2 || hex.length < 120) throw new Error('not a transaction');
+  const u = new Uint8Array(hex.length / 2); for (let i = 0; i < u.length; i++) u[i] = parseInt(hex.substr(i * 2, 2), 16);
+  let p = 4; const vi = () => { const f = u[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += u[p++] * 2 ** (8 * i); return v; };
+  const seg = u[4] === 0 && u[5] === 1; if (seg) p = 6;
+  const a = p, nin = vi(); for (let i = 0; i < nin; i++) { p += 36; const l = vi(); p += l + 4; }
+  const nout = vi(); let sum = 0; for (let i = 0; i < nout; i++) { for (let k = 0; k < 8; k++) sum += u[p + k] * 2 ** (8 * k); p += 8; const l = vi(); p += l; }
+  const b = p; if (seg) for (let i = 0; i < nin; i++) { const k = vi(); for (let j = 0; j < k; j++) { const l = vi(); p += l; } }
+  const lt = p; p += 4; if (p !== u.length) throw new Error('its bytes do not end where they should');
+  const core = new Uint8Array(8 + b - a); core.set(u.subarray(0, 4)); core.set(u.subarray(a, b), 4); core.set(u.subarray(lt, lt + 4), 4 + b - a);
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', await crypto.subtle.digest('SHA-256', core)));
+  return {txid: [...d].reverse().map(x => x.toString(16).padStart(2, '0')).join(''), nin, nout, sum};
+}
+function checkedWords(id, R, want, site, unit) {
+  if (R.txid !== id) return '‼ the bytes ' + site + ' gave are another transaction: do not trust this card';
+  const off = [];
+  if (want.nin != null && want.nin !== R.nin) off.push(fmt(R.nin) + ' in (the card says ' + fmt(want.nin) + ')');
+  if (want.nout != null && want.nout !== R.nout) off.push(fmt(R.nout) + ' out (the card says ' + fmt(want.nout) + ')');
+  if (want.sum != null && want.sum !== R.sum) off.push('outputs total ' + unit(R.sum) + ' (the card says ' + unit(want.sum) + ')');
+  return off.length ? '‼ its own bytes, from ' + site + ', differ: ' + off.join(' · ')
+    : '✓ its ID worked out from its own bytes, read from ' + site + ' · its ins, outs and outputs total agree';
+}
+async function checkedRow(t, tx) {
+  const id = t.id, want = {nin: tx.vin.length, nout: tx.vout.length, sum: tx.vout.reduce((a, o) => a + (o.value || 0), 0)};
+  const host = r => { try { return new URL(r.url).host; } catch (e) { return 'a second site'; } };
+  const tries = [];
+  if (tx.status && tx.status.confirmed) tries.push(async () => { const r = await ordFetch('/r/tx/' + id, 15000, ['https://ordinals.com']); let h = (await r.text()).trim(); if (h[0] === '"') h = JSON.parse(h); return [h, host(r)]; });
+  tries.push(async () => { const r = await mpFetch('/api/tx/' + id + '/hex', null, 15000, 'https://blockstream.info'); return [await r.text(), host(r)]; });
+  for (const get of tries) { try { const [h, site] = await get(); return [['checked', checkedWords(id, await txFromBytes(h), want, site, btc)]]; } catch (e) {} }
+  return [['checked', 'not checked this time: the second sites did not answer']];
+}
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
   t._held = [];
@@ -7583,6 +7618,7 @@ async function heldInfo(t) {
       if (tx.vout.length > 4) rows.push(['', '+ ' + fmt(tx.vout.length - 4) + ' more out']);
       if (tx.status && tx.status.confirmed) rows.push(['confirmed', new Date(tx.status.block_time * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
       show(rows);
+      try { show(await checkedRow(t, tx)); } catch (e) {}   // (against fake data: see checkedRow)
     }
   } catch (e) {}
   const ids = t.ordIds || (t.id && t.ins && t.ins.length ? t.ins.map(e => t.id + 'i' + e.i) : []);
