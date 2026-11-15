@@ -9,7 +9,8 @@
    into slightly different pixels, so none is given for them, and the answer says why.
    Sound: MP3, AAC, WAV, Ogg (Vorbis, Opus), FLAC and M4A: length, samples a second, bits, mono or stereo, bitrate, how it is packed,
    cover art, and any title or artist written inside it (untrusted). Video: MP4, QuickTime, WebM and Matroska: resolution, length,
-   frames a second, codec, and whether it has sound.
+   frames a second, codec, and whether it has sound. 3D models: glTF (binary and words), OBJ and STL: points, triangles, parts,
+   materials, animations, its real size (in metres for glTF), its texture pictures read the picture way, and what it pulls in.
    Usage: MediaReader.read(bytes (Uint8Array), declaredType (string, optional)) -> Promise of the reading; MediaReader.describe(reading)
    -> plain words. Works in a browser and in Node.js 18 or newer, with no other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in its folder). */
@@ -673,6 +674,115 @@
     if (words.length) out.words = {untrusted: words, note: 'written inside the file by whoever made it, or their program'};
   }
 
+  /* ---------- 3D models: glTF (binary and words), OBJ and STL ---------- */
+  const COMP = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}, NCOMP = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16};
+  const MODES = {0: 'points', 1: 'lines', 2: 'line loops', 3: 'line strips', 4: 'triangles', 5: 'triangle strips', 6: 'triangle fans'};
+  function mat(node) {
+    if (Array.isArray(node.matrix) && node.matrix.length === 16) return node.matrix.slice();
+    const [tx, ty, tz] = node.translation || [0, 0, 0], [qx, qy, qz, qw] = node.rotation || [0, 0, 0, 1], [sx, sy, sz] = node.scale || [1, 1, 1];
+    const xx = qx * qx, yy = qy * qy, zz = qz * qz, xy = qx * qy, xz = qx * qz, yz = qy * qz, wx = qw * qx, wy = qw * qy, wz = qw * qz;
+    return [(1 - 2 * (yy + zz)) * sx, 2 * (xy + wz) * sx, 2 * (xz - wy) * sx, 0, 2 * (xy - wz) * sy, (1 - 2 * (xx + zz)) * sy, 2 * (yz + wx) * sy, 0, 2 * (xz + wy) * sz, 2 * (yz - wx) * sz, (1 - 2 * (xx + yy)) * sz, 0, tx, ty, tz, 1];
+  }
+  const mul = (a, b) => { const o = new Array(16).fill(0); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k]; return o; };
+  const apply = (m, x, y, z) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+  const b64bytes = s => typeof atob === 'function' ? Uint8Array.from(atob(s), c => c.charCodeAt(0)) : new Uint8Array(Buffer.from(s, 'base64'));
+  async function readGLTF(u, out, depth) {
+    const D = out.model = {format: out.fromBytes.type === 'model/gltf-binary' ? 'glTF binary (GLB)' : 'glTF (words)'};
+    let J, bin = null;
+    if (ascii(u, 0, 4) === 'glTF') {
+      D.glbVersion = le32(u, 4); const total = le32(u, 8);
+      D.lengthMatches = total === u.length; if (!D.lengthMatches) (out.notes = out.notes || []).push('its header says ' + total + ' bytes, but the file is ' + u.length);
+      let p = 12; while (p + 8 <= u.length) { const len = le32(u, p + 0), ty = le32(u, p + 4), d = u.subarray(p + 8, p + 8 + len); if (ty === 0x4e4f534a) J = JSON.parse(utf8(d).replace(/[\0 ]+$/, '')); else if (ty === 0x004e4942) bin = d; p += 8 + len; }
+    } else J = JSON.parse(utf8(u));
+    if (!J || !J.asset) throw new Error('its glTF description could not be read');
+    D.gltfVersion = J.asset.version || null;
+    const words = []; if (J.asset.generator) words.push({key: 'made with', text: clean(J.asset.generator, 160)}); if (J.asset.copyright) words.push({key: 'copyright', text: clean(J.asset.copyright, 200)});
+    const acc = J.accessors || [], meshes = J.meshes || [], nodes = J.nodes || [], views = J.bufferViews || [], bufs = J.buffers || [];
+    // where its data lives: inside the file, packed into its words, or pulled in from somewhere else (other inscriptions)
+    const loads = new Set(), bufBytes = [];
+    for (let i = 0; i < bufs.length; i++) { const b = bufs[i]; if (b.uri == null) bufBytes[i] = bin; else if (/^data:/.test(b.uri)) { try { bufBytes[i] = b64bytes(b.uri.split(',')[1]); } catch (e) { bufBytes[i] = null; } } else { loads.add(String(b.uri).slice(0, 200)); bufBytes[i] = null; } }
+    // the numbers it states must fit inside its own data
+    let fit = 0, fitOf = 0;
+    for (const a of acc) { if (a.bufferView == null) continue; const v = views[a.bufferView]; if (!v) continue; fitOf++; const el = (COMP[a.componentType] || 4) * (NCOMP[a.type] || 1), stride = v.byteStride || el, need = (a.byteOffset || 0) + (a.count - 1) * stride + el, B = bufBytes[v.buffer]; if (need <= v.byteLength && (!B || (v.byteOffset || 0) + v.byteLength <= B.length)) fit++; }
+    D.dataFits = {fit, of: fitOf, what: 'each list of numbers it describes (points, faces, colours) fits inside the data it points to'};
+    // points, triangles and parts
+    let verts = 0, tris = 0, lines = 0, points = 0, prims = 0, morph = 0; const modes = new Set(), primBox = new Map();
+    meshes.forEach((m, mi) => (m.primitives || []).forEach((p, pi) => {
+      prims++; const mode = p.mode == null ? 4 : p.mode; modes.add(MODES[mode] || 'mode ' + mode);
+      const pos = acc[p.attributes && p.attributes.POSITION], n = p.indices != null && acc[p.indices] ? acc[p.indices].count : pos ? pos.count : 0;
+      if (pos) verts += pos.count;
+      if (mode === 4) tris += Math.floor(n / 3); else if (mode === 5 || mode === 6) tris += Math.max(0, n - 2); else if (mode === 0) points += n; else lines += mode === 1 ? Math.floor(n / 2) : Math.max(0, n - 1);
+      if (p.targets) morph += p.targets.length;
+      if (pos && pos.min && pos.max) primBox.set(mi, (primBox.get(mi) || []).concat([[pos.min, pos.max]]));
+    }));
+    D.points = verts; D.triangles = tris; if (lines) D.lines = lines; if (points) D.pointsOnly = points;
+    D.meshes = meshes.length; D.parts = prims; D.nodes = nodes.length; D.drawnAs = [...modes];
+    if (morph) D.shapeTargets = morph;
+    // its real size, in metres (glTF's own unit), with every node's move, turn and scale applied
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    const visit = (ni, m, seen) => { const nd = nodes[ni]; if (!nd || seen.has(ni)) return; seen.add(ni); const w = mul(m, mat(nd)); if (nd.mesh != null && primBox.has(nd.mesh)) for (const [mn, mx] of primBox.get(nd.mesh)) for (let c = 0; c < 8; c++) { const q = apply(w, c & 1 ? mx[0] : mn[0], c & 2 ? mx[1] : mn[1], c & 4 ? mx[2] : mn[2]); for (let k = 0; k < 3; k++) { if (q[k] < lo[k]) lo[k] = q[k]; if (q[k] > hi[k]) hi[k] = q[k]; } } for (const ch of nd.children || []) visit(ch, w, seen); };
+    const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], sc = J.scenes && J.scenes[J.scene || 0];
+    const roots = sc && sc.nodes ? sc.nodes : nodes.map((_, i) => i).filter(i => !nodes.some(n => (n.children || []).includes(i)));
+    const seen = new Set(); for (const r of roots) visit(r, I, seen);
+    if (lo[0] !== Infinity) { const r3 = v => +v.toFixed(4); D.sizeMetres = {width: r3(hi[0] - lo[0]), height: r3(hi[1] - lo[1]), depth: r3(hi[2] - lo[2]), note: 'its box from side to side (x), bottom to top (y) and front to back (z), in metres: glTF\'s own unit'}; }
+    else if (primBox.size) D.sizeNote = 'its parts are not placed in a scene, so its size is not worked out';
+    // looks: materials and textures (each texture picture read the picture way)
+    const mats = J.materials || [], imgs = J.images || [], tex = J.textures || [];
+    D.materials = mats.length; if (mats.length) { const nm = mats.map(m => m.name).filter(Boolean).slice(0, 12); if (nm.length) words.push({key: 'material names', text: clean(nm.join(', '), 300)}); }
+    D.textures = tex.length; D.pictures = imgs.length;
+    const pics = [];
+    for (let i = 0; i < imgs.length && pics.length < 12; i++) {
+      const im = imgs[i]; let b = null, where = null;
+      if (im.bufferView != null && views[im.bufferView]) { const v = views[im.bufferView], B = bufBytes[v.buffer]; if (B) { b = B.subarray(v.byteOffset || 0, (v.byteOffset || 0) + v.byteLength); where = 'inside the model'; } }
+      else if (im.uri && /^data:/.test(im.uri)) { try { b = b64bytes(im.uri.split(',')[1]); where = 'packed into its words'; } catch (e) {} }
+      else if (im.uri) { loads.add(String(im.uri).slice(0, 200)); pics.push({where: 'pulled in: ' + clean(im.uri, 120)}); continue; }
+      if (b && (depth || 0) < 1) { try { const r = await read(b, im.mimeType, (depth || 0) + 1); pics.push({where, bytes: b.length, picture: r.picture, says: describe(r)}); } catch (e) { pics.push({where, bytes: b.length, says: 'could not be read'}); } }
+    }
+    if (pics.length) D.texturePictures = pics;
+    // movement
+    const an = J.animations || [];
+    if (an.length) {
+      let longest = 0; for (const a of an) for (const s of a.samplers || []) { const inp = acc[s.input]; if (inp && inp.max && inp.max[0] > longest) longest = inp.max[0]; }
+      D.animations = an.length; D.longestAnimationSeconds = +longest.toFixed(3); const nm = an.map(a => a.name).filter(Boolean).slice(0, 12); if (nm.length) words.push({key: 'animation names', text: clean(nm.join(', '), 300)});
+    }
+    if ((J.skins || []).length) D.skeletons = J.skins.length;
+    if ((J.cameras || []).length) D.cameras = J.cameras.length;
+    const ext = [...new Set([].concat(J.extensionsUsed || []))]; if (ext.length) D.extensions = ext;
+    if (ext.includes('KHR_draco_mesh_compression') || ext.includes('EXT_meshopt_compression')) D.packing = 'its shapes are squashed (' + (ext.includes('KHR_draco_mesh_compression') ? 'Draco' : 'meshopt') + '), then unpacked when shown';
+    else D.packing = 'glTF: its shapes stored as they are';
+    if (loads.size) out.loads = {count: loads.size, list: [...loads].slice(0, 40), note: 'other files it pulls in when it is shown (/content/ and /r/ are other inscriptions)'};
+    if (words.length) out.words = {untrusted: words, note: 'written inside the model by whoever made it, or their program'};
+  }
+  function readOBJ(u, out) {
+    const D = out.model = {format: 'OBJ (words)'}, txt = utf8(u); let v = 0, vt = 0, vn = 0, f = 0, tris = 0, objs = 0, groups = 0; const mtl = new Set(), libs = new Set(), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const line of txt.split(/\r?\n/)) {
+      const t = line.trim(); if (!t || t[0] === '#') continue; const k = t.split(/\s+/);
+      if (k[0] === 'v') { v++; for (let i = 0; i < 3; i++) { const x = +k[i + 1]; if (x < lo[i]) lo[i] = x; if (x > hi[i]) hi[i] = x; } }
+      else if (k[0] === 'vt') vt++; else if (k[0] === 'vn') vn++;
+      else if (k[0] === 'f') { f++; tris += Math.max(0, k.length - 3); }
+      else if (k[0] === 'o') objs++; else if (k[0] === 'g') groups++;
+      else if (k[0] === 'usemtl') mtl.add(k.slice(1).join(' ')); else if (k[0] === 'mtllib') libs.add(k.slice(1).join(' '));
+    }
+    D.points = v; D.faces = f; D.triangles = tris; D.textureCoords = vt; D.normals = vn; D.objects = objs || undefined; D.groups = groups || undefined; D.materials = mtl.size;
+    if (v) D.size = {width: +(hi[0] - lo[0]).toFixed(4), height: +(hi[1] - lo[1]).toFixed(4), depth: +(hi[2] - lo[2]).toFixed(4), note: 'its box in its own units (OBJ does not say what the units are)'};
+    if (libs.size) out.loads = {count: libs.size, list: [...libs].slice(0, 20), note: 'material files it names (they are not inside it)'};
+    D.packing = 'OBJ keeps its shapes as words';
+  }
+  function readSTL(u, out) {
+    const D = out.model = {}; const n = u.length >= 84 ? le32(u, 80) : 0, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    if (u.length === 84 + n * 50) {
+      D.format = 'STL (binary)'; D.triangles = n; const dv = new DataView(u.buffer, u.byteOffset);
+      for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) for (let c = 0; c < 3; c++) { const x = dv.getFloat32(84 + i * 50 + 12 + k * 12 + c * 4, true); if (x < lo[c]) lo[c] = x; if (x > hi[c]) hi[c] = x; }
+      D.lengthMatches = true;
+    } else {
+      D.format = 'STL (words)'; const txt = utf8(u); D.triangles = (txt.match(/\bfacet\b/g) || []).length;
+      for (const m of txt.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) for (let c = 0; c < 3; c++) { const x = +m[c + 1]; if (x < lo[c]) lo[c] = x; if (x > hi[c]) hi[c] = x; }
+    }
+    D.corners = D.triangles * 3;   // (STL keeps each triangle's three corners on their own: shared corners are repeated)
+    if (lo[0] !== Infinity) D.size = {width: +(hi[0] - lo[0]).toFixed(4), height: +(hi[1] - lo[1]).toFixed(4), depth: +(hi[2] - lo[2]).toFixed(4), note: 'its box in its own units (STL does not say what the units are)'};
+    D.packing = 'STL keeps every triangle as it is';
+  }
+
   /* ---------- words (text, JSON, HTML, code): the basics ---------- */
   function readWords(u, out) {
     const txt = utf8(u), W = out.words_ = {characters: [...txt].length, lines: txt.split('\n').length, validUTF8: utf8ok(u)};
@@ -686,6 +796,8 @@
     const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     const out = {reader: 'Media Reader ' + VERSION, bytes: u.length, declared: declaredType ? String(declaredType).split(';')[0].trim() : null};
     out.fromBytes = sniff(u);
+    if (/^(model\/stl|model\/x\.stl-binary|application\/sla|model\/x\.stl-ascii)$/.test(norm(declaredType)) && (out.fromBytes.type == null || out.fromBytes.type === 'text/plain') && (u.length >= 84 && u.length === 84 + le32(u, 80) * 50 || /^\s*solid\b/.test(utf8(u.subarray(0, 64))))) out.fromBytes = {type: 'model/stl', name: 'STL'};
+    if (out.fromBytes.type === 'application/json' && norm(declaredType) === 'model/gltf+json') { try { if (JSON.parse(utf8(u)).asset) out.fromBytes = {type: 'model/gltf+json', name: 'glTF (JSON)'}; } catch (e) {} }
     out.typesAgree = typesAgree(out.declared, out.fromBytes.type);
     out.kind = FAMILY(out.fromBytes.type || norm(out.declared));
     if (!depth) out.sha256 = await sha256(u);
@@ -706,7 +818,9 @@
       else if (t === 'audio/flac') await readFLAC(u, out);
       else if (t === 'video/mp4' || t === 'audio/mp4' || t === 'video/quicktime') await readMP4(u, out);
       else if (t === 'video/webm') readWebM(u, out);
-      else if (out.kind === 'model') notes.push('this reader reads pictures, sound and video so far: 3D models come next');
+      else if (t === 'model/gltf-binary' || t === 'model/gltf+json') await readGLTF(u, out, depth || 0);
+      else if (t === 'model/obj') readOBJ(u, out);
+      else if (t === 'model/stl') readSTL(u, out);
       else notes.push('this kind of file is not read in detail');
     } catch (e) { notes.push('it could not be read in detail: ' + (e.message || e)); }
     if (out.picture) { const P = out.picture; if (P.width && P.height) P.pixels = P.width * P.height; }
@@ -732,6 +846,19 @@
       if (P.colourDetail) bits.push(P.colourDetail);
       if (P.profile) bits.push(P.profile);
       if (P.shapes != null) bits.push(fmt(P.shapes) + ' shapes');
+    } else if (r.model) {
+      const D = r.model, sz = D.sizeMetres || D.size;
+      bits.push(D.format + ' 3D model');
+      if (D.meshes === 0) bits.push('no shapes in it' + (D.cameras ? ': only ' + fmt(D.cameras) + ' camera' + (D.cameras === 1 ? '' : 's') : '') + (D.nodes ? ' (' + fmt(D.nodes) + ' node' + (D.nodes === 1 ? '' : 's') + ')' : ''));
+      else if (D.points != null) bits.push(fmt(D.points) + ' points' + (D.triangles != null ? ', ' + fmt(D.triangles) + ' triangle' + (D.triangles === 1 ? '' : 's') : ''));
+      else if (D.triangles != null) bits.push(fmt(D.triangles) + ' triangle' + (D.triangles === 1 ? '' : 's'));
+      if (D.parts && D.meshes) bits.push(fmt(D.parts) + ' part' + (D.parts === 1 ? '' : 's') + (D.meshes != null ? ' in ' + fmt(D.meshes) + ' mesh' + (D.meshes === 1 ? '' : 'es') : ''));
+      if (sz) bits.push((+sz.width).toLocaleString('en-GB', {maximumFractionDigits: 3}) + ' × ' + (+sz.height).toLocaleString('en-GB', {maximumFractionDigits: 3}) + ' × ' + (+sz.depth).toLocaleString('en-GB', {maximumFractionDigits: 3}) + (D.sizeMetres ? ' metres' : ' (its own units)'));
+      if (D.materials) bits.push(fmt(D.materials) + ' material' + (D.materials === 1 ? '' : 's'));
+      if (D.pictures) bits.push(fmt(D.pictures) + ' texture picture' + (D.pictures === 1 ? '' : 's') + (D.texturePictures && D.texturePictures[0] && D.texturePictures[0].picture ? ' (' + D.texturePictures.filter(t => t.picture).map(t => t.picture.width + ' × ' + t.picture.height).slice(0, 3).join(', ') + ')' : ''));
+      if (D.animations) bits.push(fmt(D.animations) + ' animation' + (D.animations === 1 ? '' : 's') + (D.longestAnimationSeconds ? ' (longest ' + D.longestAnimationSeconds.toLocaleString('en-GB', {maximumFractionDigits: 2}) + ' s)' : ''));
+      if (D.skeletons) bits.push('rigged with ' + fmt(D.skeletons) + ' skeleton' + (D.skeletons === 1 ? '' : 's'));
+      if (/squashed/.test(D.packing || '')) bits.push('shapes squashed (' + (D.extensions || []).filter(e => /draco|meshopt/i.test(e)).join(', ') + ')');
     } else if (r.video) {
       const X = r.video;
       bits.push((X.width && X.height ? fmt(X.width) + ' × ' + fmt(X.height) + ' ' : '') + X.format + ' video' + (X.codec ? ' (' + X.codec + ')' : ''));
