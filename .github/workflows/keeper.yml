@@ -2,7 +2,8 @@
 # Data's starts had not come hours later). But pushes to main happen many times a day, and GitHub starts work for a push straight
 # away. So on every push to main (and on its own timed starts, in case of a quiet day) the keeper looks at what is due and starts
 # it: Source Health if its last check is 55 minutes old or more, the Truth League if its last is 175 minutes old or more, Daily Data from 00:20 UTC and Doge Daily Data from 00:47 UTC if
-# the day before isn't saved yet. It only starts those workflows, each of which still checks for itself that there is something
+# the day before isn't saved yet, and
+# Rare sats from 07:17 UTC if today's prices aren't read yet (15 Nov 2026: its 07:17 start had not come 2 hours later). It only starts those workflows, each of which still checks for itself that there is something
 # to do. Free: GitHub runs it (the repository is public). © 2026 bitmap22. All rights reserved.
 name: Keeper
 
@@ -54,3 +55,12 @@ jobs:
             if [ "$(busy "$1")" != "0" ]; then echo "$1: already running"; continue; fi
             gh api -X POST "repos/$R/actions/workflows/$1/dispatches" -f ref=main -f "inputs[onlyIfMissing]=yes" && echo "$1: started for $DAY"
           done
+          # Rare sats (from 07:17 UTC): today's prices, if they aren't read yet (as its timed runs: from 19:17 UTC it is the last try)
+          TODAY=$(LC_ALL=C TZ=Europe/London date +'%-d %b %Y')
+          if [ "$mins" -lt 437 ]; then echo "Rare sats: not yet (it starts at 07:17 UTC)"
+          else
+            got=$(gh api "repos/$R/contents/rare-sats.json?ref=main" --jq .content 2>/dev/null | base64 -di 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("read", ""))' 2>/dev/null || true)
+            if [ "$got" = "$TODAY" ]; then echo "Rare sats: $TODAY is read"
+            elif [ "$(busy rare-sats.yml)" != "0" ]; then echo "Rare sats: already running"
+            else try=try; [ "$mins" -ge 1157 ] && try=last; gh api -X POST "repos/$R/actions/workflows/rare-sats.yml/dispatches" -f ref=main -f "inputs[keeper]=$try" && echo "Rare sats: started for $TODAY (last read: ${got:-unknown})"; fi
+          fi

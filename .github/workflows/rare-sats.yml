@@ -9,7 +9,13 @@ on:
     - cron: "17 11 * * *"   # and again at 11:17, 15:17 and 19:17 UTC, but only if the day's
     - cron: "17 15 * * *"   # prices have not been read yet (a run that finds them already
     - cron: "17 19 * * *"   # read does nothing). Only the last one failing sends the email.
-  workflow_dispatch:        # also lets it be run by hand from the Actions tab
+  workflow_dispatch:        # also lets it be run by hand from the Actions tab (that always reads the page again)
+    inputs:
+      keeper:               # (the keeper starts it when GitHub's timer is late: then it acts like a timed run)
+        description: "Left empty by hand. The keeper sends 'try' (as the 07:17 to 15:17 runs) or 'last' (as the 19:17 run)"
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -25,8 +31,8 @@ jobs:
     env:
       BRANCH: main
       GH_TOKEN: ${{ github.token }}
-      LAST_TRY: ${{ (github.event_name != 'schedule' || github.event.schedule == '17 19 * * *') && '1' || '0' }}
-      FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+      LAST_TRY: ${{ ((github.event_name != 'schedule' && inputs.keeper != 'try') || github.event.schedule == '17 19 * * *') && '1' || '0' }}
+      FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.keeper == '' && '1' || '0' }}
     steps:
       - name: Get the portal files
         run: git clone --quiet --depth 1 --branch "$BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" portal
