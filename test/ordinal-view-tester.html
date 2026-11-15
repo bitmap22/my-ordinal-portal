@@ -1444,14 +1444,20 @@
       document.addEventListener("visibilitychange", () => { if (document.hidden && isScanning) tabWasHidden = true; });
       async function watchTab(run) {
         tabWasHidden = document.hidden;
-        let frames = 0, ticks = 0, on = true; const t0 = performance.now();
-        const frame = () => { if (on) { frames += 1; requestAnimationFrame(frame); } }; requestAnimationFrame(frame);
-        const tick = setInterval(() => { ticks += 1; }, 100);
+        let frames = 0, on = true, lastFrame = performance.now(), longestGap = [0, 0]; const t0 = lastFrame, tickTimes = [];
+        const frame = (now) => { if (!on) return; now = performance.now(); if (now - lastFrame > longestGap[1] - longestGap[0]) longestGap = [lastFrame, now]; lastFrame = now; frames += 1; requestAnimationFrame(frame); };
+        requestAnimationFrame(frame);
+        const tick = setInterval(() => { tickTimes.push(performance.now()); }, 100);
         const result = await run();
         on = false; clearInterval(tick);
-        const secs = (performance.now() - t0) / 1000;
-        const notDrawn = secs > 0.5 && frames / secs < 3 && ticks >= secs * 5;   // (under 3 frames a second, while timers ran at least half as often as asked)
-        if (result) { result.drawn = { frames, seconds: Math.round(secs * 10) / 10 }; if (tabWasHidden || document.hidden || notDrawn) result.tabHidden = true; }
+        const end = performance.now(), secs = (end - t0) / 1000;
+        if (end - lastFrame > longestGap[1] - longestGap[0]) longestGap = [lastFrame, end];   // (no frame since the last one, to the end)
+        const ticksIn = (a, b) => tickTimes.filter((t) => t > a && t <= b).length;
+        const gap = longestGap[1] - longestGap[0];
+        // not drawn: under 10 frames a second over the view, or no frame for half a second or more, while the timers kept running
+        // (at least half as often as asked: a page that freezes the browser stops them too, and is the page's own slowness)
+        const notDrawn = secs > 0.5 && ((frames / secs < 10 && tickTimes.length >= secs * 5) || (gap >= 500 && ticksIn(longestGap[0], longestGap[1]) >= gap / 200));
+        if (result) { result.drawn = { frames, seconds: Math.round(secs * 10) / 10, longestGapMs: Math.round(gap) }; if (tabWasHidden || document.hidden || notDrawn) result.tabHidden = true; }
         return result;
       }
 
@@ -2957,7 +2963,7 @@
 
       function tabHiddenLines(scan) {   // (a scan run while this tab wasn't on screen: which views to run again)
         const h = scan.tabHidden; if (!h || !h.views) return [];
-        return ["Not on screen (check these again):", "- This tab wasn't on screen for " + h.views + " of " + h.of + " views (another tab, a hidden panel or a minimised window: the browser said so, or drew under 3 frames a second). Browsers stop or slow drawing a page that isn't on screen, so those views (marked NOT ON SCREEN below) can look blank or late when they aren't. Run the scan again with this tab open and on screen before fixing them.", ""];
+        return ["Not on screen (check these again):", "- This tab wasn't on screen for " + h.views + " of " + h.of + " views (another tab, a hidden panel or a minimised window: the browser said so, or drew under 10 frames a second or none for half a second, while its timers kept running). Browsers stop or slow drawing a page that isn't on screen, so those views (marked NOT ON SCREEN below) can look blank or late when they aren't. Run the scan again with this tab open and on screen before fixing them.", ""];
       }
 
       function offChainReportLines(scan) {
@@ -3052,6 +3058,7 @@
           const last = result.checkpoints[result.checkpoints.length - 1];
           lines.push((index + 1) + ". [" + levelLabel(result.level) + "] " + target.label + " / " + result.mode + " — " + target.width + " × " + target.height + (result.tabHidden ? " [NOT ON SCREEN" + (result.drawn ? ": " + result.drawn.frames + " frames drawn in " + result.drawn.seconds + " s" : "") + "]" : ""));
           if (result.lifecycle.length > 0) lines.push("   - Lifecycle: " + result.lifecycle.join(", "));
+          if (result.drawn) lines.push("   - Frames drawn: " + result.drawn.frames + " in " + result.drawn.seconds + " s (longest gap " + result.drawn.longestGapMs + " ms)");
           if (result.sequence) lines.push("   - Mobile sequence: " + result.sequence);
           if (last) {
             lines.push("   - Final checkpoint: visible=" + last.visibleCount + ", elements=" + last.elementCount + ", textNodes=" + last.textNodeCount + ", minFont=" + (last.minVisibleFontPx === null ? "n/a" : last.minVisibleFontPx + "px") + ", animations=" + last.animationsActive);
