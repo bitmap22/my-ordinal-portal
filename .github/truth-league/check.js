@@ -16,6 +16,10 @@ const L = require('../../agent-blockhall-mcp/server/league.js');
   fs.mkdirSync(dir, {recursive: true});
   fs.writeFileSync(path.join(dir, 'league.json'), JSON.stringify(rec));
   fs.writeFileSync(path.join(dir, 'latest.json'), JSON.stringify(Object.assign({licence: L.LICENCE}, c), null, 1));
+  // the order for the tools (agent-blockhall-mcp/server/site-order.js): each site with a wrong answer in the last 7 days
+  const week = L.summarise(rec, {days: 7});
+  fs.writeFileSync(path.join(dir, 'order.json'), JSON.stringify({made: c.at, days: 7, licence: L.LICENCE, what: 'Sites with a wrong answer in the Truth League\'s last 7 days: the portal\'s tools ask them last (never dropped).',
+    wrong: week.sites.filter(s => s.wrong).map(s => ({site: s.site, wrong: s.wrong, answered: s.answered, last: s.lastWrong.length ? L.wrongWords(s.lastWrong[s.lastWrong.length - 1]) : null}))}, null, 1));
   console.log('Checked ' + c.at + '. Bitcoin: ' + JSON.stringify(c.truth.bitcoin) + '\nDogecoin: ' + JSON.stringify(c.truth.doge));
   for (const n of c.notes) console.log('  note: ' + n);
   for (const r of c.results) console.log('  ' + r.site.padEnd(26) + r.facts.map(f => f.fact + '=' + f.code + (f.note ? ' (' + f.note + ')' : '') + (f.code === 'W' ? ' said ' + JSON.stringify(f.said) + ' truth ' + JSON.stringify(f.truth) : '')).join('  '));
