@@ -103,6 +103,14 @@
     facts: r => Object.assign({isCode: r.isCode, files: (r.files || []).length, outsideAddresses: (r.outsideAddresses || []).length}, Object.fromEntries((r.kinds || []).map(k => [k.name, k.count]))),
     sources: r => r.sources || []};
 
+  // Doge Collection Check: the pieces of a Doginals collection checked so far (Doginals have no parents: the list is the explorer's)
+  TOOLS.dogecollection = {coreName: 'the pieces checked', name: 'Doge Collection Check', page: 'doge-collection-check.html', mcp: 'dogeCollectionCheck', subject: r => ({collection: r.collection.slug, checked: r.counts.checked}),
+    label: r => 'the Doginals collection ' + r.collection.name + ' (its first ' + fmt(r.counts.checked) + ' piece' + (r.counts.checked === 1 ? '' : 's') + ')',
+    coreIs: 'the pieces checked: each one\'s ID and file fingerprint, in the collection\'s order',
+    core: r => [r.collection.slug, (r.pieces || []).map(p => [p.id, p.fingerprint || null])],
+    facts: r => ({listed: r.counts.listed, checked: r.counts.checked, real: r.counts.real, problems: r.counts.problems, notFullyChecked: r.counts.notFullyChecked, holders: r.collection.holders}),
+    sources: r => [r.sources.list, r.sources.secondSite].concat(r.sources.fileCopies || [])};
+
   // Rune Proof: a rune's etching, read from the chain's own bytes and checked against ordinals.com
   TOOLS.rune = {coreName: 'the rune as etched', name: 'Rune Proof', page: 'rune-proof.html', mcp: 'runeProof', subject: r => ({rune: r.query}), label: r => 'rune ' + (r.rune && r.rune.name || r.query),
     coreIs: 'the rune as etched: its name, ID and etching transaction, and the rules written in its etching',
