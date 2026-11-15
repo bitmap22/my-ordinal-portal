@@ -227,7 +227,8 @@
   }
 
   /* ---------- gathering everything, in the same steps for every host ----------
-     io: {ordJson(path), ord2Json(path), ordText(path), ordBytes(path), mpJson(path), mpText(path), sleep(ms), decompress (or null)};
+     io: {ordJson(path), ord2Json(path), ordText(path), ordBytes(path), mpJson(path), mpText(path), sleep(ms), decompress (or null),
+          prepareUnpack(encoding) (optional: gets decompress ready for a file stored packed; true when it is)};
      each ...Json returns {j, site}, ...Text {t, site}, ordBytes {bytes, site}. */
   const TRAIL_MAX = 50, FILE_MAX = 2000000;
   const isInsId = t => /^[0-9a-f]{64}i\d+$/.test(t);
@@ -277,13 +278,18 @@
     T.steps.reverse();   // (oldest first)
     try { const sp = String(J.satpoint).split(':'); outspend = (await io.mpJson('/api/tx/' + sp[0] + '/outspend/' + sp[1])).j; } catch (e) {}
     say('done', true);
-    return addWhatIsInIt(buildProvenance({id, info: J, infoSite: info.site, parents: par.status === 'fulfilled' ? par.value.j.ids || [] : null,
+    const B = {id, info: J, infoSite: info.site, parents: par.status === 'fulfilled' ? par.value.j.ids || [] : null,
       second: second.status === 'fulfilled' ? second.value.j : null, secondSite: second.status === 'fulfilled' ? second.value.site : null,
       revealStatus: status.status === 'fulfilled' ? status.value.j.status : null, statusSite: status.status === 'fulfilled' ? status.value.site : null,
       revealHex: raw.status === 'fulfilled' ? raw.value.t : null, hexSite: raw.status === 'fulfilled' ? raw.value.site : null,
       content: file.status === 'fulfilled' ? file.value.bytes : null, contentSite: file.status === 'fulfilled' ? file.value.site : null,
       contentNote: J.content_length > FILE_MAX ? 'the file is over 2 MB, so it was not fetched to compare' : null,
-      decompress: io.decompress || null, trail: T, trailSite: T.site || null, outspend, nowTx}), io.media);
+      decompress: io.decompress || null, trail: T, trailSite: T.site || null, outspend, nowTx};
+    let R = buildProvenance(B);
+    // (15 Nov 2026) stored packed (ord allows Brotli): a browser page gets its unpacker ready only now that it is needed
+    // (io.prepareUnpack(encoding) -> true once io.decompress can unpack it), then the same bytes are read again
+    if (R.inscription && R.inscription.packed && io.prepareUnpack) { let ok = false; try { ok = await io.prepareUnpack(R.inscription.packed); } catch (e) {} if (ok) R = buildProvenance(B); }
+    return addWhatIsInIt(R, io.media);
   }
 
   // (15 Nov 2026) what is in the file it proved, read by the Media Reader (media.js) when the host gives it as io.media:
