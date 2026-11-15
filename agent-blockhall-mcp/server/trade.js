@@ -86,7 +86,11 @@
     if (!R) return [reason('its code', 'unknown', 'Its code could not be read this time.')];
     if (R.isCode === false) return [];
     const found = (R.kinds || []).filter(k => k.found || k.count), out = [];
-    for (const k of found) out.push(reason('its code', 'care', 'Its code ' + String(k.says || k.name).replace(/^it /, '') + ' (Code Read found ' + fmt(k.count || 1) + (k.count === 1 ? ' place' : ' places') + ').' + (/wallet|sends|hidden/.test(k.key) ? ' Never sign anything it asks.' : ''), {kind: k.key, from: 'Code Read'}));
+    for (const k of found) {
+      // what Code Read found, as it says it (and the address, where there is one), so a person can judge it
+      const f = (R.findings || []).find(x => x.kind === k.key), code = f && f.code && f.code.untrusted ? String(f.code.untrusted) : '', url = (code.match(/https?:\/\/[^\s"'`<>)]+/) || [])[0];
+      out.push(reason('its code', 'care', 'Code Read found ' + fmt(k.count || 1) + ' place' + ((k.count || 1) === 1 ? '' : 's') + ' where its code ' + String(k.says || k.name).replace(/^it /, '') + (f && f.what ? ': ' + f.what + (url ? ', ' + url : '') + (f.line ? ' (line ' + f.line + ')' : '') : '') + '.' + (/wallet|sends|hidden/.test(k.key) ? ' Never sign anything it asks.' : ''), {kind: k.key, from: 'Code Read', found: f ? {what: f.what, line: f.line, address: url || null} : null}));
+    }
     if (!out.length) out.push(reason('its code', 'ok', 'Its code was read without running it: it asks no wallet for anything, sends nothing out, has no known tracking and hides nothing.', {from: 'Code Read'}));
     return out;
   }
