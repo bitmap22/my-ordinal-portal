@@ -753,10 +753,10 @@ async function dailyData({day, block}) {
    Dogecoin's sites: thedoginalsexplorer.com (the one Doginals list), Bitcore (a second, separate list), Blockchair (a
    transaction's own bytes), and Doggy Market's copy of each file. Each is asked gently, at the pace it says it allows. */
 const DOGE = {DX: 'https://thedoginalsexplorer.com', BTC: 'https://api.bitcore.io/api/DOGE/mainnet', BCR: 'https://api.blockchair.com/dogecoin',
-  X3: 'https://sandbox-api.3xpl.com', DOGGY: 'https://cdn.doggy.market'};
+  X3: 'https://sandbox-api.3xpl.com', DOGGY: 'https://cdn.doggy.market', BCY: 'https://api.blockcypher.com/v1/doge/main'};
 const DOGE_GAME = PORTAL + 'doge-cube.html';
 // the explorer: 300 units a minute for everyone; Blockchair: 30 asks a minute, 1,800 an hour (it says so itself)
-const DOGE_PACE = {[DOGE.DX]: {rate: 2.3, burst: 20}, [DOGE.BCR]: {rate: 0.45, burst: 12}, [DOGE.BTC]: {rate: 2, burst: 6}, [DOGE.X3]: {rate: 0.5, burst: 2}, [DOGE.DOGGY]: {rate: 2, burst: 4}};
+const DOGE_PACE = {[DOGE.DX]: {rate: 2.3, burst: 20}, [DOGE.BCR]: {rate: 0.45, burst: 12}, [DOGE.BTC]: {rate: 2, burst: 6}, [DOGE.X3]: {rate: 0.5, burst: 2}, [DOGE.DOGGY]: {rate: 2, burst: 4}, [DOGE.BCY]: {rate: 1, burst: 3}};
 const dogeSites = new Map();
 async function dogeGet(url, ms) {
   const b = Object.keys(DOGE_PACE).find(x => url.startsWith(x)) || new URL(url).origin, P = DOGE_PACE[b] || {rate: 2, burst: 4};
@@ -775,10 +775,18 @@ async function dogeFile(url) {
 }
 const dogeIO = {
   dx: p => dogeJ(DOGE.DX + p, 25000), btc: p => dogeJ(DOGE.BTC + p, 45000), x3: p => dogeJ(DOGE.X3 + p, 20000),
-  raw: async id => { const j = await dogeJ(DOGE.BCR + '/raw/transaction/' + id, 25000); const h = j && j.data && j.data[id] && j.data[id].raw_transaction; if (!h) throw new Error('Blockchair did not give its bytes'); return h; },
+  // a transaction's own bytes: Blockchair's, or BlockCypher's copy when Blockchair has none (the first block's coinbase, one too new for it);
+  // the readers hash them to the transaction's own id either way, and rawFrom says which site gave which
+  raw: async id => { const j = await dogeJ(DOGE.BCR + '/raw/transaction/' + id, 25000); const h = j && j.data && j.data[id] && j.data[id].raw_transaction;
+    if (h) return rawGot(id, 'https://api.blockchair.com', h);
+    let c = null; try { c = await dogeJ(DOGE.BCY + '/txs/' + id + '?includeHex=true&limit=1', 25000); } catch (e) {}
+    if (c && /^[0-9a-f]+$/i.test(c.hex || '')) return rawGot(id, 'https://api.blockcypher.com', c.hex);
+    throw new Error('neither Blockchair nor BlockCypher gave its bytes'); },
+  rawFrom: new Map(),
   file: id => dogeFile(DOGE.DX + '/content/' + id), file2: id => dogeFile(DOGE.DOGGY + '/content/' + id), sleep,
   headerHash: DM.headerHash, kindNames: DM.KIND_NAMES, media: MR
 };
+function rawGot(id, site, h) { const m = dogeIO.rawFrom; m.set(id, site); while (m.size > 2000) m.delete(m.keys().next().value); return h; }
 const dogeManifests = new Map();   // (the last few blocks read, so asking for the next page needs nothing new)
 async function readDogeManifest(h, bytesCap) {
   const got = dogeManifests.get(h); if (got && Date.now() - got.t < 600000) return got.m;
