@@ -120,6 +120,7 @@
       <p class="small">Checked: <span class="y">✓</span> agrees, <span class="x">✗</span> differs, <span class="z">·</span> a site didn't answer. The four marks are the block's hash on a second site, its transaction ids, its kinds and its inscriptions. Click a block number to see every transaction in it in the Block Manifest.</p>
     </div>
 
+    <div class="panel hidden" id="cite"></div>
     <div class="row2">
       <div class="panel">
         <h2>Take it with you</h2>
@@ -138,7 +139,7 @@
 
   <div class="panel small">
     <h2>For AI agents</h2>
-    <p>In this page: <code>await window.agent.help()</code>, then <code>agent.days()</code>, <code>agent.day({day})</code>, <code>agent.block({height})</code> and <code>agent.see()</code>. Where the browser has WebMCP, the same commands are tools named <code>daily_*</code>. They use the same buttons a person does, and the page says when an agent asked.</p>
+    <p>In this page: <code>await window.agent.help()</code>, then <code>agent.days()</code>, <code>agent.day({day})</code>, <code>agent.block({height})</code> and <code>agent.see()</code>. Where the browser has WebMCP, the same commands are tools named <code>daily_*</code>. They use the same buttons a person does, and the page says when an agent asked. Each answer carries <code>cite</code>: a link to cite the check, holding when it was made, which sites it asked, its main facts and a fingerprint; opening the link makes the check again and says whether it is the same, or what changed.</p>
     <p>The files are plain JSON and CSV: <a href="https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/index.json">index.json</a> lists every day, with links to each day's files. Without a browser, the free <a href="agent-blockhall-mcp/README.md">Agent Blockhall MCP tool</a> has them as its <code>dailyData</code> tool. The bigger app is <a href="block-cube.html">Agent Blockhall</a>. More in <a href="llms.txt">llms.txt</a>.</p>
   </div>
 
@@ -151,6 +152,7 @@
 
 <div id="for-ai-agents" aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden">For AI agents: this page has a kit for you. Call await window.agent.help(), then agent.days() and agent.day({day}). Where the browser has WebMCP, the same commands are tools named daily_*. The files themselves are plain JSON and CSV at https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/index.json, and the free Agent Blockhall MCP tool has them as its dailyData tool.</div>
 
+<script src="agent-blockhall-mcp/server/cite.js"></script>
 <script>
 'use strict';
 (() => {
@@ -222,6 +224,7 @@
     }
     $('dlJson').href = BASES[0] + 'days/' + d.day + '.json'; $('dlCsv').href = BASES[0] + 'days/' + d.day + '.csv';
     try { history.replaceState(null, '', location.pathname + '?day=' + d.day); } catch (e) {}
+    try { Cite.show('daily', D, document.getElementById('cite')); } catch (e) {}
     say((byAgent ? 'An AI agent opened ' : 'Showing ') + d.day + ': ' + fmt(T.blocks) + ' blocks, ' + fmt(T.transactions) + ' transactions' + (K.notRead ? ', ' + K.notRead + ' not read' : '') + '.');
   }
 
@@ -230,7 +233,7 @@
   const cmds = [
     {name: 'days', does: 'Every day there is a file for, newest last, with its totals (blocks, transactions, fees, inscriptions, runes, BRC-20) and links to its JSON and CSV.', args: [], run: async () => { await loadIndex(); return {days: INDEX.days, updated: INDEX.updated, licence: INDEX.licence}; }},
     {name: 'day', does: 'Open one day on the page (as clicking it does) and give its totals, its checks across the day, and its blocks, each with what was in it, its fees, who mined it and its checks. Leave day out for the newest.', args: [{name: 'day', does: 'the UTC day, YYYY-MM-DD'}],
-      run: async ({day}) => { await openDay(day, true); return {day: D.day, notes: D.totals.notes || [], totals: D.totals, blocks: D.blocks, links: D.links, licence: D.licence, what: D.what, note: NULL_NOTE}; }},
+      run: async ({day}) => { await openDay(day, true); return {day: D.day, cite: D.cite, notes: D.totals.notes || [], totals: D.totals, blocks: D.blocks, links: D.links, licence: D.licence, what: D.what, note: NULL_NOTE}; }},
     {name: 'block', does: 'One block from the day on the page, by its height, with a link to every transaction in it (the Block Manifest) and how to walk into it in Agent Blockhall.', args: [{name: 'height', type: 'integer', does: 'the block number'}],
       run: ({height}) => { if (!D) throw new Error('open a day first: agent.day({day})'); const b = D.blocks.find(x => x.height === +height); if (!b) throw new Error('block ' + height + ' is not in ' + D.day + ' (' + D.totals.firstBlock + ' to ' + D.totals.lastBlock + ')'); return Object.assign({}, b, {walkIn: 'In Agent Blockhall (' + PORTAL + 'block-cube.html): type ' + b.height + ' into the tablet, or walkIn({height: ' + b.height + '}) in its agent kit.', note: NULL_NOTE}); }},
     {name: 'see', does: 'What the page shows now: the status line and the day open.', args: [], run: () => ({status: $('status').textContent, day: D ? D.day : null, totals: D ? D.totals : null})}
