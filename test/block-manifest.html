@@ -170,7 +170,7 @@
       </div>
     </div>
 
-    <div class="panel small" id="sources"></div>
+    <div class="panel small"><span id="sources"></span> <span>How these sites are doing: <a href="source-health.html">Source Health</a>. Which of them tell the truth: <a href="truth-league.html">the Truth League</a>.</span></div>
   </div>
 
   <div class="panel small">
@@ -332,6 +332,7 @@
     const when = b.time ? new Date(b.time).toLocaleString('en-GB', {timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' UTC' : '–';
     for (const [k, v] of [['Bitmap', b.bitmap], ['Mined', when], ['Mined by', b.minedBy || 'unknown'], ['Transactions', fmt(b.transactions)], ['Fees', fmt(b.totalFees) + ' sats'], ['Hash', b.hash]]) {
       const f = el('div', 'fact'); f.appendChild(el('b', null, k));
+      if (k === 'Transactions' && b.transactions != null) { const sp = el('span', null, v + ' \u00b7 '), so = el('a', null, 'a second opinion'); so.href = 'second-opinion.html?claim=' + encodeURIComponent('block ' + b.height + ' has ' + b.transactions + ' transactions'); so.title = 'The Second Opinion checks it against several sites'; sp.appendChild(so); f.appendChild(sp); facts.appendChild(f); continue; }
       if (k === 'Mined' && b.time) { const sp = el('span', null, v), day = b.time.slice(0, 10); f.appendChild(sp);   // (a link to its day in Daily Data, once that day is known to be saved there)
         savedDays().then(D => { if (M !== m || !D.has(day)) return; const a = el('a', null, v); a.href = 'daily.html?day=' + day; a.title = 'Daily Data: every block of ' + day + ' (UTC)'; sp.textContent = ''; sp.appendChild(a); }).catch(() => {}); }
       else f.appendChild(el('span', k === 'Hash' ? 'hash' : null, v));
@@ -429,8 +430,9 @@
     }
     if (it.token) { const t = it.token, w = t.untrusted || {}; line(t.protocol + (t.op ? ' ' + t.op : '') + ' ', ...[w.op, w.tick, w.amount, w.name, w.link].filter(v => v != null && v !== '').map(u)); }
     if (it.rune) {
-      if (it.rune.etched) line('rune etched: ' + it.rune.etched + (it.rune.symbol ? ' ' + it.rune.symbol : '') + (it.rune.made === false ? ' (name taken: no rune made)' : ''));
-      if (it.rune.minted) line('rune minted: ' + it.rune.minted);
+      const rp = (q, t) => { const a = el('a', null, t); a.href = 'rune-proof.html?rune=' + encodeURIComponent(q); a.title = 'Rune Proof: the rune, proved from the chain'; return a; };
+      if (it.rune.etched) line('rune etched: ' + it.rune.etched + (it.rune.symbol ? ' ' + it.rune.symbol : '') + (it.rune.made === false ? ' (name taken: no rune made)' : '') + ' \u00b7 ', rp(it.txid, 'prove it'));
+      if (it.rune.minted) line('rune minted: ' + it.rune.minted + ' \u00b7 ', rp(it.rune.minted, 'the rune it mints'));
     }
     if (it.bitmap != null) line(it.bitmap + '.bitmap');
     if (it.message) line('message ', u(it.message.untrusted.slice(0, 120)));
