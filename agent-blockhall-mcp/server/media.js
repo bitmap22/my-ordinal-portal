@@ -858,7 +858,7 @@
       if (D.pictures) bits.push(fmt(D.pictures) + ' texture picture' + (D.pictures === 1 ? '' : 's') + (D.texturePictures && D.texturePictures[0] && D.texturePictures[0].picture ? ' (' + D.texturePictures.filter(t => t.picture).map(t => t.picture.width + ' × ' + t.picture.height).slice(0, 3).join(', ') + ')' : ''));
       if (D.animations) bits.push(fmt(D.animations) + ' animation' + (D.animations === 1 ? '' : 's') + (D.longestAnimationSeconds ? ' (longest ' + D.longestAnimationSeconds.toLocaleString('en-GB', {maximumFractionDigits: 2}) + ' s)' : ''));
       if (D.skeletons) bits.push('rigged with ' + fmt(D.skeletons) + ' skeleton' + (D.skeletons === 1 ? '' : 's'));
-      if (/squashed/.test(D.packing || '')) bits.push('shapes squashed (' + (D.extensions || []).filter(e => /draco|meshopt/i.test(e)).join(', ') + ')');
+      if (/squashed/.test(D.packing || '')) bits.push('shapes squashed (' + ((D.extensions || []).some(e => /draco/i.test(e)) ? 'Draco' : 'meshopt') + ')');
     } else if (r.video) {
       const X = r.video;
       bits.push((X.width && X.height ? fmt(X.width) + ' × ' + fmt(X.height) + ' ' : '') + X.format + ' video' + (X.codec ? ' (' + X.codec + ')' : ''));
@@ -929,9 +929,9 @@
       add('Points', D.points != null && D.meshes !== 0 ? fmt(D.points) : null);
       add('Triangles', D.triangles != null && D.meshes !== 0 ? fmt(D.triangles) : null);
       add('Parts', D.parts ? fmt(D.parts) + ' in ' + fmt(D.meshes) + ' mesh' + (D.meshes === 1 ? '' : 'es') : null);
-      const sz = D.sizeMetres || D.size; add('Real size', sz ? sz.width + ' × ' + sz.height + ' × ' + sz.depth + (D.sizeMetres ? ' metres (wide × tall × deep)' : ' (its own units: the file does not say which)') : null);
+      const sz = D.sizeMetres || D.size, m3 = v => (+v).toLocaleString('en-GB', {maximumFractionDigits: 3}); add('Real size', sz ? m3(sz.width) + ' × ' + m3(sz.height) + ' × ' + m3(sz.depth) + (D.sizeMetres ? ' metres (wide × tall × deep)' : ' (its own units: the file does not say which)') : null);
       add('Materials', D.materials ? fmt(D.materials) : null);
-      add('Texture pictures', D.pictures ? fmt(D.pictures) + (D.texturePictures ? ': ' + D.texturePictures.map(t => t.says || t.where).join(' | ') : '') : null);
+      add('Texture pictures', D.pictures ? fmt(D.pictures) + (D.texturePictures ? ': ' + D.texturePictures.map(t => t.picture && t.picture.width ? fmt(t.picture.width) + ' × ' + fmt(t.picture.height) + ' ' + (t.picture.format || '').split(' ')[0] + (t.picture.coloursUsed != null ? ' (' + fmt(t.picture.coloursUsed) + ' colours)' : '') : t.where).join(', ') : '') : null);
       add('Animations', D.animations ? fmt(D.animations) + (D.longestAnimationSeconds ? ' (the longest is ' + secsWords(D.longestAnimationSeconds) + ')' : '') : null);
       add('Skeletons', D.skeletons ? fmt(D.skeletons) + ' (it can be posed)' : null);
       add('Cameras', D.cameras && D.meshes !== 0 ? fmt(D.cameras) : null);
