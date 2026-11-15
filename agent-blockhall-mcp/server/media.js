@@ -657,8 +657,10 @@
       const X = out.video = {format: name, codec: CN[V.codec] || V.codec, width: V.w, height: V.h, seconds};
       if (V.dw && V.dh && (V.dw !== V.w || V.dh !== V.h)) X.shownAs = V.dw + ' × ' + V.dh;
       const nf = V.num != null ? blocks[V.num] : null; if (nf) X.frames = nf;
-      if (nf && seconds) X.framesPerSecond = +(nf / seconds).toFixed(3); else if (V.frameNs) X.framesPerSecond = +(1e9 / V.frameNs).toFixed(3);   // (counted frames over its length; the rate it states can differ)
-      if (V.frameNs && nf && seconds && Math.abs(1e9 / V.frameNs - nf / seconds) > 0.02 * (1e9 / V.frameNs)) X.framesPerSecondStated = +(1e9 / V.frameNs).toFixed(3);
+      // the rate it states, where the frames it really holds agree with it; else the frames counted over its length
+      const stated = V.frameNs ? 1e9 / V.frameNs : null, counted = nf && seconds ? nf / seconds : null;
+      if (stated && (!counted || Math.abs(stated - counted) <= 0.03 * stated)) X.framesPerSecond = +stated.toFixed(3);
+      else if (counted) { X.framesPerSecond = +counted.toFixed(3); if (stated) X.framesPerSecondStated = +stated.toFixed(3); X.framesNote = 'it states ' + (+stated.toFixed(3)) + ' frames a second, but holds ' + nf + ' frames over ' + seconds + ' s: the counted rate is shown'; }
       X.hasSound = !!A; if (A) X.sound = {codec: CN[A.codec] || A.codec, channels: A.ch, sampleRate: A.sr};
       X.packing = name + ' squashes the picture and sound (lossy)';
     } else if (A) {
