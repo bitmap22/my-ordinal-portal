@@ -225,26 +225,26 @@
       const U = R.rune || {}; c._rune = {name: U.name || null, id: U.id || null, etching: U.etching || null, block: U.block != null ? U.block : null};
       const ORDC = 'https://ordinals.com', goods = U.id === '1:0' && !U.etching;
       if (!R.compare) {   // no such rune (or not made, or not mined yet): every claim about it fails, and the answer says why
-        out.push(S(ORDC, R.answer === 'waiting' ? 'not etched yet: its etching waits to be mined' : 'no such rune', R.answer === 'waiting' ? null : false, 'Rune Proof: ' + R.verdict, 'ord'));
-        note.push('Rune Proof shows the whole proof: ' + R.answer);
+        out.push(S(ORDC, R.answer === 'waiting' ? 'not etched yet: its etching waits to be mined' : 'no such rune', R.answer === 'waiting' ? null : false, R.answer === 'waiting' ? 'its etching is not in a block yet' : 'ordinals.com has no rune by that name or ID', 'ord'));
+        note.push(R.verdict);
         return {sources: out, notes: note};
       }
       const rule = key => (R.rules || []).find(r => r.key === key), byted = goods || !!(rule('bytes') && rule('bytes').ok);
       const placed = goods || !!(rule('place') && rule('place').ok && rule('block') && rule('block').ok);
       const mpHost = (R.sources || []).find(x => !/ordinals\.com/.test(x)) || 'mempool.space';
-      const CH = goods ? 'ord\'s own code (UNCOMMON•GOODS is set there, never etched)' : 'the chain (its etching\'s own bytes, from ' + String(mpHost).replace(/^https?:\/\//, '') + ')';
+      const CH = goods ? 'ord\'s own code (UNCOMMON•GOODS is set there, never etched)' : 'the chain (its etching\'s own bytes, from ' + String(mpHost).replace(/^https?:\/\//, '') + ')', CK = goods ? 'code' : 'chain';   // (UNCOMMON•GOODS: ord's code, not the chain)
       const field = f => R.compare.find(x => x.field === f) || null, E = R.etching || {}, div = goods ? 0 : +(E.divisibility || 0);
       const units = v => { if (v == null) return null; const x = RP.unpile(String(v).replace(/,/g, ''), div); return x == null ? null : x; };
       const want = /^rune\.(premine|amount|supply)$/.test(k) ? units(c.value) : null;
       if (/^rune\.(premine|amount|supply)$/.test(k) && want == null) throw new Error('that amount has more decimal places than ' + (U.name || c.subject) + ' has (' + div + ')');
       const both = (f, eq, how) => { const x = field(f); if (!x) return;
-        out.push(S(CH, x.chain, byted ? eq(x.chain) : null, how + (byted ? '' : ' (its bytes could not be trusted)'), 'chain'));
+        out.push(S(CH, x.chain, byted ? eq(x.chain) : null, goods ? how.replace(/, read out of.*$/, ', as ord\'s code sets it') : how + (byted ? '' : ' (its bytes could not be trusted)'), CK));
         out.push(S(ORDC, x.ordinals == null ? 'not shown' : x.ordinals, x.ordinals == null ? null : eq(x.ordinals), how.replace(/, read out of.*$/, '') + ', as ordinals.com shows it', 'ord')); };
       if (k === 'rune.block') {
         const ob = field('id') && field('id').ordinals, ordB = ob && /^\d+:\d+$/.test(ob) ? +ob.split(':')[0] : null;
-        if (goods) out.push(S(CH, 'never etched: its ID, 1:0, is set in ord\'s code', null, 'UNCOMMON•GOODS was not etched in a transaction', 'chain'));
+        if (goods) { out.push(S(CH, 'never etched: ord sets it up itself', false, 'UNCOMMON•GOODS was never etched in a transaction: ord writes it into its index (its ID, 1:0, only names block 1)', CK)); note.push('UNCOMMON•GOODS is the one rune that was never etched: ord\'s own code makes it'); }
         else out.push(S(CH, U.block != null ? U.block : 'not in a block', placed ? U.block === c.value : null, 'the block its etching sits in, proven: the block\'s header hashes to its hash and the etching\'s merkle path leads to it', 'chain'));
-        out.push(S(ORDC, ordB != null ? ordB : 'not shown', ordB != null ? ordB === c.value : null, 'the block in its ID, as ordinals.com shows it', 'ord'));
+        out.push(S(ORDC, ordB != null ? ordB : 'not shown', ordB != null && !goods ? ordB === c.value : null, goods ? 'the block its ID names, as ordinals.com shows it (an ID, not an etching)' : 'the block in its ID, as ordinals.com shows it', 'ord'));
         if (U.etching) await tryIt(async () => { const x = await io.mp2Json('/api/tx/' + U.etching + '/status', 'https://' + String(mpHost).replace(/^https?:\/\//, '')); const v = x.j.confirmed ? x.j.block_height : null;
           out.push(S(x.site, v == null ? 'not in a block yet' : v, v == null ? false : v === c.value, 'the block its etching transaction is in, as a second, separate mempool site has it', 'mempool')); }, 'a second mempool site');
       }
@@ -260,7 +260,7 @@
       if (k === 'rune.premine') both('premine', v => units(v) === want, 'how much went to its etcher at the start, read out of its etching');
       if (k === 'rune.cap' || k === 'rune.amount') {
         const m = field('mint'), terms = !!(R.etching && R.etching.terms) || goods;
-        if (!terms && m) { out.push(S(CH, 'no mint terms: it can\'t be minted', byted ? (k === 'rune.cap' ? c.value === '0' : want === 0n) : null, 'its etching gives no mint terms', 'chain'));
+        if (!terms && m) { out.push(S(CH, 'no mint terms: it can\'t be minted', byted ? (k === 'rune.cap' ? c.value === '0' : want === 0n) : null, 'its etching gives no mint terms', CK));
           out.push(S(ORDC, m.ordinals == null ? 'not shown' : 'mint: ' + m.ordinals, m.ordinals == null ? null : m.ordinals === 'no' ? (k === 'rune.cap' ? c.value === '0' : want === 0n) : false, 'whether it can be minted, as ordinals.com shows it', 'ord')); }
         else if (k === 'rune.cap') both('cap', v => digits(v) === c.value, 'how many times it can be minted, read out of its etching');
         else both('amount', v => units(v) === want, 'how much each mint makes, read out of its etching');

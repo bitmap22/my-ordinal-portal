@@ -686,7 +686,7 @@ async function secondOpinion({claim, kind, subject, value}) {
     if (U.block != null) links.push('blockManifest({height: ' + U.block + '}) lists every transaction in the block it was etched in');
     if (U.etching) links.push(GAME + '#find=' + U.etching + ' walks into Agent Blockhall with its etching found'); }
   return Object.assign(r, {cite: CI.make('opinion', r), page: PORTAL + 'second-opinion.html?claim=' + encodeURIComponent(r.claim.text), lookCloser: links,
-    note: 'answer: true, false, mixed (the sources differ), or unknown (no source could answer). sources: what each says (says), whether it agrees (true, false, or null when it could not answer), how it knows, and its kind (chain: the chain\'s own bytes, worked out to their hash; ord: an ord indexer; mempool: a mempool site). The chain itself counts for most. ' + UNTRUSTED});
+    note: 'answer: true, false, mixed (the sources differ), or unknown (no source could answer). sources: what each says (says), whether it agrees (true, false, or null when it could not answer), how it knows, and its kind (chain: the chain\'s own bytes, worked out to their hash; code: ord\'s own code, for UNCOMMON•GOODS, the one rune never etched; ord: an ord indexer; mempool: a mempool site). The chain itself counts for most. ' + UNTRUSTED});
 }
 
 /* ---------- watch: say when something happens on the chain ----------
