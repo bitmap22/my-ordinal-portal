@@ -1,0 +1,44 @@
+# Source Health: about once an hour, ask each data site the portal's tools read one small thing, and keep a week of the
+# answers on the source-health branch (remade each time, so it holds only the newest copy). Free: GitHub runs it.
+# It only writes to the source-health branch. To run it by hand: Actions > Source Health > Run workflow.
+name: Source Health
+
+on:
+  schedule:
+    - cron: '41 * * * *'   # about once an hour (GitHub can start it a little late)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: source-health
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Last week's record
+        run: |
+          mkdir -p health
+          if git fetch -q --depth 1 origin source-health; then git show FETCH_HEAD:week.json > health/week.json || rm -f health/week.json; fi
+      - name: Ask each site
+        run: node .github/source-health/check.js health
+      - name: Save it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp .github/source-health/README.md health/README.md
+          cd health
+          git init -q -b source-health
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Source Health: $(date -u +%FT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" source-health
