@@ -2488,12 +2488,18 @@
         return result;
       }
 
+      async function waitForStart(max) {   // until the page inside says its checks are in (telemetry-installed), or max ms
+        const t0 = performance.now();
+        while (performance.now() - t0 < max && !currentMessages.some((item) => item.type === "lifecycle" && item.payload && item.payload.name === "telemetry-installed")) await sleep(25);
+      }
+
       async function runRuntimeTarget(target, mode, index, total) {
         currentToken = makeToken();
         currentMessages = [];
         setProgress(index, total, target.label + " / " + mode);
         setStatus("Scanning " + target.label + " / " + mode);
         renderTarget(target, mode, currentToken);
+        await waitForStart(5000);   // (15 Nov 2026) the checks' times count from when the page inside starts, not from when its frame was made
         await sleep(mode === FULL_SCAN_MODE ? 3250 : 1250);
         return evaluateRuntimeResult(target, mode, currentMessages.slice());
       }
