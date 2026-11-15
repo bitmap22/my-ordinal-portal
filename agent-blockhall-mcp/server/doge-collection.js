@@ -29,7 +29,7 @@
   const HOW = {
     listed: 'listed for the collection by thedoginalsexplorer.com: not proven by a parent, because Doginals have none',
     real: 'a Doginal: the explorer knows it (its number, the block it was made in, its file type)',
-    inBlock: 'the transaction that started it is in a block on a second, separate site (Bitcore): in the block the explorer says, or, for a file written over several transactions, a block before the one the explorer says it was finished in',
+    inBlock: 'the transaction that started it is in a block on a second, separate site (Bitcore): the block the explorer says, or, for a file written over several transactions, a block before the one the explorer says it was finished in',
     sameFile: 'the explorer\'s copy of its file and Doggy Market\'s copy have the same fingerprint (SHA-256)',
     heldThere: 'the output holding it now is unspent, at the address the explorer says, on the second site (Bitcore)',
     ok: 'real, in its block, the same file on two sites, and held where the explorer says'};
@@ -74,11 +74,6 @@
   }
 
   /* ---------- one piece ---------- */
-  // a block's transactions on the second site (Bitcore), asked once per block
-  function blockList(run, io, h) {
-    if (!run.lists.has(h)) run.lists.set(h, io.btc('/tx?blockHeight=' + h + '&limit=10000').then(L => new Set((L || []).map(t => t.txid))).catch(() => null));
-    return run.lists.get(h);
-  }
   function coinsOf(run, io, txid) {
     if (!run.coins.has(txid)) run.coins.set(txid, io.btc('/tx/' + txid + '/coins').catch(() => null));
     return run.coins.get(txid);
@@ -92,9 +87,9 @@
     try { J = await io.dx('/v1/inscription/' + id); } catch (e) { if (/404/.test(String(e))) { r.checks.real = false; r.why = 'the explorer lists it for the collection, but knows no such Doginal'; r.ok = false; return r; } r.error = String(e && e.message || e); }
     if (J) { r.checks.real = true; r.number = J.number != null ? J.number : null; r.block = J.genesis_height != null ? J.genesis_height : null; r.time = iso(J.genesis_time); r.type = J.contentType || null; r.holder = J.address || null; r.satpoint = J.satpoint || null; }
     const gen = id.slice(0, 64), sp = String(r.satpoint || '').split(':'), lost = !!J && (+sp[1] === 4294967295 || !r.holder);
-    const [F, L, K, T] = await Promise.all([
+    const [F, G, K, T] = await Promise.all([
       Promise.allSettled([io.file(id), io.file2(id)]),
-      r.block != null ? blockList(run, io, r.block) : null,
+      io.btc('/tx/' + gen).catch(e => /404/.test(String(e)) ? {missing: true} : null),
       r.satpoint && !lost ? coinsOf(run, io, sp[0]) : null,
       lost && /^[0-9a-f]{64}$/.test(sp[0]) ? io.btc('/tx/' + sp[0]).catch(() => null) : null]);
     // lost: the explorer says no one holds it, because a transaction passed it on in its fee (its place is past all its outputs)
@@ -108,12 +103,10 @@
       const said = (x, st, who) => x && !x.length ? who + ' gives no file for it (0 bytes)' : st.status === 'rejected' ? (/too big/.test(String(st.reason)) ? who + '\'s copy is too big to fetch here' : who + ' did not give its file') : null;
       r.fileNote = [said(a, F[0], 'the explorer'), said(b, F[1], 'Doggy Market')].filter(Boolean).join('; ') || null;
     }
-    if (L && L.has(gen)) r.checks.inBlock = true;
-    else if (r.block != null) {
-      // a file written over several transactions: the explorer gives the block it was finished in; ask the second site where it started
-      try { const t = await io.btc('/tx/' + gen); if (t && t.blockHeight > 0) { r.startedBlock = t.blockHeight; r.checks.inBlock = t.blockHeight <= r.block; } else if (t) r.checks.inBlock = false; }
-      catch (e) { if (/404/.test(String(e))) r.checks.inBlock = false; }
-    }
+    // the block the second site has the transaction that started it in: the explorer's block, or (for a file written over
+    // several transactions) a block before the one the explorer says it was finished in
+    if (G && G.missing) r.checks.inBlock = false;
+    else if (G && G.blockHeight != null) { r.startedBlock = G.blockHeight > 0 ? G.blockHeight : null; r.checks.inBlock = G.blockHeight > 0 && (r.block == null || G.blockHeight <= r.block); }
     if (K && r.satpoint && !lost) {
       const vout = +r.satpoint.split(':')[1], o = (K.outputs || []).find(x => x.mintIndex === vout);
       r.checks.heldThere = !!o && !o.spentTxid && (!r.holder || o.address === r.holder);
@@ -122,7 +115,7 @@
     }
     const c = r.checks, bad = [];
     if (c.real === false) bad.push('the explorer knows no such Doginal');
-    if (c.inBlock === false) bad.push(r.startedBlock ? 'the second site has the transaction that started it in block ' + fmt(r.startedBlock) + ', after block ' + fmt(r.block) + ' that the explorer gives' : 'the second site has no such transaction in a block');
+    if (c.inBlock === false) bad.push(r.startedBlock ? 'the second site has the transaction that started it in block ' + fmt(r.startedBlock) + ', after block ' + fmt(r.block) + ' that the explorer gives' : G && G.missing ? 'the second site knows no transaction ' + gen.slice(0, 10) + '…' : 'the second site has the transaction that started it, but not in a block yet');
     if (c.sameFile === false) bad.push('the explorer\'s copy of its file and Doggy Market\'s copy are different files');
     if (c.heldThere === false) bad.push(r.movedOn ? 'the second site says the output the explorer has it in was spent since (it may just have moved: the explorer may be behind)' : 'the second site has it held at a different address');
     if (r.lost && r.lost.confirmed === false) bad.push('the explorer says it was lost in a fee, but on the second site its transaction\'s outputs hold it');
