@@ -19,7 +19,7 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 | `provenanceCheck` | The Provenance Check: proof of where an inscription came from. It is read out of its own transaction's bytes (file type, size, parents, delegate) and matched with ordinals.com, its content's fingerprint (SHA-256) is matched with the file shown, its block, number and sat are checked with second sites, and every move is followed back to where it was made, each step spending the one before |
 | `collectionCheck` | The Collection Check: proof of which pieces of a collection are its parent's real children. For each child ord lists: is it on two ord sites' lists, does its own transaction name the parent, and was the parent spent to make it (the parent's trail is followed back, each move worked out to its own ID). A big collection carries on over several calls. Or give `ids` (a collection without a parent): does each piece name a parent at all |
 | `recursionMap` | The Recursion Map: everything an inscription loads from the chain, a few levels deep. Its code is read (never run) for the inscriptions it uses (`loads`, `named`, `child`, `delegate`), then those are read the same way; each is checked on ordinals.com and a second ord site. It lists the /r/ endpoints the code asks (each asked of ordinals.com today) and addresses outside the chain, and says whether everything it names is on the chain (`allOnChain`) |
-| `secondOpinion` | The Second Opinion: a claim about Bitcoin, in plain words ("block 840000 has 3,050 transactions", "#1000 is a PNG", "#126750483 is a child of #126744012") or as `kind`, `subject` and `value`, checked against ord sites, mempool sites and the chain's own bytes. The answer (`true`, `false`, `mixed` or `unknown`), and what each source says and how it knows |
+| `secondOpinion` | The Second Opinion: a claim about Bitcoin, in plain words ("block 840000 has 3,050 transactions", "#1000 is a PNG", "#126750483 is a child of #126744012") or as `kind`, `subject` and `value`, checked against ord sites, mempool sites and the chain's own bytes. Claims about a rune too ("DOG•GO•TO•THE•MOON was etched in block 840,000"): its etching's own bytes and ordinals.com, the only free rune site; counts like its mints and supply come from ordinals.com alone, and the answer says so. The answer (`true`, `false`, `mixed` or `unknown`), and what each source says and how it knows |
 | `children` | The children of a parent inscription (a collection), a page at a time |
 | `followBack` | An inscription's trail: where it was made and each place it moved |
 | `search` | A block, bitmap, parcel (`12.840000.bitmap`), inscription, transaction ID or address, as the tablet in the game finds them |
@@ -63,14 +63,14 @@ You need [Node.js](https://nodejs.org) 18 or newer.
 
 **Claude Desktop and other apps that take MCP bundles:** download `agent-blockhall.mcpb` from the [latest release](https://github.com/bitmap22/my-ordinal-portal/releases?q=agent-blockhall-mcp) and open it.
 
-**Any MCP client (Claude Code, Cursor, VS Code and others):** download [`server/index.js`](https://bitmap22.github.io/my-ordinal-portal/agent-blockhall-mcp/server/index.js), save it anywhere, and add it to your client's MCP settings:
+**Any MCP client (Claude Code, Cursor, VS Code and others):** download `agent-blockhall.mcpb` from the [latest release](https://github.com/bitmap22/my-ordinal-portal/releases?q=agent-blockhall-mcp). It is a zip file: unzip it into a folder (if your computer won't, rename it to `agent-blockhall.zip` first). Keep the folder whole: `server/index.js` needs the other files in `server/`. Then add `server/index.js` to your client's MCP settings:
 
 ```json
 {
   "mcpServers": {
     "agent-blockhall": {
       "command": "node",
-      "args": ["/full/path/to/index.js"]
+      "args": ["/full/path/to/agent-blockhall/server/index.js"]
     }
   }
 }
