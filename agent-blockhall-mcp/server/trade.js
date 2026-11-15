@@ -78,8 +78,10 @@
   function fromParent(O, pid, claimed, named) {
     if (!O) return [reason('its collection', 'unknown', 'Whether it is a child of ' + short(pid) + ' could not be checked this time.', {parent: pid})];
     const tail = (O.verdict ? ' (' + O.verdict + ')' : '');
+    // (a no, in plain words: "both sources name its parent as …", not "False: both sources say …")
+    const tailNo = O.verdict ? ' (' + String(O.verdict).replace(/^False:\s*/, '').replace(/ say(s?) /, ' name$1 its parent as ') + ')' : '';
     if (O.answer === 'true') return [reason('its collection', 'ok', 'Proven a real member of the collection of ' + short(pid) + ': it names it in its own transaction, and it was spent to make it.', {parent: pid, from: 'Second Opinion'})];
-    if (O.answer === 'false') return [reason('its collection', claimed ? 'stop' : 'care', (claimed ? 'Proven wrong: it is not a child of ' : 'It names ' + short(pid) + ' as its parent, but is not proven its child') + (claimed ? short(pid) : '') + tail + '.', {parent: pid, from: 'Second Opinion'})];
+    if (O.answer === 'false') return [reason('its collection', claimed ? 'stop' : 'care', (claimed ? 'Proven wrong: it is not a child of ' : 'It names ' + short(pid) + ' as its parent, but is not proven its child') + (claimed ? short(pid) : '') + tailNo + '.', {parent: pid, from: 'Second Opinion'})];
     return [reason('its collection', 'unknown', 'Whether it is a child of ' + short(pid) + ' could not be proven this time' + tail + '.', {parent: pid, from: 'Second Opinion'})];
   }
   function fromCode(R) {
