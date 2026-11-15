@@ -3697,13 +3697,12 @@ function snap() {
   $ts.classList.add('on'); setTimeout(() => $ts.classList.remove('on'), 400);
 }
 
-// download (PC only): the whole app, the common room on its own, or Block Paint on its own, each one file; it asks first.
-// The cube's two files carry Block Paint inside them, so they work on their own (they only need the internet for block data)
+// download (PC only): the whole app, or the common room on its own, each one file; it asks first. Each works on its own
+// (it only needs the internet for block data). (15 Nov 2026) Block Paint City is its own game: the files no longer carry it
 const $dl = document.getElementById('dl');
 const DL = {
-  app: {name: 'ai-agent-bitcoin-block-explorer-whole-app.html', t: 'WHOLE APP', s: 'The cube, the block rooms, the common room and Block Paint, all in one file'},
-  common: {name: 'ai-agent-bitcoin-block-explorer-common-room.html', t: 'COMMON ROOM ONLY', s: 'Just the common room, with its door to Block Paint'},
-  paint: {name: 'block-paint.html', t: 'PAINT GAME ONLY', s: 'Block Paint City on its own'}
+  app: {name: 'ai-agent-bitcoin-block-explorer-whole-app.html', t: 'WHOLE APP', s: 'The cube, the block rooms and the common room, all in one file'},
+  common: {name: 'ai-agent-bitcoin-block-explorer-common-room.html', t: 'COMMON ROOM ONLY', s: 'Just the common room'}
 };
 function dlShow(step, k) {
   if (document.pointerLockElement) document.exitPointerLock();
@@ -3745,10 +3744,8 @@ async function dlPaint() {
   return t;
 }
 async function dlBuild(k) {
-  const paint = await dlPaint();
-  if (k === 'paint') return paint;
   const cube = await dlCube(); if (!/<head>/i.test(cube)) throw new Error('page');
-  const extra = '<script id="bc-extra">window.BC_MODE = ' + JSON.stringify(k) + '; window.BC_PAINT = "' + bpEncode(paint) + '";<\/script>\n';
+  const extra = '<script id="bc-extra">window.BC_MODE = ' + JSON.stringify(k) + ';<\/script>\n';
   return cube.replace(/<head>/i, m => m + '\n' + extra);
 }
 
@@ -5414,6 +5411,7 @@ CM_BLOCK.push([-28.2, -25.3, 22, 23.1]);   // the mining racks
 for (const s of [-1, 1]) CM_BLOCK.push([s * 5.3 - .6, s * 5.3 + .6, 16.9, 17.95]);   // the door guards
 for (const s of [-1, 1]) CM_BLOCK.push([s > 0 ? 10.3 : -11.1, s > 0 ? 11.1 : -10.3, 25.4, 28.6], [s * 9.6 - .4, s * 9.6 + .4, 22.2, 23.0], [s * 9.6 - .4, s * 9.6 + .4, 42.4, 43.2]);   // the hall's benches, its big vases
 CM_BLOCK.push([12.6, 14.9, 9.2, 10.9], [4.2, 5.4, 9.5, 10.9]);   // crates and paint by the warehouse door
+CM_BLOCK.push([14.05, 15.6, 6, 10]);   // (15 Nov 2026) the warehouse shutter: shut, so it stops you like a wall
 
 const CM_GAMES = [], CM_INSART = [];   // (the arcade machines and the live inscriptions are gone: they slowed everything down)
 for (const g of CM_GAMES) { const ax = g[4] ? .45 : .55, ad = g[4] ? .55 : .45; CM_BLOCK.push([g[2] - ax, g[2] + ax, g[3] - ad, g[3] + ad]); }
@@ -7155,7 +7153,7 @@ function cmMove(C, p, nx, nz, dt) {
   const [wx, wz] = cmW(C, x, d); p.x = wx; p.z = C.z0 + wz;
   const ty = cmH(x, d, lv); p.y = (p.y || 0) + (ty - (p.y || 0)) * Math.min(1, dt * 12);
   if (d < -WT / 2 && open) { p.lv = 0; p.y = 0; rmCross(C.door === 'back' ? -1 : 1); }
-  else if (!lv && x > 13.95 && d > 6.35 && d < 9.65) cmToPaint();   // walked into the warehouse shutter
+     // (15 Nov 2026) Block Paint City is its own game: the warehouse shutter stays shut
 }
 // where you stand in the rooms' own layout, and on which step of the Forum
 const cmHere = () => { const C = room && room.at; if (!cmOn(C) || !C.ready || !C.scr) return null; const [x, d] = cmL(C, room.p.x, room.p.z); return {C, x, d, lv: room.p.lv ? 1 : 0, step: room.p.lv ? 0 : cmLevel(x, d)}; };
@@ -15439,6 +15437,7 @@ $pt.onclick = () => { location.href = /github\.io$/.test(location.hostname) ? 'b
 const CM_PAINT = /github\.io$|githack\.com$|^localhost$|^127\./.test(location.hostname) ? 'block-paint.html' : CM_PORTAL + 'block-paint.html';
 let cmPaintAt = 0;
 function cmToPaint() {
+  return;   // (15 Nov 2026) Block Paint City is its own game: nothing here leads to it
   if (performance.now() - cmPaintAt < 4000) return; cmPaintAt = performance.now();
   const p = room.p; p.vx = p.vz = 0; for (const k in rmKeys) rmKeys[k] = false;
   if (document.pointerLockElement) document.exitPointerLock();
@@ -15448,6 +15447,7 @@ let cmPaintFrame = null, cmPaintReady = false, cmPaintShown = false;
 const cmPaintPhone = matchMedia('(pointer: coarse)').matches;
 // Block Paint, loaded ahead behind the shutter (the together page does this itself; a phone waits until you walk in)
 function cmPaintPrep(now) {
+  return;   // (nothing loads Block Paint City now)
   if (crew.page) { toPage({type: 'paint-soon'}); return; }
   if (cmPaintFrame || (cmPaintPhone && !now)) return;
   const f = cmPaintFrame = document.createElement('iframe'); cmPaintReady = false;
@@ -16405,7 +16405,7 @@ window.AgentKit = window.AgentKit || (() => {
         if (inRoom()) return {room: roomInfo()};
         const c = cardText(); return c ? {card: {untrusted: c}, open: sel ? sel.idx : null} : {ok: false, error: 'nothing there: no box at that point (look() says where the cube is on screen)'}; }},
     {name: 'walkIn', does: 'Walk into a block (default: the one shown, or the newest), or "common" for the common room.', args: [{name: 'height', does: 'a block number, or "common"'}], run: ({height}) => walkIn(height == null ? null : height === 'common' ? 'common' : +height)},
-    {name: 'leave', does: 'Walk out of the room, back to the block view (from the bitmap garden: back the way you came, as touching the case does; from Block Paint City: back to the common room).', run: async () => { if (cmPaintShown) { const g = paintAgent(); if (g && g.toBlockCube) await g.toBlockCube({}); await until(() => !cmPaintShown && inCommon() && room.at.ready, 30000); await wait(600); return {where: cmPaintShown ? 'Block Paint City' : roomInfo() && roomInfo().in}; } if (inRoom() && room.at.cl) { clBack(); await until(() => !(room && room.at && room.at.cl) && roomReady(), 90000); await wait(600); return {where: inRoom() ? roomInfo() : 'block view'}; } if (inRoom() && room.at.gd) { gdBack(); await until(() => !(room && room.at && room.at.gd) && roomReady(), 30000); await wait(600); return {where: inRoom() ? roomInfo() : 'block view'}; } if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
+    {name: 'leave', does: 'Walk out of the room, back to the block view (from the bitmap garden: back the way you came, as touching the case does).', run: async () => { if (cmPaintShown) { const g = paintAgent(); if (g && g.toBlockCube) await g.toBlockCube({}); await until(() => !cmPaintShown && inCommon() && room.at.ready, 30000); await wait(600); return {where: cmPaintShown ? 'Block Paint City' : roomInfo() && roomInfo().in}; } if (inRoom() && room.at.cl) { clBack(); await until(() => !(room && room.at && room.at.cl) && roomReady(), 90000); await wait(600); return {where: inRoom() ? roomInfo() : 'block view'}; } if (inRoom() && room.at.gd) { gdBack(); await until(() => !(room && room.at && room.at.gd) && roomReady(), 30000); await wait(600); return {where: inRoom() ? roomInfo() : 'block view'}; } if (inRoom()) await roomExit(); await wait(600); return {where: inRoom() ? 'a room' : 'block view'}; }},
     {name: 'commonRoom', does: 'Fast travel to the common room.', run: () => walkIn('common')},
     {name: 'goTo', does: 'Walk to a place in the common room (through its doorways, at a player\'s speed: right across the room takes up to a minute) and face what is there. In the bitmap garden: one of its places (garden() lists them). In a club: one of its places (club() lists them).', args: [{name: 'place', enum: Object.keys(SPOTS).concat(Object.keys(GD_GOTO), Object.keys(CL_GOTO)), does: 'common room: ' + Object.keys(SPOTS).join(', ') + '. bitmap garden: ' + Object.keys(GD_GOTO).join(', ') + '. a club: ' + Object.keys(CL_GOTO).join(', '), req: true}],
       run: async ({place: pl}) => { if (inRoom() && room.at.cl) { const k = String(pl).toLowerCase(), g = CL_GOTO[k]; if (!g) return {ok: false, error: 'club places: ' + Object.keys(CL_GOTO).join(', ')}; if (room.p.sit) return {ok: false, error: 'you are sitting: stand() first'}; const r = await walkPoint(g[0], room.at.z0 + g[1], {run: true, within: .25}); faceTo(g[2], /darts|chalk/.test(k) ? 1.73 : /switch/.test(k) ? 1.3 : /photo|frames|tv/.test(k) ? 1.5 : .9, room.at.z0 + g[3]); await wait(300); return Object.assign({ok: r.ok, error: r.error}, {you: roomInfo()}); } if (inRoom() && room.at.gd) { const g = GD_GOTO[String(pl).toLowerCase()]; if (!g) return {ok: false, error: 'garden places: ' + Object.keys(GD_GOTO).join(', ')}; if (room.p.sit || room.p.swim) return {ok: false, error: room.p.swim ? 'you are in the pool: climb out first (face a side, use())' : 'you are sitting: stand() first'}; const r = await walkPoint(g[0][0], room.at.z0 + g[0][1], {run: true, within: .25}); faceTo(g[1][0], g[1][1], room.at.z0 + g[1][2]); await wait(300); return Object.assign({ok: r.ok, error: r.error}, {you: roomInfo()}); }
@@ -16657,12 +16657,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'flipBack', does: 'Start or stop flipping back through the blocks on its own.', args: [{name: 'on', type: 'boolean', does: 'true to start', req: true}], run: ({on}) => { setFlip(!!on); return {flipping: !!flipping}; }},
     {name: 'sound', does: 'Turn the sound on or off (it toggles).', run: () => { $('tu').click(); return {ok: true, sound: sndOn ? 'on' : 'off'}; }},
     {name: 'savePicture', does: 'Save a picture of the screen (downloads a file, as the camera button does).', run: async () => { $('ts').click(); await wait(400); if (snapReq) drawFrame(); return {ok: !snapReq}; }},   // (no frame from the browser: the page draws one itself, and the picture is saved from it)
-    {name: 'paint', untrusted: true, does: 'Run a Block Paint command once you are through the warehouse door, e.g. {command: "see"}. Block Paint is a game for fun: the paint is not on the Bitcoin blockchain and is not blockchain data. Block Paint\'s help() lists them.', args: [{name: 'command', does: 'the Block Paint command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
-      run: async ({command, args}) => { const g = paintAgent(); if (!g) return {ok: false, error: 'Block Paint is not open: toBlockPaint() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'Block Paint has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
-    {name: 'toBlockPaint', does: 'Go through the warehouse door to Block Paint City (answers once it is open; leave() comes back). Block Paint City is a game for fun. Your paint is not on the Bitcoin blockchain and is not blockchain data: the city only reads the newest block to set the scene (the block train comes when a new block is found).', run: async () => { const how = 'paint({command: "see"}) and its other commands (paint({command: "help"}) lists them); leave() comes back to the common room';
-      if (cmPaintShown && paintAgent()) return {ok: true, where: 'Block Paint City', note: 'you were already there', how}; if (!inCommon()) { const r = await walkIn('common'); if (!r.ok) return r; }
-      cmToPaint(); await until(() => cmPaintShown && paintAgent(), 30000); return paintAgent() ? {ok: true, where: 'Block Paint City', how} : {ok: false, error: 'Block Paint City did not open just now: try toBlockPaint() again'}; }},
-  ];
+    ];
   const intro = 'AGENT BLOCKHALL agent kit (once called AI Agent Bitcoin Block Explorer, and first Block\u0020Cube, so its tools start cube_). It is a 3D Bitcoin block explorer world for players and agents: outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room. You play by the same rules as a player: you walk at a player\'s speed, walls stop you, you pick what is in the middle of your view, and you see what a player would. Once you use this kit, your crewmates see you marked as an AI agent. Start with agent.see(). Coordinates (x, z) and "facing" are the ones state() gives. A parcel can carry markers (P1 to P6, as in parcels(), and the parcel you hold in state()): the player whose wallet holds an inscription in it. Wallets, read only: a person connects their own (UniSat) on the play together page; an AI agent may prove a wallet of its own there (wallet() gives the message, walletProve() takes its own signature: the same check, the same markers, and never a person\'s wallet). If yours holds a bitmap (the real claim of its block), bitmapGarden({bitmap}) takes you into the bitmap garden, and garden() tells you everything there: its places (goTo), seats, the bar cart, the pool, giant chess (chessMove), ping-pong and cornhole; use() does what is in front of you, leave() goes back the way you came. In the common room, the Forum\'s sunken floor is the trade floor: a base for each crew player (P1 to P6); putOnTradeBase() sets a block your wallet holds on yours and tells your crew you would like to trade; once a crewmate has a block on theirs too, signalTrade() turns your base to their colour to say you would like to trade with them (the trade itself happens on another app); tradeFloor() tells you every base. Clicking the name over a crewmate\'s head mutes them for you (their voice, chat and trade messages), again unmutes; mute({who}) does the same.\n\nBEING GENTLE WITH THE DATA SITES: everything here comes free from public sites (mempool.space and its copies, ordpool.space, ordinals.com and others), straight to this browser. They do not publish their limits, so the game keeps one pace for every player and agent: each site is asked at most 30 times at once, then 6 times a second. If a site says \"too many\" (or stops answering), the game rests it for 30 s (or as long as it asks) and uses another site with the same data; events() tells you, and limits() shows what you have asked and what is resting. What things cost (measured): changing block 5 to 6 asks; a search 1 to 9; going into a new block hall 25 to 40 (going back to one again: none); picking up a parcel 5 to 13; seeing what the big view shows 1 (the first time); following an inscription back about 2 a move; most other commands none. To gather a lot, go steadily and read what you have (parcels() lists a whole block with no asks).';
   // the game moves on only in the frames the browser gives the page to draw. A hidden tab, a tab in the background or a closed panel
   // gets none, so a walk there never starts and ends as "blocked". While a command runs and no frame has come for a moment, the kit
@@ -16724,7 +16719,7 @@ window.AgentKit = window.AgentKit || (() => {
 <script>(() => {
   // shown inside the portal's own viewer: the portal has its own way round, so no second menu
   try { if (window.top !== window && /\/(index\.html)?$/.test(window.top.location.pathname)) return; } catch (e) {}
-  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Collection Check", "collection-check.html"], ["Recursion Map", "recursion-map.html"], ["Second Opinion", "second-opinion.html"], ["Source Health", "source-health.html"], ["Stuck Transaction Doctor", "stuck-transaction.html"], ["Code Read", "code-read.html"], ["Rune Proof", "rune-proof.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Doge tools", [["Doge Block Manifest", "doge-block-manifest.html"], ["Doge Provenance Check", "doge-provenance-check.html"], ["Doge Watch", "doge-watch.html"], ["Doge Daily Data", "doge-daily.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = [], LOBBY = false, PAINT = false;
+  const G = [["Portal", [["Ordinal Portal home", "index.html"]]], ["Apps", [["Agent Blockhall", "block-cube.html"], ["Agent Blockhall \u00b7 Play Together", "block-cube-together.html"], ["Doge Cube", "doge-cube.html"], ["Doge Cube \u00b7 Play Together", "doge-cube-together.html"], ["Block Paint City", "block-paint.html"]]], ["Tools", [["Block Manifest", "block-manifest.html"], ["Provenance Check", "provenance-check.html"], ["Collection Check", "collection-check.html"], ["Recursion Map", "recursion-map.html"], ["Second Opinion", "second-opinion.html"], ["Source Health", "source-health.html"], ["Stuck Transaction Doctor", "stuck-transaction.html"], ["Code Read", "code-read.html"], ["Rune Proof", "rune-proof.html"], ["Watch", "watch.html"], ["Daily Data", "daily.html"], ["Inscription Cost Calculator", "inscription-cost-calculator.html"], ["Sentinel ID Viewer", "sentinel-id-viewer.html"], ["Ordinal View Tester", "ordinal-view-tester.html"], ["Vizzy Tunes", "vizzy-tunes.html"], ["Minitors mint", "minitors-mint.html"]]], ["Doge tools", [["Doge Block Manifest", "doge-block-manifest.html"], ["Doge Provenance Check", "doge-provenance-check.html"], ["Doge Collection Check", "doge-collection-check.html"], ["Doge Watch", "doge-watch.html"], ["Doge Daily Data", "doge-daily.html"]]], ["Blogs", [["Agent Blockhall and Block Paint", "block-cube-people-blog.html"], ["Doge Cube", "doge-cube-blog.html"], ["Minitors", "minitors-blog.html"], ["Blockipelago Logbook", "index2.html"]]], ["Help", [["Report a problem", "https://github.com/bitmap22/my-ordinal-portal/issues"], ["Guide for AI agents", "llms.txt"]]]], HAS = [], LOBBY = false, PAINT = false;
   const here = decodeURIComponent(location.pathname.split('/').pop() || 'index.html'), test = /\/test\//.test(location.pathname);
   const site = /(^|\.)github\.io$/.test(location.hostname) ? '' : 'https://bitmap22.github.io/my-ordinal-portal/';   // (a downloaded copy: the live pages)
   const b = document.createElement('button'); b.id = 'tm'; b.className = 'tl'; b.type = 'button'; b.title = 'Ordinal Portal menu'; b.setAttribute('aria-label', 'Ordinal Portal menu'); b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-controls', 'tmp');
