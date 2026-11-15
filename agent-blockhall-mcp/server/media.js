@@ -7,6 +7,9 @@
    frames and timing, how it is packed, and any words written inside it (marked untrusted: anyone can write them).
    Squashed ("lossy") pictures (JPEG, lossy WebP, AVIF) have no one true colour count: different programs unpack the same bytes
    into slightly different pixels, so none is given for them, and the answer says why.
+   Sound: MP3, AAC, WAV, Ogg (Vorbis, Opus), FLAC and M4A: length, samples a second, bits, mono or stereo, bitrate, how it is packed,
+   cover art, and any title or artist written inside it (untrusted). Video: MP4, QuickTime, WebM and Matroska: resolution, length,
+   frames a second, codec, and whether it has sound.
    Usage: MediaReader.read(bytes (Uint8Array), declaredType (string, optional)) -> Promise of the reading; MediaReader.describe(reading)
    -> plain words. Works in a browser and in Node.js 18 or newer, with no other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in its folder). */
@@ -446,6 +449,225 @@
     if (inside.length) P.picturesInside = inside;
   }
 
+  /* ---------- sound and video ---------- */
+  const secs = (n, d) => d ? +(n / d).toFixed(3) : null;
+  // words (tags) written in a sound file by whoever made it: title, artist, album and so on
+  const TAGWANT = {TIT2: 'title', TPE1: 'artist', TALB: 'album', TYER: 'year', TDRC: 'year', TCON: 'genre', TCOM: 'composer', TPE2: 'album artist', TCOP: 'copyright', TENC: 'encoded by', TSSE: 'made with', COMM: 'comment', TXXX: 'other', WXXX: 'link', TIT1: 'group', TIT3: 'subtitle'};
+  function id3text(d) {
+    const enc = d[0], b = d.subarray(1);
+    if (enc === 1 || enc === 2) { let s = '', le = enc === 1 && b[0] === 0xff && b[1] === 0xfe, i = enc === 1 && ((b[0] === 0xff && b[1] === 0xfe) || (b[0] === 0xfe && b[1] === 0xff)) ? 2 : 0; for (; i + 1 < b.length; i += 2) { const c = le ? b[i] | (b[i + 1] << 8) : (b[i] << 8) | b[i + 1]; s += c ? String.fromCharCode(c) : ' '; } return s; }
+    return (enc === 3 ? utf8(b) : latin1(b)).replace(/\0/g, ' ');
+  }
+  function readID3(u, out) {
+    if (ascii(u, 0, 3) !== 'ID3') return 0;
+    const ver = u[3], flags = u[5], size = (u[6] << 21) | (u[7] << 14) | (u[8] << 7) | u[9], end = 10 + size, words = [];
+    let p = 10; if (flags & 0x40) p += ver === 4 ? ((u[p] << 21) | (u[p + 1] << 14) | (u[p + 2] << 7) | u[p + 3]) : be32(u, p) + 4;
+    while (p + 10 <= end && ver >= 3) {
+      const id = ascii(u, p, 4); if (!/^[A-Z0-9]{4}$/.test(id)) break;
+      const fs = ver === 4 ? ((u[p + 4] << 21) | (u[p + 5] << 14) | (u[p + 6] << 7) | u[p + 7]) : be32(u, p + 4), d = u.subarray(p + 10, p + 10 + fs);
+      if (TAGWANT[id] && fs) { let t = id === 'COMM' ? id3text(new Uint8Array([d[0], ...d.subarray(4)])) : id3text(d); words.push({key: TAGWANT[id], text: clean(t, 200)}); }
+      else if (id === 'APIC') out.coverArt = {bytes: fs, note: 'a picture is packed in with the sound (cover art)'};
+      p += 10 + fs;
+    }
+    if (words.length) out.words = {untrusted: words.slice(0, 40), note: 'written inside the file by whoever made it'};
+    return end + (flags & 0x10 ? 10 : 0);
+  }
+  const MP3_BR = {1: {1: [0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448], 2: [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384], 3: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]},
+    2: {1: [0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256], 2: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160], 3: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]}};
+  const MP3_SR = {3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000]};
+  function mp3Frame(u, p) {
+    if (u[p] !== 0xff || (u[p + 1] & 0xe0) !== 0xe0) return null;
+    const v = (u[p + 1] >> 3) & 3, l = (u[p + 1] >> 1) & 3, bi = u[p + 2] >> 4, si = (u[p + 2] >> 2) & 3, pad = (u[p + 2] >> 1) & 1, mode = u[p + 3] >> 6;
+    if (v === 1 || l === 0 || bi === 0 || bi === 15 || si === 3) return null;
+    const layer = 4 - l, br = MP3_BR[v === 3 ? 1 : 2][layer][bi] * 1000, sr = MP3_SR[v][si];
+    const spf = layer === 1 ? 384 : layer === 3 && v !== 3 ? 576 : 1152;
+    const len = layer === 1 ? Math.floor(12 * br / sr + pad) * 4 : Math.floor(spf / 8 * br / sr) + pad;
+    return {v, layer, br, sr, spf, len, mode, version: v === 3 ? 'MPEG-1' : v === 2 ? 'MPEG-2' : 'MPEG-2.5'};
+  }
+  function readMP3(u, out) {
+    const S = out.sound = {format: 'MP3'}; let p = readID3(u, out), frames = 0, samples = 0, first = null, brs = new Set(), audioBytes = 0, info = null;
+    while (p + 4 <= u.length) {
+      const f = mp3Frame(u, p);
+      if (!f || f.len < 4) { if (!first) { p++; continue; } break; }
+      if (!first) {
+        first = f;
+        // a first frame that only holds the encoder's notes (Xing, Info or VBRI): it is not sound
+        const side = f.v === 3 ? (f.mode === 3 ? 17 : 32) : (f.mode === 3 ? 9 : 17), tag = ascii(u, p + 4 + side, 4);
+        if (tag === 'Xing' || tag === 'Info') { info = {kind: tag === 'Xing' ? 'variable bitrate' : 'constant bitrate'}; const q = p + 8 + side, fl = be32(u, q); if (fl & 1) info.frames = be32(u, q + 4); const lame = ascii(u, q + 4 + (fl & 1 ? 4 : 0) + (fl & 2 ? 4 : 0) + (fl & 4 ? 100 : 0) + (fl & 8 ? 4 : 0), 9); if (/^LAME|^Lavc|^Lavf/.test(lame)) { const lq = q + 4 + (fl & 1 ? 4 : 0) + (fl & 2 ? 4 : 0) + (fl & 4 ? 100 : 0) + (fl & 8 ? 4 : 0); info.encoder = clean(lame, 9); const d0 = lq + 21; info.delay = (u[d0] << 4) | (u[d0 + 1] >> 4); info.padding = ((u[d0 + 1] & 15) << 8) | u[d0 + 2]; } p += f.len; continue; }
+        if (ascii(u, p + 36, 4) === 'VBRI') { info = {kind: 'variable bitrate', frames: be32(u, p + 50)}; p += f.len; continue; }
+      }
+      frames++; samples += f.spf; brs.add(f.br); audioBytes += f.len; p += f.len;
+    }
+    if (!first) throw new Error('no MP3 sound frames were found');
+    S.version = first.version + ' layer ' + ['', 'I', 'II', 'III'][first.layer]; S.sampleRate = first.sr; S.channels = first.mode === 3 ? 1 : 2; S.channelMode = ['stereo', 'joint stereo', 'dual channel', 'mono'][first.mode];
+    S.frames = frames; S.seconds = secs(samples, first.sr);
+    if (info && info.delay != null) { const playable = samples - info.delay - info.padding; if (playable > 0) S.secondsPlayable = secs(playable, first.sr); S.encoder = info.encoder; }
+    S.bitrate = brs.size === 1 ? {kbps: [...brs][0] / 1000, kind: 'constant'} : {kbps: Math.round(audioBytes * 8 / (samples / first.sr) / 1000), kind: 'variable (this is its average)'};
+    S.packing = 'MP3 squashes the sound (lossy)';
+  }
+  const AAC_SR = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+  function readAAC(u, out) {
+    const S = out.sound = {format: 'AAC (ADTS)'}; let p = readID3(u, out), frames = 0, first = null, bytes = 0;
+    while (p + 7 <= u.length) {
+      if (u[p] !== 0xff || (u[p + 1] & 0xf6) !== 0xf0) { if (!first) { p++; continue; } break; }
+      const prof = u[p + 2] >> 6, si = (u[p + 2] >> 2) & 15, ch = ((u[p + 2] & 1) << 2) | (u[p + 3] >> 6), len = ((u[p + 3] & 3) << 11) | (u[p + 4] << 3) | (u[p + 5] >> 5), blocks = (u[p + 6] & 3) + 1;
+      if (len < 7) break;
+      if (!first) first = {prof, sr: AAC_SR[si], ch};
+      frames += blocks; bytes += len; p += len;
+    }
+    if (!first) throw new Error('no AAC frames were found');
+    S.profile = ['Main', 'LC (low complexity)', 'SSR', 'LTP'][first.prof]; S.sampleRate = first.sr; S.channels = first.ch; S.frames = frames;
+    S.note = 'the length counts every sound frame in the file, including the short start an AAC encoder always adds';
+    S.seconds = secs(frames * 1024, first.sr); S.bitrate = {kbps: S.seconds ? Math.round(bytes * 8 / S.seconds / 1000) : null, kind: 'average'};
+    S.packing = 'AAC squashes the sound (lossy)';
+  }
+  function readWAV(u, out) {
+    const S = out.sound = {format: 'WAV'}, words = []; let p = 12, fmt = null, data = 0;
+    while (p + 8 <= u.length) {
+      const id = ascii(u, p, 4), n = le32(u, p + 4), d = u.subarray(p + 8, p + 8 + n);
+      if (id === 'fmt ') fmt = {tag: le16(d, 0), ch: le16(d, 2), sr: le32(d, 4), byteRate: le32(d, 8), align: le16(d, 12), bits: le16(d, 14), sub: n >= 40 ? le16(d, 24) : null};
+      else if (id === 'data') data = Math.min(n, u.length - p - 8);
+      else if (id === 'LIST' && ascii(d, 0, 4) === 'INFO') { let q = 4; const K = {INAM: 'title', IART: 'artist', ICMT: 'comment', ICRD: 'date', IGNR: 'genre', ISFT: 'made with', ICOP: 'copyright', IPRD: 'album'}; while (q + 8 <= d.length) { const k = ascii(d, q, 4), m = le32(d, q + 4); if (K[k]) words.push({key: K[k], text: clean(latin1(d.subarray(q + 8, q + 8 + m)).replace(/\0+$/, ''), 200)}); q += 8 + m + (m & 1); } }
+      p += 8 + n + (n & 1);
+    }
+    if (!fmt) throw new Error('its WAV header could not be read');
+    const tag = fmt.tag === 0xfffe ? fmt.sub : fmt.tag;
+    S.encoding = tag === 1 ? 'plain samples (PCM): every sample kept exactly' : tag === 3 ? 'floating-point samples: every sample kept exactly' : tag === 6 ? 'A-law' : tag === 7 ? 'μ-law' : tag === 2 ? 'ADPCM (squashed)' : 'format ' + tag;
+    S.sampleRate = fmt.sr; S.channels = fmt.ch; S.bitsPerSample = fmt.bits; S.seconds = secs(data, fmt.byteRate); S.bitrate = {kbps: Math.round(fmt.byteRate * 8 / 1000), kind: 'constant'};
+    S.packing = tag === 1 || tag === 3 ? 'WAV keeps every sample exactly (not squashed)' : 'WAV';
+    if (words.length) out.words = {untrusted: words, note: 'written inside the file by whoever made it'};
+  }
+  function vorbisComments(d, out) {
+    try { let q = 0; const vl = le32(d, q); q += 4 + vl; const n = le32(d, q); q += 4; const words = [];
+      for (let i = 0; i < n && i < 60 && q + 4 <= d.length; i++) { const l = le32(d, q); q += 4; const s = utf8(d.subarray(q, q + l)); q += l; const e = s.indexOf('='); if (e > 0) { const k = s.slice(0, e).toLowerCase(); if (k === 'metadata_block_picture') { out.coverArt = {bytes: l, note: 'a picture is packed in with the sound (cover art)'}; continue; } words.push({key: clean(k, 40), text: clean(s.slice(e + 1), 200)}); } }
+      if (words.length) out.words = {untrusted: words, note: 'written inside the file by whoever made it'};
+    } catch (e) {}
+  }
+  function readOgg(u, out) {
+    // Ogg pages: the first packet names the codec; the last page's granule position says how long it is
+    let p = 0, codec = null, S = null, lastGranule = 0, serial0 = null, pkt = [], packets = 0, bytes = 0;
+    while (p + 27 <= u.length && ascii(u, p, 4) === 'OggS') {
+      const gran = le32(u, p + 6) + le32(u, p + 10) * 4294967296, serial = le32(u, p + 14), segs = u[p + 26], lace = u.subarray(p + 27, p + 27 + segs);
+      let q = p + 27 + segs; if (serial0 == null) serial0 = serial;
+      for (const l of lace) { pkt.push(u.subarray(q, q + l)); q += l; if (l < 255) { const P = cat(pkt); pkt = []; if (serial === serial0) { packets++; if (packets === 1) codec = P; else if (packets === 2 && codec) { if (ascii(P, 0, 8) === 'OpusTags') vorbisComments(P.subarray(8), out); else if (P[0] === 3 && ascii(P, 1, 6) === 'vorbis') vorbisComments(P.subarray(7), out); } } } }
+      if (serial === serial0 && gran > 0 && gran < 9e15) lastGranule = gran;
+      bytes += q - p; p = q;
+    }
+    if (!codec) throw new Error('its Ogg pages could not be read');
+    if (ascii(codec, 0, 8) === 'OpusHead') { S = out.sound = {format: 'Ogg Opus'}; const pre = le16(codec, 10); S.channels = codec[9]; S.sampleRate = 48000; S.originalSampleRate = le32(codec, 12) || undefined; S.seconds = secs(lastGranule - pre, 48000); S.packing = 'Opus squashes the sound (lossy)'; }
+    else if (codec[0] === 1 && ascii(codec, 1, 6) === 'vorbis') { S = out.sound = {format: 'Ogg Vorbis'}; S.channels = codec[11]; S.sampleRate = le32(codec, 12); const nom = s32le(codec, 20); if (nom > 0) S.bitrateNominal = Math.round(nom / 1000); S.seconds = secs(lastGranule, S.sampleRate); S.packing = 'Vorbis squashes the sound (lossy)'; }
+    else if (ascii(codec, 1, 4) === 'FLAC') { S = out.sound = {format: 'Ogg FLAC'}; S.packing = 'FLAC keeps every sample exactly (lossless)'; }
+    else if (codec[0] === 0x80 && ascii(codec, 1, 6) === 'theora') { out.kind = 'video'; S = out.video = {format: 'Ogg Theora', width: be16(codec, 10) * 16, height: be16(codec, 12) * 16}; }
+    else S = out.sound = {format: 'Ogg (' + clean(ascii(codec, 0, 8), 12) + ')'};
+    if (S.seconds) S.bitrate = {kbps: Math.round(u.length * 8 / S.seconds / 1000), kind: 'average'};
+  }
+  async function readFLAC(u, out) {
+    const S = out.sound = {format: 'FLAC'}; let p = 4, last = false;
+    while (!last && p + 4 <= u.length) {
+      const h = u[p]; last = !!(h & 0x80); const type = h & 127, len = be24(u, p + 1), d = u.subarray(p + 4, p + 4 + len);
+      if (type === 0) { S.sampleRate = (d[10] << 12) | (d[11] << 4) | (d[12] >> 4); S.channels = ((d[12] >> 1) & 7) + 1; S.bitsPerSample = (((d[12] & 1) << 4) | (d[13] >> 4)) + 1; const total = (d[13] & 15) * 4294967296 + be32(d, 14); S.samples = total; S.seconds = secs(total, S.sampleRate); let md5 = ''; for (let i = 18; i < 34; i++) md5 += hex2(d[i]); if (/[^0]/.test(md5)) S.soundFingerprintMD5 = md5; }
+      else if (type === 4) vorbisComments(d, out);
+      else if (type === 6) { try { let q = 4; const ml = be32(d, q); const mime = ascii(d, q + 4, ml); q += 4 + ml; const dl = be32(d, q); q += 4 + dl + 16; const pl = be32(d, q); const pic = d.subarray(q + 4, q + 4 + pl); const r = await read(pic, mime, 1); out.coverArt = {bytes: pl, declared: mime, says: describe(r), picture: r.picture, note: 'a picture is packed in with the sound (cover art)'}; } catch (e) {} }
+      p += 4 + len;
+    }
+    if (S.seconds) S.bitrate = {kbps: Math.round(u.length * 8 / S.seconds / 1000), kind: 'average'};
+    S.packing = 'FLAC keeps every sample exactly (lossless)';
+  }
+  // MP4, M4A and QuickTime: boxes inside boxes
+  const CODEC4 = {avc1: 'H.264', avc3: 'H.264', hvc1: 'H.265 (HEVC)', hev1: 'H.265 (HEVC)', av01: 'AV1', vp09: 'VP9', vp08: 'VP8', mp4v: 'MPEG-4 Part 2', mp4a: 'AAC', Opus: 'Opus', fLaC: 'FLAC', 'ac-3': 'AC-3', 'ec-3': 'E-AC-3', '.mp3': 'MP3', alac: 'ALAC (lossless)', s263: 'H.263', jpeg: 'Motion JPEG', mjpa: 'Motion JPEG', apcn: 'ProRes', apch: 'ProRes', lpcm: 'PCM', sowt: 'PCM', twos: 'PCM'};
+  async function readMP4(u, out) {
+    const tracks = [], words = []; let movie = null, cur = null;
+    const walk = (s, e) => boxes(u, s, e, (t, a, b) => {
+      if (t === 'moov' || t === 'mdia' || t === 'minf' || t === 'stbl' || t === 'edts' || t === 'udta' || t === 'ilst') walk(a, b);
+      else if (t === 'meta') walk(a + (ascii(u, a + 4, 4) === 'hdlr' ? 0 : 4), b);
+      else if (t === 'trak') { cur = {}; tracks.push(cur); walk(a, b); cur = null; }
+      else if (t === 'mvhd') { const v = u[a]; const ts = v ? be32(u, a + 20) : be32(u, a + 12), du = v ? be32(u, a + 24) * 4294967296 + be32(u, a + 28) : be32(u, a + 16); movie = {ts, du}; }
+      else if (t === 'tkhd' && cur) { const v = u[a], o = v ? a + 4 + 32 + 52 : a + 4 + 20 + 52; cur.w = be32(u, o) / 65536; cur.h = be32(u, o + 4) / 65536; }
+      else if (t === 'mdhd' && cur) { const v = u[a]; cur.ts = v ? be32(u, a + 20) : be32(u, a + 12); cur.du = v ? be32(u, a + 24) * 4294967296 + be32(u, a + 28) : be32(u, a + 16); }
+      else if (t === 'hdlr' && cur) cur.kind = ascii(u, a + 8, 4);
+      else if (t === 'stsd' && cur) { const e1 = a + 8, fourcc = ascii(u, e1 + 4, 4); cur.codec = CODEC4[fourcc] || fourcc; const sd = e1 + 8;
+        if (cur.kind === 'vide') { cur.pw = be16(u, sd + 24); cur.ph = be16(u, sd + 26); cur.depth = be16(u, sd + 74); }
+        else if (cur.kind === 'soun') { cur.ch = be16(u, sd + 16); cur.bits = be16(u, sd + 18); cur.sr = be32(u, sd + 24) / 65536; } }
+      else if (t === 'stts' && cur) { const n = be32(u, a + 4); let c = 0; for (let i = 0; i < n; i++) c += be32(u, a + 8 + i * 8); cur.samples = c; }
+      else if (t === 'stsz' && cur) { if (!cur.samples) cur.samples = be32(u, a + 8); }
+      else if (/^[©\xa9](nam|ART|alb|day|cmt|too|wrt|gen)$/.test(t) || t === 'aART' || t === 'desc') { const K = {nam: 'title', ART: 'artist', alb: 'album', day: 'date', cmt: 'comment', too: 'made with', wrt: 'composer', gen: 'genre', aART: 'album artist', desc: 'description'}; const k = K[t.slice(1)] || K[t]; let q = a; while (q + 16 <= b) { const sz = be32(u, q); if (ascii(u, q + 4, 4) === 'data') { words.push({key: k, text: clean(utf8(u.subarray(q + 16, q + sz)), 200)}); break; } q += sz || b; } }
+      else if (t === 'covr') out.coverArt = {bytes: b - a, note: 'a picture is packed in with the sound (cover art)'};
+    });
+    walk(0, u.length);
+    const V = tracks.find(t => t.kind === 'vide'), A = tracks.find(t => t.kind === 'soun');
+    const seconds = movie && movie.ts ? secs(movie.du, movie.ts) : V && V.ts ? secs(V.du, V.ts) : A && A.ts ? secs(A.du, A.ts) : null;
+    const name = out.fromBytes.name;
+    if (V) {
+      out.kind = 'video';
+      const X = out.video = {format: name, codec: V.codec, width: V.pw || Math.round(V.w), height: V.ph || Math.round(V.h), seconds};
+      if (V.w && V.pw && (Math.round(V.w) !== V.pw || Math.round(V.h) !== V.ph)) X.shownAs = Math.round(V.w) + ' × ' + Math.round(V.h);
+      if (V.samples && V.ts && V.du) { X.frames = V.samples; X.framesPerSecond = +(V.samples / (V.du / V.ts)).toFixed(3); }
+      X.hasSound = !!A; if (A) X.sound = {codec: A.codec, channels: A.ch, sampleRate: A.sr};
+      X.packing = name + ' squashes the picture and sound (lossy)';
+    } else if (A) {
+      out.kind = 'sound';
+      const S = out.sound = {format: name === 'MP4' ? 'M4A (MP4 sound)' : name, codec: A.codec, channels: A.ch, sampleRate: A.sr, seconds: seconds != null ? seconds : A.ts ? secs(A.du, A.ts) : null};   // (the movie's own length counts the edit list: the sound as it plays)
+      if (/PCM|ALAC|FLAC/.test(A.codec)) S.bitsPerSample = A.bits;
+      if (S.seconds) S.bitrate = {kbps: Math.round(u.length * 8 / S.seconds / 1000), kind: 'average'};
+      S.packing = /ALAC|FLAC|PCM/.test(A.codec) ? A.codec + ': every sample kept exactly' : A.codec + ' squashes the sound (lossy)';
+    } else throw new Error('no picture or sound track was found');
+    if (tracks.length > (V ? 1 : 0) + (A ? 1 : 0)) (out.video || out.sound).otherTracks = tracks.length - (V ? 1 : 0) - (A ? 1 : 0);
+    if (words.length) out.words = {untrusted: words, note: 'written inside the file by whoever made it'};
+  }
+  // WebM and Matroska: EBML elements
+  function ebml(u, p) { const b = u[p]; let n = 1, m = 0x80; while (n <= 8 && !(b & m)) { n++; m >>= 1; } if (n > 8) return null; let id = b, v = b & (m - 1); for (let i = 1; i < n; i++) { id = id * 256 + u[p + i]; v = v * 256 + u[p + i]; } return {n, id, v, unknown: v === Math.pow(2, 7 * n) - 1}; }
+  const ebmlUint = (u, a, b) => { let v = 0; for (let i = a; i < b; i++) v = v * 256 + u[i]; return v; };
+  const ebmlFloat = (u, a, b) => { const dv = new DataView(u.buffer, u.byteOffset + a, b - a); return b - a === 4 ? dv.getFloat32(0) : dv.getFloat64(0); };
+  function readWebM(u, out) {
+    const tracks = []; let scale = 1000000, dur = null, words = [], cur = null, docType = null; const blocks = {};
+    const CONTAINERS = new Set([0x18538067, 0x1549a966, 0x1654ae6b, 0xae, 0xe0, 0xe1, 0x1f43b675, 0xa0, 0x1254c367, 0x7373, 0x67c8, 0x1a45dfa3]);
+    const walk = (s, e) => { let p = s; while (p < e) {
+      const I = ebml(u, p); if (!I) break; const S = ebml(u, p + I.n); if (!S) break;
+      const a = p + I.n + S.n, b = S.unknown ? e : Math.min(e, a + S.v), id = I.id;
+      if (id === 0xae) { cur = {}; tracks.push(cur); walk(a, b); cur = null; }
+      else if (CONTAINERS.has(id)) walk(a, b);
+      else if (id === 0x4282) docType = ascii(u, a, b - a);
+      else if (id === 0x2ad7b1) scale = ebmlUint(u, a, b);
+      else if (id === 0x4489) dur = ebmlFloat(u, a, b);
+      else if (id === 0x7ba9) words.push({key: 'title', text: clean(utf8(u.subarray(a, b)), 200)});
+      else if (id === 0x4d80) words.push({key: 'packed with', text: clean(utf8(u.subarray(a, b)), 120)});
+      else if (id === 0x5741) words.push({key: 'made with', text: clean(utf8(u.subarray(a, b)), 120)});
+      else if (cur && id === 0xd7) cur.num = ebmlUint(u, a, b);
+      else if (cur && id === 0x83) cur.type = ebmlUint(u, a, b);
+      else if (cur && id === 0x86) cur.codec = ascii(u, a, b - a).replace(/\0+$/, '');
+      else if (cur && id === 0xb0) cur.w = ebmlUint(u, a, b);
+      else if (cur && id === 0xba) cur.h = ebmlUint(u, a, b);
+      else if (cur && id === 0x54b0) cur.dw = ebmlUint(u, a, b);
+      else if (cur && id === 0x54ba) cur.dh = ebmlUint(u, a, b);
+      else if (cur && id === 0x23e383) cur.frameNs = ebmlUint(u, a, b);
+      else if (cur && id === 0xb5) cur.sr = ebmlFloat(u, a, b);
+      else if (cur && id === 0x9f) cur.ch = ebmlUint(u, a, b);
+      else if (cur && id === 0x6264) cur.bits = ebmlUint(u, a, b);
+      else if (id === 0xa3 || id === 0xa1) { const T = ebml(u, a); if (T) blocks[T.v] = (blocks[T.v] || 0) + 1; }
+      p = b;
+    } };
+    walk(0, u.length);
+    const CN = {V_VP8: 'VP8', V_VP9: 'VP9', V_AV1: 'AV1', 'V_MPEG4/ISO/AVC': 'H.264', 'V_MPEGH/ISO/HEVC': 'H.265 (HEVC)', A_OPUS: 'Opus', A_VORBIS: 'Vorbis', A_AAC: 'AAC', A_FLAC: 'FLAC', 'A_PCM/INT/LIT': 'PCM', A_MPEG_L3: 'MP3'};
+    const V = tracks.find(t => t.type === 1), A = tracks.find(t => t.type === 2), seconds = dur != null ? +(dur * scale / 1e9).toFixed(3) : null;
+    const name = docType === 'webm' ? 'WebM' : 'Matroska';
+    if (V) {
+      out.kind = 'video';
+      const X = out.video = {format: name, codec: CN[V.codec] || V.codec, width: V.w, height: V.h, seconds};
+      if (V.dw && V.dh && (V.dw !== V.w || V.dh !== V.h)) X.shownAs = V.dw + ' × ' + V.dh;
+      const nf = V.num != null ? blocks[V.num] : null; if (nf) X.frames = nf;
+      if (V.frameNs) X.framesPerSecond = +(1e9 / V.frameNs).toFixed(3); else if (nf && seconds) X.framesPerSecond = +(nf / seconds).toFixed(3);
+      X.hasSound = !!A; if (A) X.sound = {codec: CN[A.codec] || A.codec, channels: A.ch, sampleRate: A.sr};
+      X.packing = name + ' squashes the picture and sound (lossy)';
+    } else if (A) {
+      out.kind = 'sound';
+      const S = out.sound = {format: name + ' sound', codec: CN[A.codec] || A.codec, channels: A.ch, sampleRate: A.sr, seconds};
+      if (A.bits) S.bitsPerSample = A.bits;
+      if (seconds) S.bitrate = {kbps: Math.round(u.length * 8 / seconds / 1000), kind: 'average'};
+      S.packing = /FLAC|PCM/.test(S.codec) ? S.codec + ': every sample kept exactly' : S.codec + ' squashes the sound (lossy)';
+    } else throw new Error('no picture or sound track was found');
+    if (words.length) out.words = {untrusted: words, note: 'written inside the file by whoever made it, or their program'};
+  }
+
   /* ---------- words (text, JSON, HTML, code): the basics ---------- */
   function readWords(u, out) {
     const txt = utf8(u), W = out.words_ = {characters: [...txt].length, lines: txt.split('\n').length, validUTF8: utf8ok(u)};
@@ -472,7 +694,14 @@
       else if (t === 'image/bmp') readBMP(u, out);
       else if (t === 'image/svg+xml') await readSVG(u, out, depth || 0);
       else if (out.kind === 'words') readWords(u, out);
-      else if (out.kind === 'sound' || out.kind === 'video' || out.kind === 'model') notes.push('this reader reads pictures so far: sound, video and 3D models come next');
+      else if (t === 'audio/mpeg') readMP3(u, out);
+      else if (t === 'audio/aac') readAAC(u, out);
+      else if (t === 'audio/wav') readWAV(u, out);
+      else if (t === 'audio/ogg') readOgg(u, out);
+      else if (t === 'audio/flac') await readFLAC(u, out);
+      else if (t === 'video/mp4' || t === 'audio/mp4' || t === 'video/quicktime') await readMP4(u, out);
+      else if (t === 'video/webm') readWebM(u, out);
+      else if (out.kind === 'model') notes.push('this reader reads pictures, sound and video so far: 3D models come next');
       else notes.push('this kind of file is not read in detail');
     } catch (e) { notes.push('it could not be read in detail: ' + (e.message || e)); }
     if (out.picture) { const P = out.picture; if (P.width && P.height) P.pixels = P.width * P.height; }
@@ -498,6 +727,21 @@
       if (P.colourDetail) bits.push(P.colourDetail);
       if (P.profile) bits.push(P.profile);
       if (P.shapes != null) bits.push(fmt(P.shapes) + ' shapes');
+    } else if (r.video) {
+      const X = r.video;
+      bits.push((X.width && X.height ? fmt(X.width) + ' × ' + fmt(X.height) + ' ' : '') + X.format + ' video' + (X.codec ? ' (' + X.codec + ')' : ''));
+      if (X.seconds != null) bits.push(X.seconds.toLocaleString('en-GB', {maximumFractionDigits: 2}) + ' s long');
+      if (X.framesPerSecond) bits.push(X.framesPerSecond.toLocaleString('en-GB', {maximumFractionDigits: 2}) + ' frames a second' + (X.frames ? ' (' + fmt(X.frames) + ' frames)' : ''));
+      bits.push(X.hasSound ? 'with sound' + (X.sound && X.sound.codec ? ' (' + X.sound.codec + (X.sound.channels ? ', ' + (X.sound.channels === 1 ? 'mono' : X.sound.channels === 2 ? 'stereo' : X.sound.channels + ' channels') : '') + ')' : '') : 'no sound');
+    } else if (r.sound) {
+      const S = r.sound, len = S.secondsPlayable != null ? S.secondsPlayable : S.seconds;
+      bits.push(S.format + (S.codec && !S.format.includes(S.codec) ? ' (' + S.codec + ')' : '') + ' sound');
+      if (len != null) bits.push(len.toLocaleString('en-GB', {maximumFractionDigits: 2}) + ' s long');
+      if (S.sampleRate) bits.push(fmt(S.sampleRate) + ' samples a second' + (S.bitsPerSample ? ', ' + S.bitsPerSample + ' bits' : ''));
+      if (S.channels) bits.push(S.channels === 1 ? 'mono' : S.channels === 2 ? 'stereo' : S.channels + ' channels');
+      if (S.bitrate && S.bitrate.kbps) bits.push(fmt(S.bitrate.kbps) + ' kbit/s' + (S.bitrate.kind === 'constant' ? '' : ' average'));
+      if (S.packing) bits.push(/exactly/.test(S.packing) ? 'every sample kept exactly' : /squash/.test(S.packing) ? 'squashed (lossy)' : '');
+      if (r.coverArt) bits.push('with cover art' + (r.coverArt.says ? ' (' + r.coverArt.says.split(' · ')[0] + ')' : ''));
     } else if (r.text) bits.push(fmt(r.text.characters) + ' characters over ' + fmt(r.text.lines) + ' lines' + (r.text.validUTF8 ? '' : ' (not all valid UTF-8)'));
     else bits.push((r.fromBytes && r.fromBytes.name) || 'a file');
     bits.push(fmt(r.bytes) + ' bytes');
