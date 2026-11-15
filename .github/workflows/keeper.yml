@@ -38,7 +38,7 @@ jobs:
           age=999999; [ -n "$last" ] && age=$(( now - $(date -u -d "$last" +%s) ))
           if [ "$age" -lt 3300 ]; then echo "Source Health: not due (its last check was $((age / 60)) minutes ago)"
           elif [ "$(busy source-health.yml)" != "0" ]; then echo "Source Health: already running"
-          else gh workflow run source-health.yml -R "$R" -f ifDue=yes && echo "Source Health: started (its last check was $((age / 60)) minutes ago)"; fi
+          else gh api -X POST "repos/$R/actions/workflows/source-health.yml/dispatches" -f ref=main -f "inputs[ifDue]=yes" && echo "Source Health: started (its last check was $((age / 60)) minutes ago)"; fi
           # Daily Data (from 00:20 UTC) and Doge Daily Data (from 00:47 UTC): the day before, if it isn't saved yet
           DAY=$(date -u -d yesterday +%F); mins=$(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) ))
           for x in "daily-data.yml daily-data 20" "doge-daily-data.yml doge-daily-data 47"; do
@@ -46,5 +46,5 @@ jobs:
             if [ "$mins" -lt "$3" ]; then echo "$1: not yet (it starts at 00:$3 UTC)"; continue; fi
             if gh api "repos/$R/contents/days/$DAY.json?ref=$2" --silent 2>/dev/null; then echo "$1: $DAY is saved"; continue; fi
             if [ "$(busy "$1")" != "0" ]; then echo "$1: already running"; continue; fi
-            gh workflow run "$1" -R "$R" -f onlyIfMissing=yes && echo "$1: started for $DAY"
+            gh api -X POST "repos/$R/actions/workflows/$1/dispatches" -f ref=main -f "inputs[onlyIfMissing]=yes" && echo "$1: started for $DAY"
           done
