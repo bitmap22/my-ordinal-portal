@@ -568,10 +568,10 @@ addEventListener('message', e => {
   if (m.type === 'clubwal') { const on = !!m.on; if (on !== walClub) { walClub = on; walShare(); } return; }   // (in a collection's club, or not: there your crew's pages check you hold a piece of it)   // (your block on your trade base, or not)
   if (m.type === 'hear') { voice.hear(m.d); return; }   // how far away each crewmate is in the rooms (for their voices)
   if (m.type === 'chat-open') { openSay(); return; }
-  if (m.type === 'go' && m.to === 'paint') { swapTo('paint'); return; }   // walked into the warehouse shutter
-  if (m.type === 'paint-soon') { paintSoon(); return; }   // (in the common room: Block Paint gets ready behind the shutter)
+  if (m.type === 'go' && m.to === 'paint') return;   // (15 Nov 2026) Block Paint City is its own game: Agent Blockhall never opens it   // walked into the warehouse shutter
+  if (m.type === 'paint-soon') return;   // (in the common room: Block Paint gets ready behind the shutter)
   if (inPaint) return;   // (the cube, waiting hidden)
-  if (m.type === 'state' && m.s && m.s.in && m.s.h === -2) paintSoon();   // in the common room: Block Paint gets ready behind the shutter
+  if (m.type === 'state' && m.s && m.s.in && m.s.h === -2) {}   // in the common room: Block Paint gets ready behind the shutter
   if (net.on) net.fromGame(m);
 });
 addEventListener('message', e => {
@@ -1968,7 +1968,7 @@ window.AgentKit = window.AgentKit || (() => {
   const agentHere = () => { if (window.__agentOn) return true; for (const id of ['game', 'paint']) { try { if ($(id).contentWindow.__agentOn) return true; } catch (e) {} } return false; };
   // using this kit marks you as an AI agent in the games too (they tell your crewmates)
   const markGames = () => { for (const id of ['game', 'paint']) { try { $(id).contentWindow.__agentOn = true; } catch (e) {} } };
-  const PEOPLE_NOTE = 'Everyone in a crew is a player (a person) or an AI agent like you, as marked. Townsfolk in Block Paint are part of the game (NPCs).';
+  const PEOPLE_NOTE = 'Everyone in a crew is a player (a person) or an AI agent like you, as marked.';
   function crewState() {
     const P = [...net.players.entries()].map(([id, p]) => ({name: p.name, is: (id === ME ? agentHere() : (voice.st[id] && voice.st[id].ai) || p.ai) ? 'an AI agent' : 'a player', you: id === ME || undefined, host: id === net.hostId || undefined, game: {cube: 'Agent Blockhall', paint: 'Block Paint'}[mateG.get(id)] || undefined}));   // (which game each is in, by its name)
     if (window.__agentOn) markGames();
@@ -1994,7 +1994,7 @@ window.AgentKit = window.AgentKit || (() => {
   let chatRead = 0;
   const press = id => { const b = $(id); if (!b || !shown(b)) return false; b.click(); return true; };
   const cmds = [
-    {name: 'see', ro: true, untrusted: true, does: 'Describe everything now: this page, your crew and chat, and the game in front (Agent Blockhall or Block Paint).', run: () => see()},
+    {name: 'see', ro: true, untrusted: true, does: 'Describe everything now: this page, your crew and chat, and the game (Agent Blockhall).', run: () => see()},
     {name: 'state', ro: true, untrusted: true, does: 'Everything now as data (the same as see()).', run: () => state()},
     {name: 'setName', does: 'Set the name other players see.', args: [{name: 'name', does: 'up to 20 letters', req: true}], run: ({name}) => { const i = $('name'); i.value = String(name).slice(0, 20); i.dispatchEvent(new Event('input', {bubbles: true})); i.dispatchEvent(new Event('change', {bubbles: true})); return look(); }},
     {name: 'pickRunner', does: 'Pick which of the ten you are: Leo, Kofi, Ren, Marco, Sam, Mia, Zara, Yuki, Elena or Nia.', args: [{name: 'name', enum: RUNNERS, does: 'one of the ten', req: true}],
@@ -2008,7 +2008,7 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({height}) => { if (!lobbyOpen()) { const g = gameAgent(); if (g && g.commands().includes('walkIn')) return g.walkIn({height}); return {ok: false, error: 'you are already in the game'}; } startGame(); await until(() => !lobbyOpen(), 8000); await until(() => gameAgent(), 20000); return {screen: lobbyOpen() ? 'lobby' : 'in the game: ' + which()}; }},
     {name: 'say', does: 'Say something in the crew chat (everyone in the crew sees it). One message every 5 seconds.', args: [{name: 'text', does: 'up to 200 letters', req: true}], run: ({text: t}) => { if (!net.on) return {ok: false, error: 'not in a crew'}; const w = K.chatWait(); if (w) return {ok: false, error: 'one chat message every 5 seconds: wait ' + Math.ceil(w / 1000) + ' s'}; K.chatSent(); K.asAgent(() => say(String(t))); return {said: String(t).slice(0, 200)}; }},
     {name: 'crew', ro: true, untrusted: true, does: 'Your crew: its code, who is in it and which game each is in, and the latest chat.', run: () => crewState()},
-    {name: 'goToCrewmate', does: 'Go to a crewmate who is in another room or in Block Paint, as tapping their tile in the strip at the top does.', args: [{name: 'name', does: 'their name, as crew() shows it', req: true}],
+    {name: 'goToCrewmate', does: 'Go to a crewmate who is in another room, as tapping their tile in the strip at the top does.', args: [{name: 'name', does: 'their name, as crew() shows it', req: true}],
       run: async ({name}) => { if (!net.on) return {ok: false, error: 'not in a crew'}; const want = String(name || '').trim().toLowerCase(); const id = [...net.players.keys()].find(k => k !== ME && String((net.players.get(k) || {}).name || '').toLowerCase() === want); if (!id) return {ok: false, error: 'no crewmate called ' + String(name || '').slice(0, 20)}; const st = voice.st[id], mst = voice.st[ME]; if (!st || !(st.in || inPaintSt(st))) return {ok: false, error: 'they are not in a room or in Block Paint'}; const with_ = () => { const m = voice.st[ME], q = voice.st[id]; return !!(m && q && (inPaintSt(q) ? inPaintSt(m) : q.in && m.in && !inPaintSt(m) && q.h === m.h)); }; if (with_()) return {ok: false, error: 'already with them'}; toast('Going to ' + (net.players.get(id).name || 'them') + '…', [], 3000); toGame({ type: 'go', id }); await until(() => with_(), 30000); return crewState(); }},
     {name: 'events', ro: true, untrusted: true, does: 'What has happened since you last asked: crew chat messages, and what crewmates did in the game in front (joined, left, moved, danced, sat, sprayed, said; in the bitmap garden also chess moves, throws, cheers and the scores).', args: [{name: 'all', type: 'boolean', does: 'everything kept, not only new'}],
       run: async ({all}) => { const C = (net.chat || []).map(c => c.id === ME ? null : c.name ? {untrusted: c.name + ' said in chat: ' + c.text} : {happened: c.text}); const newC = (all ? C : C.slice(Math.min(chatRead, C.length))).filter(Boolean); chatRead = C.length; const g = gameAgent(); const G = g ? await g.events({all}) : {events: []}; const L = newC.concat(G.events || []); return {events: L, note: L.length ? undefined : 'nothing new'}; }},
@@ -2022,7 +2022,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'leaveCrew', always: true, does: 'Leave the crew.', run: async () => { if (!net.on) return {ok: false, error: 'not in a crew'}; await leaveCrew(); await wait(800); return crewState(); }},
     {name: 'health', ro: true, does: 'System health: the crew relays (how players find each other: each one connected or not) and, with a game open, every outside source it reads, whether it answers, from which site, and what is not shown while one does not (the game\'s health()). events() tells you when a source stops or starts answering.',
       run: async () => { const o = {crewRelays: {connected: relays.filter(r => r.open).map(r => r.url.replace('wss://', '')), notConnected: relays.filter(r => !r.open).map(r => r.url.replace('wss://', '')), note: 'a crew needs one relay that passes notes on: the rest are spares'}}; const g = gameAgent(); if (g && g.commands().includes('health')) { try { o.game = await g.health({}); } catch (e) {} } else o.game = 'no game open yet: walkIn() first'; return o; }},
-    {name: 'game', always: true, untrusted: true, does: 'Run a command in the game in front (Agent Blockhall or Block Paint), e.g. {command: "parcels", args: {type: "images"}}. Its help() lists them.', args: [{name: 'command', does: 'the game command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
+    {name: 'game', always: true, untrusted: true, does: 'Run a command in the game (Agent Blockhall), e.g. {command: "parcels", args: {type: "images"}}. Its help() lists them.', args: [{name: 'command', does: 'the game command', req: true}, {name: 'args', type: 'object', does: 'its arguments'}],
       run: async ({command, args}) => { const g = gameAgent(); if (!g) return {ok: false, error: 'no game open yet: walkIn() first'}; if (command !== 'help' && !g.commands().includes(command)) return {ok: false, error: 'the game has no command "' + command + '"', commands: g.commands()}; return g[command](args || {}); }},
   ];
   const intro = 'PLAY TOGETHER agent kit (Agent Blockhall with a crew). This page runs the crew; the game sits in a frame in front. Commands not listed here go to the game in front (agent.help() inside it: agent.game({command: "help"})). You can choose your own name: pick one yourself, no one\'s permission needed, with setName (up to 20 letters); until you do, you go by your runner\'s name. Start with agent.see().';
