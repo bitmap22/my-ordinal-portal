@@ -68,9 +68,10 @@
       [/\bNotification\.requestPermission\b/, 'to show notifications'],
       [/\bwindow\.open\s*\(/, 'to open a new window'],
       [/\b(top|parent)\.location\b|\bwindow\.top\.location\b/, 'to change the page around it'],
-      [/\blocation\s*(\.href)?\s*=\s*["'`]\s*https?:\/\//, 'to go to a page outside the chain'],
-      [/\b(localStorage|sessionStorage|indexedDB)\b/, 'to keep things in your browser (its storage)']]}
+      [/\blocation\s*(\.href)?\s*=\s*["'`]\s*https?:\/\//, 'to go to a page outside the chain']]}
   ];
+  // not a worry, but worth knowing: things it keeps in your browser (saved progress and the like stay on your computer)
+  const KEEPS = /\b(localStorage|sessionStorage|indexedDB)\b/;
 
   // one file: every finding, with its line and a short piece of the code
   function scan(text, file) {
@@ -106,7 +107,7 @@
     let J; try { J = (await io.ordJson('/r/inscription/' + id)).j; } catch (e) { throw new Error(/404/.test(String(e)) ? 'there is no inscription ' + id : 'ordinals.com did not answer: try again in a moment'); }
     const type = J.content_type || null, out = {id, number: J.number != null ? J.number : null, contentType: type, bytes: J.content_length != null ? J.content_length : null, checked: new Date().toISOString().replace(/\.\d{3}/, ''), files: [], findings: [], sources: []};
     if (!isCode(type)) return Object.assign(out, {isCode: false, verdict: 'Not code: it is ' + (type || 'a file with no type') + ', which can\'t run anything on its own. Nothing to read.', kinds: summary([])});
-    const files = [{id, role: 'itself'}], texts = new Map();
+    const files = [{id, role: 'itself', number: out.number, contentType: type}], texts = new Map();
     const get = async (fid) => { const x = await io.ordText('/content/' + fid); out.sources.push(x.site); return x.t; };
     texts.set(id, await get(id));
     // the code it loads from other inscriptions (by path), when that is code too
@@ -122,9 +123,11 @@
     out.files = files; out.sources = [...new Set(out.sources.filter(Boolean))];
     out.loadsMore = S.loads.size - 1 > MAX_LOADED ? S.loads.size - 1 - MAX_LOADED : 0;
     out.isCode = true; out.kinds = summary(out.findings);
+    out.keepsThingsInYourBrowser = files.some(f => texts.has(f.id) && KEEPS.test(texts.get(f.id)));
     const found = out.kinds.filter(k => k.found);
     const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
     out.verdict = found.length ? found.map(k => cap(k.says) + (k.whats.length ? ': ' + k.whats.slice(0, 3).join('; ') : '')).join('. ') + '.' : 'None of these were found in its code' + (files.length > 1 ? ' or the code it loads' : '') + '.';
+    if (out.keepsThingsInYourBrowser) out.verdict += ' It keeps things in your browser (its own storage, like saved progress): that stays on your computer.';
     if (out.outsideAddresses.length) out.verdict += ' Its code also has ' + out.outsideAddresses.length + ' address' + (out.outsideAddresses.length === 1 ? '' : 'es') + ' outside the chain in it (links or names; a link only opens if you click it).';
     out.note = 'Code Read reads code without running it. It can\'t prove code is safe, only say what it found. On ordinals.com, ord\'s own rules let an inscription load only from the chain; other sites may not.';
     return out;
