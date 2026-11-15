@@ -6739,7 +6739,11 @@ async function checkedRow(t, tx) {
     nout: tx.outputs_truncated ? null : outs.length,
     sum: tx.outputs_truncated ? null : tx.total_out_satoshis != null ? +tx.total_out_satoshis : outs.reduce((a, o) => a + (+o.satoshis || 0), 0)};
   try { const r = await rawTxRead(t); if (r && r.hex) return [['checked', checkedWords(t.id, await txFromBytes(r.hex), want, 'api.blockcypher.com', doge)]]; } catch (e) {}
-  return [['checked', 'not checked this time: the second site did not answer']];
+  try {   // (BlockCypher didn't answer: Blockchair's copy of its bytes, as the Doge Block Manifest reads them)
+    const j = await dj(BCR + '/raw/transaction/' + t.id, 20000), h = j && j.data && j.data[t.id] && j.data[t.id].raw_transaction;
+    if (h) return [['checked', checkedWords(t.id, await txFromBytes(h), want, 'api.blockchair.com', doge)]];
+  } catch (e) {}
+  return [['checked', 'not checked this time: the second sites did not answer']];
 }
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
@@ -8916,7 +8920,7 @@ window.AgentKit = window.AgentKit || (() => {
     const want0 = h != null ? +h : null, wasLive = want0 == null && !inRoom() && mode === 'live';
     await roomEnter(want0 != null ? want0 : undefined);
     await until(() => roomReady() && !cmOn(room.at) && (want0 == null || inHall(room.at, want0)), 60000);
-    const o = {ok: roomReady() && (want0 == null || (inRoom() && room.at.h === want0)), where: roomInfo() && roomInfo().in, ready: roomReady()};
+    const o = {ok: roomReady() && (want0 == null || (inRoom() && inHall(room.at, want0))), where: roomInfo() && roomInfo().in, ready: roomReady()};   // (a hall holds several blocks: in it is right)
     if (!o.ready) { o.error = 'the hall is not built yet'; o.building = {says: hallProgText(room.at), note: 'what players see under the block number while they wait: a busy block\'s hall takes minutes (its blocks, then its inscriptions\' files, within the explorer\'s 300 units a minute). Call walkIn() again, or see(), to check'}; }
     if (wasLive) o.note = 'the block on show was the next one, not mined yet: only mined blocks have halls, so you walked into the newest one; its front door leads to the common room';
     return o;
