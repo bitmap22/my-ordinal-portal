@@ -313,7 +313,7 @@ async function inscription({id}) {
     parents: par && par.ids ? par.ids : [], children: kids && kids.ids ? {first: kids.ids.slice(0, 20), onFirstPage: kids.ids.length, more: !!kids.more} : {onFirstPage: 0, more: false},
     content: 'https://ordinals.com/content/' + iid,
     checked: await (async () => { try { const x = await mpJson('/api/tx/' + iid.slice(0, 64), 15000), st = x.j.status || {}; return checked(x.site, !!st.confirmed && st.block_height === j.height, 'the block it was made in (its reveal transaction)'); } catch (e) { return notChecked('the second site did not answer'); } })(),
-    seeIt: 'In Agent Blockhall (' + GAME + '), search({query: "' + iid + '"}) then go() takes you to the parcel it was made in.',
+    seeIt: 'In Agent Blockhall (' + GAME + '#find=' + iid + '), or search({query: "' + iid + '"}) then go() in its agent kit, takes you to the parcel it was made in. provenanceCheck({id: "' + iid + '"}) proves where it came from, every step checked; recursionMap({id}) maps what it loads; secondOpinion checks a claim about it.',
     sources: [x.site]
   };
   // small text is read too (as untrusted data)
@@ -326,7 +326,7 @@ async function inscription({id}) {
 async function children({id, page = 0}) {
   const iid = await resolveIns(id), p = Math.max(0, +page || 0), x = await ordJson('/r/children/' + iid + '/' + p, 15000);
   return {parent: iid, page: p, children: x.j.ids || [], more: !!x.j.more, nextPage: x.j.more ? p + 1 : null,
-    seeIt: 'Agent Blockhall\'s tablet opens a collection as a gallery hall: search for the parent, then go().', sources: [x.site]};
+    seeIt: 'collectionCheck({parent: "' + iid + '"}) proves which of these are its real children, on the chain. Agent Blockhall\'s tablet opens a collection as a gallery hall (' + GAME + '#find=' + iid + ', or search for the parent, then go()).', sources: [x.site]};
 }
 
 /* ---------- follow an inscription back to where it was made ----------
@@ -637,27 +637,28 @@ async function runeProof({rune}) {
 async function checkAgain({link}) {
   const then = CI.read(String(link || '').trim());
   if (!then) throw new Error('give link: a citation link from a check (it has cited, fp and f in it), e.g. ' + PORTAL + 'provenance-check.html?id=...&cited=...&fp=...&f=...');
-  const S = then.subject; let now = null, notFinished = null;
-  if (then.tool === 'manifest') now = CI.make('manifest', await readManifest(+S.block));
-  else if (then.tool === 'provenance') now = (await provenanceCheck({id: S.id})).cite;
-  else if (then.tool === 'collection') { const r = await collectionCheck({parent: S.parent, limit: 1}); now = r.cite; if (!now) notFinished = r.carryOn; }
-  else if (then.tool === 'recursion') now = (await recursionMap({id: S.id, depth: S.depth})).cite;
-  else if (then.tool === 'opinion') now = (await secondOpinion({claim: S.claim})).cite;
-  else if (then.tool === 'health') now = (await sourceHealth({chain: S.chain || 'bitcoin'})).cite;
-  else if (then.tool === 'daily') now = (await dailyData({day: S.day})).cite;
-  else if (then.tool === 'league') { const r = await truthLeague({chain: S.chain || 'bitcoin', now: true, fresh: true}); now = r.cite && r.cite.at ? r.cite : null; }
-  else if (then.tool === 'stuck') now = (await stuckTx({txid: S.tx})).cite;
-  else if (then.tool === 'code') now = (await codeRead({id: S.id})).cite;
-  else if (then.tool === 'rune') now = (await runeProof({rune: S.rune})).cite;
-  else if (then.tool === 'dogemanifest') now = (await dogeBlockManifest({height: +S.block, limit: 1})).cite;
-  else if (then.tool === 'dogeprovenance') now = (await dogeProvenanceCheck({id: S.id})).cite;
-  else if (then.tool === 'dogecollection') { const n = +S.checked || 20; if (n <= 100) now = (await dogeCollectionCheck({collection: S.collection, limit: n})).cite; else notFinished = 'That citation covers ' + n + ' pieces: this tool checks up to 100 at a time. Open the link in a browser to check them all again.'; }
-  else if (then.tool === 'dogedaily') now = (await dogeDailyData({day: S.day})).cite;
-  if (!now) return {link, check: then.check, subject: S, answer: 'not finished yet', words: notFinished || 'The check could not be finished this time.', then: {at: then.at, fingerprint: then.fingerprint, facts: then.facts}};
+  const S = then.subject; let now = null, notFinished = null, run = null;   // (run: the re-run's whole answer, for its page and its ways on)
+  if (then.tool === 'manifest') { now = CI.make('manifest', await readManifest(+S.block)); run = {page: PORTAL + 'block-manifest.html?block=' + S.block, seeIt: 'blockManifest({height: ' + S.block + '}) lists every transaction in the block again, sorted and checked.'}; }
+  else if (then.tool === 'provenance') { run = await provenanceCheck({id: S.id}); now = run.cite; }
+  else if (then.tool === 'collection') { const r = run = await collectionCheck({parent: S.parent, limit: 1}); now = r.cite; if (!now) notFinished = r.carryOn; }
+  else if (then.tool === 'recursion') { run = await recursionMap({id: S.id, depth: S.depth}); now = run.cite; }
+  else if (then.tool === 'opinion') { run = await secondOpinion({claim: S.claim}); now = run.cite; }
+  else if (then.tool === 'health') { run = await sourceHealth({chain: S.chain || 'bitcoin'}); now = run.cite; }
+  else if (then.tool === 'daily') { run = await dailyData({day: S.day}); now = run.cite; }
+  else if (then.tool === 'league') { const r = run = await truthLeague({chain: S.chain || 'bitcoin', now: true, fresh: true}); now = r.cite && r.cite.at ? r.cite : null; }
+  else if (then.tool === 'stuck') { run = await stuckTx({txid: S.tx}); now = run.cite; }
+  else if (then.tool === 'code') { run = await codeRead({id: S.id}); now = run.cite; }
+  else if (then.tool === 'rune') { run = await runeProof({rune: S.rune}); now = run.cite; }
+  else if (then.tool === 'dogemanifest') { run = await dogeBlockManifest({height: +S.block, limit: 1}); now = run.cite; }
+  else if (then.tool === 'dogeprovenance') { run = await dogeProvenanceCheck({id: S.id}); now = run.cite; }
+  else if (then.tool === 'dogecollection') { const n = +S.checked || 20; if (n <= 100) { run = await dogeCollectionCheck({collection: S.collection, limit: n}); now = run.cite; } else notFinished = 'That citation covers ' + n + ' pieces: this tool checks up to 100 at a time. Open the link in a browser to check them all again.'; }
+  else if (then.tool === 'dogedaily') { run = await dogeDailyData({day: S.day}); now = run.cite; }
+  const onward = run ? {page: run.page || undefined, seeIt: run.seeIt || undefined, lookCloser: run.lookCloser || undefined} : {};
+  if (!now) return {link, check: then.check, subject: S, ...onward, answer: 'not finished yet', words: notFinished || 'The check could not be finished this time.', then: {at: then.at, fingerprint: then.fingerprint, facts: then.facts}};
   const k = CI.compare(then, now);
   return {link, check: then.check, of: now.of, answer: k.answer, words: k.words, changed: k.changed, notReadNow: k.notReadNow,
     then: {at: then.at, fingerprint: then.fingerprint, sources: then.sources, facts: then.facts}, now: {at: now.at, fingerprint: now.fingerprint, sources: now.sources, facts: now.facts, link: now.link},
-    fingerprintOf: now.fingerprintOf, note: 'same: the fingerprint of the core (what comes from the chain itself) and every fact match. changed lists each fact that differs (then and now); notReadNow lists facts a site did not give this time. The link itself is the record: nothing is stored anywhere.'};
+    fingerprintOf: now.fingerprintOf, ...onward, note: 'same: the fingerprint of the core (what comes from the chain itself) and every fact match. changed lists each fact that differs (then and now); notReadNow lists facts a site did not give this time. The link itself is the record: nothing is stored anywhere.'};
 }
 
 /* ---------- the second opinion: a claim about Bitcoin, checked against several sources ---------- */
@@ -810,7 +811,7 @@ async function dogeProvenanceCheck({id}) {
   if (id == null || !String(id).trim()) throw new Error('give a Doginal: its number (#1000) or its ID');
   const out = await DP.gather(String(id).trim(), dogeIO);
   return Object.assign(out, {cite: CI.make('dogeprovenance', out),
-    seeIt: 'The portal\'s Doge Provenance Check page (' + PORTAL + 'doge-provenance-check.html?id=' + out.inscription.id + ') shows the same.' + (out.inscription.block != null ? ' dogeBlockManifest({height: ' + out.inscription.block + '}) lists every transaction in the block it was made in.' : '') + ' dogeWatch({what: "inscription", value: "' + out.inscription.id + '"}) says when it moves.',
+    seeIt: 'The portal\'s Doge Provenance Check page (' + PORTAL + 'doge-provenance-check.html?id=' + out.inscription.id + ') shows the same.' + (out.inscription.block != null ? ' dogeBlockManifest({height: ' + out.inscription.block + '}) lists every transaction in the block it was made in.' : '') + ' dogeWatch({what: "inscription", value: "' + out.inscription.id + '"}) says when it moves. Walk its trail in Doge Cube: ' + PORTAL + 'doge-cube.html#find=' + out.inscription.id + ' (hold its parcel, then followBack()).',
     note: 'whatIsInIt: what is in its file, read from the file\'s own bytes by the Media Reader (resolution, colours, length, frames, triangles and more; says: the same in plain words; readFrom: where the bytes came from). checked: each check says what it compared (what), with which site (against), and whether they agree (agrees: true, false, or null when it could not be made). writtenOver: a Doginal can be written over many transactions, each spending the one before; they are followed and each one read. trail is oldest first: where it was made, then each move. ' + UNTRUSTED
   });
 }
@@ -886,6 +887,7 @@ function about() {
     name: 'Agent Blockhall', by: 'bitmap22', price: 'always free',
     what: 'A 3D Bitcoin block explorer world for players and agents. Outside, a block is a cube of parcels (one per transaction); inside, a hall of shelves; and there is a common room with a big screen, a rare sats board, a jukebox and more.',
     open: GAME, portal: PORTAL, forAgents: PORTAL + 'llms.txt',
+    pages: Object.fromEntries(Object.values(CI.TOOLS).filter(t => t.mcp && t.page).map(t => [t.mcp, PORTAL + t.page])),   // (each tool's page on the portal, from the citation list)
     inTheBrowser: 'Open the page and call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named cube_*. You play by the same rules as a player (walking speed, walls, the same buttons), people see you marked as an AI agent, and you can never wipe or delete anything.',
     thisTool: 'This tool gives the catalogue without a browser: chain, feeAdvice, block, blockManifest, inscription, provenanceCheck, children, followBack, search, watch, dailyData, collectionCheck, recursionMap, secondOpinion, sourceHealth, truthLeague, stuckTx, codeRead, runeProof, checkAgain and rareSats, and for Dogecoin (Doge Cube, ' + DOGE_GAME + '): dogeBlockManifest, dogeProvenanceCheck, dogeCollectionCheck, dogeWatch and dogeDailyData. feeAdvice keeps score of itself; chain, block and inscription answers are each checked against a second, separate site (checked.agrees); blockManifest checks every transaction in a block; provenanceCheck proves where an inscription came from; collectionCheck proves which pieces are a parent\'s real children; recursionMap maps everything an inscription loads; secondOpinion checks a claim against several sources; sourceHealth says which of the sites it reads are answering and up to date; runeProof proves a rune from its etching\'s own bytes, with ord\'s own rules, and checks ordinals.com against it; every check gives cite, a link to cite it, and checkAgain says whether a cited check is the same now. Everything comes free from public sites (mempool.space and its copies, ordpool.space, ordinals.com and its back-ups; for Dogecoin, thedoginalsexplorer.com, Bitcore, Blockchair and Doggy Market), asked gently: at most 30 at once, then 6 a second per site (for Dogecoin, the pace each site says it allows), resting any site that asks us to slow down.'
   };
