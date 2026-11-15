@@ -67,8 +67,8 @@
   // double SHA-256 of these 80 bytes, merge-mined (AuxPoW) or not; its proof of work is checked differently (Scrypt), and is not
   // what names it.
   function headerHash(f) {
-    const hdr = catB([le32(+f.version), revBytes(f.previous), revBytes(f.merkle_root), le32(+f.time), revBytes(String(f.bits).padStart(8, '0')), le32(+f.nonce)]);
-    if (hdr.length !== 80) throw new Error('the header is not 80 bytes');
+    const hdr = catB([le32(+f.version), revBytes(f.previous || '0'.repeat(64)), revBytes(f.merkle_root), le32(+f.time), revBytes(String(f.bits).padStart(8, '0')), le32(+f.nonce)]);
+    if (hdr.length !== 80) throw new Error('the header is not 80 bytes');   // (block 0 has no block before it: 32 zero bytes there, as the chain has them)
     return hashHex(hdr);
   }
   function merkleRoot(ids) {
@@ -429,6 +429,8 @@
       }
       say('bytes', raw.size === carry.length ? true : false);
     }
+    // which site gave each one's bytes (a page or the MCP tool that keeps io.rawFrom says; else Blockchair, the one asked first)
+    const rawFrom = new Set(); if (io.rawFrom) for (const id of raw.keys()) { const f = io.rawFrom.get(id); if (f) rawFrom.add(f); io.rawFrom.delete(id); }
     // 5. dunes: an etching only makes its dune if the name was free (the explorer's list of dunes)
     let dunesMade = null; const tried = [];
     for (const [, u] of raw) { try { const r = readTx(u, false); if (r.dune && r.dune.etched) tried.push(r.dune.etched); } catch (e) {} }
@@ -436,7 +438,7 @@
       for (const nm of tried) { const key = nm.replace(/•/g, ''); try { const j = await io.dx('/v1/dune/' + encodeURIComponent(key)); dunesMade.set(key, j && j.dune ? j.dune.dune_id : null); } catch (e) { if (/404/.test(String(e))) dunesMade.set(key, null); else { dunesMade = null; break; } } }
       say('dunes', !!dunesMade); } else say('dunes', true);
     const m = buildManifest({height: h, header: B, headerSite: 'https://thedoginalsexplorer.com', list, listSite: 'https://thedoginalsexplorer.com', details, second, secondHash, secondSite: secondSite || 'no second site',
-      raw, rawSite: io.raw ? 'https://api.blockchair.com' : null, rawWanted: io.raw ? carry.length : 0, dunesMade});
+      raw, rawSite: io.raw ? (rawFrom.size ? [...rawFrom].join(' and ') : 'https://api.blockchair.com') : null, rawWanted: io.raw ? carry.length : 0, dunesMade});
     if (list.length > DETAIL_CAP) m.checked.note = 'A very big block: the first ' + DETAIL_CAP.toLocaleString('en-GB') + ' transactions were read one by one; the rest are from the lists only.';
     if (rawStop) m.checked.ownBytes.stopped = 'Blockchair asked us to slow down (30 asks a minute): the rest were not read from their bytes this time. Try again in a minute.';
     return m;

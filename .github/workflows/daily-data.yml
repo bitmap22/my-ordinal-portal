@@ -5,11 +5,18 @@ name: Daily Data
 
 on:
   schedule:
-    - cron: '20 0 * * *'   # 00:20 UTC: the day before has just finished
+    # GitHub starts this repo's timed jobs late, sometimes by hours or not at all (15 Nov 2026: this one's 00:20 start had not
+    # come by 03:50, and Rare sats ran 40 minutes to 5 hours late). So it is asked every hour from 00:20 to 09:20 UTC, and the
+    # first step skips it if the day before is already saved: the day is made once, by whichever start comes first. The
+    # keeper (keeper.yml) also starts it on pushes to main when the day before isn't saved.
+    - cron: '20 0-9 * * *'
   workflow_dispatch:
     inputs:
       day:
         description: 'The UTC day to make (YYYY-MM-DD). Leave empty for yesterday.'
+        required: false
+      onlyIfMissing:
+        description: 'yes: only make the day before if it is not saved yet (the keeper uses this). Leave empty to always make it.'
         required: false
 
 permissions:
@@ -24,22 +31,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
+      - name: Is the day before already saved?
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DAY="$(date -u -d yesterday +%F)"
+          if { [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.onlyIfMissing }}" = "yes" ]; } && gh api "repos/${GITHUB_REPOSITORY}/contents/days/$DAY.json?ref=daily-data" --silent 2>/dev/null; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "$DAY is already saved: nothing to do."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.due.outputs.go == 'true'
       - uses: actions/setup-node@v4
+        if: steps.due.outputs.go == 'true'
         with:
           node-version: 20
       - name: Open the daily-data branch
+        if: steps.due.outputs.go == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
           if git fetch origin daily-data:daily-data; then git worktree add data daily-data; else
             git worktree add --detach data && cd data && git checkout --orphan daily-data && git rm -rfq . && cd ..; fi
       - name: Read the day
+        if: steps.due.outputs.go == 'true'
         run: |
           DAY="${{ github.event.inputs.day }}"; [ -n "$DAY" ] || DAY="$(date -u -d yesterday +%F)"
           echo "DAY=$DAY" >> "$GITHUB_ENV"
           node .github/daily-data/build-day.js "$DAY" data
       - name: Save it
+        if: steps.due.outputs.go == 'true'
         run: |
           cd data
           [ -f README.md ] || cp ../.github/daily-data/README.md README.md

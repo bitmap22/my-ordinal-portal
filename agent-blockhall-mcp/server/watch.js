@@ -127,7 +127,7 @@
     }
     if (w.what === 'inscription') {
       const o = await outAt(io, s.satpoint), sp = (await io.mpJson('/api/tx/' + o.txid + '/outspend/' + o.vout)).j;
-      const links = {provenanceCheck: PROV + '?id=' + w.value, agentBlockhall: GAME + ' (hold its parcel, then FOLLOW IT BACK)'};
+      const links = {provenanceCheck: PROV + '?id=' + w.value, agentBlockhall: GAME + (/^[0-9a-f]{64}i\d+$/.test(String(w.value)) ? '#find=' + w.value + ' (walks in with it found: hold its parcel, then FOLLOW IT BACK)' : ' (hold its parcel, then FOLLOW IT BACK)')};
       if (sp.spent && sp.txid && sp.txid !== s.spentBy) {
         const conf = !!(sp.status && sp.status.confirmed);
         E('Inscription is moving: the place it sat (' + o.txid.slice(0, 10) + '…:' + o.vout + ') has been spent', {facts: {inscription: w.value, spentBy: sp.txid, confirmed: conf, block: conf ? sp.status.block_height : null},

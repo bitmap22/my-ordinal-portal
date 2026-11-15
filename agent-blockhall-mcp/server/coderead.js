@@ -16,9 +16,9 @@
   else root.CodeRead = make(root.RecursionMap);
 })(typeof self !== 'undefined' ? self : this, function (RM) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';   // (1.1.0: follows what it loads the Recursion Map's way: paths, IDs in the code, children, delegates)
   const CODE = /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i;
-  const MAX_LOADED = 12;
+  const MAX_LOADED = 40, MAX_LOOKED = 150, DEPTH = 3;   // (files of code read; inscriptions looked at; levels followed)
   const ANALYTICS = ['google-analytics.com', 'googletagmanager.com', 'doubleclick.net', 'connect.facebook.net', 'facebook.com/tr', 'hotjar.com', 'mixpanel.com', 'segment.io', 'segment.com', 'amplitude.com', 'clarity.ms',
     'plausible.io', 'umami.is', 'goatcounter.com', 'matomo', 'statcounter.com', 'cloudflareinsights.com', 'posthog.com', 'fullstory.com', 'mouseflow.com', 'heap.io', 'quantserve.com', 'scorecardresearch.com'];
   const esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
@@ -110,10 +110,30 @@
     const files = [{id, role: 'itself', number: out.number, contentType: type}], texts = new Map();
     const get = async (fid) => { const x = await io.ordText('/content/' + fid); out.sources.push(x.site); return x.t; };
     texts.set(id, await get(id));
-    // the code it loads from other inscriptions (by path), when that is code too
-    const S = RM.scan(texts.get(id)), loads = [...S.loads].filter(x => x !== id).slice(0, MAX_LOADED);
-    for (const L of loads) {
-      try { const j = (await io.ordJson('/r/inscription/' + L)).j; if (!isCode(j.content_type)) continue; say('reading', L); texts.set(L, await get(L)); files.push({id: L, role: 'loaded by it', contentType: j.content_type, number: j.number}); } catch (e) { files.push({id: L, role: 'loaded by it', error: 'could not be read'}); }
+    // the code it loads from other inscriptions, when that is code too, found the Recursion Map's way: its path written whole
+    // (loads), its ID written in the code that builds the path (named), its delegate, and its children when the code asks
+    // /r/children for them; and what those load in turn, up to 3 levels
+    const seen = new Set([id]), queue = []; let looked = 0, notRead = 0;
+    const ROLE = {loads: 'loaded by its path', named: 'named in the code (its path is built from its ID)', child: 'a child it shows', delegate: 'its delegate'};
+    const follow = async (fid, depth) => {
+      if (depth >= DEPTH) return;
+      const S = RM.scan(texts.get(fid) || ''), next = S.loads.map(x => [x, 'loads']).concat(S.named.map(x => [x, 'named']));
+      if (S.endpoints && S.endpoints.children) { try { const x = await io.ordJson('/r/children/' + fid); for (const c of ((x.j && x.j.ids) || []).slice(0, 100)) next.push([c, 'child']); } catch (e) {} }
+      for (const [x, how] of next) if (!seen.has(x)) { seen.add(x); queue.push({id: x, depth: depth + 1, from: fid, how}); }
+    };
+    await follow(id, 0);
+    while (queue.length) {
+      const L = queue.shift();
+      if (looked >= MAX_LOOKED || files.length - 1 >= MAX_LOADED) { notRead++; continue; }
+      looked++;
+      const role = ROLE[L.how] + (L.from === id ? '' : ' (by ' + L.from.slice(0, 8) + '…)');
+      try {
+        const j = (await io.ordJson('/r/inscription/' + L.id)).j;
+        if (j.delegate && !seen.has(j.delegate)) { seen.add(j.delegate); queue.push({id: j.delegate, depth: L.depth, from: L.id, how: 'delegate'}); }
+        if (!isCode(j.content_type)) continue;
+        say('reading', L.id); texts.set(L.id, await get(L.id)); files.push({id: L.id, role, how: L.how, contentType: j.content_type, number: j.number});
+        await follow(L.id, L.depth);
+      } catch (e) { files.push({id: L.id, role, how: L.how, error: 'could not be read'}); }
     }
     const addr = new Map();
     for (const f of files) { const t = texts.get(f.id); if (t == null) continue; f.bytes = new TextEncoder().encode(t).length; f.lines = t.split('\n').length; out.findings.push(...scan(t, f.id));
@@ -133,7 +153,7 @@
     out.outsideAddresses = [...addr].map(([url, file]) => ({url, file}));
     out.kinds = summary(out.findings);
     out.files = files; out.sources = [...new Set(out.sources.filter(Boolean))];
-    out.loadsMore = S.loads.size - 1 > MAX_LOADED ? S.loads.size - 1 - MAX_LOADED : 0;
+    out.loadsMore = notRead;   // (inscriptions it loads that were not read: past the limits above; the Recursion Map lists them all)
     out.isCode = true; out.kinds = summary(out.findings);
     out.keepsThingsInYourBrowser = files.some(f => texts.has(f.id) && KEEPS.test(texts.get(f.id)));
     const found = out.kinds.filter(k => k.found);

@@ -119,7 +119,8 @@
   function words(r) {
     if (r.state === 'answers' || r.state === 'slow') {
       let w = (r.state === 'slow' ? 'answers slowly' : 'answers') + ' (' + fmt(r.ms) + ' ms)';
-      if (typeof r.says === 'number') w += r.behind >= 2 ? ': ' + fmt(r.behind) + ' blocks behind (it says ' + fmt(r.says) + ')' : r.ahead ? ': it already has block ' + fmt(r.says) + ', newer than the others' : ': up to date (block ' + fmt(r.says) + ')';
+      if (typeof r.says === 'number' && r.blockheightSays != null) w += ': up to date (it gives block ' + fmt(r.says) + '\u2019s hash; only its /r/blockheight is stale, saying ' + fmt(r.blockheightSays) + ')';
+      else if (typeof r.says === 'number') w += r.behind >= 2 ? ': ' + fmt(r.behind) + ' blocks behind (it says ' + fmt(r.says) + ')' : r.ahead ? ': it already has block ' + fmt(r.says) + ', newer than the others' : ': up to date (block ' + fmt(r.says) + ')';
       else if (r.sameAs) w += r.sameAs.same === true ? ': its copy of inscription #0 is the same, byte for byte, as ' + r.sameAs.site + '\'s' : r.sameAs.same === false ? ': its copy of inscription #0 is NOT the same as ' + r.sameAs.site + '\'s' : ': ' + r.sameAs.site + ' ' + r.sameAs.note;
       else if (r.says && r.says.name) w += ': ' + r.says.name + ' is inscription ' + r.says.inscription;
       return w;
@@ -135,7 +136,22 @@
     const at = new Date().toISOString(); let done = 0;
     const results = await Promise.all(list.map(s => probe(s, opt).then(r => { if (opt.progress) opt.progress(++done, list.length, r); return r; })));
     const tips = judge(results);
+    await recheckOrd(results, tips, opt);
     return {at, from: opt.from || 'here', newest: tips, counts: counts(results), results};
+  }
+  // an ord site that looks behind by its /r/blockheight: does it give the newest block's hash all the same? (its blockheight
+  // answer can be stale on its own while it serves the newest blocks)
+  async function recheckOrd(results, tips, opt) {
+    const tip = tips.bitcoin, late = results.filter(r => r.group === 'Inscriptions' && r.behind >= 2);
+    if (!tip || !late.length) return;
+    const text = a => a && a.http === 200 && a.bytes ? new TextDecoder().decode(a.bytes).trim().replace(/^"|"$/g, '') : null;
+    const want = text(await ask('https://mempool.space/api/block-height/' + tip, opt));
+    if (!/^[0-9a-f]{64}$/.test(want || '')) return;
+    await Promise.all(late.map(async r => {
+      const site = SITES.find(x => x.site === r.site); if (!site) return;
+      if (text(await ask((site.base || 'https://' + site.site) + '/r/blockhash/' + tip, opt)) !== want) return;
+      r.blockheightSays = r.says; r.says = tip; r.behind = 0; r.upToDate = true; delete r.ahead; r.words = words(r);
+    }));
   }
   function counts(results) {
     const c = {asked: results.length, answers: 0, slow: 0, behind: 0, down: 0};

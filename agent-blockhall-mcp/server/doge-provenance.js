@@ -245,7 +245,8 @@
     T.steps.reverse();   // (oldest first)
     const F = await files;
     say('done', true);
-    return addWhatIsInIt(buildProvenance({id, info: J, infoSite: 'https://thedoginalsexplorer.com', written: W, rawSite: 'https://api.blockchair.com', secondSite: 'https://api.bitcore.io',
+    const rawFrom = new Set(); if (io.rawFrom) for (const t of W.txs) { const f = io.rawFrom.get(t.txid); if (f) rawFrom.add(f); }   // (which site gave the bytes: see doge-manifest.js)
+    return addWhatIsInIt(buildProvenance({id, info: J, infoSite: 'https://thedoginalsexplorer.com', written: W, rawSite: rawFrom.size ? [...rawFrom].join(' and ') : 'https://api.blockchair.com', secondSite: 'https://api.bitcore.io',
       file: F[0].status === 'fulfilled' ? F[0].value : null, fileSite: 'https://thedoginalsexplorer.com', file2: F[1].status === 'fulfilled' ? F[1].value : null, file2Site: 'https://cdn.doggy.market',
       lastBlock, trail: T, heldNow}), io.media);
   }

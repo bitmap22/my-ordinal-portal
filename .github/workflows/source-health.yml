@@ -5,8 +5,16 @@ name: Source Health
 
 on:
   schedule:
-    - cron: '41 * * * *'   # about once an hour (GitHub can start it a little late)
+    # GitHub starts this repo's timed jobs late, sometimes by hours (measured 15 Nov 2026: Rare sats ran 40 minutes to 5 hours
+    # late, and none of Source Health's first three hourly starts came within 3 hours). So it is asked four times an hour, and
+    # the first step skips the check if one was saved in the last 50 minutes: it still checks about once an hour. The keeper
+    # (keeper.yml) also starts it on pushes to main when it is due.
+    - cron: '11,26,41,56 * * * *'
   workflow_dispatch:
+    inputs:
+      ifDue:
+        description: 'yes: only check if the last check is 50 minutes old or more (the keeper uses this). Leave empty to always check.'
+        required: false
 
 permissions:
   contents: write
@@ -20,17 +28,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Was there a check in the last 50 minutes?
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/source-health" --jq .commit.committer.date 2>/dev/null || true)
+          age=999999
+          if [ -n "$last" ]; then age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) )); fi
+          if { [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.ifDue }}" = "yes" ]; } && [ "$age" -lt 3000 ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "The last check was saved $((age / 60)) minutes ago: not due yet."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.due.outputs.go == 'true'
       - uses: actions/setup-node@v4
+        if: steps.due.outputs.go == 'true'
         with:
           node-version: 20
       - name: Last week's record
+        if: steps.due.outputs.go == 'true'
         run: |
           mkdir -p health
           if git fetch -q --depth 1 origin source-health; then git show FETCH_HEAD:week.json > health/week.json || rm -f health/week.json; fi
       - name: Ask each site
+        if: steps.due.outputs.go == 'true'
         run: node .github/source-health/check.js health
       - name: Save it
+        if: steps.due.outputs.go == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
