@@ -25,6 +25,7 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 | `search` | A block, bitmap, parcel (`12.840000.bitmap`), inscription, transaction ID or address, as the tablet in the game finds them |
 | `watch` | Watch: says when something happens on the chain, each alert checked: the next block, the next-block fee at or under a level, an inscription moving (as soon as the move is in the mempool, and again once it is in a block), an address sending or getting a transaction, or a kind of transaction in a new block. The first call gives a `since` token; call again with it to hear what changed, and add `wait` (up to 240 seconds) to keep looking until something happens |
 | `dailyData` | Daily Data, made each night by GitHub: every block of a UTC day, read the Block Manifest way, with what was in it, its fees, who mined it and its checks. No day: the list of days; a day: every block; a block: that one |
+| `sourceHealth` | Source Health: which data sites these tools read are answering, how fast, and whether they are up to date, for Bitcoin and Dogecoin. Each site is asked one small thing now, from your computer (most: the newest block's height), and GitHub's computers ask the same about once an hour and keep a week: each site's last day and week. With what it means, in words |
 | `rareSats` | The rare sats board: each kind of rare sat and the price listed for one sat |
 
 ### For Dogecoin: Doge Cube's tools

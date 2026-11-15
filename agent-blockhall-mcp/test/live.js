@@ -83,6 +83,10 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
     {claim: 'block 840000\'s hash is 0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5'}, {claim: '#1000 is a PNG'}, {claim: '#1000 was made in block 1'}, {claim: '#126750483 is a child of #126744012'},
     {claim: 'collection #126744012 has 2 children'}, {kind: 'ins.size', subject: '#1000', value: '793'}, {claim: 'the moon is cheese'}]) calls.push(await call('secondOpinion', a));
   results.opinion = calls.filter(c => c.name === 'secondOpinion').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.answer + ' | ' + c.out.verdict + ' | ' + c.out.sources.map(s => s.source.replace('https://', '').slice(0, 40) + '=' + String(s.says).slice(0, 24) + ':' + s.agrees).join(', ')));
+  // Source Health: every site now and the record, one chain, one site's hourly record (the record only), and a site it doesn't know
+  for (const a of [{}, {chain: 'doge'}, {site: 'ordinals.com', now: false}, {site: 'nowhere.example'}]) calls.push(await call('sourceHealth', a));
+  results.health = calls.filter(c => c.name === 'sourceHealth').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : (c.out.now ? JSON.stringify(c.out.now.counts) + ' newest ' + JSON.stringify(c.out.now.newest) + ' | ' + c.out.now.results.map(r => r.site + '=' + r.state + (r.behind >= 2 ? '(' + r.behind + ' behind)' : '') + ':' + r.ms).join(', ') : 'record only') +
+    ' | record: ' + (c.out.record.error || c.out.record.checks + ' checks' + (c.out.record.hourly ? ', hourly ' + c.out.record.hourly.length : '')) + ' | findings: ' + c.out.findings.map(f => f.says).join(' / ')));
   results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {
     const k = c.out.checked;
     return c.out.block.height + ' (' + c.ms + ' ms): hash ' + k.blockHash.fromItsOwnBytes + '/' + (k.blockHash.secondSite && k.blockHash.secondSite.agrees) + ', ids ' + k.transactions.matched + '/' + k.transactions.of +
@@ -124,6 +128,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Collection Check:\n' + results.collection.join('\n'));
   console.log('Recursion Map:\n' + results.recursion.join('\n'));
   console.log('Second Opinion:\n' + results.opinion.join('\n'));
+  console.log('Source Health:\n' + results.health.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });
