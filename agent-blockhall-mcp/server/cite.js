@@ -103,6 +103,13 @@
     facts: r => Object.assign({isCode: r.isCode, files: (r.files || []).length, outsideAddresses: (r.outsideAddresses || []).length}, Object.fromEntries((r.kinds || []).map(k => [k.name, k.count]))),
     sources: r => r.sources || []};
 
+  // Rune Proof: a rune's etching, read from the chain's own bytes and checked against ordinals.com
+  TOOLS.rune = {coreName: 'the rune as etched', name: 'Rune Proof', page: 'rune-proof.html', mcp: 'runeProof', subject: r => ({rune: r.query}), label: r => 'rune ' + (r.rune && r.rune.name || r.query),
+    coreIs: 'the rune as etched: its name, ID and etching transaction, and the rules written in its etching',
+    core: r => [r.rune ? [r.rune.name || null, r.rune.id || null, r.rune.etching || null] : null, r.etching || null, ['not etched', 'not found', 'no etching', 'not made'].includes(r.answer) ? r.answer : null],
+    facts: r => { const O = r.ordinalsOnly || {}; return {answer: r.answer, id: r.rune && r.rune.id || null, supply: O.supply || null, mints: O.mints || null, burned: O.burned || null, differs: (r.compare || []).filter(c => !c.same).map(c => c.field).join(', ') || null}; },
+    sources: r => r.sources || []};
+
   // Doge Cube's twins of three of them (Dogecoin's blocks, Doginals and days), read the same way
   TOOLS.dogemanifest = Object.assign({}, TOOLS.manifest, {name: 'Doge Block Manifest', page: 'doge-block-manifest.html', mcp: 'dogeBlockManifest', label: r => 'Dogecoin block ' + fmt(r.block.height)});
   TOOLS.dogeprovenance = Object.assign({}, TOOLS.provenance, {coreName: 'the Doginal itself', name: 'Doge Provenance Check', page: 'doge-provenance-check.html', mcp: 'dogeProvenanceCheck',
