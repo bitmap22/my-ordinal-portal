@@ -271,8 +271,8 @@
   function steps(on) { const ul = $('steps'); ul.textContent = ''; ul.classList.toggle('hidden', !on); for (const [k, t] of STEPS) { const li = el('li', null, t); li.id = 'st-' + k; ul.appendChild(li); } }
   let curStep = null;
   function step(k, v) {
-    if (k === 'step') { if (curStep) { const p = $('st-' + curStep); if (p) { p.className = 'ok'; p.textContent += ' ✓'; } } curStep = v; const li = $('st-' + v); if (li) li.className = 'busy'; return; }
-    if (k === 'trail' && $('st-provenance')) $('st-provenance').textContent = 'Where it came from: ' + v + ' move' + (v === 1 ? '' : 's') + '…';
+    if (k === 'step') { if (curStep) { const p = $('st-' + curStep); if (p) { p.className = 'ok'; p.textContent = (STEPS.find(s => s[0] === curStep) || [0, p.textContent])[1] + ' ✓'; } } curStep = v; const li = $('st-' + v); if (li) li.className = 'busy'; return; }
+    if (k === 'trail' && typeof v === 'number' && $('st-provenance') && curStep === 'provenance') $('st-provenance').textContent = 'Where it came from: ' + v + ' move' + (v === 1 ? '' : 's') + '…';
   }
   async function check(q, opt, agent) {
     if (busy) throw new Error('already checking one: wait for it to finish');
@@ -282,7 +282,7 @@
     try {
       say((agent ? 'An AI agent asked to check ' : 'Checking ') + q + (opt.seller ? ', sold by ' + opt.seller : '') + (opt.collection ? ', said to be in ' + opt.collection : '') + '…'); steps(true);
       const r = await TC.check({id: q, chain, seller: opt.seller || null, collection: chain === 'doge' ? (opt.collection || null) : (opt.collection || null)}, tio, step);
-      if (curStep) { const p = $('st-' + curStep); if (p) { p.className = 'ok'; p.textContent += ' ✓'; } }
+      if (curStep) { const p = $('st-' + curStep); if (p) { p.className = 'ok'; p.textContent = (STEPS.find(s => s[0] === curStep) || [0, p.textContent])[1] + ' ✓'; } }
       const d = $('st-done'); if (d) { d.className = r.verdict === 'GO' ? 'ok' : 'no'; d.textContent = 'The answer: ' + r.verdict; }
       for (const k of ['collection', 'code', 'loads']) { const li = $('st-' + k); if (li && !li.className) { li.className = ''; li.textContent += ': not needed'; } }
       R = r; show(r);
