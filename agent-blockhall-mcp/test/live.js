@@ -78,6 +78,11 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   // Recursion Map: a recursive game, a viewer that builds its paths, an image that loads nothing, and a number with no inscription
   for (const a of [{id: '#127512326'}, {id: 'aa971d5dd1d6429076ad16aef35409f8363937e53786af37803c40923f9a4c2ei0'}, {id: '#0', depth: 1}, {id: '#999999999'}]) calls.push(await call('recursionMap', a));
   results.recursion = calls.filter(c => c.name === 'recursionMap').map(c => JSON.stringify(c.args).slice(0, 50) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : c.out.verdict + ' | allOnChain ' + c.out.allOnChain + ' | ' + JSON.stringify(c.out.counts) + ' | endpoints ' + c.out.endpoints.map(e => e.endpoint + ' ' + e.status).join(', ') + ' | nodes ' + c.out.nodes.map(n => n.number + ':' + n.usedBy.map(u => u.how).join('/') + ':' + JSON.stringify(n.checks)).slice(0, 8).join(' ') + ' | sources ' + JSON.stringify(c.out.sources)));
+  // Second Opinion: true, false and rounded claims of each kind, a structured one, and one it can't read
+  for (const a of [{claim: 'block 840000 has 3,050 transactions'}, {claim: 'block 840000 was mined by ViaBTC'}, {claim: 'block 840000 paid about 37.6 BTC in fees'}, {claim: 'block 767430 has 1 inscription'},
+    {claim: 'block 840000\'s hash is 0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5'}, {claim: '#1000 is a PNG'}, {claim: '#1000 was made in block 1'}, {claim: '#126750483 is a child of #126744012'},
+    {claim: 'collection #126744012 has 2 children'}, {kind: 'ins.size', subject: '#1000', value: '793'}, {claim: 'the moon is cheese'}]) calls.push(await call('secondOpinion', a));
+  results.opinion = calls.filter(c => c.name === 'secondOpinion').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.answer + ' | ' + c.out.verdict + ' | ' + c.out.sources.map(s => s.source.replace('https://', '').slice(0, 40) + '=' + String(s.says).slice(0, 24) + ':' + s.agrees).join(', ')));
   results.manifestChecks = calls.filter(c => c.name === 'blockManifest' && c.out && c.out.checked).map(c => {
     const k = c.out.checked;
     return c.out.block.height + ' (' + c.ms + ' ms): hash ' + k.blockHash.fromItsOwnBytes + '/' + (k.blockHash.secondSite && k.blockHash.secondSite.agrees) + ', ids ' + k.transactions.matched + '/' + k.transactions.of +
@@ -94,6 +99,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Daily Data:\n' + results.daily.join('\n'));
   console.log('Collection Check:\n' + results.collection.join('\n'));
   console.log('Recursion Map:\n' + results.recursion.join('\n'));
+  console.log('Second Opinion:\n' + results.opinion.join('\n'));
   server.kill();
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });
