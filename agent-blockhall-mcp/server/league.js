@@ -212,7 +212,15 @@
     const r = opt.dogeVia === 'explorer' ? {http: null, failed: 'not asked this time'} : await ask('https://api.blockchair.com/dogecoin/raw/block/' + h, opt, BLOCK_WAIT_MS);
     try { if (r.http !== 200) throw new Error(r.failed || 'http ' + r.http); const raw = js(r.bytes).data; if (!raw || !raw[h] || !raw[h].raw_block) throw new Error('no bytes in its answer'); B = readBlock(P.fromHex(raw[h].raw_block), 'doge'); }
     catch (e) { why = 'Blockchair: ' + e.message; B = null; }
-    const ins = [], docTx = async id => { const a = await ask('https://api.blockcypher.com/v1/doge/main/txs/' + id + '?includeHex=true&limit=1', opt); const hx = js(a.bytes).hex; const u = P.fromHex(hx); const t = P.parseTx(u); if (t.txid !== id) throw new Error('its bytes are not ' + id); return {t, u, hex: lower(hx)}; };
+    // an answer read as JSON, or a plain-words reason it could not be (which site, and what it gave)
+    const jsFrom = (a, who) => { if (a.failed) throw new Error(who + ' gave no answer (' + a.failed + ')'); if (a.http !== 200) throw new Error(who + ' answered with http ' + a.http); try { return js(a.bytes); } catch (e) { throw new Error(who + (a.bytes && a.bytes.length ? ' gave an answer that could not be read' : ' gave an empty answer')); } };
+    // a transaction's bytes: from BlockCypher, or else Blockchair (either way they must hash to its id)
+    const ins = [], docTx = async id => {
+      const tries = [['api.blockcypher.com', 'https://api.blockcypher.com/v1/doge/main/txs/' + id + '?includeHex=true&limit=1', j => j.hex], ['api.blockchair.com', 'https://api.blockchair.com/dogecoin/raw/transaction/' + id, j => j.data && j.data[id] && j.data[id].raw_transaction]];
+      const why = [];
+      for (const [who, url, pickHex] of tries) { try { const hx = pickHex(jsFrom(await ask(url, opt), who)); if (!hx) throw new Error(who + ' gave no bytes'); const u = P.fromHex(hx), t = P.parseTx(u); if (t.txid !== id) throw new Error(who + '\u2019s bytes are not transaction ' + id.slice(0, 12) + '\u2026'); return {t, u, hex: lower(hx)}; } catch (e) { why.push(e.message); } }
+      throw new Error(why.join('; '));
+    };
     const addDoginal = (txid, u) => { try { const S = DP.inscriptionStart(DP.parseTx(u)); if (S && S.finished && S.body && S.body.length && S.contentType) { let n = 0; for (const x of S.body) n += x.length; const v = new Uint8Array(n); let o = 0; for (const x of S.body) { v.set(x, o); o += x.length; } ins.push({id: txid + 'i0', sha: fp(v), length: n, type: S.contentType}); } } catch (e) {} };
     let tx = null;
     if (B) {
@@ -222,7 +230,7 @@
       tx = sampleTx(B);
     } else {
       from = 'thedoginalsexplorer.com (the header’s fields and the list) and api.blockcypher.com (transactions’ bytes), as ' + why;
-      const pg = async n => js((await ask('https://thedoginalsexplorer.com/v1/block/' + h + '?limit=100&page=' + n, opt)).bytes);
+      const pg = async n => jsFrom(await ask('https://thedoginalsexplorer.com/v1/block/' + h + '?limit=100&page=' + n, opt), 'thedoginalsexplorer.com');
       const H0 = await pg(1), list = (H0.txs || []).slice();
       for (let n = 2; list.length < (H0.total || 0) && n <= 60; n++) { const Q = await pg(n); if (!Q.txs || !Q.txs.length) break; list.push(...Q.txs); }
       const le = v => { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, v >>> 0, true); return a; }, rb = x => P.fromHex(x).reverse();
@@ -255,7 +263,7 @@
     opt = opt || {};
     const at = new Date().toISOString(), truth = {}, notes = [];
     const chains = opt.chain && opt.chain !== 'all' ? [pick(opt.chain)[0].chain] : ['bitcoin', 'doge'];
-    for (const c of chains) { try { truth[c] = c === 'bitcoin' ? await bitcoinTruth(opt) : await dogeTruth(opt); } catch (e) { truth[c] = null; notes.push(CHAINS[c] + ': ' + (e && e.message || e)); } }
+    for (const c of chains) { try { truth[c] = c === 'bitcoin' ? await bitcoinTruth(opt) : await dogeTruth(opt); } catch (e) { truth[c] = null; notes.push(CHAINS[c] + ': no block could be proved from its own bytes this time, so its sites were not asked (' + String(e && e.message || e).replace(/^SyntaxError: /, '') + ')'); } }
     const list = pick(opt.chain).filter(s => chains.includes(s.chain) && (!opt.site || s.site === (site(opt.site) || {}).site));
     let done = 0;
     const results = await Promise.all(list.map(s => askSite(s, truth, opt).then(r => { if (opt.progress) opt.progress(++done, list.length, r); return r; })));
