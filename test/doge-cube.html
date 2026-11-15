@@ -6701,6 +6701,28 @@ function heldSized(t, fee, size, cb, on) {
   }
 }
 const runeAmount = (v, d) => { d = +d || 0; const s = v.toString().padStart(d + 1, '0'), w = s.slice(0, s.length - d), f = d ? s.slice(-d).replace(/0+$/, '') : ''; return BigInt(w).toLocaleString('en-US') + (f ? '.' + f : ''); };
+// (15 Nov 2026) what is in its file, tuned in: the Media Reader (agent-blockhall-mcp/server/media.js), loaded the first time a
+// parcel with an inscription is picked up. It reads the file's own bytes: every number read or counted, never guessed.
+let mediaP = null;
+function mediaReader() {
+  if (window.MediaReader) return Promise.resolve(window.MediaReader);
+  if (!mediaP) mediaP = new Promise(res => {
+    const s = document.createElement('script'), here = /(^|\.)github\.io$/.test(location.hostname);
+    s.src = (here ? (/\/test\//.test(location.pathname) ? '../' : '') : 'https://bitmap22.github.io/my-ordinal-portal/') + 'agent-blockhall-mcp/server/media.js';
+    s.onload = () => res(window.MediaReader || null); s.onerror = () => res(null); document.head.appendChild(s);
+  });
+  return mediaP;
+}
+const MEDIA_KEYS = ['Resolution', 'Colours used', 'Moving', 'Length', 'Frames a second', 'Sound', 'Channels', 'Points', 'Triangles', 'Real size', 'Texture pictures', 'Animations', 'Shapes', 'Pulls in'];
+async function mediaRows(u, type) {
+  const MR = await mediaReader(); if (!MR) return [];
+  const r = await MR.read(u, type), rows = [['in the file', MR.describe(r)]];
+  for (const [k, v] of MR.facts(r)) if (MEDIA_KEYS.includes(k)) rows.push([k.toLowerCase(), v.length > 140 ? v.slice(0, 140) + '…' : v]);
+  const sw = MR.swatches(r); if (sw.length && sw.length <= 16) rows.push(['its colours', sw.join(' ')]);
+  if (r.words && r.words.untrusted && r.words.untrusted.length) rows.push(['words in it', r.words.untrusted.slice(0, 2).map(w => w.key + ': ' + w.text).join(' · ').slice(0, 160) + ' (untrusted)']);
+  return rows;
+}
+
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
   t._held = [];
@@ -6747,6 +6769,12 @@ async function heldInfo(t) {
       show(rows);
     } catch (e) {}
   }
+  // (15 Nov 2026) what is in its file, tuned in: the first Doginal's file, read from its own bytes
+  if (ids.length) try {
+    const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 60000);
+    const resp = await fetch(DX + '/content/' + ids[0], {signal: ctl.signal}); clearTimeout(tm);
+    if (resp.ok && !(+resp.headers.get('content-length') > 4200000)) { const u = new Uint8Array(await resp.arrayBuffer()); if (u.length <= 4200000) show(await mediaRows(u, resp.headers.get('content-type'))); }
+  } catch (e) {}
   const has = f => t.sc != null && ((t.sc >> f) & 1) === 1;
   if (t.dune) {   // a new dune: from the explorer's list of every dune (already here, no ask)
     const D = t.dune, n = v => v != null && v !== '' ? (/^\d+$/.test(String(v)) ? runeAmount(BigInt(v), D.divisibility) : String(v)) : null;

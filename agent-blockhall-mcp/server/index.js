@@ -41,6 +41,7 @@ const CC = require('./collection.js');
 const DM = require('./doge-manifest.js');
 const DP = require('./doge-provenance.js');
 const DW = require('./doge-watch.js');
+const MR = require('./media.js');   // (the Media Reader: what is in a file, read from its own bytes)
 const RMP = require('./recursion.js');
 const SO = require('./opinion.js');
 const SH = require('./health.js');
@@ -434,13 +435,13 @@ async function provenanceCheck({id}) {
     ordBytes: async p => { const x = await ordFetch(p, 60000); return {bytes: new Uint8Array(await x.r.arrayBuffer()), site: x.site}; },
     mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; },
     mpText: async p => { const x = await mpFetch(p, 60000); return {t: await x.r.text(), site: x.site}; },
-    sleep,
+    sleep, media: MR,
     decompress: (b, enc) => { if (enc === 'br') return new Uint8Array(zlib.brotliDecompressSync(b)); if (enc === 'gzip') return new Uint8Array(zlib.gunzipSync(b)); if (enc === 'deflate') return new Uint8Array(zlib.inflateSync(b)); throw new Error('packed in a way this tool does not know: ' + enc); }
   };
   const out = await PV.gather(iid, io);
   return Object.assign(out, {
     seeIt: 'The portal\'s Provenance Check page (' + PORTAL + 'provenance-check.html?id=' + iid + ') shows the same, and Agent Blockhall (' + GAME + ') shows its trail as a tether from cube to cube: hold the parcel, then followBack().' + (out.inscription.block != null ? ' blockManifest({height: ' + out.inscription.block + '}) (or ' + PORTAL + 'block-manifest.html?block=' + out.inscription.block + ') lists every transaction in the block it was made in, sorted and checked.' : '') + ' watch({what: "inscription", value: "' + iid + '"}) says the moment it moves.',
-    note: 'checked: each check says what it compared (what), with which site (against), and whether they agree (agrees: true, false, or null when it could not be made). trail is oldest first: where it was made, then each move. ' + UNTRUSTED
+    note: 'checked: each check says what it compared (what), with which site (against), and whether they agree (agrees: true, false, or null when it could not be made). trail is oldest first: where it was made, then each move. whatIsInIt: what is in its file, read from the file\'s own bytes by the Media Reader (resolution, colours, length, frames, triangles and more; says: the same in plain words; readFrom: where the bytes came from). ' + UNTRUSTED
   });
 }
 
@@ -641,7 +642,7 @@ const dogeIO = {
   dx: p => dogeJ(DOGE.DX + p, 25000), btc: p => dogeJ(DOGE.BTC + p, 45000), x3: p => dogeJ(DOGE.X3 + p, 20000),
   raw: async id => { const j = await dogeJ(DOGE.BCR + '/raw/transaction/' + id, 25000); const h = j && j.data && j.data[id] && j.data[id].raw_transaction; if (!h) throw new Error('Blockchair did not give its bytes'); return h; },
   file: id => dogeFile(DOGE.DX + '/content/' + id), file2: id => dogeFile(DOGE.DOGGY + '/content/' + id), sleep,
-  headerHash: DM.headerHash, kindNames: DM.KIND_NAMES
+  headerHash: DM.headerHash, kindNames: DM.KIND_NAMES, media: MR
 };
 const dogeManifests = new Map();   // (the last few blocks read, so asking for the next page needs nothing new)
 async function readDogeManifest(h, bytesCap) {
@@ -676,7 +677,7 @@ async function dogeProvenanceCheck({id}) {
   const out = await DP.gather(String(id).trim(), dogeIO);
   return Object.assign(out, {
     seeIt: 'The portal\'s Doge Provenance Check page (' + PORTAL + 'doge-provenance-check.html?id=' + out.inscription.id + ') shows the same.' + (out.inscription.block != null ? ' dogeBlockManifest({height: ' + out.inscription.block + '}) lists every transaction in the block it was made in.' : '') + ' dogeWatch({what: "inscription", value: "' + out.inscription.id + '"}) says when it moves.',
-    note: 'checked: each check says what it compared (what), with which site (against), and whether they agree (agrees: true, false, or null when it could not be made). writtenOver: a Doginal can be written over many transactions, each spending the one before; they are followed and each one read. trail is oldest first: where it was made, then each move. ' + UNTRUSTED
+    note: 'whatIsInIt: what is in its file, read from the file\'s own bytes by the Media Reader (resolution, colours, length, frames, triangles and more; says: the same in plain words; readFrom: where the bytes came from). checked: each check says what it compared (what), with which site (against), and whether they agree (agrees: true, false, or null when it could not be made). writtenOver: a Doginal can be written over many transactions, each spending the one before; they are followed and each one read. trail is oldest first: where it was made, then each move. ' + UNTRUSTED
   });
 }
 async function dogeWatch({what, value, since, wait = 0}) {

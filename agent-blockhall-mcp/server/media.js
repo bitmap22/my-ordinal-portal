@@ -874,12 +874,79 @@
       if (S.bitrate && S.bitrate.kbps) bits.push(fmt(S.bitrate.kbps) + ' kbit/s' + (S.bitrate.kind === 'constant' ? '' : ' average'));
       if (S.packing) bits.push(/exactly/.test(S.packing) ? 'every sample kept exactly' : /squash/.test(S.packing) ? 'squashed (lossy)' : '');
       if (r.coverArt) bits.push('with cover art' + (r.coverArt.says ? ' (' + r.coverArt.says.split(' · ')[0] + ')' : ''));
-    } else if (r.text) bits.push(fmt(r.text.characters) + ' characters over ' + fmt(r.text.lines) + ' lines' + (r.text.validUTF8 ? '' : ' (not all valid UTF-8)'));
+    } else if (r.text) bits.push(fmt(r.text.characters) + ' character' + (r.text.characters === 1 ? '' : 's') + ' over ' + fmt(r.text.lines) + ' line' + (r.text.lines === 1 ? '' : 's') + (r.text.validUTF8 ? '' : ' (not all valid UTF-8)'));
     else bits.push((r.fromBytes && r.fromBytes.name) || 'a file');
     bits.push(fmt(r.bytes) + ' bytes');
     if (r.loads) bits.push('asks for ' + fmt(r.loads.count) + ' other file' + (r.loads.count === 1 ? '' : 's'));
     return bits.filter(Boolean).join(' · ');
   }
 
-  return {VERSION, read, describe, sniff, typesAgree, MAX_PIXELS};
+  // the same reading as [label, value] pairs in plain words, for pages, cards and agents (one place for the wording)
+  const secsWords = v => v == null ? null : v < 60 ? v.toLocaleString('en-GB', {maximumFractionDigits: 2}) + ' seconds' : Math.floor(v / 60) + ' min ' + (v % 60).toLocaleString('en-GB', {maximumFractionDigits: 1}) + ' s';
+  const chWords = n => n == null ? null : n === 1 ? 'mono (1 channel)' : n === 2 ? 'stereo (2 channels)' : n + ' channels';
+  function facts(r) {
+    if (!r) return [];
+    const F = [], add = (k, v) => { if (v != null && v !== '' && v !== false) F.push([k, String(v)]); };
+    add('File type (from its own bytes)', r.fromBytes && r.fromBytes.name ? r.fromBytes.name + (r.typesAgree === false ? ' (it says it is ' + r.declared + ')' : '') : null);
+    const P = r.picture, S = r.sound, X = r.video, D = r.model;
+    if (P) {
+      add('Resolution', P.width && P.height ? fmt(P.width) + ' × ' + fmt(P.height) + (P.pixels ? ' (' + fmt(P.pixels) + ' pixels)' : '') : P.viewBox ? 'drawn in a ' + P.viewBox + ' box' : null);
+      add('Colours used', P.coloursUsed != null ? fmt(P.coloursUsed) + (P.coloursNote ? ' (' + P.coloursNote + ')' : '') : P.coloursNote ? P.coloursNote.replace(/^not counted: /, 'not counted: ') : null);
+      add('Colour', P.colourModel ? P.colourModel + (P.bitsPerIndex ? ', ' + P.bitsPerIndex + ' bit' + (P.bitsPerIndex === 1 ? '' : 's') + ' a pixel' : P.bitsPerChannel ? ', ' + P.bitsPerChannel + ' bit' + (P.bitsPerChannel === 1 ? '' : 's') + ' a channel' : '') : null);
+      add('Palette', P.palette ? fmt(P.palette.size) + ' colours' + (P.paletteEntriesUsed != null && P.paletteEntriesUsed !== P.palette.size ? ' (' + fmt(P.paletteEntriesUsed) + ' used)' : '') : null);
+      add('Colour detail', P.colourDetail);
+      add('See-through parts', P.seeThrough === true ? 'yes' : P.seeThrough === false ? 'none' : null);
+      add('Colour profile', P.profile);
+      if (P.moving) add('Moving', fmt(P.frames) + ' frames' + (P.durationMs ? ' over ' + secsWords(P.durationMs / 1000) : '') + (P.plays ? ', playing ' + (typeof P.plays === 'number' ? P.plays + ' times' : P.plays) : ''));
+      add('Shapes', P.shapes != null ? fmt(P.shapes) + (P.gradients ? ', ' + fmt(P.gradients) + ' gradient' + (P.gradients === 1 ? '' : 's') : '') : null);
+      add('Density', P.density ? P.density.dpiX + (P.density.dpiY !== P.density.dpiX ? ' × ' + P.density.dpiY : '') + ' dots an inch' : null);
+      add('Packing', P.packing);
+      add('Drawn as', P.kind);
+      if (P.hasLocation) add('Place', P.hasLocation);
+      if (P.picturesInside) add('Pictures inside it', P.picturesInside.map(x => x.says).join(' | '));
+    }
+    if (S) {
+      add('Length', secsWords(S.secondsPlayable != null ? S.secondsPlayable : S.seconds) + (S.secondsPlayable != null && S.seconds != null && S.secondsPlayable !== S.seconds ? ' playable (' + secsWords(S.seconds) + ' of sound frames, with the encoder\'s padding)' : ''));
+      add('Samples a second', S.sampleRate ? fmt(S.sampleRate) : null);
+      add('Bits a sample', S.bitsPerSample);
+      add('Channels', chWords(S.channels));
+      add('Bitrate', S.bitrate && S.bitrate.kbps ? fmt(S.bitrate.kbps) + ' kbit/s (' + S.bitrate.kind + ')' : null);
+      add('Format', [S.format, S.codec && !S.format.includes(S.codec) ? S.codec : null, S.version, S.profile].filter(Boolean).join(', '));
+      add('Packing', S.packing);
+      if (S.framesStopAt) add('Note', S.framesStopAt.note);
+    }
+    if (X) {
+      add('Resolution', X.width && X.height ? fmt(X.width) + ' × ' + fmt(X.height) + (X.shownAs ? ' (shown as ' + X.shownAs + ')' : '') : null);
+      add('Length', secsWords(X.seconds));
+      add('Frames a second', X.framesPerSecond != null ? X.framesPerSecond.toLocaleString('en-GB', {maximumFractionDigits: 3}) + (X.frames ? ' (' + fmt(X.frames) + ' frames)' : '') : null);
+      if (X.framesNote) add('Note', X.framesNote);
+      add('Format', X.format + (X.codec ? ', ' + X.codec : ''));
+      add('Sound', X.hasSound ? 'yes' + (X.sound ? ': ' + [X.sound.codec, chWords(X.sound.channels), X.sound.sampleRate ? fmt(X.sound.sampleRate) + ' samples a second' : null].filter(Boolean).join(', ') : '') : 'none');
+      add('Packing', X.packing);
+    }
+    if (D) {
+      if (D.meshes === 0) add('Shapes', 'none' + (D.cameras ? ': it holds only ' + fmt(D.cameras) + ' camera' + (D.cameras === 1 ? '' : 's') : ''));
+      add('Points', D.points != null && D.meshes !== 0 ? fmt(D.points) : null);
+      add('Triangles', D.triangles != null && D.meshes !== 0 ? fmt(D.triangles) : null);
+      add('Parts', D.parts ? fmt(D.parts) + ' in ' + fmt(D.meshes) + ' mesh' + (D.meshes === 1 ? '' : 'es') : null);
+      const sz = D.sizeMetres || D.size; add('Real size', sz ? sz.width + ' × ' + sz.height + ' × ' + sz.depth + (D.sizeMetres ? ' metres (wide × tall × deep)' : ' (its own units: the file does not say which)') : null);
+      add('Materials', D.materials ? fmt(D.materials) : null);
+      add('Texture pictures', D.pictures ? fmt(D.pictures) + (D.texturePictures ? ': ' + D.texturePictures.map(t => t.says || t.where).join(' | ') : '') : null);
+      add('Animations', D.animations ? fmt(D.animations) + (D.longestAnimationSeconds ? ' (the longest is ' + secsWords(D.longestAnimationSeconds) + ')' : '') : null);
+      add('Skeletons', D.skeletons ? fmt(D.skeletons) + ' (it can be posed)' : null);
+      add('Cameras', D.cameras && D.meshes !== 0 ? fmt(D.cameras) : null);
+      add('Packing', D.packing);
+      add('Its numbers fit its data', D.dataFits && D.dataFits.of ? fmt(D.dataFits.fit) + ' of ' + fmt(D.dataFits.of) + ' lists' : null);
+    }
+    if (r.text) { add('Characters', fmt(r.text.characters)); add('Lines', fmt(r.text.lines)); if (r.text.json) add('JSON', r.text.json.valid === false ? 'not valid JSON' : r.text.json.list != null ? 'a list of ' + fmt(r.text.json.list) : 'fields: ' + r.text.json.fields.join(', ')); }
+    if (r.coverArt) add('Cover art', r.coverArt.says || fmt(r.coverArt.bytes) + ' bytes');
+    if (r.loads) add('Pulls in', fmt(r.loads.count) + ' other file' + (r.loads.count === 1 ? '' : 's') + ': ' + r.loads.list.slice(0, 6).join(' '));
+    add('Bytes', fmt(r.bytes));
+    add('Fingerprint (SHA-256)', r.sha256);
+    return F;
+  }
+  // the colours to show as little squares: the colours used where few, else the palette
+  function swatches(r) { const P = r && r.picture; if (!P) return []; if (P.colours && P.colours.length) return P.colours.filter(c => /^#[0-9a-f]{6}/i.test(c)).slice(0, 64); if (P.palette && P.palette.colours) return P.palette.colours.slice(0, 64); return []; }
+
+  return {VERSION, read, describe, facts, swatches, sniff, typesAgree, MAX_PIXELS};
 });

@@ -156,7 +156,7 @@
     chk('number', null, null, 'its number (#' + (J.number != null ? Number(J.number).toLocaleString('en-GB') : '?') + ') comes from the explorer only: it is the one Doginals list a web page can ask', {oneListOnly: true});
     const used = Object.values(C).filter(c => !c.oneListOnly), vals = used.map(c => c.agrees), nOk = vals.filter(v => v === true).length, nNo = vals.filter(v => v === false).length, nNone = vals.filter(v => v === null).length;
     const ct = J.contentType || null;
-    return {
+    const R = {
       check: 'Doge Cube Provenance Check ' + VERSION,
       verdict: nNo ? nNo + ' of ' + vals.length + ' checks differ: ' + diffs.join(', ') : nOk + ' of ' + vals.length + ' checks agree' + (nNone ? ', ' + nNone + ' could not be made' : ''),
       inscription: {id, number: J.number != null ? J.number : null, block: J.genesis_height != null ? J.genesis_height : null, startedInBlock: W.txs && W.txs[0] ? W.txs[0].block : null,
@@ -169,6 +169,8 @@
       trail: T.steps || [],
       sources: {inscription: o.infoSite || null, secondSite: o.secondSite || null, bytes: o.rawSite || null, file: o.file ? o.fileSite : null, secondCopy: o.file2 ? o.file2Site : null}
     };
+    Object.defineProperty(R, '_file', {value: mine ? {bytes: mine, type: W.contentType || J.contentType, from: 'the file put back together from the transactions that wrote it'} : o.file ? {bytes: o.file, type: J.contentType, from: 'the copy the explorer shows (the whole file was not put back together from the chain)'} : null, enumerable: false});
+    return R;
   }
 
   /* ---------- gathering everything, in the same steps for every host ----------
@@ -243,10 +245,21 @@
     T.steps.reverse();   // (oldest first)
     const F = await files;
     say('done', true);
-    return buildProvenance({id, info: J, infoSite: 'https://thedoginalsexplorer.com', written: W, rawSite: 'https://api.blockchair.com', secondSite: 'https://api.bitcore.io',
+    return addWhatIsInIt(buildProvenance({id, info: J, infoSite: 'https://thedoginalsexplorer.com', written: W, rawSite: 'https://api.blockchair.com', secondSite: 'https://api.bitcore.io',
       file: F[0].status === 'fulfilled' ? F[0].value : null, fileSite: 'https://thedoginalsexplorer.com', file2: F[1].status === 'fulfilled' ? F[1].value : null, file2Site: 'https://cdn.doggy.market',
-      lastBlock, trail: T, heldNow});
+      lastBlock, trail: T, heldNow}), io.media);
   }
+
+  // (15 Nov 2026) what is in the file it proved, read by the Media Reader (media.js) when the host gives it as io.media:
+  // the file put back together from the chain where it could be, else the copy shown (and it says which)
+  async function addWhatIsInIt(R, media) {
+    const f = R && R._file;
+    if (!media || !f || !f.bytes || !f.bytes.length) { if (R && media && f && f.none) R.whatIsInIt = {none: f.none}; return R; }
+    try { const r = await media.read(f.bytes, f.type); r.readFrom = f.from; r.says = media.describe(r); R.whatIsInIt = r; }
+    catch (e) { R.whatIsInIt = {readFrom: f.from, error: 'it could not be read: ' + (e.message || e)}; }
+    return R;
+  }
+
 
   return {VERSION, sha256, hex, fromHex, parseTx, inscriptionStart, inscriptionMore, stepBack, buildProvenance, resolve, gather, TRAIL_MAX, CHAIN_MAX, FILE_MAX};
 });
