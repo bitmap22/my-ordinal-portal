@@ -154,7 +154,7 @@
       <div class="panel">
         <h2>Walk its trail</h2>
         <p class="small" id="walkNote">In Agent Blockhall, find it with the tablet, hold its parcel and press FOLLOW IT BACK to see this trail as a tether from cube to cube.</p>
-        <a class="btn" href="block-cube.html" target="_blank" rel="noopener">Open Agent Blockhall</a>
+        <a class="btn" id="walk" href="block-cube.html" target="_blank" rel="noopener">Open Agent Blockhall</a>
       </div>
     </div>
 
@@ -297,6 +297,7 @@
     const vi = $('viewIt'); vi.textContent = ''; vi.appendChild(document.createTextNode('See it where it’s shown: ')); vi.appendChild(link('ordinals.com', 'https://ordinals.com/inscription/' + I.id));
     vi.appendChild(document.createTextNode(' \u00b7 ')); const wl = el('a', null, 'Watch it for moves'); wl.href = 'watch.html?watch=inscription&value=' + I.id; vi.appendChild(wl);
     vi.appendChild(document.createTextNode(' \u00b7 ')); const rl = el('a', null, 'What it loads'); rl.href = 'recursion-map.html?id=' + I.id; vi.appendChild(rl);
+    if (/^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i.test(I.contentType || '')) { vi.appendChild(document.createTextNode(' \u00b7 ')); const cr = el('a', null, 'What its code asks for'); cr.href = 'code-read.html?id=' + I.id; vi.appendChild(cr); }   // (Code Read: the addresses written in its code)
     if (I.parents.length) { vi.appendChild(document.createTextNode(' \u00b7 ')); const cl = el('a', null, 'Check its parent\u2019s collection'); cl.href = 'collection-check.html?parent=' + I.parents[0]; vi.appendChild(cl); }
     const facts = $('facts'); facts.textContent = '';
     const when = I.time ? new Date(I.time).toLocaleString('en-GB', {timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' UTC' : '–';
@@ -330,6 +331,8 @@
       tr.appendChild(li);
     }
     $('sources').textContent = 'Where each part came from: its details from ' + host(r.sources.inscription) + ', the second ord site was ' + host(r.sources.secondOrdSite) + ', its transactions and their bytes from ' + host(r.sources.transactions) + ', and the file shown from ' + (r.sources.file ? host(r.sources.file) : 'no site (not fetched)') + '. ' + r.check + '.';
+    $('walk').href = 'block-cube.html#find=' + I.id; $('walk').textContent = 'Open it in Agent Blockhall';   // (walks in with it found, ready to hold)
+    $('walkNote').textContent = 'Open it in Agent Blockhall: it walks you in with this inscription found. Hold its parcel and press FOLLOW IT BACK to see this trail as a tether from cube to cube.';
     try { history.replaceState(null, '', location.pathname + '?id=' + I.id); } catch (e) {}
     try { Cite.show('provenance', R, document.getElementById('cite')); } catch (e) {}
     showMedia(R.whatIsInIt);
@@ -345,11 +348,12 @@
   /* ---------- the agent kit: window.agent (the same steps as the Check button; the page says when an agent asked) ---------- */
   const WATCHP = 'https://bitmap22.github.io/my-ordinal-portal/watch.html';
   const GAME = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html', MANIFEST = 'https://bitmap22.github.io/my-ordinal-portal/block-manifest.html';
-  const seeIt = r => ({agentBlockhall: GAME, followBack: 'Walk its trail in 3D in Agent Blockhall: find it with the tablet (search({query: "' + r.inscription.id + '"}) in its agent kit), hold its parcel, then followBack(): the trail shows as a tether from cube to cube.',
+  const seeIt = r => ({agentBlockhall: GAME + '#find=' + r.inscription.id, followBack: 'Walk its trail in 3D in Agent Blockhall: find it with the tablet (search({query: "' + r.inscription.id + '"}) in its agent kit), hold its parcel, then followBack(): the trail shows as a tether from cube to cube.',
     watch: WATCHP + '?watch=inscription&value=' + r.inscription.id + ' tells the moment it moves (the MCP tool: watch({what: "inscription", value})).',
     blockManifest: r.inscription.block != null ? MANIFEST + '?block=' + r.inscription.block + ' lists every transaction in the block it was made in, sorted and checked.' : null,
     recursionMap: 'https://bitmap22.github.io/my-ordinal-portal/recursion-map.html?id=' + r.inscription.id + ' maps everything it loads from the chain, each piece checked (the MCP tool: recursionMap({id})).',
-    collectionCheck: r.inscription.parents.length ? 'https://bitmap22.github.io/my-ordinal-portal/collection-check.html?parent=' + r.inscription.parents[0] + ' proves which pieces are its parent\u2019s real children (the MCP tool: collectionCheck({parent})).' : null});
+    collectionCheck: r.inscription.parents.length ? 'https://bitmap22.github.io/my-ordinal-portal/collection-check.html?parent=' + r.inscription.parents[0] + ' proves which pieces are its parent\u2019s real children (the MCP tool: collectionCheck({parent})).' : null,
+    codeRead: /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i.test(r.inscription.contentType || '') ? 'https://bitmap22.github.io/my-ordinal-portal/code-read.html?id=' + r.inscription.id + ' reads what its code asks for, without running it (the MCP tool: codeRead({id})).' : null});
   const cmds = [
     {name: 'check', does: 'Check where an inscription came from and show it on the page (as the Check button does): a verdict, each check (what it compared, with which site, and whether they agree: true, false, or null when it could not be made), its facts, what is in its file (whatIsInIt: resolution, colours, length, triangles and more, read from the file’s own bytes) and its trail, oldest first. Takes some seconds, longer for one that has moved many times.', args: [{name: 'id', does: 'inscription number (e.g. "#1000") or ID'}],
       run: async ({id}) => { await check(id, true); return Object.assign({}, R, {seeIt: seeIt(R), note: UNTRUSTED}); }},
