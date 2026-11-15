@@ -864,6 +864,7 @@
     .analysis-item:has(.badge.warn) { background: #fffbef; border-color: #f5e3b0; }
     .analysis-item:has(.badge.good) { background: #f1fbf5; border-color: #c6ebd6; }
     .analysis-item:has(.badge.chain) { background: #f7f3ff; border-color: #ddd0fb; }
+    .analysis-item:has(.badge.note) { background: #f1f4f7; border-color: #cdd6df; }
 
     .analysis-item strong {
       display: block;
@@ -899,6 +900,7 @@
     .badge.warn { background: var(--warn); color: #4a3000; }
     .badge.bad { background: var(--bad); }
     .badge.chain { background: var(--chain); }
+    .badge.note { background: #46535f; }
 
     .copybox {
       min-height: 460px;
@@ -1434,6 +1436,11 @@
       let currentMessages = [];
       let currentToken = "";
       let isScanning = false;
+      // (15 Nov 2026) a hidden tab: browsers slow it right down (timers, drawing), so a view scanned while this tab was hidden can
+      // look blank or late when it isn't. Each view notes it (tabHidden), and the results and reports say which ones to run again.
+      let tabWasHidden = false;
+      document.addEventListener("visibilitychange", () => { if (document.hidden && isScanning) tabWasHidden = true; });
+      async function watchTab(run) { tabWasHidden = document.hidden; const result = await run(); if (result && (tabWasHidden || document.hidden)) result.tabHidden = true; return result; }
 
       function setStatus(message) {
         statusText.textContent = message;
@@ -2777,20 +2784,20 @@
         setProgress(0, totalRuntimeRuns, "Runtime scan starting");
         for (let i = 0; i < runtimePlan.length; i += 1) {
           const item = runtimePlan[i];
-          const result = await runRuntimeTarget(item.target, item.mode, i + 1, totalRuntimeRuns);
+          const result = await watchTab(() => runRuntimeTarget(item.target, item.mode, i + 1, totalRuntimeRuns));
           runtimeResults.push(result);
           renderInterimResults(staticResult.checks, runtimeResults, staticResult.dependencies);
           await sleep(120);
         }
         for (let i = 0; i < mobileStressPlan.length; i += 1) {
           const pair = mobileStressPlan[i];
-          const result = await runMobileStressPair(pair, runtimePlan.length + i + 1, totalRuntimeRuns);
+          const result = await watchTab(() => runMobileStressPair(pair, runtimePlan.length + i + 1, totalRuntimeRuns));
           runtimeResults.push(result);
           renderInterimResults(staticResult.checks, runtimeResults, staticResult.dependencies);
           await sleep(120);
         }
         for (let i = 0; i < IPHONE_ZOOM_TARGETS.length; i += 1) {
-          const result = await runIphoneZoomTarget(IPHONE_ZOOM_TARGETS[i], runtimePlan.length + mobileStressPlan.length + i + 1, totalRuntimeRuns);
+          const result = await watchTab(() => runIphoneZoomTarget(IPHONE_ZOOM_TARGETS[i], runtimePlan.length + mobileStressPlan.length + i + 1, totalRuntimeRuns));
           zoomResults.push(result);
           zoomChecks = buildZoomChecks(zoomResults);
           renderInterimResults(staticResult.checks, runtimeResults, staticResult.dependencies, zoomChecks, zoomResults.length);
@@ -2808,14 +2815,15 @@
           staticResult,
           runtimeResults,
           zoomResults,
-          zoomChecks
+          zoomChecks,
+          tabHidden: { views: runtimeResults.concat(zoomResults).filter((result) => result.tabHidden).length, of: runtimeResults.length + zoomResults.length }
         };
         lastScan = scan;
         lastReportText = buildFullReport(scan);
         copyBox.value = lastReportText;
         renderFinalResults(scan);
         setProgress(totalRuntimeRuns, totalRuntimeRuns, "Scan complete");
-        setStatus(allEndpointMisses(runtimeResults).length ? "Full scan complete · off-chain test (on-chain endpoints can't answer here)" : "Full scan complete");
+        setStatus((allEndpointMisses(runtimeResults).length ? "Full scan complete · off-chain test (on-chain endpoints can't answer here)" : "Full scan complete") + (scan.tabHidden.views ? " · this tab was hidden for " + scan.tabHidden.views + " of " + scan.tabHidden.of + " views: run it again with this tab open" : ""));
 
         isScanning = false;
         runFullScanButton.disabled = false;
@@ -2861,6 +2869,8 @@
         (scan.zoomChecks || []).filter((item) => item.level !== "good").forEach((item) => {
           priorityItems.push({ level: item.level, area: item.area, message: item.message, detail: item.detail });
         });
+        const tabHiddenNote = scan.tabHidden && scan.tabHidden.views;
+        if (tabHiddenNote) priorityItems.push({ level: "note", area: "This scan", message: "This tab was hidden for " + scan.tabHidden.views + " of " + scan.tabHidden.of + " views. Browsers slow a hidden tab right down, so those views can look blank or late when they aren't (they're marked \u201ctab hidden\u201d).", detail: "Run the scan again with this tab open and on screen before fixing them." });
         const misses = allEndpointMisses(runtimeResults);
         if (misses.length) {
           const offChainViews = runtimeResults.filter((result) => result.endpointMisses && result.endpointMisses.length).length;
@@ -2877,13 +2887,13 @@
             priorityItems.push({
               level: issue.level,
               area: "Runtime",
-              message: result.target.label + " / " + result.mode + " — " + issue.text,
+              message: result.target.label + " / " + result.mode + " — " + issue.text + (result.tabHidden ? " (tab hidden)" : ""),
               detail: result.target.width + " × " + result.target.height
             });
           });
         });
 
-        const WORST = { bad: 0, warn: 1, chain: 2 };   // (14 Nov 2026) the worst first: critical, then warnings, then off-chain notes
+        const WORST = { note: -1, bad: 0, warn: 1, chain: 2 };   // (14 Nov 2026) the worst first: critical, then warnings, then off-chain notes
         priorityItems.sort((a, b) => (a.level in WORST ? WORST[a.level] : 3) - (b.level in WORST ? WORST[b.level] : 3));
         if (priorityItems.length === 0) {
           const li = document.createElement("li");
@@ -2894,7 +2904,7 @@
           priorityItems.slice(0, 80).forEach((item) => {
             const li = document.createElement("li");
             li.className = "analysis-item";
-            li.innerHTML = "<span class=\"badge " + item.level + "\">" + (item.level === "chain" ? "off-chain" : item.level === "bad" ? "critical" : item.level) + "</span><span><strong>" + escapeHtml(item.area) + "</strong>" + escapeHtml(item.message) + (item.detail ? "<br><small>" + escapeHtml(item.detail) + "</small>" : "") + "</span>";
+            li.innerHTML = "<span class=\"badge " + item.level + "\">" + (item.level === "chain" ? "off-chain" : item.level === "bad" ? "critical" : item.level === "note" ? "tab hidden" : item.level) + "</span><span><strong>" + escapeHtml(item.area) + "</strong>" + escapeHtml(item.message) + (item.detail ? "<br><small>" + escapeHtml(item.detail) + "</small>" : "") + "</span>";
             analysisList.appendChild(li);
           });
         }
@@ -2925,6 +2935,11 @@
           chainList.appendChild(li);
         }
         chainNote.hidden = false;
+      }
+
+      function tabHiddenLines(scan) {   // (a scan run while this tab was hidden: which views to run again)
+        const h = scan.tabHidden; if (!h || !h.views) return [];
+        return ["Tab hidden (check these again):", "- This tab was hidden for " + h.views + " of " + h.of + " views. Browsers slow a hidden tab right down, so those views (marked TAB HIDDEN below) can look blank or late when they aren't. Run the scan again with this tab open and on screen before fixing them.", ""];
       }
 
       function offChainReportLines(scan) {
@@ -2961,6 +2976,7 @@
         const offChainCount = offChainEndpointCount(staticChecks, runtimeResults, deps);
         lines.push("Summary: " + totals.bad + " critical / " + totals.warn + " warnings / " + totals.good + " clear" + (offChainCount ? " / " + offChainCount + " off-chain (expected, not bugs)" : ""));
         lines.push("");
+        lines.push(...tabHiddenLines(scan));
         lines.push(...offChainReportLines(scan));
         lines.push("Options:");
         lines.push("- Offline guard: " + (scan.options.offlineGuard ? "on" : "off"));
@@ -3016,7 +3032,7 @@
         runtimeResults.slice().sort((a, b) => (a.level in RANK ? RANK[a.level] : 4) - (b.level in RANK ? RANK[b.level] : 4)).forEach((result, index) => {
           const target = result.target;
           const last = result.checkpoints[result.checkpoints.length - 1];
-          lines.push((index + 1) + ". [" + levelLabel(result.level) + "] " + target.label + " / " + result.mode + " — " + target.width + " × " + target.height);
+          lines.push((index + 1) + ". [" + levelLabel(result.level) + "] " + target.label + " / " + result.mode + " — " + target.width + " × " + target.height + (result.tabHidden ? " [TAB HIDDEN]" : ""));
           if (result.lifecycle.length > 0) lines.push("   - Lifecycle: " + result.lifecycle.join(", "));
           if (result.sequence) lines.push("   - Mobile sequence: " + result.sequence);
           if (last) {
@@ -3060,6 +3076,7 @@
       function buildErrorsOnlyReport(scan) {
         if (!scan) return "No scan yet. Run Full Scan first.";
         const lines = ["Ordinal View Tester — Errors / Warnings Only", "Generated: " + scan.generatedAt, ""];
+        lines.push(...tabHiddenLines(scan));
         const offChainLines = offChainReportLines(scan);
         lines.push(...offChainLines);
         scan.staticResult.checks.filter((item) => item.level !== "good").forEach((item) => lines.push("[" + levelLabel(item.level) + "] STATIC / " + item.area + " — " + item.message + (item.detail ? " " + item.detail : "")));
@@ -3067,7 +3084,7 @@
         scan.runtimeResults.forEach((result) => {
           const problems = result.issues.filter((issue) => issue.level !== "good" && issue.level !== "chain");
           if (!problems.length && !result.errors.length && !result.consoleErrors.length) return;
-          lines.push("", "[VIEW] " + result.target.label + " / " + result.mode + " — " + result.target.width + " × " + result.target.height);
+          lines.push("", "[VIEW] " + result.target.label + " / " + result.mode + " — " + result.target.width + " × " + result.target.height + (result.tabHidden ? " [TAB HIDDEN]" : ""));
           problems.forEach((issue) => lines.push("- [" + levelLabel(issue.level) + "] " + issue.text));
           result.errors.slice(0,8).forEach((error) => { const payload=error.payload||{}; lines.push("- [RUNTIME] " + (payload.message||"unknown") + " at " + (payload.lineno||0) + ":" + (payload.colno||0)); });
           result.consoleErrors.slice(0,8).forEach((error) => { const payload=error.payload||{}; lines.push("- [CONSOLE] " + (payload.args||[]).join(" | ")); });
