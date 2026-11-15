@@ -316,6 +316,13 @@
   /* ---------- showing it ---------- */
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const host = u => u ? u.replace(/^https:\/\//, '') : 'no site';
+  // the days Daily Data has saved (its index.json, asked once): it keeps each day from 11 Nov 2026
+  let DAYS = null;
+  function savedDays() {
+    if (DAYS) return DAYS;
+    const bases = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/', 'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@daily-data/'];
+    return DAYS = (async () => { for (const b of bases) { try { const r = await fetch(b + 'index.json', {cache: 'no-store'}); if (r.ok) return new Set(((await r.json()).days || []).map(d => d.day)); } catch (e) {} } DAYS = null; return new Set(); })();
+  }
   function show(m) {
     M = m; kind = ''; from = 0;
     const b = m.block;
@@ -325,7 +332,8 @@
     const when = b.time ? new Date(b.time).toLocaleString('en-GB', {timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' UTC' : '–';
     for (const [k, v] of [['Bitmap', b.bitmap], ['Mined', when], ['Mined by', b.minedBy || 'unknown'], ['Transactions', fmt(b.transactions)], ['Fees', fmt(b.totalFees) + ' sats'], ['Hash', b.hash]]) {
       const f = el('div', 'fact'); f.appendChild(el('b', null, k));
-      if (k === 'Mined' && b.time) { const sp = el('span'); const a = el('a', null, v); a.href = 'daily.html?day=' + b.time.slice(0, 10); a.title = 'Daily Data: every block of ' + b.time.slice(0, 10) + ' (UTC)'; sp.appendChild(a); f.appendChild(sp); }
+      if (k === 'Mined' && b.time) { const sp = el('span', null, v), day = b.time.slice(0, 10); f.appendChild(sp);   // (a link to its day in Daily Data, once that day is known to be saved there)
+        savedDays().then(D => { if (M !== m || !D.has(day)) return; const a = el('a', null, v); a.href = 'daily.html?day=' + day; a.title = 'Daily Data: every block of ' + day + ' (UTC)'; sp.textContent = ''; sp.appendChild(a); }).catch(() => {}); }
       else f.appendChild(el('span', k === 'Hash' ? 'hash' : null, v));
       facts.appendChild(f);
     }
@@ -444,7 +452,7 @@
 
   /* ---------- the agent kit: window.agent (the same steps as the buttons; the page says when an agent asked) ---------- */
   const GAME = 'https://bitmap22.github.io/my-ordinal-portal/block-cube.html', PROV = 'https://bitmap22.github.io/my-ordinal-portal/provenance-check.html';
-  const seeIt = h => ({agentBlockhall: GAME, walkIn: 'Walk into block ' + h + ' in 3D in Agent Blockhall: type ' + h + ' into its tablet, or in its agent kit, walkIn({height: ' + h + '}). These kinds are its hall\u2019s shelves.', provenanceCheck: PROV + '?id=<an inscription id from this block> proves where it came from, every step checked.', dailyData: 'https://bitmap22.github.io/my-ordinal-portal/daily.html?day=<the day it was mined> has every block of its day (the MCP tool: dailyData({block: ' + h + '})).', watch: 'https://bitmap22.github.io/my-ordinal-portal/watch.html?watch=kind&value=<a kind> tells you when a new block has that kind (the MCP tool: watch({what: "kind", value})).'});
+  const seeIt = h => ({agentBlockhall: GAME, walkIn: 'Walk into block ' + h + ' in 3D in Agent Blockhall: type ' + h + ' into its tablet, or in its agent kit, walkIn({height: ' + h + '}). These kinds are its hall\u2019s shelves.', provenanceCheck: PROV + '?id=<an inscription id from this block> proves where it came from, every step checked.', dailyData: 'https://bitmap22.github.io/my-ordinal-portal/daily.html?day=<the day it was mined> has every block of its day, if Daily Data has saved that day (it keeps each day from 11 Nov 2026; the MCP tool: dailyData({block: ' + h + '})).', watch: 'https://bitmap22.github.io/my-ordinal-portal/watch.html?watch=kind&value=<a kind> tells you when a new block has that kind (the MCP tool: watch({what: "kind", value})).'});
   const brief = () => M && {manifest: M.manifest, block: M.block, counts: M.counts, checked: Object.assign({}, M.checked, {differences: M.checked.differences.slice(0, 20)}), sources: M.sources, seeIt: seeIt(M.block.height)};
   const need = () => { if (!M) throw new Error('no block read yet: call agent.read({height}) first'); };
   const kindOf = k => { if (k == null || String(k).trim() === '' || String(k).toLowerCase() === 'all') return ''; const n = BM.KIND_NAMES.find(x => x.toLowerCase() === String(k).trim().toLowerCase()); if (!n) throw new Error('kinds are: ' + BM.KIND_NAMES.join(', ')); return n; };
