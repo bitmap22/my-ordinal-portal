@@ -105,6 +105,7 @@
   .checks .t { font-size: 15px; margin-bottom: 4px; } .checks .w { font-size: 13px; color: var(--dim); line-height: 1.45; word-break: break-word; }
   @media (max-width: 760px) { .examples.grid { grid-template-columns: 1fr 1fr; } .kinds { grid-template-columns: 1fr; } }
 </style>
+<script src="../agent-blockhall-mcp/server/site-order.js"></script>   <!-- (the Truth League's order: sites that tell the truth and keep up are asked first) -->
 </head>
 <body>
 <!-- portal-menu: start -->
@@ -227,12 +228,12 @@
   let mpAt = 0;
   async function mpFetch(path, ms, not) {
     const list = MIRRORS.filter(m => m !== not), order = [list.includes(MIRRORS[mpAt]) ? MIRRORS[mpAt] : list[0]].concat(list); let err = null;
-    for (const m of [...new Set(order)]) { try { const r = await fetchT(m + path, ms); if (!not) mpAt = MIRRORS.indexOf(m); return {r, site: m}; } catch (e) { err = e; if (/http 404/.test(String(e))) throw e; } }
+    for (const m of (self.SiteOrder ? SiteOrder.list([...new Set(order)]) : [...new Set(order)])) { try { const r = await fetchT(m + path, ms); if (!not) mpAt = MIRRORS.indexOf(m); return {r, site: m}; } catch (e) { err = e; if (/http 404/.test(String(e))) throw e; } }
     throw err || new Error('no site answered');
   }
   async function ordFetch(path, ms, list) {
     let err = null;
-    for (const b of list || ORD_R) { try { return {r: await fetchT(b + path, ms), site: b}; } catch (e) { err = e; if (b === (list || ORD_R)[0] && /http 404/.test(String(e))) break; } }
+    for (const b of (self.SiteOrder ? SiteOrder.list(list || ORD_R, true) : list || ORD_R)) { try { return {r: await fetchT(b + path, ms), site: b}; } catch (e) { err = e; if (b === (list || ORD_R)[0] && /http 404/.test(String(e))) break; } }
     throw err || new Error('no site answered');
   }
   function makeIo() {

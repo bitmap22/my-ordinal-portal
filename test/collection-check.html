@@ -91,6 +91,7 @@
     td { border: 0; padding: 3px 6px; text-align: left !important; } td:empty { display: none; } td[data-l]::before { content: attr(data-l) ": "; color: var(--orange); } }
   @media (max-width: 420px) { .facts { grid-template-columns: 1fr 1fr; } .fact span { font-size: 13px; } }
 </style>
+<script src="../agent-blockhall-mcp/server/site-order.js"></script>   <!-- (the Truth League's order: sites that tell the truth and keep up are asked first) -->
 </head>
 <body>
 <!-- portal-menu: start -->
@@ -277,7 +278,7 @@
   // that are resting; if a site is slow to answer (2.5 s), the next one is asked too, and the first answer is taken
   let mpAt = 0;
   function mpFetch(path, ms) {
-    const s0 = mpAt++ % MIRRORS.length, order = MIRRORS.map((m, i) => MIRRORS[(s0 + i) % MIRRORS.length]);
+    const s0 = mpAt++ % MIRRORS.length, order = (self.SiteOrder ? SiteOrder.list(MIRRORS.map((m, i) => MIRRORS[(s0 + i) % MIRRORS.length])) : MIRRORS.map((m, i) => MIRRORS[(s0 + i) % MIRRORS.length]));
     return new Promise((resolve, reject) => {
       let i = 0, live = 0, done = false, err = null;
       const next = () => {
@@ -297,7 +298,7 @@
   }
   async function ordFetch(path, ms, list) {
     let err = null;
-    for (const b of list || ORD_R) { try { return {r: await fetchT(b + path, ms), site: b}; } catch (e) { err = e; if (b === (list || ORD_R)[0] && /http 404/.test(String(e))) break; } }
+    for (const b of (self.SiteOrder ? SiteOrder.list(list || ORD_R, true) : list || ORD_R)) { try { return {r: await fetchT(b + path, ms), site: b}; } catch (e) { err = e; if (b === (list || ORD_R)[0] && /http 404/.test(String(e))) break; } }
     throw err || new Error('no site answered');
   }
   // the same steps as the MCP tool: ord's lists from ordinals.com (back-ups if it is down), the second list always from another ord site
