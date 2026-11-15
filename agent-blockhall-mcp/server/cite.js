@@ -105,7 +105,7 @@
     const page = u.pathname.split('/').pop(), tool = Object.keys(TOOLS).find(k => TOOLS[k].page === page); if (!tool) return null;
     let facts = null; try { facts = JSON.parse(unb64(p.get('f') || '')); } catch (e) {}
     const subject = {}; for (const [k, v] of p) if (!['cited', 'fp', 'src', 'f'].includes(k)) subject[k] = v;
-    return {tool, check: TOOLS[tool].name, subject, at: p.get('cited'), fingerprint: p.get('fp'), sources: (p.get('src') || '').split(',').filter(Boolean), facts};
+    return {tool, check: TOOLS[tool].name, subject, at: p.get('cited'), fingerprint: p.get('fp'), sources: (p.get('src') || '').split(',').filter(Boolean), facts, raw: {cited: p.get('cited'), fp: p.get('fp'), src: p.get('src') || '', f: p.get('f') || ''}};
   }
   const sameSubject = (a, b) => canon(Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, String(v)]))) === canon(Object.fromEntries(Object.entries(b || {}).map(([k, v]) => [k, String(v)])));
   const when = at => { const d = new Date(at); return isNaN(d) ? String(at) : d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}) + ', ' + d.toISOString().slice(11, 16) + ' UTC'; };
@@ -133,7 +133,11 @@
   let compared = false;
   function show(tool, r, mount, at) {
     const c = make(tool, r, at); r.cite = c;
-    if (opened && !compared && opened.tool === tool && sameSubject(opened.subject, c.subject)) { compared = true; c.comparedWith = compare(opened, c); c.comparedWith.citedSources = opened.sources; }
+    if (opened && !compared && opened.tool === tool && sameSubject(opened.subject, c.subject)) {
+      compared = true; c.comparedWith = compare(opened, c); c.comparedWith.citedSources = opened.sources;
+      // (the page's address keeps the citation, so reloading it compares again)
+      try { const q = new URLSearchParams(location.search); for (const [k, v] of Object.entries(opened.raw)) q.set(k, v); history.replaceState(null, '', location.pathname + '?' + q.toString().replace(/%2C/g, ',').replace(/%3A/g, ':')); } catch (e) {}
+    }
     if (!mount || typeof document === 'undefined') return c;
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
     mount.textContent = ''; mount.classList.remove('hidden');
