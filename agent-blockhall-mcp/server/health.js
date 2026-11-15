@@ -189,7 +189,28 @@
     throw err || new Error('no record');
   }
 
+  // what it means, in words: only what the answers show (now: a check's answers; sum: summarise() of the record; chain: one chain)
+  const when = iso => { const d = new Date(iso), p = n => String(n).padStart(2, '0'); return d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', timeZone: 'UTC'}) + ', ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ' UTC'; };
+  function findings(now, sum, chain, from) {
+    const out = [], by = new Map(sum && sum.sites ? sum.sites.map(s => [s.site, s]) : []), here = from || 'your browser';
+    for (const s of pick(chain)) {
+      const r = now && now.results.find(x => x.site === s.site), w = by.get(s.site), wk = w && w.week, dy = w && w.day, up = r && (r.state === 'answers' || r.state === 'slow');
+      if (up && r.behind >= 2) out.push({trouble: true, site: s.site, says: s.site + ' is ' + fmt(r.behind) + ' blocks behind, from ' + here + ': it doesn\u2019t know about the newest ' + fmt(r.behind) + ' blocks yet, so its answers about them are out of date.'});
+      if (r && r.sameAs && r.sameAs.same === false) out.push({trouble: true, site: s.site, says: s.site + '\u2019s copy of inscription #0 is not the same as ' + r.sameAs.site + '\u2019s.'});
+      if (r && r.state === 'slow') out.push({trouble: true, site: s.site, says: s.site + ' took ' + fmt(r.ms) + ' ms to answer ' + here + ': the tools ask the next site after 2.5 seconds.'});
+      if (r && !up) out.push({trouble: true, site: s.site, says: s.site + ' is not answering ' + here + ' now (' + r.words + '). The tools ask its back-ups instead' + (s.group === 'Stamps, Counterparty and names' || /only site/.test(s.what) ? ', where there is one.' : '.')});
+      if (up && dy && dy.refused && w.last && w.last.state === 'refused') out.push({trouble: true, site: s.site, says: s.site + ' answers ' + here + ' but refused GitHub\u2019s computers at their last check: a tool running on a server (an MCP tool in the cloud, say) may be refused too, and should ask its copies.'});
+      else if (wk && wk.checks && wk.answered < wk.checks) out.push({trouble: true, site: s.site, says: 'From GitHub\u2019s computers, ' + s.site + ' answered ' + fmt(wk.answered) + ' of ' + fmt(wk.checks) + ' checks this week' + (wk.lastTrouble ? ' (the last time it didn\u2019t: ' + when(wk.lastTrouble.at) + ', ' + wk.lastTrouble.was + ')' : '') + '.'});
+      if (wk && wk.behind && !(up && r.behind >= 2)) out.push({trouble: true, site: s.site, says: 'From GitHub\u2019s computers, ' + s.site + ' was behind in ' + fmt(wk.behind) + ' of ' + fmt(wk.checks) + ' checks this week' + (wk.mostBehind > 0 ? ', at most ' + fmt(wk.mostBehind) + ' blocks' : '') + '.'});
+    }
+    const name = chain && chain !== 'all' ? CHAINS[pick(chain)[0].chain] : null;
+    const asked = now && now.results.some(r => pick(chain).some(s => s.site === r.site));
+    if (asked && !out.length) out.push({trouble: false, says: 'Every ' + (name ? name + ' ' : '') + 'site answered ' + here + ' and was up to date' + (sum && sum.checks ? ', and GitHub\u2019s record shows no trouble' : '') + '.'});
+    if (asked) for (const [c, h] of Object.entries(now.newest || {})) if (!name || CHAINS[c] === name) out.push({trouble: false, says: 'The newest ' + CHAINS[c] + ' block, by at least two sites: ' + fmt(h) + '.'});
+    return out;
+  }
+
   const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE). What each site said is its own answer.';
   const site = name => SITES.find(s => s.site === name);
-  return {VERSION, SITES: SITES.map(({read, ...s}) => s), CHAINS, SLOW_MS, WAIT_MS, KEEP_HOURS, RECORD_URLS, LICENCE, check, probe, judge, words, addToRecord, summarise, record, site};
+  return {VERSION, SITES: SITES.map(({read, ...s}) => s), CHAINS, SLOW_MS, WAIT_MS, KEEP_HOURS, RECORD_URLS, LICENCE, check, probe, judge, words, findings, addToRecord, summarise, record, site};
 });
