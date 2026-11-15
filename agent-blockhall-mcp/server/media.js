@@ -849,11 +849,12 @@
     } else if (r.model) {
       const D = r.model, sz = D.sizeMetres || D.size;
       bits.push(D.format + ' 3D model');
-      if (D.points != null) bits.push(fmt(D.points) + ' points' + (D.triangles != null ? ', ' + fmt(D.triangles) + ' triangle' + (D.triangles === 1 ? '' : 's') : ''));
+      if (D.meshes === 0) bits.push('no shapes in it' + (D.cameras ? ': only ' + fmt(D.cameras) + ' camera' + (D.cameras === 1 ? '' : 's') : '') + (D.nodes ? ' (' + fmt(D.nodes) + ' node' + (D.nodes === 1 ? '' : 's') + ')' : ''));
+      else if (D.points != null) bits.push(fmt(D.points) + ' points' + (D.triangles != null ? ', ' + fmt(D.triangles) + ' triangle' + (D.triangles === 1 ? '' : 's') : ''));
       else if (D.triangles != null) bits.push(fmt(D.triangles) + ' triangle' + (D.triangles === 1 ? '' : 's'));
-      if (D.parts != null) bits.push(fmt(D.parts) + ' part' + (D.parts === 1 ? '' : 's') + (D.meshes != null ? ' in ' + fmt(D.meshes) + ' mesh' + (D.meshes === 1 ? '' : 'es') : ''));
+      if (D.parts && D.meshes) bits.push(fmt(D.parts) + ' part' + (D.parts === 1 ? '' : 's') + (D.meshes != null ? ' in ' + fmt(D.meshes) + ' mesh' + (D.meshes === 1 ? '' : 'es') : ''));
       if (sz) bits.push((+sz.width).toLocaleString('en-GB', {maximumFractionDigits: 3}) + ' × ' + (+sz.height).toLocaleString('en-GB', {maximumFractionDigits: 3}) + ' × ' + (+sz.depth).toLocaleString('en-GB', {maximumFractionDigits: 3}) + (D.sizeMetres ? ' metres' : ' (its own units)'));
-      if (D.materials != null) bits.push(fmt(D.materials) + ' material' + (D.materials === 1 ? '' : 's'));
+      if (D.materials) bits.push(fmt(D.materials) + ' material' + (D.materials === 1 ? '' : 's'));
       if (D.pictures) bits.push(fmt(D.pictures) + ' texture picture' + (D.pictures === 1 ? '' : 's') + (D.texturePictures && D.texturePictures[0] && D.texturePictures[0].picture ? ' (' + D.texturePictures.filter(t => t.picture).map(t => t.picture.width + ' × ' + t.picture.height).slice(0, 3).join(', ') + ')' : ''));
       if (D.animations) bits.push(fmt(D.animations) + ' animation' + (D.animations === 1 ? '' : 's') + (D.longestAnimationSeconds ? ' (longest ' + D.longestAnimationSeconds.toLocaleString('en-GB', {maximumFractionDigits: 2}) + ' s)' : ''));
       if (D.skeletons) bits.push('rigged with ' + fmt(D.skeletons) + ' skeleton' + (D.skeletons === 1 ? '' : 's'));
