@@ -318,6 +318,7 @@ body.room.holding #rx{display:none}
 body.room #rl{display:block;position:fixed;left:50%;top:calc(50% + 16px);transform:translateX(-50%);max-width:88vw;overflow:hidden;text-overflow:ellipsis;font:600 12px/1.3 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;color:#f7efe3;background:rgba(14,9,5,.78);border:1px solid rgba(227,179,65,.35);border-radius:9px;padding:6px 10px;opacity:0;transition:opacity .15s;pointer-events:none;white-space:nowrap;z-index:5}
 body.room #rl.on{opacity:1} body.room #rl.sip{top:auto;bottom:calc(29% + 4px);left:auto;right:3%;transform:none}@media (max-aspect-ratio:7/10){body.room #rl.sip{left:57%;right:auto;transform:translateX(-50%)}}
 body.room #top{transform:scale(.72);transform-origin:0 0;opacity:.82}
+/* (15 Nov 2026) the block number and its words read over the bright shelf signs */body.room #top #tg,body.room #top #h,body.room #top #st{text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,.95),0 0 14px rgba(0,0,0,.8)}
 @media (max-width:760px){body.crewpage.room #top{top:98px}}   /* (inside the together page on a phone: below the players strip and the crew's buttons) */body.room #st,body.room #mn{display:none}
 #rmb{display:none;margin-top:4px;font-size:11px;line-height:1.4;color:#cdbca3}body.room.rmbusy #rmb{display:block}body.room.holding #rl{opacity:0}
 body.room #rh{display:none;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:max-content;max-width:92vw;text-align:center;font:500 11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#cbb9a0;background:rgba(14,9,5,.6);border:1px solid rgba(227,179,65,.18);border-radius:10px;padding:6px 12px;pointer-events:none;z-index:4}
@@ -1444,6 +1445,7 @@ async function rawTxRead(t) {
     else if (l > 1) { const w = words(catB(pushes(s, 1, s.length).filter(x => x[1]).map(x => x[1]))); if (w && !r.msg) r.msg = w; }
   }
   if (t.idx === 0 && isc[0]) r.cbWords = coinbaseWords(isc[0]);
+  r.hex = j.hex || '';   // (kept for checkedRow)
   r.basics = {size: j.size || X.length, ver: j.ver, lock: j.lock_time || 0, nin: j.vin_sz || 0, nout: j.vout_sz || 0, when: j.confirmed ? Date.parse(j.confirmed) / 1000 : 0,
     ins: (j.inputs || []).slice(0, 4).map(i => ({v: i.output_value || 0, a: (i.addresses || [])[0] || '', cb: i.output_index === -1 && !i.prev_hash})),
     outs: (j.outputs || []).slice(0, 4).map(o => ({v: o.value || 0, a: (o.addresses || [])[0] || '', ty: o.script_type || ''}))};
@@ -2256,7 +2258,12 @@ function liveKind(t) {
   return ['transaction', 'TRANSACTIONS', REG_CSS];
 }
 const heatA = (r, a) => feeCss(r).replace('rgb(', 'rgba(').replace(')', ',' + a + ')');
+/* each transaction is told in the feed once: one at the lowest fees drops out of the next block and comes back
+   as others arrive, and that is not news (seen while playing: one "big move" five times in 20 seconds) */
+const FED = new Set();
 function feedTx(t) {
+  if (FED.has(t.id)) return;
+  FED.add(t.id); if (FED.size > 30000) { let k = 0; for (const id of FED) { FED.delete(id); if (++k >= 10000) break; } }
   spawnText(t.id, false);
   const r = ownRate(t), [kn, cat, kc] = liveKind(t);
   feedRow('tx', `<b style="color:${kc}">${kn}</b><span class="cat">${cat}</span><br><span class="fee">${rateWords(r)} · ${vb(t.vsize)} · ${doge(t.fee)}</span>`, null, t.id,
@@ -6725,6 +6732,39 @@ async function mediaRows(u, type) {
   return rows;
 }
 
+/* (15 Nov 2026) CHECKED, against fake data: the transaction's own bytes, read from a second site that is not the one the
+   card's facts came from. Its ID is worked out from those bytes (no site can fake that: the ID is their fingerprint), and
+   the card's inputs, outputs and outputs total are checked against them. A wrong or lying site shows up as a difference. */
+async function txFromBytes(hex) {
+  hex = String(hex || '').trim();
+  if (!/^[0-9a-f]+$/i.test(hex) || hex.length % 2 || hex.length < 120) throw new Error('not a transaction');
+  const u = new Uint8Array(hex.length / 2); for (let i = 0; i < u.length; i++) u[i] = parseInt(hex.substr(i * 2, 2), 16);
+  let p = 4; const vi = () => { const f = u[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += u[p++] * 2 ** (8 * i); return v; };
+  const seg = u[4] === 0 && u[5] === 1; if (seg) p = 6;
+  const a = p, nin = vi(); for (let i = 0; i < nin; i++) { p += 36; const l = vi(); p += l + 4; }
+  const nout = vi(); let sum = 0; for (let i = 0; i < nout; i++) { for (let k = 0; k < 8; k++) sum += u[p + k] * 2 ** (8 * k); p += 8; const l = vi(); p += l; }
+  const b = p; if (seg) for (let i = 0; i < nin; i++) { const k = vi(); for (let j = 0; j < k; j++) { const l = vi(); p += l; } }
+  const lt = p; p += 4; if (p !== u.length) throw new Error('its bytes do not end where they should');
+  const core = new Uint8Array(8 + b - a); core.set(u.subarray(0, 4)); core.set(u.subarray(a, b), 4); core.set(u.subarray(lt, lt + 4), 4 + b - a);
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', await crypto.subtle.digest('SHA-256', core)));
+  return {txid: [...d].reverse().map(x => x.toString(16).padStart(2, '0')).join(''), nin, nout, sum};
+}
+function checkedWords(id, R, want, site, unit) {
+  if (R.txid !== id) return '‼ the bytes ' + site + ' gave are another transaction: do not trust this card';
+  const off = [];
+  if (want.nin != null && want.nin !== R.nin) off.push(fmt(R.nin) + ' in (the card says ' + fmt(want.nin) + ')');
+  if (want.nout != null && want.nout !== R.nout) off.push(fmt(R.nout) + ' out (the card says ' + fmt(want.nout) + ')');
+  if (want.sum != null && want.sum !== R.sum) off.push('outputs total ' + unit(R.sum) + ' (the card says ' + unit(want.sum) + ')');
+  return off.length ? '‼ its own bytes, from ' + site + ', differ: ' + off.join(' · ')
+    : '✓ its ID worked out from its own bytes, read from ' + site + ' · its ins, outs and outputs total agree';
+}
+async function checkedRow(t, tx) {
+  const outs = tx.outputs || [], want = {nin: tx.inputs_truncated ? null : (tx.inputs || []).length,
+    nout: tx.outputs_truncated ? null : outs.length,
+    sum: tx.outputs_truncated ? null : tx.total_out_satoshis != null ? +tx.total_out_satoshis : outs.reduce((a, o) => a + (+o.satoshis || 0), 0)};
+  try { const r = await rawTxRead(t); if (r && r.hex) return [['checked', checkedWords(t.id, await txFromBytes(r.hex), want, 'api.blockcypher.com', doge)]]; } catch (e) {}
+  return [['checked', 'not checked this time: the second site did not answer']];
+}
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
   t._held = [];
@@ -6744,6 +6784,7 @@ async function heldInfo(t) {
     if (tx.block_height >= 0 && tx.time) rows.push(['confirmed', when(tx.time)]);
     show(rows);
     heldSized(t, tx.fee_satoshis != null ? +tx.fee_satoshis : tx.total_in_satoshis != null && tx.total_out_satoshis != null ? tx.total_in_satoshis - tx.total_out_satoshis : -1, tx.size, cb, still());
+    try { show(await checkedRow(t, tx)); } catch (e) {}   // (against fake data: see checkedRow)
   } else try {   // the explorer has no copy (block 0's coinbase is one): BlockCypher's
     raw = await rawTxRead(t); const b = raw && raw.basics;
     if (b) {
@@ -9722,5 +9763,10 @@ window.AgentKit = window.AgentKit || (() => {
   else if (PAINT) { bar.insertBefore(b, document.getElementById('helpb')); document.body.append(p); } else document.body.append(b, p);
 })();</script>
 <!-- portal-menu: end -->
+<script>
+/* (15 Nov 2026) a #find link pasted into a game that is already open: only the part after # changes, so the page does
+   not load again and the link did nothing. Now it loads again, and the link walks you in as it does from outside. */
+addEventListener('hashchange', () => { if (/^#find=[0-9a-f]{64}(?:i\d+)?$/i.test(location.hash)) location.reload(); });
+</script>
 </body>
 </html>
