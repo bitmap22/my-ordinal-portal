@@ -1954,7 +1954,12 @@
           "if(window.visualViewport){window.visualViewport.addEventListener('resize',function(){clearTimeout(window.__ordinalVVTimer);window.__ordinalVVTimer=setTimeout(function(){collectCheckpoint('visual-viewport-resize');},90);});}\n" +
           "window.addEventListener('message',function(event){var data=event.data;if(!data||data.__ordinalTesterCommand!==true||data.token!==TOKEN)return;if(data.command==='checkpoint')collectCheckpoint(data.phase||'command');if(data.command==='orientationchange'){try{window.dispatchEvent(new Event('orientationchange'));}catch(error){}setTimeout(function(){collectCheckpoint(data.phase||'orientationchange');},80);}if(data.command==='zoomprobe'){try{runZoomCheck();}catch(error){send('zoom-failed',{message:stringValue(error&&error.message?error.message:error)});}}});\n" +
           "send('lifecycle',{name:'telemetry-installed'});\n" +
-          "CHECKPOINTS.forEach(function(delay){setTimeout(function(){collectCheckpoint(delay);},delay);});\n" +
+          // (15 Nov 2026) the first look (0) when the page has been read and is about to draw its first frame, not a timer set before
+          // the page's own content (the browser can pause reading the page and let that timer come first, so a fine page looked blank)
+          "var firstDone=false;function firstLook(){if(firstDone)return;firstDone=true;collectCheckpoint(0);}\n" +
+          "function whenRead(){try{requestAnimationFrame(firstLook);}catch(error){}setTimeout(firstLook,250);}\n" +
+          "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',whenRead);else whenRead();\n" +
+          "CHECKPOINTS.forEach(function(delay){if(delay===0)return;setTimeout(function(){collectCheckpoint(delay);},delay);});\n" +
           "})();<\/script>";
       }
 
@@ -2418,10 +2423,10 @@
         const first = result.checkpoints.find((item) => item.delay === 0) || result.checkpoints[0];
         const last = result.checkpoints[result.checkpoints.length - 1];
         if (first && first.visibleCount <= 0) {
-          issue("bad", "0ms checkpoint found no visible elements. First-frame/social preview may be blank." + knockOn);
+          issue("bad", "First-frame checkpoint (0ms, as the page first draws) found no visible elements. First-frame/social preview may be blank." + knockOn);
         }
         if (first && first.bodyTextLength === 0 && (!first.canvases || first.canvases.length === 0) && (!first.media || first.media.length === 0)) {
-          issue("warn", "0ms checkpoint found no visible text, canvas, image, video, or SVG signal." + knockOn);
+          issue("warn", "First-frame checkpoint (0ms, as the page first draws) found no visible text, canvas, image, video, or SVG signal." + knockOn);
         }
         if (last && last.visibleCount <= 0) {
           issue("bad", "Final checkpoint found no visible elements." + knockOn);
@@ -2995,7 +3000,7 @@
         lines.push("- Offline guard: " + (scan.options.offlineGuard ? "on" : "off"));
         lines.push("- Safe-zone overlay: " + (scan.options.safeOverlay ? "on" : "off"));
         lines.push("- Mobile live rotation/viewport stress: " + (scan.options.mobileStress ? "on" : "off"));
-        lines.push("- Runtime checkpoints: " + scan.options.checkpoints.join("ms, ") + "ms");
+        lines.push("- Runtime checkpoints: " + scan.options.checkpoints.join("ms, ") + "ms (0ms is taken when the page has been read and first draws)");
         lines.push("");
 
         lines.push("Source Size:");
