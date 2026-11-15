@@ -172,6 +172,7 @@
       <ul class="plain" id="extra"></ul>
     </div>
 
+    <div class="panel hidden" id="cite"></div>
     <div class="row2">
       <div class="panel">
         <h2>Take it with you</h2>
@@ -225,7 +226,7 @@
 
   <div class="panel small">
     <h2>For AI agents</h2>
-    <p>In this page: <code>await window.agent.help()</code>, then <code>agent.check({parent})</code>, <code>agent.children({filter, from, limit})</code>, <code>agent.child({id})</code>, <code>agent.list({ids})</code> and <code>agent.see()</code>. Where the browser has WebMCP, the same commands are tools named <code>collection_*</code>. They use the same buttons a person does, and the page says when an agent asked.</p>
+    <p>In this page: <code>await window.agent.help()</code>, then <code>agent.check({parent})</code>, <code>agent.children({filter, from, limit})</code>, <code>agent.child({id})</code>, <code>agent.list({ids})</code> and <code>agent.see()</code>. Where the browser has WebMCP, the same commands are tools named <code>collection_*</code>. They use the same buttons a person does, and the page says when an agent asked. Each answer carries <code>cite</code>: a link to cite the check, holding when it was made, which sites it asked, its main facts and a fingerprint; opening the link makes the check again and says whether it is the same, or what changed.</p>
     <p>The bigger app is <a href="block-cube.html">Agent Blockhall</a>: a parent with children has a gallery room there. The <a href="provenance-check.html">Provenance Check</a> proves where any one piece came from, and <a href="watch.html">Watch</a> tells the moment a parent moves (a new child is made by spending it).</p>
     <p>Without a browser: the free <a href="../agent-blockhall-mcp/README.md">Agent Blockhall MCP tool</a> has the same check as its <code>collectionCheck</code> tool. The reader is one file, <a href="../agent-blockhall-mcp/server/collection.js">collection.js</a>, shared by this page and the tool. More in <a href="llms.txt">llms.txt</a>.</p>
   </div>
@@ -241,6 +242,7 @@
 
 <script src="../agent-blockhall-mcp/server/provenance.js"></script>
 <script src="../agent-blockhall-mcp/server/collection.js"></script>
+<script src="../agent-blockhall-mcp/server/cite.js"></script>
 <script>
 'use strict';
 (() => {
@@ -365,6 +367,7 @@
     else { $('stop').classList.add('hidden'); $('carry').classList.remove('hidden'); }
     show();
     const r = report();
+    try { const c = Object.assign({}, r, {allIds: RUN.list.map(x => x.id)}); Cite.show('collection', c, document.getElementById('cite')); RUN.cite = c.cite; } catch (e) {}
     say((byAgent ? 'An AI agent checked' : 'Checked') + ' the children of #' + fmt(RUN.parent.number) + ': ' + r.verdict + (stopAsked && !T.reached && !T.lost && !T.error ? ' (stopped: press Carry on to go on)' : '') + '.');
   }
   const report = opts => CC.report(RUN, Object.assign({filter: VIEW.filter, from: VIEW.from, limit: perPage()}, opts || {}));
@@ -508,7 +511,7 @@
   const until = async (cond, ms) => { const t = Date.now() + ms; while (!cond() && Date.now() < t) await sleep(300); };
   const cmds = [
     {name: 'check', does: 'Check which pieces are a parent\'s real children and show it on the page (as the Check button does). Waits up to `wait` seconds (default 90): a big collection can take some minutes, and the answer says how far it got (children "not reached yet"). Returns the verdict, counts, the parent\'s trail so far and the first children (newest first).', args: [{name: 'parent', does: 'the parent inscription\'s number (e.g. "#126744012") or ID'}, {name: 'wait', does: 'seconds to wait for it to finish (default 90, at most 600)', optional: true}],
-      run: async ({parent, wait}) => { let err = null; const p = check(parent, true); p.catch(e => { err = e; }); await sleep(50); await until(() => !busy || err, Math.min(600, Math.max(5, +wait || 90)) * 1000); if (err) throw err; return reading() || short1(report({limit: 25})); }},
+      run: async ({parent, wait}) => { let err = null; const p = check(parent, true); p.catch(e => { err = e; }); await sleep(50); await until(() => !busy || err, Math.min(600, Math.max(5, +wait || 90)) * 1000); if (err) throw err; const o = reading() || short1(report({limit: 25})); if (o && typeof o === 'object' && RUN && RUN.cite && !busy) o.cite = RUN.cite; return o; }},
     {name: 'children', does: 'The children checked so far, newest first, with each one\'s three checks (listedTwice, namesParent, parentSpent: true, false, or null when not checked yet), proven and why.', args: [{name: 'filter', does: 'all, proven, notProven or notReached (default all)', optional: true}, {name: 'from', does: 'where to start (default 0)', optional: true}, {name: 'limit', does: 'how many (default 100, at most 500)', optional: true}],
       run: ({filter, from, limit}) => { const w = reading(); if (w) return w; needRun(); return report({filter: filter || 'all', from: +from || 0, limit: +limit || 100}); }},
     {name: 'child', does: 'One piece of the collection being checked: its three checks, proven and why.', args: [{name: 'id', does: 'the piece\'s inscription ID or number'}],
