@@ -8,7 +8,9 @@ const H = require('../../agent-blockhall-mcp/server/health.js');
   const dir = process.argv[2] || 'health';
   let rec = null;
   try { rec = JSON.parse(fs.readFileSync(path.join(dir, 'week.json'), 'utf8')); } catch (e) { console.log('No record yet: starting one.'); }
-  const c = await H.check({from: 'GitHub\'s computers'});
+  // (it says who is asking, as the MCP tool does: some sites refuse an ask that gives no name, which would not be a fair test)
+  const ua = 'agent-blockhall-source-health/' + H.VERSION + ' (+https://bitmap22.github.io/my-ordinal-portal/source-health.html)';
+  const c = await H.check({from: 'GitHub\'s computers', fetch: (u, init) => fetch(u, Object.assign({}, init, {headers: {'User-Agent': ua}}))});
   rec = H.addToRecord(rec, c);
   fs.mkdirSync(dir, {recursive: true});
   fs.writeFileSync(path.join(dir, 'week.json'), JSON.stringify(rec));
