@@ -37,7 +37,7 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 
 ### For Dogecoin: Doge Cube's tools
 
-[Doge Cube](https://bitmap22.github.io/my-ordinal-portal/doge-cube.html) is Agent Blockhall's Dogecoin twin. These four tools are the same tools for Dogecoin and its Doginals. They read the same files as the portal's Doge pages.
+[Doge Cube](https://bitmap22.github.io/my-ordinal-portal/doge-cube.html) is Agent Blockhall's Dogecoin twin. These five tools are the same tools for Dogecoin and its Doginals. They read the same files as the portal's Doge pages.
 
 | Tool | What it gives |
 | --- | --- |
@@ -48,6 +48,10 @@ Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No key
 | `dogeDailyData` | Doge Daily Data, made each night by GitHub: every Dogecoin block of a UTC day, with its hash checked from its own header and on Bitcore, its transaction list proved by its header, its size, fees, who mined it (where the coinbase names a pool) and its Doginals by file type |
 
 They read thedoginalsexplorer.com (the one Doginals list), Bitcore, Blockchair (a transaction's own bytes) and Doggy Market's copy of each file, at the pace each site says it allows.
+
+### Each tool's page on the portal
+
+The same checks, for people, with the same readers: `blockManifest`: [Block Manifest](https://bitmap22.github.io/my-ordinal-portal/block-manifest.html), `provenanceCheck`: [Provenance Check](https://bitmap22.github.io/my-ordinal-portal/provenance-check.html), `collectionCheck`: [Collection Check](https://bitmap22.github.io/my-ordinal-portal/collection-check.html), `recursionMap`: [Recursion Map](https://bitmap22.github.io/my-ordinal-portal/recursion-map.html), `secondOpinion`: [Second Opinion](https://bitmap22.github.io/my-ordinal-portal/second-opinion.html), `sourceHealth`: [Source Health](https://bitmap22.github.io/my-ordinal-portal/source-health.html), `truthLeague`: [Truth League](https://bitmap22.github.io/my-ordinal-portal/truth-league.html), `stuckTx`: [Stuck Transaction Doctor](https://bitmap22.github.io/my-ordinal-portal/stuck-transaction.html), `codeRead`: [Code Read](https://bitmap22.github.io/my-ordinal-portal/code-read.html), `runeProof`: [Rune Proof](https://bitmap22.github.io/my-ordinal-portal/rune-proof.html), `watch`: [Watch](https://bitmap22.github.io/my-ordinal-portal/watch.html), `dailyData`: [Daily Data](https://bitmap22.github.io/my-ordinal-portal/daily.html), `dogeBlockManifest`: [Doge Block Manifest](https://bitmap22.github.io/my-ordinal-portal/doge-block-manifest.html), `dogeProvenanceCheck`: [Doge Provenance Check](https://bitmap22.github.io/my-ordinal-portal/doge-provenance-check.html), `dogeCollectionCheck`: [Doge Collection Check](https://bitmap22.github.io/my-ordinal-portal/doge-collection-check.html), `dogeWatch`: [Doge Watch](https://bitmap22.github.io/my-ordinal-portal/doge-watch.html), `dogeDailyData`: [Doge Daily Data](https://bitmap22.github.io/my-ordinal-portal/doge-daily.html). `about` gives this list too (`pages`).
 
 Trust: `feeAdvice` keeps score of itself, and every `chain`, `block` and `inscription` answer is checked against a second, separate site and says whether they agree (`checked.agrees`). `blockManifest` checks every item: each transaction's id and size are worked out from the block's own bytes and matched with a second site's list, its kinds are read twice (by this tool and by ordpool.space's tags), and its inscriptions are matched with ordinals.com's list. Its `sources` say which site gave each part. `provenanceCheck` gives a verdict and each check, with what it compared, against which site, and whether they agree. `collectionCheck` gives each child's three checks (`true`, `false`, or `null` when not reached yet) and why.
 

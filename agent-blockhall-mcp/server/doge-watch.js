@@ -112,7 +112,7 @@
       return {state: {tip, hash: lastHash}, events: ev};
     }
     if (w.what === 'inscription') {
-      const [t, v] = String(s.satpoint).split(':'), links = {dogeProvenanceCheck: PROV + '?id=' + w.value, dogeCube: GAME + ' (hold its parcel, then FOLLOW IT BACK)'};
+      const [t, v] = String(s.satpoint).split(':'), links = {dogeProvenanceCheck: PROV + '?id=' + w.value, dogeCube: GAME + (/^[0-9a-f]{64}i\d+$/.test(String(w.value)) ? '#find=' + w.value + ' (walks in with it found: hold its parcel, then FOLLOW IT BACK)' : ' (hold its parcel, then FOLLOW IT BACK)')};
       const C = await io.btc('/tx/' + t + '/coins'), out = (C.outputs || []).find(c => c.mintIndex === +v);
       if (out && out.spentTxid && out.spentTxid !== s.spentBy) {
         const conf = out.spentHeight > 0;

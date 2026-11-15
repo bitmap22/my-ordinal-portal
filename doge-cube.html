@@ -6739,7 +6739,11 @@ async function checkedRow(t, tx) {
     nout: tx.outputs_truncated ? null : outs.length,
     sum: tx.outputs_truncated ? null : tx.total_out_satoshis != null ? +tx.total_out_satoshis : outs.reduce((a, o) => a + (+o.satoshis || 0), 0)};
   try { const r = await rawTxRead(t); if (r && r.hex) return [['checked', checkedWords(t.id, await txFromBytes(r.hex), want, 'api.blockcypher.com', doge)]]; } catch (e) {}
-  return [['checked', 'not checked this time: the second site did not answer']];
+  try {   // (BlockCypher didn't answer: Blockchair's copy of its bytes, as the Doge Block Manifest reads them)
+    const j = await dj(BCR + '/raw/transaction/' + t.id, 20000), h = j && j.data && j.data[t.id] && j.data[t.id].raw_transaction;
+    if (h) return [['checked', checkedWords(t.id, await txFromBytes(h), want, 'api.blockchair.com', doge)]];
+  } catch (e) {}
+  return [['checked', 'not checked this time: the second sites did not answer']];
 }
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
@@ -8916,7 +8920,7 @@ window.AgentKit = window.AgentKit || (() => {
     const want0 = h != null ? +h : null, wasLive = want0 == null && !inRoom() && mode === 'live';
     await roomEnter(want0 != null ? want0 : undefined);
     await until(() => roomReady() && !cmOn(room.at) && (want0 == null || inHall(room.at, want0)), 60000);
-    const o = {ok: roomReady() && (want0 == null || (inRoom() && room.at.h === want0)), where: roomInfo() && roomInfo().in, ready: roomReady()};
+    const o = {ok: roomReady() && (want0 == null || (inRoom() && inHall(room.at, want0))), where: roomInfo() && roomInfo().in, ready: roomReady()};   // (a hall holds several blocks: in it is right)
     if (!o.ready) { o.error = 'the hall is not built yet'; o.building = {says: hallProgText(room.at), note: 'what players see under the block number while they wait: a busy block\'s hall takes minutes (its blocks, then its inscriptions\' files, within the explorer\'s 300 units a minute). Call walkIn() again, or see(), to check'}; }
     if (wasLive) o.note = 'the block on show was the next one, not mined yet: only mined blocks have halls, so you walked into the newest one; its front door leads to the common room';
     return o;
@@ -9127,7 +9131,7 @@ window.AgentKit = window.AgentKit || (() => {
         const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search.', run: () => { $('src').click(); return {ok: true}; }},
     {name: 'controls', ro: true, does: 'The list a person sees behind the i button (top left, on a computer): the buttons and keys for where you are now, and how to: staying safe, who is who (people, AI agents, NPCs), muting, the common room and the block halls. You play with these kit tools, not keys.', args: [{name: 'page', does: '"keys" (the default) or "how to"'}],
-      run: ({page}) => { const how = /how/i.test(String(page || '')), D = ciData(how ? 'how' : 'keys'); return {ok: true, where: D.where, page: how ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG, followOnX: CI_X}; }},
+      run: ({page}) => { const how = /how/i.test(String(page || '')), D = ciData(how ? 'how' : 'keys'); return {ok: true, where: D.where, page: how ? 'how to' : 'buttons and keys', sections: D.sections.map(s => Object.assign({title: s.t}, s.rows ? {rows: s.rows.map(([k, d]) => ({what: k.replace(/\[([^\]]+)\]/g, '$1'), does: d.replace(/\[([^\]]+)\]/g, '$1')}))} : {}, s.p ? {text: s.p.map(t => t.replace(/\[([^\]]+)\]/g, '$1'))} : {}, s.warn ? {warning: s.warn} : {})), forAgents: 'you act with the kit tools (look, goTo, use, ...), not keys or the mouse', blog: CI_BLOG, bitcoinTwin: CI_AB, followOnX: CI_X}; }},
     {name: 'links', ro: true, does: 'The links a player sees on the card of the parcel you hold (or have open on the cube): its Doge Provenance Check and Doge Watch pages (a Doginal), its block\'s Doge Block Manifest, and a link that brings anyone straight back to this parcel.', run: () => { const t = room && room.held ? room.held.it.t : sel; if (!t) return {ok: false, error: 'hold a parcel (or open one on the cube) first'}; const L = cardLinkOf(t); return Object.assign({ok: true}, L, {note: 'the tools\' pages are relative to this page (https://bitmap22.github.io/my-ordinal-portal/)'}); }},
     {name: 'credits', ro: true, does: 'Who Doge Cube credits on its two plaques, as a player reads them: in block 0\'s hall (in front of the 88 DOGE case), Dogecoin, made by Billy Markus and Jackson Palmer; in the hall with block 4,609,723 (the first Doginal, inscription #0), Doginals, made by apezord, with the link to the Doginals code on GitHub (apezord\'s own work, so a link, not a copy).',
       run: () => ({ok: true, plaques: [{where: "block 0's hall, on a small stand " + CRED.gen.where, says: CRED.gen.says}, {where: 'the hall with block ' + fmtN(DG0_H) + ', on a small stand ' + CRED.dg.where, says: CRED.dg.says, firstDoginal: {inscription: CRED_DG_ID, number: 0, block: DG0_H}, link: CRED_URL, note: 'a person clicks it, or presses E, for the link: the Doginals code is apezord\'s own work, so read it on GitHub'}]})},

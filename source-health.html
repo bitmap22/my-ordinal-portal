@@ -177,7 +177,7 @@
 
   <footer>
     Free, with no keys or accounts. One small ask per site when the page opens, and again only when you press Check again (at most once every 30 seconds).<br>
-    <a href="index.html">Back to the Ordinal Portal</a> · by bitmap22 · <a href="https://x.com/BitmapPlotz" target="_blank" rel="me noopener noreferrer">@BitmapPlotz</a> on X<br>
+    <a href="index.html">Back to the Ordinal Portal</a> · <a href="block-cube.html">Agent Blockhall</a> · <a href="doge-cube.html">Doge Cube</a> · by bitmap22 · <a href="https://x.com/BitmapPlotz" target="_blank" rel="me noopener noreferrer">@BitmapPlotz</a> on X<br>
     © 2026 bitmap22. All rights reserved. Free to use in your browser, under the <a href="https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE">Ordinal Portal's licence</a>. What each site says is its own answer. Not made by or affiliated with any of the sites it asks.
   </footer>
 </div>
@@ -205,6 +205,7 @@
 
   /* ---------- asking ---------- */
   async function checkNow(agent) {
+    if (busy && agent) { for (let i = 0; i < 120 && busy; i++) await new Promise(r => setTimeout(r, 500)); if (!busy) return; }   // (an agent asking while the page checks: wait for that check, and answer with it)
     if (busy) throw new Error('already checking: wait for it to finish');
     const wait = 30000 - (Date.now() - last);
     if (last && wait > 0) throw new Error('checked ' + Math.round((Date.now() - last) / 1000) + ' seconds ago: to be gentle with the sites, check again in ' + Math.ceil(wait / 1000) + ' seconds');
@@ -303,7 +304,8 @@
   const pickChain = c => !c || c === 'all' ? null : /^d/i.test(c) ? 'doge' : 'bitcoin';
   const cmds = [
     {name: 'check', does: 'Ask every data site the portal\'s tools read one small thing, now, from this browser (at most once every 30 seconds), and show it on the page. Returns, for each site: state (answers, slow, refused, error, no answer or wrong answer), ms, what it says (most: the newest block\'s height), how many blocks behind the others it is, upToDate, and the same in words; the newest block on each chain; counts; and findings (what it means, in words).', args: [{name: 'chain', does: 'bitcoin, doge or all (the default)'}],
-      run: async ({chain: c}) => { const k = pickChain(c); if (k && k !== chain) setChain(k); await checkNow(true); const f = all().findings; return {at: NOW.at, from: 'this browser', newest: k ? {[k]: NOW.newest[k]} : NOW.newest, counts: k ? countOf(NOW.results.filter(r => r.chain === k)) : NOW.counts, results: NOW.results.filter(r => !k || r.chain === k), findings: k ? f[k] : f, cite: Cite.make('health', {chain: k || chain, results: NOW.results.filter(r => r.chain === (k || chain))}, NOW.at), note: NOTE}; }},
+      run: async ({chain: c}) => { const k = pickChain(c); if (k && k !== chain) setChain(k); await checkNow(true); const f = all().findings; return {at: NOW.at, from: 'this browser', newest: k ? {[k]: NOW.newest[k]} : NOW.newest, counts: k ? countOf(NOW.results.filter(r => r.chain === k)) : NOW.counts, results: NOW.results.filter(r => !k || r.chain === k), findings: k ? f[k] : f, cite: Cite.make('health', {chain: k || chain, results: NOW.results.filter(r => r.chain === (k || chain))}, NOW.at),
+          seeIt: {truthLeague: PORTAL + 'truth-league.html says which of these sites tell the truth, against blocks proved from their own bytes (the MCP tool: truthLeague()).', secondOpinion: PORTAL + 'second-opinion.html checks one answer against several sites.', blockManifest: PORTAL + 'block-manifest.html checks a whole block.', provenanceCheck: PORTAL + 'provenance-check.html checks an inscription.', agentBlockhall: GAME, dogeCube: PORTAL + 'doge-cube.html'}, note: NOTE}; }},
     {name: 'record', does: 'What GitHub\'s computers found, asking every site about once an hour: for each site, its last day and last week (checks, answered and as a percentage, typical speed, slow, refused, no answer, errors, times behind and the most blocks behind, and the last trouble), and its last check. Give a site for its every hourly check this week.', args: [{name: 'chain', does: 'bitcoin, doge or all (the default)'}, {name: 'site', does: 'one site, e.g. ordinals.com (optional)'}],
       run: async ({chain: c, site}) => { if (!REC) await loadRecord(); if (!REC) throw new Error('GitHub\'s record could not be read: ' + recErr); const k = pickChain(c), name = site ? String(site).replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '') : null;
         if (name && !SH.site(name)) throw new Error('no such site: the sites are ' + SH.SITES.map(s => s.site).join(', '));

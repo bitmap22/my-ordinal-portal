@@ -67,8 +67,8 @@
   // double SHA-256 of these 80 bytes, merge-mined (AuxPoW) or not; its proof of work is checked differently (Scrypt), and is not
   // what names it.
   function headerHash(f) {
-    const hdr = catB([le32(+f.version), revBytes(f.previous), revBytes(f.merkle_root), le32(+f.time), revBytes(String(f.bits).padStart(8, '0')), le32(+f.nonce)]);
-    if (hdr.length !== 80) throw new Error('the header is not 80 bytes');
+    const hdr = catB([le32(+f.version), revBytes(f.previous || '0'.repeat(64)), revBytes(f.merkle_root), le32(+f.time), revBytes(String(f.bits).padStart(8, '0')), le32(+f.nonce)]);
+    if (hdr.length !== 80) throw new Error('the header is not 80 bytes');   // (block 0 has no block before it: 32 zero bytes there, as the chain has them)
     return hashHex(hdr);
   }
   function merkleRoot(ids) {
