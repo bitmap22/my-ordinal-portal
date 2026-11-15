@@ -7,12 +7,16 @@ on:
   schedule:
     # GitHub starts this repo's timed jobs late, sometimes by hours or not at all (15 Nov 2026: this one's 00:20 start had not
     # come by 03:50, and Rare sats ran 40 minutes to 5 hours late). So it is asked every hour from 00:20 to 09:20 UTC, and the
-    # first step skips it if the day before is already saved: the day is made once, by whichever start comes first.
+    # first step skips it if the day before is already saved: the day is made once, by whichever start comes first. The
+    # keeper (keeper.yml) also starts it on pushes to main when the day before isn't saved.
     - cron: '20 0-9 * * *'
   workflow_dispatch:
     inputs:
       day:
         description: 'The UTC day to make (YYYY-MM-DD). Leave empty for yesterday.'
+        required: false
+      onlyIfMissing:
+        description: 'yes: only make the day before if it is not saved yet (the keeper uses this). Leave empty to always make it.'
         required: false
 
 permissions:
@@ -33,7 +37,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           DAY="$(date -u -d yesterday +%F)"
-          if [ "${{ github.event_name }}" = "schedule" ] && gh api "repos/${GITHUB_REPOSITORY}/contents/days/$DAY.json?ref=daily-data" --silent 2>/dev/null; then
+          if { [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.onlyIfMissing }}" = "yes" ]; } && gh api "repos/${GITHUB_REPOSITORY}/contents/days/$DAY.json?ref=daily-data" --silent 2>/dev/null; then
             echo "go=false" >> "$GITHUB_OUTPUT"; echo "$DAY is already saved: nothing to do."
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
