@@ -59,7 +59,8 @@
     for (const k of stops) out.push(reason('where it came from', 'stop', 'Proven wrong: ' + (PROVEN[k] ? PROVEN[k][2] : k) + ' (checked: ' + (C[k].what || 'checked') + (C[k].against ? ', against ' + C[k].against : '') + ').', {check: k, from: tool}));
     for (const k of cares) out.push(reason('where it came from', 'care', 'Two sites differ on ' + (PROVEN[k] ? PROVEN[k][2] : k) + ' (' + (C[k].what || 'checked') + ').', {check: k, from: tool}));
     for (const k of unknown) out.push(reason('where it came from', 'unknown', 'Could not be checked this time: ' + (PROVEN[k] ? PROVEN[k][1] : k) + (C[k].what ? ' (' + C[k].what + ')' : '') + '.', {check: k, from: tool}));
-    if (!stops.length && ok.length) out.unshift(reason('where it came from', 'ok', 'Proven from the chain’s own bytes: ' + ok.map(k => PROVEN[k] ? PROVEN[k][1] : k).join('; ') + '.', {from: tool, checks: ok}));
+    const okChain = ok.filter(k => !PROVEN[k] || PROVEN[k][0] === 'stop'), okSites = ok.filter(k => PROVEN[k] && PROVEN[k][0] === 'care');
+    if (!stops.length && ok.length) out.unshift(reason('where it came from', 'ok', (okChain.length ? 'Proven from the chain’s own bytes: ' + okChain.map(k => PROVEN[k] ? PROVEN[k][1] : k).join('; ') + '.' : '') + (okSites.length ? (okChain.length ? ' ' : '') + 'A second site agrees on ' + okSites.map(k => PROVEN[k][2]).join(' and ') + '.' : ''), {from: tool, checks: ok}));
     return out;
   }
   function fromSeller(P, seller) {
