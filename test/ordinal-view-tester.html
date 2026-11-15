@@ -1436,11 +1436,24 @@
       let currentMessages = [];
       let currentToken = "";
       let isScanning = false;
-      // (15 Nov 2026) a hidden tab: browsers slow it right down (timers, drawing), so a view scanned while this tab was hidden can
-      // look blank or late when it isn't. Each view notes it (tabHidden), and the results and reports say which ones to run again.
+      // (15 Nov 2026) a tab that isn't on screen: browsers slow it right down (timers, drawing), so a view scanned then can look blank
+      // or late when it isn't. Each view notes it (tabHidden), and the results and reports say which ones to run again. A tab switch
+      // tells the page (visibilitychange); a hidden panel or a minimised window may not, but then the browser draws almost no frames
+      // while timers keep running, so each view also counts the frames drawn.
       let tabWasHidden = false;
       document.addEventListener("visibilitychange", () => { if (document.hidden && isScanning) tabWasHidden = true; });
-      async function watchTab(run) { tabWasHidden = document.hidden; const result = await run(); if (result && (tabWasHidden || document.hidden)) result.tabHidden = true; return result; }
+      async function watchTab(run) {
+        tabWasHidden = document.hidden;
+        let frames = 0, ticks = 0, on = true; const t0 = performance.now();
+        const frame = () => { if (on) { frames += 1; requestAnimationFrame(frame); } }; requestAnimationFrame(frame);
+        const tick = setInterval(() => { ticks += 1; }, 100);
+        const result = await run();
+        on = false; clearInterval(tick);
+        const secs = (performance.now() - t0) / 1000;
+        const notDrawn = secs > 0.5 && frames / secs < 3 && ticks >= secs * 5;   // (under 3 frames a second, while timers ran at least half as often as asked)
+        if (result) { result.drawn = { frames, seconds: Math.round(secs * 10) / 10 }; if (tabWasHidden || document.hidden || notDrawn) result.tabHidden = true; }
+        return result;
+      }
 
       function setStatus(message) {
         statusText.textContent = message;
@@ -2823,7 +2836,7 @@
         copyBox.value = lastReportText;
         renderFinalResults(scan);
         setProgress(totalRuntimeRuns, totalRuntimeRuns, "Scan complete");
-        setStatus((allEndpointMisses(runtimeResults).length ? "Full scan complete · off-chain test (on-chain endpoints can't answer here)" : "Full scan complete") + (scan.tabHidden.views ? " · this tab was hidden for " + scan.tabHidden.views + " of " + scan.tabHidden.of + " views: run it again with this tab open" : ""));
+        setStatus((allEndpointMisses(runtimeResults).length ? "Full scan complete · off-chain test (on-chain endpoints can't answer here)" : "Full scan complete") + (scan.tabHidden.views ? " · this tab wasn't on screen for " + scan.tabHidden.views + " of " + scan.tabHidden.of + " views: run it again with this tab open and on screen" : ""));
 
         isScanning = false;
         runFullScanButton.disabled = false;
@@ -2870,7 +2883,7 @@
           priorityItems.push({ level: item.level, area: item.area, message: item.message, detail: item.detail });
         });
         const tabHiddenNote = scan.tabHidden && scan.tabHidden.views;
-        if (tabHiddenNote) priorityItems.push({ level: "note", area: "This scan", message: "This tab was hidden for " + scan.tabHidden.views + " of " + scan.tabHidden.of + " views. Browsers slow a hidden tab right down, so those views can look blank or late when they aren't (they're marked \u201ctab hidden\u201d).", detail: "Run the scan again with this tab open and on screen before fixing them." });
+        if (tabHiddenNote) priorityItems.push({ level: "note", area: "This scan", message: "This tab wasn't on screen for " + scan.tabHidden.views + " of " + scan.tabHidden.of + " views (another tab, a hidden panel or a minimised window). Browsers stop or slow drawing a page that isn't on screen, so those views can look blank or late when they aren't (they're marked \u201cnot on screen\u201d).", detail: "Run the scan again with this tab open and on screen before fixing them." });
         const misses = allEndpointMisses(runtimeResults);
         if (misses.length) {
           const offChainViews = runtimeResults.filter((result) => result.endpointMisses && result.endpointMisses.length).length;
@@ -2887,7 +2900,7 @@
             priorityItems.push({
               level: issue.level,
               area: "Runtime",
-              message: result.target.label + " / " + result.mode + " — " + issue.text + (result.tabHidden ? " (tab hidden)" : ""),
+              message: result.target.label + " / " + result.mode + " — " + issue.text + (result.tabHidden ? " (not on screen)" : ""),
               detail: result.target.width + " × " + result.target.height
             });
           });
@@ -2904,7 +2917,7 @@
           priorityItems.slice(0, 80).forEach((item) => {
             const li = document.createElement("li");
             li.className = "analysis-item";
-            li.innerHTML = "<span class=\"badge " + item.level + "\">" + (item.level === "chain" ? "off-chain" : item.level === "bad" ? "critical" : item.level === "note" ? "tab hidden" : item.level) + "</span><span><strong>" + escapeHtml(item.area) + "</strong>" + escapeHtml(item.message) + (item.detail ? "<br><small>" + escapeHtml(item.detail) + "</small>" : "") + "</span>";
+            li.innerHTML = "<span class=\"badge " + item.level + "\">" + (item.level === "chain" ? "off-chain" : item.level === "bad" ? "critical" : item.level === "note" ? "not on screen" : item.level) + "</span><span><strong>" + escapeHtml(item.area) + "</strong>" + escapeHtml(item.message) + (item.detail ? "<br><small>" + escapeHtml(item.detail) + "</small>" : "") + "</span>";
             analysisList.appendChild(li);
           });
         }
@@ -2937,9 +2950,9 @@
         chainNote.hidden = false;
       }
 
-      function tabHiddenLines(scan) {   // (a scan run while this tab was hidden: which views to run again)
+      function tabHiddenLines(scan) {   // (a scan run while this tab wasn't on screen: which views to run again)
         const h = scan.tabHidden; if (!h || !h.views) return [];
-        return ["Tab hidden (check these again):", "- This tab was hidden for " + h.views + " of " + h.of + " views. Browsers slow a hidden tab right down, so those views (marked TAB HIDDEN below) can look blank or late when they aren't. Run the scan again with this tab open and on screen before fixing them.", ""];
+        return ["Not on screen (check these again):", "- This tab wasn't on screen for " + h.views + " of " + h.of + " views (another tab, a hidden panel or a minimised window: the browser said so, or drew under 3 frames a second). Browsers stop or slow drawing a page that isn't on screen, so those views (marked NOT ON SCREEN below) can look blank or late when they aren't. Run the scan again with this tab open and on screen before fixing them.", ""];
       }
 
       function offChainReportLines(scan) {
@@ -3032,7 +3045,7 @@
         runtimeResults.slice().sort((a, b) => (a.level in RANK ? RANK[a.level] : 4) - (b.level in RANK ? RANK[b.level] : 4)).forEach((result, index) => {
           const target = result.target;
           const last = result.checkpoints[result.checkpoints.length - 1];
-          lines.push((index + 1) + ". [" + levelLabel(result.level) + "] " + target.label + " / " + result.mode + " — " + target.width + " × " + target.height + (result.tabHidden ? " [TAB HIDDEN]" : ""));
+          lines.push((index + 1) + ". [" + levelLabel(result.level) + "] " + target.label + " / " + result.mode + " — " + target.width + " × " + target.height + (result.tabHidden ? " [NOT ON SCREEN" + (result.drawn ? ": " + result.drawn.frames + " frames drawn in " + result.drawn.seconds + " s" : "") + "]" : ""));
           if (result.lifecycle.length > 0) lines.push("   - Lifecycle: " + result.lifecycle.join(", "));
           if (result.sequence) lines.push("   - Mobile sequence: " + result.sequence);
           if (last) {
@@ -3084,7 +3097,7 @@
         scan.runtimeResults.forEach((result) => {
           const problems = result.issues.filter((issue) => issue.level !== "good" && issue.level !== "chain");
           if (!problems.length && !result.errors.length && !result.consoleErrors.length) return;
-          lines.push("", "[VIEW] " + result.target.label + " / " + result.mode + " — " + result.target.width + " × " + result.target.height + (result.tabHidden ? " [TAB HIDDEN]" : ""));
+          lines.push("", "[VIEW] " + result.target.label + " / " + result.mode + " — " + result.target.width + " × " + result.target.height + (result.tabHidden ? " [NOT ON SCREEN]" : ""));
           problems.forEach((issue) => lines.push("- [" + levelLabel(issue.level) + "] " + issue.text));
           result.errors.slice(0,8).forEach((error) => { const payload=error.payload||{}; lines.push("- [RUNTIME] " + (payload.message||"unknown") + " at " + (payload.lineno||0) + ":" + (payload.colno||0)); });
           result.consoleErrors.slice(0,8).forEach((error) => { const payload=error.payload||{}; lines.push("- [CONSOLE] " + (payload.args||[]).join(" | ")); });
