@@ -132,6 +132,14 @@
     core: r => (r.results || []).filter(x => x.facts && x.facts.length).map(x => [x.site, x.facts.map(f => f.code === 'R' || f.code === 'W' || f.code === '-' ? f.code : 'N').join('')]),
     facts: r => Object.fromEntries((r.results || []).filter(x => x.facts && x.facts.length).map(x => { const n = c => x.facts.filter(f => f.code === c).length; return [x.site, n('R') + ' right, ' + n('W') + ' wrong, of ' + x.facts.filter(f => f.code !== '-').length + ' asked']; })),
     sources: r => (r.results || []).filter(x => x.facts && x.facts.length).map(x => x.site)};
+  // Trade Check: before buying or trading an inscription, GO, STOP or NOT SURE, and each reason's mark
+  TOOLS.trade = {coreName: 'the answer and its reasons', name: 'Trade Check', page: 'trade-check.html', mcp: 'tradeCheck',
+    subject: r => Object.assign({id: r.inscription.id}, r.chain === 'doge' ? {chain: 'doge'} : {}, r.claims && r.claims.seller ? {seller: r.claims.seller} : {}, r.claims && r.claims.collection ? {collection: r.claims.collection} : {}),
+    label: r => (r.chain === 'doge' ? 'Doginal ' : 'inscription ') + (r.inscription.number != null ? '#' + fmt(r.inscription.number) : r.inscription.id) + ', before a trade',
+    coreIs: 'the answer and what was checked: the inscription, its file\u2019s fingerprint, who holds it, the answer and each reason\u2019s mark',
+    core: r => [r.inscription.id, r.inscription.fingerprint || null, r.inscription.holder || null, r.verdict, (r.reasons || []).map(x => [x.about, x.mark])],
+    facts: r => { const by = {}; for (const x of r.reasons || []) (by[x.about] = by[x.about] || []).push(x.mark); return Object.assign({answer: r.verdict, holder: r.inscription.holder || null}, Object.fromEntries(Object.entries(by).map(([k, v]) => [k, v.join(', ')]))); },
+    sources: r => Object.values(r.sources || {})};
   /* ---------- making a citation, reading one back, comparing ---------- */
   const minute = d => new Date(d || Date.now()).toISOString().slice(0, 16) + 'Z';
   function make(tool, r, at) {
