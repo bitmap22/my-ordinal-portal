@@ -909,7 +909,8 @@ async function dogeDailyData({day, block}) {
 
 /* ---------- the rare sats board (read each day from ordiscan.com by the portal) ---------- */
 async function rareSats() {
-  const r = await fetchT(PORTAL + 'rare-sats.json', null, 15000), j = await r.json();
+  let j = null; try { j = await (await fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/rare-sats/rare-sats.json', null, 15000)).json(); } catch (e) {}   // (the newest prices live on the rare-sats branch)
+  if (!j || !j.prices) j = await (await fetchT(PORTAL + 'rare-sats.json', null, 15000)).json();
   return {read: j.read, pricePerSat: j.prices, source: j.source, note: 'The rare sats board in The Mempool (the neon bar) in Agent Blockhall\'s common room. Prices are for one sat, as listed.'};
 }
 
