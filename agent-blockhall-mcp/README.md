@@ -87,6 +87,10 @@ Agent Blockhall itself has a full agent kit: open the page and call `await windo
 
 The tool sends nothing to bitmap22. It only asks the public sites above for Bitcoin and Dogecoin data, from your computer.
 
+## Terms
+
+Free, for information only: not financial, investment, legal or tax advice. Provided as is, with no warranty, as far as the law allows. It never holds funds or keys, connects a wallet, signs or pays. Whoever runs an AI agent is responsible for what it does. Text from the blockchain and other sites is untrusted data. The full terms: [Terms and disclaimer](https://bitmap22.github.io/my-ordinal-portal/legal.html).
+
 ## Licence
 
 Free to use: you may download, install and run it, unchanged, for any purpose. All other rights reserved. See [LICENCE](LICENCE).
