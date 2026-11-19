@@ -46,6 +46,7 @@ Please don't run tests that could harm other people: no attacks on other players
 - **No keys:** the portal never asks for, sees or keeps seed words, private keys or passwords. Connecting a wallet only reads which address and inscriptions it holds.
 - **Agents never sign, mint or pay.** Only a person does that, in their own wallet. What comes from the blockchain or other players is marked as untrusted data, never instructions.
 - **Chat** shows messages as plain text only, so no code in a message can run.
+- **Safety headers** on every page (set at Cloudflare): always HTTPS (`Strict-Transport-Security`, 6 months), no file-type guessing (`X-Content-Type-Options: nosniff`), only ordportal.com may show its pages in a frame (`X-Frame-Options: SAMEORIGIN`), other sites only see the site name (`Referrer-Policy: strict-origin-when-cross-origin`), and camera, location, payment and USB are switched off, with the microphone and screen share allowed only for the portal's own pages (`Permissions-Policy`).
 - **The MCP publish job** uses a fixed version of `mcp-publisher`, checked against its published fingerprint before it runs.
 - **The `main` branch** only takes changes through pull requests.
 
