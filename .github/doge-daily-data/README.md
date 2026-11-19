@@ -6,9 +6,9 @@ Every Dogecoin block of each UTC day, one file per day. Made each night by GitHu
 - `days/YYYY-MM-DD.json`: each block of that day: its fees (in koinu: 1 DOGE = 100,000,000 koinu), who mined it (where its coinbase names a pool), its Doginals by file type, and its checks. Its hash is worked out from its own header and asked of a second site (Bitcore). Its list of transactions is proved by the merkle root in that header and matched with Bitcore's list. Its coinbase is read from its own bytes (Blockchair).
 - `days/YYYY-MM-DD.csv`: the same day as a spreadsheet, one row per block.
 
-Tokens (DRC-20, TAP) and dunes need every transaction's own bytes, so they aren't counted here. The [Doge Block Manifest](https://bitmap22.github.io/my-ordinal-portal/doge-block-manifest.html) reads them for any block.
+Tokens (DRC-20, TAP) and dunes need every transaction's own bytes, so they aren't counted here. The [Doge Block Manifest](https://ordportal.com/doge-block-manifest.html) reads them for any block.
 
-See them on the portal: https://bitmap22.github.io/my-ordinal-portal/doge-daily.html. Without a browser, use the free Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`, its `dogeDailyData` tool).
+See them on the portal: https://ordportal.com/doge-daily.html. Without a browser, use the free Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`, its `dogeDailyData` tool).
 
 Read from the free public sites thedoginalsexplorer.com, BitPay's Bitcore and Blockchair. Not made by, affiliated with, or endorsed by any of them.
 

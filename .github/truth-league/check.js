@@ -10,7 +10,7 @@ const L = require('../../agent-blockhall-mcp/server/league.js');
   let rec = null;
   try { rec = JSON.parse(fs.readFileSync(path.join(dir, 'league.json'), 'utf8')); } catch (e) { console.log('No record yet: starting one.'); }
   // (it says who is asking, as Source Health does: some sites refuse an ask that gives no name, which would not be a fair test)
-  const ua = 'agent-blockhall-truth-league/' + L.VERSION + ' (+https://bitmap22.github.io/my-ordinal-portal/truth-league.html)';
+  const ua = 'agent-blockhall-truth-league/' + L.VERSION + ' (+https://ordportal.com/truth-league.html)';
   const c = await L.check({from: 'GitHub\'s computers', fetch: (u, init) => fetch(u, Object.assign({}, init, {headers: {'User-Agent': ua}})), say: (k, v) => console.log('  ' + k + ': ' + v)});
   rec = L.addToRecord(rec, c);
   fs.mkdirSync(dir, {recursive: true});

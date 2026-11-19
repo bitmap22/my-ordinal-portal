@@ -1,6 +1,6 @@
 # Source Health: the hourly record
 
-About once an hour, GitHub's computers ask each free public data site that the Ordinal Portal's tools read one small thing (most: the newest block's height), and keep a week of the answers here. The [Source Health page](https://bitmap22.github.io/my-ordinal-portal/source-health.html) and the free Agent Blockhall MCP tool (`sourceHealth`) read it.
+About once an hour, GitHub's computers ask each free public data site that the Ordinal Portal's tools read one small thing (most: the newest block's height), and keep a week of the answers here. The [Source Health page](https://ordportal.com/source-health.html) and the free Agent Blockhall MCP tool (`sourceHealth`) read it.
 
 - `latest.json`: the last check, site by site: whether it answered (`state`: answers, slow, refused, error, no answer or wrong answer), how long it took (`ms`), what it said (`says`) and how many blocks behind the others it was (`behind`).
 - `week.json`: a week of checks, kept small. `sites` lists the sites in order; each check (`t`, in seconds since 1970) has one entry per site: `[state, ms, blocks behind]`, where the state is `a` answers, `s` slow (2.5 seconds or more), `r` refused, `e` an error, `n` no answer and `w` an answer that wasn't what was asked. A blocks-behind of -1 means a file copy that didn't match.
