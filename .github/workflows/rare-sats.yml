@@ -37,6 +37,11 @@ jobs:
       - name: Get the portal files
         run: git clone --quiet --depth 1 --branch "$BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" portal
 
+      - name: Start from the newest saved prices (kept on the rare-sats branch, since main only takes changes through pull requests)
+        working-directory: portal
+        run: |
+          if git fetch --quiet --depth 1 origin rare-sats 2>/dev/null; then git show FETCH_HEAD:rare-sats.json > rare-sats.json && echo "Started from the rare-sats branch."; else echo "No rare-sats branch yet: starting from main's copy."; fi
+
       - name: Read the prices and update rare-sats.json
         working-directory: portal
         run: |
@@ -47,13 +52,17 @@ jobs:
       - name: Save the file if it changed
         working-directory: portal
         run: |
-          if git diff --quiet -- rare-sats.json; then echo "Nothing to save."; exit 0; fi
+          # (saved on its own branch, rare-sats, which holds only this file: main takes changes only through pull requests.
+          #  The games read it from https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/rare-sats/rare-sats.json)
+          if [ ! -f "$RUNNER_TEMP/rare-sats-note.txt" ]; then echo "Nothing to save."; exit 0; fi
+          mkdir -p "$RUNNER_TEMP/rs" && cd "$RUNNER_TEMP/rs" && git init --quiet -b rare-sats
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch --quiet --depth 1 origin rare-sats 2>/dev/null; then git checkout --quiet -B rare-sats FETCH_HEAD; fi
+          cp "$GITHUB_WORKSPACE/portal/rare-sats.json" rare-sats.json
+          if git rev-parse --quiet --verify HEAD >/dev/null && git diff --quiet -- rare-sats.json; then echo "Nothing to save."; exit 0; fi
           git config user.name "bitmap22"
           git config user.email "145838362+bitmap22@users.noreply.github.com"
           git add rare-sats.json
           git commit --quiet -F "$RUNNER_TEMP/rare-sats-note.txt"
-          for n in 1 2 3; do
-            if git push --quiet origin "HEAD:$BRANCH"; then echo "Saved."; exit 0; fi
-            git pull --quiet --rebase origin "$BRANCH"
-          done
+          if git push --quiet origin "HEAD:rare-sats"; then echo "Saved."; exit 0; fi
           echo "Could not save the file."; exit 1

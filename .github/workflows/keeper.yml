@@ -59,7 +59,8 @@ jobs:
           TODAY=$(LC_ALL=C TZ=Europe/London date +'%-d %b %Y')
           if [ "$mins" -lt 437 ]; then echo "Rare sats: not yet (it starts at 07:17 UTC)"
           else
-            got=$(gh api "repos/$R/contents/rare-sats.json?ref=main" --jq .content 2>/dev/null | base64 -di 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("read", ""))' 2>/dev/null || true)
+            got=$(gh api "repos/$R/contents/rare-sats.json?ref=rare-sats" --jq .content 2>/dev/null | base64 -di 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("read", ""))' 2>/dev/null || true)
+            [ -n "$got" ] || got=$(gh api "repos/$R/contents/rare-sats.json?ref=main" --jq .content 2>/dev/null | base64 -di 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("read", ""))' 2>/dev/null || true)
             if [ "$got" = "$TODAY" ]; then echo "Rare sats: $TODAY is read"
             elif [ "$(busy rare-sats.yml)" != "0" ]; then echo "Rare sats: already running"
             else try=try; [ "$mins" -ge 1157 ] && try=last; gh api -X POST "repos/$R/actions/workflows/rare-sats.yml/dispatches" -f ref=main -f "inputs[keeper]=$try" && echo "Rare sats: started for $TODAY (last read: ${got:-unknown})"; fi
