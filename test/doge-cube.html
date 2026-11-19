@@ -3953,7 +3953,7 @@ function heatCol(h) {
   return '#' + [16, 8, 0].map(s => Math.round(((a >> s) & 255) * (1 - f) + ((b >> s) & 255) * f).toString(16).padStart(2, '0')).join('');
 }
 const blockHeat = new Map();
-/* halls of several blocks: while Dogecoin is quiet a hall holds 20, 10, 5 or 2 blocks side by side, so its shelves fill up the
+/* (every hall now holds one block, so it is ready by the time you reach its door. Before, while Dogecoin was quiet, a hall held 20, 10, 5 or 2 blocks side by side, so its shelves filled up the
    way a busy hall's do; in busy times, one. Picked as you walk in, from the 100 blocks around where you go: the most blocks that keep a hall to
    about 500 parcels. Halls line up on round numbers (6,453,500 to 6,453,519); block 0 always stands alone. (The main screen
    always shows one block.) */
@@ -4508,6 +4508,14 @@ function rmStep(dt) {
   }
 }
 let rmLast = 0;
+// the floor stays still while a hall is still being built (the one you're in, or the ones through its doors), and moves again once they are all ready
+let flT = null, flLast = 0;
+function flTime(tn) {
+  const rs = room && room.rooms ? room.rooms : [], wait = rs.some(q => q && !q.ready && !q.failed);
+  if (flT == null) flT = tn;
+  else if (!wait) flT += Math.max(0, Math.min(0.25, tn - flLast));
+  flLast = tn; return flT;
+}
 function roomFrame(W, H, tn, dpr) {
   const dt = Math.min(.05, Math.max(0, tn - (rmLast || tn))); rmLast = tn;
   rmStep(dt);
@@ -4560,28 +4568,29 @@ function roomFrame(W, H, tn, dpr) {
   all(1);
   gl.frontFace(gl.CCW); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
   // the floor's life: both copies of the ring, laid along the hall (fish first: they swim under the water)
+  const ft = flTime(tn);   // (the floor's own clock: it waits while a hall is built)
   const [R0, R1, R2] = room.rooms, wz = (R, f, d) => R && R.z0 != null ? R.z0 - (f ? R.L : 0) : d;
   { const Rc = room.rooms.find(q => cmOn(q) && q.ready); LCM = Rc ? [Rc.z0 - Rc.L - .3, Rc.z0 + .3] : [1e9, -1e9]; }
   const rings = f => { LWALL = [wz(R0, 0, 1e5), wz(R1, 0, 1e5), wz(R1, 1, -1e5), wz(R2, 1, -1e5)]; for (const [q, z] of [[0, 0], [1, 16]]) { LROOM = [1, q, z, p.z]; f(); } LROOM = [0, 0, 0, 0]; LWALL = [1e5, 1e5, -1e5, -1e5]; };
-  if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, tn, LW, true));
+  if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, ft, LW, true));
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
-  gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0);
+  gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0);
   gl.uniform1f(mtP.u.uFS, 7); gl.uniform2f(mtP.u.uFO, p.x, p.z); gl.uniform1f(mtP.u.uRm, 1);
   gl.bindVertexArray(flVAO);
   gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(false, false, false, true); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 1); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(true, true, true, true);
   gl.uniform1f(mtP.u.uFS, 1); gl.uniform2f(mtP.u.uFO, 0, 0); gl.uniform1f(mtP.u.uRm, 0);
-  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); rings(() => lifeShadows(VP, eye, tn, LW));
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); rings(() => lifeShadows(VP, eye, ft, LW));
   gl.disable(gl.BLEND);
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
   rmFloorDepth(VP);
   all(0);
-  gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, tn, LW, false));
+  gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, ft, LW, false));
   cmDraw(VP, eye, tn); cmQDraw(VP, eye, tn);
   folDraw(VP, eye, tn);
-  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); rings(() => lifeDust(VP, tn, LW, H)); gl.depthMask(true); gl.disable(gl.BLEND);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); rings(() => lifeDust(VP, ft, LW, H)); gl.depthMask(true); gl.disable(gl.BLEND);
   gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
   cmOverlays(VP, W, H);
 }
@@ -7666,7 +7675,7 @@ async function roomEnter(h, spot, opt) {
   if (room) for (const R of room.rooms) rmFree(R);
   room = {rooms: [null, null, null], p: {x: 0, z: -1.1, yaw: 0, pitch: -.04, vx: 0, vz: 0, ph: 0, bob: 0}, dirty: true, fixDirty: true, nPar: 0, nFix: 0, nDoor: 0, hov: ''};
   document.body.classList.add('room'); document.body.classList.remove('shw', 'showcp'); $th.classList.add('on');
-  if (h !== COMMON) { room.from = h; HALL_N = fol ? 1 : hallSize(h); h = hallOf(h); }
+  if (h !== COMMON) { room.from = h; HALL_N = 1; h = hallOf(h); }
   const C = rmMake(h, null, null); room.rooms[1] = C; room.at = C;
   head(h === COMMON ? 'walking into the common room…' : 'walking into ' + hallName(h, C.h1).toLowerCase() + '…');
   const t = performance.now();
@@ -8283,8 +8292,8 @@ function ciData(tab) {
     ['SHOW IN COMMON ROOM ([C])', 'puts the parcel you hold on show in the Forum, for your crew too'],
     ['the warehouse', 'its shutter stays shut']]});
   S.push({t: 'the block halls', rows: [['a hall', 'its parcels stand on shelves by kind, like a library; the sign over each bookcase says what is on it'],
-    ['blocks in a hall', 'while Dogecoin is quiet a hall holds 20, 10, 5 or 2 blocks side by side (the most that keep it to about 500 parcels); in busy times, one. Block 0 always stands alone'],
-    ['the floor', 'the middle fee picks it (in a hall of several blocks, its first block\'s): ice (under 0.01 DOGE/kB), water (0.01 to 0.015), grass (0.015 to 0.05), desert (0.05 to 0.15), fire (0.15 to 0.5), lava storm (0.5 to 2), plasma (2 and up)'],
+    ['blocks in a hall', 'one block in each hall, so the next hall is ready by the time you reach its door'],
+    ['the floor', 'the block\'s middle fee picks it: ice (under 0.01 DOGE/kB), water (0.01 to 0.015), grass (0.015 to 0.05), desert (0.05 to 0.15), fire (0.15 to 0.5), lava storm (0.5 to 2), plasma (2 and up)'],
     ['the doors', 'one at each end: the hall before and the hall after; click the number over a door to send it to another block'],
     ['the newest block\'s door', 'leads to the common room (until the next block is mined)'],
     ['FOLLOW IT BACK ([F])', 'shows where a held inscription has been, block by block, on a tether; the doors follow its journey. UNTETHER ([U]) lets it go'],
