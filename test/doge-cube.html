@@ -168,6 +168,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 @media (min-width:1500px) and (min-height:820px){#tools{top:22px;gap:9px}.tl{width:34px;height:34px;border-radius:17px}.tl svg{width:17px;height:17px}#fs{font-size:11px;margin-top:10px}#fs i{min-width:25px;padding:4px 4px}}
 #card{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(227,179,65,.25) transparent}
 #cp{display:none}
+#cp img.pa{display:block;width:100%;height:clamp(120px,24vh,230px);object-fit:contain;border-radius:8px;background:#000;margin-top:10px}#cp img.pa.px{image-rendering:pixelated}#cp audio,#cp video{display:block;width:100%;margin-top:10px;border-radius:8px}#cp video{max-height:clamp(120px,24vh,230px);background:#000}.pvx{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:120px;margin-top:10px;padding:12px 16px;border-radius:8px;background:#000;text-align:center;font-size:11.5px;line-height:1.5;color:#d8c6ad;height:auto!important}.pvx b{color:#ff8a7a;letter-spacing:.12em}.pvx a{color:#ffb04a;text-decoration:none;border:1px solid rgba(247,147,26,.4);border-radius:9px;padding:6px 11px;font-weight:700;letter-spacing:.06em}#vwc .pvx{height:100%!important;margin:0;font-size:13px;gap:12px}#vwc audio{width:min(92%,520px)}#vwc video{width:100%;height:100%;background:#000}
 #cp iframe{display:block;width:100%;height:clamp(120px,24vh,230px);border:0;border-radius:8px;background:#000;margin-top:10px}
 #cp .pv2{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#a08b72}
 #cp .pv2 button{background:none;border:1px solid rgba(227,179,65,.3);color:#f0c75e;border-radius:10px;padding:3px 9px;font:inherit;cursor:pointer}
@@ -2466,9 +2467,8 @@ function preview(t) {
   }
   const k = (t._pi || 0) % ids.length, base = cur && cur.ordBase ? cur.ordBase : DX;
   $cp.style.display = 'block';
-  $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>` +
-    (ids.length > 1 ? `<div class="pv2"><span>inscription ${k + 1} of ${fmt(ids.length)}</span><button>next ›</button></div>` : '');
-  if (ids.length > 1) $cp.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = k + 1; preview(t); };
+  let row = null; if (ids.length > 1) { row = document.createElement('div'); row.className = 'pv2'; row.innerHTML = `<span>inscription ${k + 1} of ${fmt(ids.length)}</span><button>next ›</button>`; row.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = k + 1; preview(t); }; }
+  pvSafe(t, ids, k, ids[k], base, row);
 }
 let foc = null;   // a parcel found by its transaction ID: it stays solid and everything else turns to glass
 function select(t) {
@@ -6501,8 +6501,8 @@ function cmScreen() {
   if (m.k === 'yt') { const off = Math.max(0, Math.floor((Date.now() - m.t0) / 1000)); f.src = 'https://www.youtube-nocookie.com/embed/' + m.v + '?autoplay=1&playsinline=1&rel=0&modestbranding=1&start=' + off; return; }
   cmHead(m.v).then(([u, c]) => {
     if (cm.sc !== f) return; const vid = /^video\//.test(c);
-    if (/^image\/(?!svg)/.test(c) || vid) f.srcdoc = '<body style="margin:0;height:100vh;background:#000;overflow:hidden">' + (vid ? '<video autoplay loop playsinline' : '<img onload="this.naturalWidth<480&&(this.style.imageRendering=\'pixelated\')"') + ' src="' + u + '" style="display:block;width:100%;height:100%;object-fit:contain"></body>';
-    else f.src = u;
+    if (/^image\/(?!svg)/.test(c) || vid) { f.setAttribute('sandbox', 'allow-scripts'); f.srcdoc = '<body style="margin:0;height:100vh;background:#000;overflow:hidden">' + (vid ? '<video autoplay loop playsinline' : '<img onload="this.naturalWidth<480&&(this.style.imageRendering=\'pixelated\')"') + ' src="' + u + '" style="display:block;width:100%;height:100%;object-fit:contain"></body>'; }
+    else { f.remove(); if (cm.sc === f) { cm.sc = null; cm.scKey = ''; } }   // (SAFETY: not a picture or a film: never framed)
   });
 }
 
@@ -6553,7 +6553,7 @@ function cmMusic() {
       cmHead(m.v).then(([u, c]) => {
         if (cm.music.k !== 'ins' || cm.music.v !== m.v) return;
         if (/^audio\//.test(c)) { const el = cmA.el = new Audio(u); el.loop = true; el.crossOrigin = 'anonymous'; el.addEventListener('loadedmetadata', () => { if (el.duration > 0) el.currentTime = ((Date.now() - m.t0) / 1000) % el.duration; }); el.play().catch(() => {}); }
-        else { const f = cmA.el = document.createElement('iframe'); f.setAttribute('allow', 'autoplay'); f.style.cssText = 'position:fixed;width:2px;height:2px;left:-9px;top:-9px;opacity:0;pointer-events:none;border:0'; f.src = u; document.body.appendChild(f); }
+        // (SAFETY: not sound: never framed, so nothing plays)
       });
     }
     return;
@@ -6931,10 +6931,52 @@ function vwPay(t) {
   return s + '</svg>';
 }
 const vwEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
+/* ---------- SAFETY: an inscription's code never runs inside this page (19 Nov 2026) ----------
+   What a file really is, is asked of the site that serves it (so a delegate, or a label that says otherwise, can't slip through).
+   Shown here: a picture (as a picture, where nothing can run), sound, film, plain text (in a sealed frame: no scripts).
+   Anything else (a web page, a script, a file whose type can't be checked) is not opened: a note, with links to its own page. */
+function insKindOf(id) { return insKindOf.m ? insKindOf.m.get(id) : undefined; }   // undefined: not asked yet
+function insBases(base) { return [base, DX].filter((u, i, a) => u && a.indexOf(u) === i); }
+function insKindFrom(ct) { ct = (ct || '').toLowerCase(); return /^image\//.test(ct) ? 'image' : /^audio\//.test(ct) ? 'audio' : /^video\//.test(ct) ? 'video' : /^text\/(plain|markdown|csv)\b|^application\/json\b/.test(ct) ? 'text' : 'closed'; }
+function insKind(id, bases) {
+  const M = insKindOf.m || (insKindOf.m = new Map()), P = insKind.p || (insKind.p = new Map());
+  if (M.has(id)) return Promise.resolve(M.get(id)); if (P.has(id)) return P.get(id);
+  const pr = (async () => {
+    let K = {kind: 'closed', url: '', base: '', ct: ''};
+    if (/^[0-9a-f]{64}i\d+$/.test(id)) for (const b of bases) { try { const r = await fetchT(b + '/content/' + id, {method: 'HEAD'}, 9000); if (r && r.ok === false) continue; const ct = (r.headers.get('content-type') || '').toLowerCase(); K = {kind: insKindFrom(ct), url: b + '/content/' + id, base: b, ct}; break; } catch (e) {} }
+    if (K.ct || M.size < 4000) M.set(id, K); P.delete(id); if (!K.ct) setTimeout(() => M.delete(id), 30000);   // (not answered: asked again later)
+    return K;
+  })();
+  P.set(id, pr); return pr;
+}
+function insSafeEl(K, id, cls) {   // the element that shows it, or null when it is not opened here
+  if (K.kind === 'image') { const im = new Image(); im.alt = ''; if (cls) im.className = cls; im.referrerPolicy = 'no-referrer'; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); im.src = K.url; return im; }
+  if (K.kind === 'audio') { const a = document.createElement('audio'); a.controls = true; a.preload = 'none'; a.src = K.url; return a; }
+  if (K.kind === 'video') { const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.src = K.url; return v; }
+  if (K.kind === 'text') { const f = document.createElement('iframe'); f.setAttribute('sandbox', ''); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = 'inscription (plain text: nothing runs)'; f.src = K.url; return f; }
+  if (K.kind === 'model') { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.setAttribute('loading', 'lazy'); f.title = 'a 3D model, in ' + K.base.replace('https://', '') + '’s own viewer'; f.src = K.base + '/preview/' + id; return f; }
+  return null;
+}
+function insClosedEl(K, id) {
+  const d = document.createElement('div'), b = document.createElement('b'), w = document.createElement('span'); d.className = 'pvm pvx';
+  b.textContent = 'NOT OPENED HERE';
+  w.textContent = K.ct ? 'This inscription is ' + K.ct.split(';')[0] + ', which can run code. To keep you safe, Doge Cube never runs an inscription’s code. Open it on its own page:' : 'Its file type could not be checked just now, so it is not opened here. Its own page:';
+  d.append(b, w);
+  for (const [t, u] of [['OPEN ON THE DOGINALS EXPLORER \u2197', DX + '/inscription/' + id]]) { const a = document.createElement('a'); a.textContent = t; a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.onclick = e => e.stopPropagation(); d.append(a); }
+  return d;
+}
+function pvSafe(t, ids, k, id, base, row) {   // the card's preview of one inscription
+  const K = insKindOf(id), mine = () => sel === t && (t._pi || 0) % ids.length === k;
+  $cp.style.display = 'block'; $cp.innerHTML = '';
+  if (K === undefined) { const w = document.createElement('div'); w.className = 'pv0'; w.textContent = 'checking what it is…'; $cp.append(w); insKind(id, insBases(base)).then(() => { if (mine()) preview(t); }); }
+  else $cp.append(insSafeEl(K, id, 'pa') || insClosedEl(K, id));
+  if (row) $cp.append(row);
+}
 function vwFrame(attrs) { const f = document.createElement('iframe'); for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
 function vwRender() {
   if (!vw) return;
   const it = vw.items[vw.i], n = vw.items.length;
+  vw.live = false;   // (SAFETY: there is no live view now: an inscription's code never runs here)
   vwFree(); $vwc.innerHTML = '';
   document.getElementById('vwp').disabled = document.getElementById('vwx').disabled = n < 2;
   $vwm.textContent = vw.live ? 'LIVE VIEW' : 'SAFE VIEW'; $vw.classList.toggle('live', vw.live);
@@ -6943,8 +6985,11 @@ function vwRender() {
   if (it.k === 'ins') {
     const url = DX + '/content/' + it.id, ty = it.type || '';
     what = 'inscription ' + (it.num != null ? '#' + fmt(it.num) : srShort ? srShort(it.id) : it.id.slice(0, 10)) + (ty ? ' · ' + ty.split(';')[0] : '') + (it.del ? ' · shows a delegate' : '');
-    if (/^image\//.test(ty) && !it.del) { const im = new Image(); im.src = url; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $vwc.appendChild(im); }
-    else { runs = !/^text\/(plain|markdown|csv)|json/.test(ty); $vwc.appendChild(vwFrame({src: url, sandbox: vw.live ? 'allow-scripts allow-forms allow-same-origin' : '', title: 'inscription', allow: 'autoplay; fullscreen'})); }
+    {   // (SAFETY: only what cannot run code is shown here; see insKind)
+      const K = insKindOf(it.id);
+      if (K === undefined) { $vwc.innerHTML = '<div class="wait">CHECKING WHAT IT IS\u2026</div>'; insKind(it.id, insBases(DX)).then(() => { if (vw && vw.items[vw.i] === it) vwRender(); }); }
+      else { $vwc.appendChild(insSafeEl(K, it.id) || insClosedEl(K, it.id)); if (K.kind === 'closed') what += ' \u00b7 not opened here'; }
+    }
     $vwo.href = DX + '/inscription/' + it.id; $vwo.style.display = '';
     if (it.num == null && !it._asked) { it._asked = 1; djP(DX + '/v1/inscription/' + it.id, 15000).then(o => { it.num = o.number; if (!it.type) it.type = o.contentType; if (vw && vw.items[vw.i] === it) vwRender(); }, () => {}); }
   } else {
@@ -6963,7 +7008,7 @@ document.getElementById('vwx').onclick = () => vwGo(1);
 // LIVE VIEW: only after the warning (like Sentinel); FULL SCREEN: the tablet fills the screen
 document.getElementById('vwl').onclick = () => { if (!vw) return; if (vw.live) { vw.live = false; vwRender(); } else $vwa.classList.add('on'); };
 document.getElementById('vwz').onclick = () => $vwa.classList.remove('on');
-document.getElementById('vwy').onclick = () => { $vwa.classList.remove('on'); if (vw) { vw.live = true; vwRender(); } };
+document.getElementById('vwy').onclick = () => { $vwa.classList.remove('on'); };   // (no live view now)
 function vwFull() {
   if (!vw) return;
   try {
@@ -8223,7 +8268,7 @@ function ciData(tab) {
   // how to
   S.push({t: 'staying safe', p: ['Never open links people post in the chat or say out loud. A link can lead to a fake site made to empty your wallet. To visit a site, type its address yourself or use a bookmark you trust.',
     'Doge Cube never asks you to send, spend or approve anything, and never asks for seed words, private keys or passwords. If something does while you play, it is not us: say no.',
-    'A parcel\'s LIVE VIEW runs its own code, like a web page: never type seed words, private keys, passwords or wallet details into it.']});
+    'Doge Cube never runs an inscription\'s code: a web page inscription is not opened here, it links to its own page instead. Never type seed words, private keys, passwords or wallet details into any inscription.']});
   S.push({t: 'who is who', rows: [['people', 'real players, each on their own screen; their name floats over their head'],
     ['AI agents', 'players too, run by an AI; their name has "· AI" after it. They play by the same rules as people, with no extra powers'],
     ['NPCs', 'the robots (such as the Chain Keeper and the barkeep) are part of the place, not players: they do not chat or play']]});
@@ -8757,7 +8802,7 @@ window.AgentKit = window.AgentKit || (() => {
       const d = new DOMParser().parseFromString(new TextDecoder().decode(bytes.subarray(0, 400000)), 'text/html');   // (read, never run)
       d.querySelectorAll('script,style,noscript,template').forEach(e => e.remove());
       o.words = (d.body ? d.body.textContent : '').replace(/\s+/g, ' ').trim().slice(0, 1500) || undefined;
-      o.why = 'an HTML page runs in a sealed frame (SAFE VIEW: nothing runs, so it may look blank or still; GO LIVE runs it): the kit cannot take a picture inside it. ' + (o.words ? 'Its words are read from its file.' : 'Its file has no words of its own to read (what it shows, it draws or loads as it runs).');
+      o.why = 'a web page inscription is not opened here (Doge Cube never runs an inscription\'s code): the tablet shows a note with a link to its own page. ' + (o.words ? 'Its words are read from its file.' : 'Its file has no words of its own to read (what it shows, it draws or loads as it runs).');
     } else if (/^text\/|json|javascript|xml/.test(ty)) o.words = new TextDecoder().decode(bytes.subarray(0, 12000)).slice(0, 3000);
     else o.why = 'a ' + (ty || 'file') + ' file: nothing to see as a picture or words';
     return o;
