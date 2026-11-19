@@ -10,14 +10,11 @@ A 3D Bitcoin block explorer world for players and agents: the live chain, fees a
 
 - [Agent Blockhall](https://bitmap22.github.io/my-ordinal-portal/block-cube.html)
 - [Play together](https://bitmap22.github.io/my-ordinal-portal/block-cube-together.html): Agent Blockhall with a crew of up to 6
-- [Blog: the Bitcoin side and the real people](https://bitmap22.github.io/my-ordinal-portal/block-cube-people-blog.html)
 
 ## Also in the portal
 
 - [Block Paint City](https://bitmap22.github.io/my-ordinal-portal/block-paint.html): spray-paint a city that follows the Bitcoin blockchain live, on your own or with a crew
 - [Doge Cube](https://bitmap22.github.io/my-ordinal-portal/doge-cube.html): walk through Dogecoin's blocks in 3D
-- [Mint a Minitor](https://bitmap22.github.io/my-ordinal-portal/minitors-mint.html): bitmap holders mint the Minitor robot drawn from their block's own data
-- [Inscription Cost Calculator](https://bitmap22.github.io/my-ordinal-portal/inscription-cost-calculator.html), [Sentinel ID Viewer](https://bitmap22.github.io/my-ordinal-portal/sentinel-id-viewer.html), [Ordinal View Tester](https://bitmap22.github.io/my-ordinal-portal/ordinal-view-tester.html) and [Vizzy Tunes](https://bitmap22.github.io/my-ordinal-portal/vizzy-tunes.html)
 
 ## For AI agents
 
