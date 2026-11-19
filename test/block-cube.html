@@ -167,6 +167,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 @media (min-width:1500px) and (min-height:820px){#tools{top:22px;gap:9px}.tl{width:34px;height:34px;border-radius:17px}.tl svg{width:17px;height:17px}#fs{font-size:11px;margin-top:10px}#fs i{min-width:25px;padding:4px 4px}}
 #card{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(247,147,26,.25) transparent}
 #cp{display:none}
+#cp img.pa{display:block;width:100%;height:clamp(120px,24vh,230px);object-fit:contain;border-radius:8px;background:#000;margin-top:10px}#cp img.pa.px{image-rendering:pixelated}#cp audio,#cp video{display:block;width:100%;margin-top:10px;border-radius:8px}#cp video{max-height:clamp(120px,24vh,230px);background:#000}.pvx{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:120px;margin-top:10px;padding:12px 16px;border-radius:8px;background:#000;text-align:center;font-size:11.5px;line-height:1.5;color:#d8c6ad;height:auto!important}.pvx b{color:#ff8a7a;letter-spacing:.12em}.pvx a{color:#ffb04a;text-decoration:none;border:1px solid rgba(247,147,26,.4);border-radius:9px;padding:6px 11px;font-weight:700;letter-spacing:.06em}#vwc .pvx{height:100%!important;margin:0;font-size:13px;gap:12px}#vwc audio{width:min(92%,520px)}#vwc video{width:100%;height:100%;background:#000}
 #cp iframe{display:block;width:100%;height:clamp(120px,24vh,230px);border:0;border-radius:8px;background:#000;margin-top:10px}
 #cp .pv2{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#a08b72}
 #cp .pv2 button{background:none;border:1px solid rgba(247,147,26,.3);color:#ffb04a;border-radius:10px;padding:3px 9px;font:inherit;cursor:pointer}
@@ -3147,8 +3148,7 @@ function preview(t) {
   if (room && MDL_RE.test(ck)) { mdlPv(t, ids, k, base); return; }
   if (room && OCT_RE.test(ck) && ids[k]) { const K = mdlKindOf(ids[k]); if (K && K.empty) { mdlPv(t, ids, k, base); return; } if (K === undefined) mdlKind(ids[k]).then(K => { if (K.empty && sel === t && (t._pi || 0) % ids.length === k) preview(t); }); }
   $cp.style.display = 'block';
-  $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + ids[k])}" title="inscription preview"></iframe>`;
-  $cp.append(pvRow(ids, k, t));
+  pvSafe(t, ids, k, ids[k], base, pvRow(ids, k, t));
 }
 // a 3D model inscription, read once when its parcel is picked up (small files only: up to 400,000 bytes). Two kinds are not a
 // shape to draw: a file that only points to another inscription (its whole content is /content/<id>, as BRC-420 mints are), so
@@ -3272,7 +3272,7 @@ function mdlPv(t, ids, k, base) {
   if (K.empty) { words(); return; }
   const id = K.ptr ? K.ptr.id : ids[k], ct = K.ptr ? K.ptr.ct : (t.ins && t.ins[k] ? t.ins[k].ct || '' : t.ct || '');
   if (STL_RE.test(ct)) stlPv(t, ids, k, id);
-  else { $cp.style.display = 'block'; $cp.innerHTML = `<iframe sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" src="${esc(base + '/preview/' + id)}" title="inscription preview"></iframe>`; $cp.append(pvRow(ids, k, t)); }
+  else pvSafe(t, ids, k, id, base, pvRow(ids, k, t));
   if (K.ptr) { const a = $cp.querySelector('a.pvo'); if (a) a.href = 'https://ordinals.com/preview/' + id; const n = document.createElement('div'); n.className = 'pvt'; n.textContent = 'its file only points to inscription ' + (K.ptr.n != null ? '#' + fmt(K.ptr.n) : srShort(id)) + ': that model is shown'; $cp.insertBefore(n, $cp.querySelector('.pv2')); }
 }
 function stlPv(t, ids, k, sid = ids[k]) {
@@ -7348,8 +7348,8 @@ function cmScreen() {
   if (m.k === 'yt') { const off = Math.max(0, Math.floor((Date.now() - m.t0) / 1000)); f.src = 'https://www.youtube-nocookie.com/embed/' + m.v + '?autoplay=1&playsinline=1&rel=0&modestbranding=1&start=' + off; return; }
   cmHead(m.v).then(([u, c]) => {
     if (cm.sc !== f) return; const vid = /^video\//.test(c);
-    if (/^image\/(?!svg)/.test(c) || vid) f.srcdoc = '<body style="margin:0;height:100vh;background:#000;overflow:hidden">' + (vid ? '<video autoplay loop playsinline' : '<img onload="this.naturalWidth<480&&(this.style.imageRendering=\'pixelated\')"') + ' src="' + u + '" style="display:block;width:100%;height:100%;object-fit:contain"></body>';
-    else f.src = u;
+    if (/^image\/(?!svg)/.test(c) || vid) { f.setAttribute('sandbox', 'allow-scripts'); f.srcdoc = '<body style="margin:0;height:100vh;background:#000;overflow:hidden">' + (vid ? '<video autoplay loop playsinline' : '<img onload="this.naturalWidth<480&&(this.style.imageRendering=\'pixelated\')"') + ' src="' + u + '" style="display:block;width:100%;height:100%;object-fit:contain"></body>'; }
+    else { f.remove(); if (cm.sc === f) { cm.sc = null; cm.scKey = ''; } }   // (SAFETY: not a picture or a film: never framed)
   });
 }
 
@@ -7400,7 +7400,7 @@ function cmMusic() {
       cmHead(m.v).then(([u, c]) => {
         if (cm.music.k !== 'ins' || cm.music.v !== m.v) return;
         if (/^audio\//.test(c)) { const el = cmA.el = new Audio(u); el.loop = true; el.crossOrigin = 'anonymous'; el.addEventListener('loadedmetadata', () => { if (el.duration > 0) el.currentTime = ((Date.now() - m.t0) / 1000) % el.duration; }); el.play().catch(() => {}); }
-        else { const f = cmA.el = document.createElement('iframe'); f.setAttribute('allow', 'autoplay'); f.style.cssText = 'position:fixed;width:2px;height:2px;left:-9px;top:-9px;opacity:0;pointer-events:none;border:0'; f.src = u; document.body.appendChild(f); }
+        // (SAFETY: not sound: never framed, so nothing plays)
       });
     }
     return;
@@ -7906,6 +7906,47 @@ function vwPay(t) {
   return s + '</svg>';
 }
 const vwEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
+/* ---------- SAFETY: an inscription's code never runs inside this page (19 Nov 2026) ----------
+   What a file really is, is asked of the site that serves it (so a delegate, or a label that says otherwise, can't slip through).
+   Shown here: a picture (as a picture, where nothing can run), sound, film, plain text (in a sealed frame: no scripts), or a 3D model in ordinals.com's own viewer.
+   Anything else (a web page, a script, a file whose type can't be checked) is not opened: a note, with links to its own page. */
+function insKindOf(id) { return insKindOf.m ? insKindOf.m.get(id) : undefined; }   // undefined: not asked yet
+function insBases(base) { return [base].concat(ORD_R).filter((u, i, a) => u && a.indexOf(u) === i); }
+function insKindFrom(ct) { ct = (ct || '').toLowerCase(); return /^image\//.test(ct) ? 'image' : /^audio\//.test(ct) ? 'audio' : /^video\//.test(ct) ? 'video' : typeof MDL_RE !== 'undefined' && MDL_RE.test(ct) ? 'model' : /^text\/(plain|markdown|csv)\b|^application\/json\b/.test(ct) ? 'text' : 'closed'; }
+function insKind(id, bases) {
+  const M = insKindOf.m || (insKindOf.m = new Map()), P = insKind.p || (insKind.p = new Map());
+  if (M.has(id)) return Promise.resolve(M.get(id)); if (P.has(id)) return P.get(id);
+  const pr = (async () => {
+    let K = {kind: 'closed', url: '', base: '', ct: ''};
+    if (/^[0-9a-f]{64}i\d+$/.test(id)) for (const b of bases) { try { const r = await fetchT(b + '/content/' + id, {method: 'HEAD'}, 9000); if (r && r.ok === false) continue; const ct = (r.headers.get('content-type') || '').toLowerCase(); K = {kind: insKindFrom(ct), url: b + '/content/' + id, base: b, ct}; break; } catch (e) {} }
+    if (K.ct || M.size < 4000) M.set(id, K); P.delete(id); if (!K.ct) setTimeout(() => M.delete(id), 30000);   // (not answered: asked again later)
+    return K;
+  })();
+  P.set(id, pr); return pr;
+}
+function insSafeEl(K, id, cls) {   // the element that shows it, or null when it is not opened here
+  if (K.kind === 'image') { const im = new Image(); im.alt = ''; if (cls) im.className = cls; im.referrerPolicy = 'no-referrer'; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); im.src = K.url; return im; }
+  if (K.kind === 'audio') { const a = document.createElement('audio'); a.controls = true; a.preload = 'none'; a.src = K.url; return a; }
+  if (K.kind === 'video') { const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.src = K.url; return v; }
+  if (K.kind === 'text') { const f = document.createElement('iframe'); f.setAttribute('sandbox', ''); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = 'inscription (plain text: nothing runs)'; f.src = K.url; return f; }
+  if (K.kind === 'model') { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.setAttribute('loading', 'lazy'); f.title = 'a 3D model, in ' + K.base.replace('https://', '') + '’s own viewer'; f.src = K.base + '/preview/' + id; return f; }
+  return null;
+}
+function insClosedEl(K, id) {
+  const d = document.createElement('div'), b = document.createElement('b'), w = document.createElement('span'); d.className = 'pvm pvx';
+  b.textContent = 'NOT OPENED HERE';
+  w.textContent = K.ct ? 'This inscription is ' + K.ct.split(';')[0] + ', which can run code. To keep you safe, Agent Blockhall never runs an inscription’s code. Open it on its own page:' : 'Its file type could not be checked just now, so it is not opened here. Its own page:';
+  d.append(b, w);
+  for (const [t, u] of [['OPEN ON ORDINALS.COM \u2197', 'https://ordinals.com/inscription/' + id], ['BACK-UP: ORDISCAN \u2197', 'https://ordiscan.com/inscription/' + id]]) { const a = document.createElement('a'); a.textContent = t; a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.onclick = e => e.stopPropagation(); d.append(a); }
+  return d;
+}
+function pvSafe(t, ids, k, id, base, row) {   // the card's preview of one inscription
+  const K = insKindOf(id), mine = () => sel === t && (t._pi || 0) % ids.length === k;
+  $cp.style.display = 'block'; $cp.innerHTML = '';
+  if (K === undefined) { const w = document.createElement('div'); w.className = 'pv0'; w.textContent = 'checking what it is…'; $cp.append(w); insKind(id, insBases(base)).then(() => { if (mine()) preview(t); }); }
+  else $cp.append(insSafeEl(K, id, 'pa') || insClosedEl(K, id));
+  if (row) $cp.append(row);
+}
 function vwFrame(attrs) { const f = document.createElement('iframe'); for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
 function vwStl(it) {
   const cv = document.createElement('canvas'), w = document.createElement('div'); cv.className = 'stl'; w.className = 'wait'; w.textContent = 'DRAWING ITS 3D MODEL\u2026';
@@ -7926,6 +7967,7 @@ function vwStl(it) {
 function vwRender() {
   if (!vw) return;
   const it = vw.items[vw.i], n = vw.items.length;
+  vw.live = false;   // (SAFETY: there is no live view now: an inscription's code never runs here)
   vwFree(); $vwc.innerHTML = '';
   document.getElementById('vwp').disabled = document.getElementById('vwx').disabled = n < 2;
   $vwm.textContent = vw.live ? 'LIVE VIEW' : 'SAFE VIEW'; $vw.classList.toggle('live', vw.live);
@@ -7952,19 +7994,19 @@ function vwRender() {
     }
     else if (it.empty) { what += ' \u00b7 no shape to show'; $vwc.innerHTML = '<div class="inf"><h3>' + (it.empty.moves ? 'A 3D ANIMATION' : 'NO SHAPE') + '</h3><div><span>it holds</span><b>' + vwEsc(mdlEmptyWords(it.empty)) + '</b></div></div>'; }
     else if (STL_RE.test(ty) && !it.del) { what += ' \u00b7 drag it to turn it'; vwStl(it); }   // (an STL model: ordinals.com shows none, so it is drawn here from the model and turned by dragging: nothing of it runs)
-    else if (MDL_RE.test(ty) && !it.del) {   // (a 3D model: ordinals.com's own viewer turns it, which runs its code: only once you GO LIVE)
-      runs = true; quiet = true;   // (GO LIVE is how it turns, so its button shows in SAFE VIEW too; the words below already say so)
-      if (vw.live) $vwc.appendChild(vwFrame({src: 'https://ordinals.com/preview/' + it.id, sandbox: 'allow-scripts allow-same-origin', title: 'inscription', allow: 'fullscreen'}));
-      else $vwc.innerHTML = '<div class="inf"><h3>A 3D MODEL</h3><div><span>to turn it</span><b>GO LIVE: ordinals.com\u2019s own 3D viewer shows it (that runs ordinals.com\u2019s code)</b></div>' + (it.ptrFrom ? '<div><span>the parcel\u2019s file</span><b>only points to this model</b></div>' : '') + '</div>';
-    } else if (/^image\//.test(ty) && !it.del) { const im = new Image(); im.src = url; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $vwc.appendChild(im); }
-    else { runs = !/^text\/(plain|markdown|csv)|json/.test(ty); $vwc.appendChild(vwFrame({src: url, sandbox: vw.live ? 'allow-scripts allow-forms allow-same-origin' : '', title: 'inscription', allow: 'autoplay; fullscreen'})); }
+    else {   // (SAFETY: only what cannot run code is shown here; see insKind)
+      const K = insKindOf(it.id);
+      if (K === undefined) { $vwc.innerHTML = '<div class="wait">CHECKING WHAT IT IS\u2026</div>'; insKind(it.id, insBases('https://ordinals.com')).then(() => { if (vw && vw.items[vw.i] === it) vwRender(); }); }
+      else { $vwc.appendChild(insSafeEl(K, it.id) || insClosedEl(K, it.id)); if (K.kind === 'closed') what += ' \u00b7 not opened here'; }
+    }
     $vwo.href = 'https://ordinals.com/inscription/' + it.id; $vwv.href = VIEWER + '#' + it.id; $vwo.style.display = $vwv.style.display = '';
     if (it.num == null && !it._asked && rrNow()) { it._asked = 1; RR.ins(it.id).then(o => { it.num = o.number; if (!it.type) it.type = o.content_type; if (vw && vw.items[vw.i] === it) vwRender(); }, () => {}); }
   } else if (it.k === 'stamp') {
     const ty = it.type || 'application/octet-stream';
     what = 'stamp · ' + vwKind(ty) + ' · ' + fmt(it.bytes.length) + ' bytes' + (it.proto === 'olga' ? ' · OLGA' : it.proto === 'classic' ? ' · classic' : '');
     if (/^image\//.test(ty) && ty !== 'image/svg+xml') { vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: ty})); const im = new Image(); im.src = vwUrl; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); }
-    else if (ty === 'text/html' || ty === 'image/svg+xml') { runs = true; $vwc.appendChild(vwFrame({srcdoc: RR.utf8(it.bytes), sandbox: vw.live ? 'allow-scripts' : '', title: 'stamp'})); }   // (never our page's own origin)
+    else if (ty === 'image/svg+xml') { vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: ty})); const im = new Image(); im.alt = ''; im.src = vwUrl; $vwc.appendChild(im); }   // (an SVG as a picture: nothing in a picture runs)
+    else if (ty === 'text/html') { const p = document.createElement('pre'); p.textContent = 'A stamp that is a web page. To keep you safe, its code is not run here. Its code, as text:\n\n' + RR.utf8(it.bytes.subarray(0, 200000)); $vwc.appendChild(p); }
     else { const p = document.createElement('pre'); p.textContent = RR.utf8(it.bytes.subarray(0, 200000)); $vwc.appendChild(p); }
     $vwo.style.display = $vwv.style.display = 'none';
   } else if (it.k === 'pic' && vwMoving(it.mdlT)) {   // (its 3D model moves by itself: played here from its file and turned by dragging)
@@ -7998,7 +8040,7 @@ document.getElementById('vwx').onclick = () => vwGo(1);
 // LIVE VIEW: only after the warning (like Sentinel); FULL SCREEN: the tablet fills the screen
 document.getElementById('vwl').onclick = () => { if (!vw) return; if (vw.live) { vw.live = false; vwRender(); } else $vwa.classList.add('on'); };
 document.getElementById('vwz').onclick = () => $vwa.classList.remove('on');
-document.getElementById('vwy').onclick = () => { $vwa.classList.remove('on'); if (vw) { vw.live = true; vwRender(); } };
+document.getElementById('vwy').onclick = () => { $vwa.classList.remove('on'); };   // (no live view now)
 function vwFull() {
   if (!vw) return;
   try {
@@ -9669,7 +9711,7 @@ function tradeAsk(k) {
       ['inscription fee', c ? fmt(c.fee) + ' sats · what inscribing it cost (as ordinals.com lists it)' : 'being read…'], ['sits on', c && c.v != null ? fmt(c.v) + ' sats' : ''],
       ['held by', o.s ? (mine ? 'your wallet: the chain says so' : 'their wallet: the chain says so') : 'being checked on the chain…']]);
     row(s, [I && !room.held ? btn('PICK IT UP TO LOOK CLOSER', () => { close(); rmHold(I.it); }) : null, X ? btn('OPEN ON ORDINALS.COM ↗', () => { try { window.open('https://ordinals.com/inscription/' + X, '_blank', 'noopener'); } catch (e) {} }) : null, X ? btn('RUN IT IN THE VIEWER ↗', () => { try { window.open(VIEWER + '#' + X, '_blank', 'noopener'); } catch (e) {} }) : null]);
-    s.append(el('p', 'fine', 'Picked up, it shows on your tablet; VIEW BIG shows it full size' + (t && t.art && t.art.mdl ? (stlOf(t) ? ', where you turn the 3D model by dragging it.' : ', and GO LIVE turns the 3D model.') : '.')));
+    s.append(el('p', 'fine', 'Picked up, it shows on your tablet; VIEW BIG shows it full size' + (t && t.art && t.art.mdl ? (stlOf(t) ? ', where you turn the 3D model by dragging it.' : ', where ordinals.com\u2019s own viewer turns the 3D model.') : '.')));
     if (X) { const sl = o.s ? tradeSeller(o) : '', u = tckUrl(X, sl); row(s, [btn('CHECK BEFORE A TRADE ↗', () => tckOpen(u))]);
       s.append(el('p', 'fine', 'CHECK BEFORE A TRADE opens Trade Check in a new tab with this inscription' + (sl ? ' and ' + (mine ? 'your' : 'their') + ' wallet' : '') + ' filled in. It reads the chain and says GO, STOP or NOT SURE, with every reason' + (sl ? ', including whether that wallet holds it now' : '') + '. It never says what a price should be.')); }
     if (mine && o.s) {
@@ -9789,7 +9831,7 @@ function showCard(t) {
   if (X) rows.push(['inscription id', X]);
   if (r.ts && !t.gal) rows.push(['made', new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
   if (!t.ct && r.ct) rows.push(['type', r.ct + (r.len ? ' · ' + fmt(r.len) + ' bytes' : '')]);
-  if (t.art && t.art.mdl) rows.push(['picture', stlOf(t) ? 'its 3D model (STL), drawn here from the model · in VIEW BIG, drag it to turn it' : 'its 3D model, drawn here from the model · VIEW BIG, then GO LIVE, turns the model']);
+  if (t.art && t.art.mdl) rows.push(['picture', stlOf(t) ? 'its 3D model (STL), drawn here from the model · in VIEW BIG, drag it to turn it' : 'its 3D model, drawn here from the model · VIEW BIG turns the model (in ordinals.com\u2019s own viewer)']);
   if (t.who && t.w) rows.splice(0, 0, ['offered', tradeWord(t.w) + (t.w === 'sale' && t.pr ? ' · asking ' + tradePrVs(t.pr, X) : '')]);
   { const c = tradeCost(t.gal ? t.gid : t.ordIds && t.ordIds[0]); if (c) { rows.push(['inscription fee', fmt(c.fee) + ' sats · what inscribing it cost (ordinals.com)']); if (c.v != null) rows.push(['sits on', fmt(c.v) + ' sats']); } }
   if (t.who && t.who.me) { const D = dealsToMe(); if (D.length) rows.push(['answers', D.map(x => x.w.p + ' · ' + x.w.name + ': ' + DEAL_WORD[x.a]).join(' · ')]); }
@@ -14948,7 +14990,7 @@ function ciData(tab) {
   // how to (getting into the garden and the clubs: not what is inside them)
   S.push({t: 'staying safe', p: ['Never open links people post in the chat or say out loud. A link can lead to a fake site made to empty your wallet. To visit a site, type its address yourself or use a bookmark you trust.',
     'Agent Blockhall never asks you to send, spend or approve anything, and never asks for seed words, private keys or passwords. If something does while you play, it is not us: say no.',
-    'A parcel\'s LIVE VIEW runs its own code, like a web page: never type seed words, private keys, passwords or wallet details into it.']});
+    'Agent Blockhall never runs an inscription\'s code: a web page inscription is not opened here, it links to its own page instead. Never type seed words, private keys, passwords or wallet details into any inscription.']});
   S.push({t: 'who is who', rows: [['people', 'real players, each on their own screen; their name floats over their head'],
     ['AI agents', 'players too, run by an AI; their name has "· AI" after it (over their head and in the chat). They play by the same rules as people, with no extra powers'],
     ['NPCs', 'the robots (such as the Chain Keeper over the Forum, the barkeep and the door guards) are part of the place, not players: they do not chat or play']]});
@@ -15811,7 +15853,7 @@ window.AgentKit = window.AgentKit || (() => {
     const mk = ownWho(t);   // (the markers over it: who holds it, as a player sees them)
     if (t.gal) return {piece: t.gi, is: t.par ? 'the parent' : 'a child', inscription: t.gid || undefined, number: t.n || undefined, madeInBlock: t.h != null ? t.h : undefined, markers: mk.length ? mk : undefined};   // (a piece on a stand in a collection's hall: its card says the rest)
     const o = {n: t.idx, txid: t.id, feeRate: rf(t.rate), fee: t.fee, vsize: t.vsize, types: typesOf(t)};
-    if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) o.shows = stlOf(t) ? 'its 3D model (STL), as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; turnBig() turns it)' : 'its 3D model, as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; GO LIVE in VIEW BIG turns it in ordinals.com\'s own viewer, for the person at your screen: the kit cannot see inside that)';
+    if (t.art && t.art.mdl && !t.cat21 && !t.labitbu) o.shows = stlOf(t) ? 'its 3D model (STL), as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; turnBig() turns it)' : 'its 3D model, as a picture on its box drawn here from the model (hold it, then viewBig() and look({picture: true}) to see it; VIEW BIG turns it in ordinals.com\'s own viewer, for the person at your screen: the kit cannot see inside that)';
     else if (stlOf(t)) o.shows = 'its 3D model (STL): hold it and it is drawn on your tablet; viewBig() and look({picture: true}) show it large, and turnBig() turns it';
     if ((t.cat21 || t.labitbu) && t.art) o.shows = (t.cat21 ? 'its CAT-21 cat' : 'its Labitbu') + ', a picture on its box: hold it, then viewBig() and look({picture: true}) to see it';
     { const K = (t.ordIds || []).map(mdlKindOf).find(x => x && (x.ptr || x.empty)); if (K) o.shows = K.empty ? 'its 3D file: ' + mdlEmptyWords(K) : 'its 3D model file only points to inscription ' + K.ptr.id + ': that model is shown on your tablet and in viewBig()'; }
@@ -16034,7 +16076,7 @@ window.AgentKit = window.AgentKit || (() => {
       const d = new DOMParser().parseFromString(new TextDecoder().decode(bytes.subarray(0, 400000)), 'text/html');   // (read, never run)
       d.querySelectorAll('script,style,noscript,template').forEach(e => e.remove());
       o.words = (d.body ? d.body.textContent : '').replace(/\s+/g, ' ').trim().slice(0, 1500) || undefined;
-      o.why = 'an HTML page runs in a sealed frame (SAFE VIEW: nothing runs, so it may look blank or still; GO LIVE runs it): the kit cannot take a picture inside it. ' + (o.words ? 'Its words are read from its file.' : 'Its file has no words of its own to read (what it shows, it draws or loads as it runs).');
+      o.why = 'a web page inscription is not opened here (Agent Blockhall never runs an inscription\'s code): the tablet shows a note with a link to its own page. ' + (o.words ? 'Its words are read from its file.' : 'Its file has no words of its own to read (what it shows, it draws or loads as it runs).');
     } else if (/^text\/|json|javascript|xml/.test(ty)) o.words = new TextDecoder().decode(bytes.subarray(0, 12000)).slice(0, 3000);
     else o.why = 'a ' + (ty || 'file') + ' file: nothing to see as a picture or words';
     return o;
@@ -16591,7 +16633,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'answerDeal', does: 'At a crewmate\'s trade base with a block on it: LET\'S MAKE A DEAL or NOT INTERESTED, as the buttons there do ("none" takes your answer back). They are told. A deal is taken to another app to swap (nothing is swapped here): there, check the inscription id matches exactly (a copy can look the same), and prefer a swap where both sides go in one transaction. A deal also asks the chain again whether their wallet still holds it. You answer standing at their base, as a player does: in the common room this walks you there first.', args: [{name: 'base', does: 'their base (P1 to P6) or their name', req: true}, {name: 'answer', enum: ['deal', 'not interested', 'none'], does: 'your answer', req: true}],
       run: async ({base, answer}) => { const k = tradeBaseK(base); if (k < 0) return {ok: false, error: 'no crewmate with that base or name: tradeFloor() lists the bases'}; trade.list = tradeList(); const o = trade.list[k]; if (!o || o.who.me || !o.s) { const r = tradeDeal(k, 'deal'); if (!r.ok) return r; }
         const g = await tradeWalkTo(k, 'you answer'); if (!g.ok) return g; const r = tradeDeal(k, answer === 'deal' ? 'deal' : answer === 'not interested' ? 'no' : ''); return r.ok ? Object.assign(r, {walkedToTheirBase: g.walked || undefined, tradeFloor: tradeInfo()}) : r; }},
-    {name: 'inspectBase', untrusted: true, does: 'Look closely at the block on a trade base (yours or a crewmate\'s), as a player does by clicking it: walks you to that base in the common room (as a player walks) and picks up a copy into your hands; the block stays on the base. Then viewBig() shows it full size, look({picture: true}) gives you its picture (a 3D model shows as a picture drawn from the model; GO LIVE in VIEW BIG turns it in ordinals.com\'s own viewer, for the person at your screen: the kit cannot see inside that), and putBack() puts the copy down. Returns everything the chain says about it.', args: [{name: 'base', does: 'the base (P1 to P6) or the player\'s name', req: true}],
+    {name: 'inspectBase', untrusted: true, does: 'Look closely at the block on a trade base (yours or a crewmate\'s), as a player does by clicking it: walks you to that base in the common room (as a player walks) and picks up a copy into your hands; the block stays on the base. Then viewBig() shows it full size, look({picture: true}) gives you its picture (a 3D model shows as a picture drawn from the model; VIEW BIG turns it in ordinals.com\'s own viewer, for the person at your screen: the kit cannot see inside that), and putBack() puts the copy down. Returns everything the chain says about it.', args: [{name: 'base', does: 'the base (P1 to P6) or the player\'s name', req: true}],
       run: async ({base}) => { const k = tradeBaseK(base); if (k < 0) return {ok: false, error: 'no base or player by that name: tradeFloor() lists the bases'}; trade.list = tradeList(); const o = trade.list[k]; if (!o || !o.s) return {ok: false, error: (o ? o.who.p : 'P' + (k + 1)) + ' has no checked block on it right now'};
         const g = await tradeWalkTo(k, 'you look at a block'); if (!g.ok) return g;
         if (room.held && !room.held.back) { rmPut(); await wait(800); }
