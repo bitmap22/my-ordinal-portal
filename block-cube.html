@@ -5275,6 +5275,14 @@ function rmStep(dt) {
   }
 }
 let rmLast = 0;
+// the floor stays still while a hall is still being built (the one you're in, or the ones through its doors), and moves again once they are all ready
+let flT = null, flLast = 0;
+function flTime(tn) {
+  const rs = room && room.rooms ? room.rooms : [], wait = rs.some(q => q && !q.ready && !q.failed);
+  if (flT == null) flT = tn;
+  else if (!wait) flT += Math.max(0, Math.min(0.25, tn - flLast));
+  flLast = tn; return flT;
+}
 function roomFrame(W, H, tn, dpr) {
   if (room.rooms[1] && room.rooms[1].cl) { clFrame(W, H, tn, dpr); return; }   // (the club: its own lights and things)
   if (room.rooms[1] && room.rooms[1].gd) { gdFrame(W, H, tn, dpr); return; }   // (the bitmap garden: its own sky, light and things)
@@ -5330,29 +5338,30 @@ function roomFrame(W, H, tn, dpr) {
   all(1);
   gl.frontFace(gl.CCW); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
   // the floor's life: both copies of the ring, laid along the hall (fish first: they swim under the water)
+  const ft = flTime(tn);   // (the floor's own clock: it waits while a hall is built)
   const [R0, R1, R2] = room.rooms, wz = (R, f, d) => R && R.z0 != null ? R.z0 - (f ? R.L : 0) : d;
   { const Rc = room.rooms.find(q => cmOn(q) && q.ready); LCM = Rc ? [Rc.z0 - Rc.L - .3, Rc.z0 + .3] : [1e9, -1e9]; }
   const rings = f => { if (room.at && room.at.gal) return; LWALL = [wz(R0, 0, 1e5), wz(R1, 0, 1e5), wz(R1, 1, -1e5), wz(R2, 1, -1e5)]; for (const [q, z] of [[0, 0], [1, 16]]) { LROOM = [1, q, z, p.z]; f(); } LROOM = [0, 0, 0, 0]; LWALL = [1e5, 1e5, -1e5, -1e5]; };
-  if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, tn, LW, true));
+  if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, ft, LW, true));
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
-  gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0);
+  gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0);
   gl.uniform1f(mtP.u.uFS, 7); gl.uniform2f(mtP.u.uFO, p.x, p.z); gl.uniform1f(mtP.u.uRm, 1);
   gl.bindVertexArray(flVAO);
   gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(false, false, false, true); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 1); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(true, true, true, true);
   gl.uniform1f(mtP.u.uFS, 1); gl.uniform2f(mtP.u.uFO, 0, 0); gl.uniform1f(mtP.u.uRm, 0);
-  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); rings(() => lifeShadows(VP, eye, tn, LW));
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); rings(() => lifeShadows(VP, eye, ft, LW));
   gl.disable(gl.BLEND);
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
   rmFloorDepth(VP);
   all(0);
-  gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, tn, LW, false));
+  gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, ft, LW, false));
   cmDraw(VP, eye, tn); cmQDraw(VP, eye, tn);
   folDraw(VP, eye, tn);
   i0Draw(VP, eye); if (typeof wpDraw === 'function') wpDraw(VP, eye);   // (the whitepaper's lectern, in block 0's hall)
-  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); rings(() => lifeDust(VP, tn, LW, H)); gl.depthMask(true); gl.disable(gl.BLEND);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); rings(() => lifeDust(VP, ft, LW, H)); gl.depthMask(true); gl.disable(gl.BLEND);
   gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
   cmOverlays(VP, W, H);
 }
