@@ -303,21 +303,21 @@
 
   /* ---------- the agent kit: window.agent (the same steps as the buttons; the page says when an agent asked) ---------- */
   const cmds = [
-    {name: 'add', does: 'Start a watch (as the buttons do). what: "block" (the next block), "inscription" (value: a Doginal number or ID), "address" (value: a Dogecoin address) or "kind" (value: a kind, e.g. "DRC-20", "dunes etched", "inscriptions", "dogemaps"). Says where things stand now. There is no fee watch: Dogecoin\'s fees barely move.', args: [{name: 'what', does: 'block, inscription, address or kind', enum: DW.WHAT}, {name: 'value', does: 'the Doginal, address or kind (not needed for block)'}],
+    {name: 'add', does: 'Start a watch (as the buttons do). what: "block" (the next block), "inscription" (value: a Doginal number or ID), "address" (value: a Dogecoin address) or "kind" (value: a kind, e.g. "DRC-20", "dunes etched", "inscriptions", "dogemaps"). Says where things stand now. There is no fee watch: Dogecoin\'s fees barely move. Gives back {watching, now, n} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"watching":{},"now":{},"n":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'what', does: 'block, inscription, address or kind', enum: DW.WHAT}, {name: 'value', does: 'the Doginal, address or kind (not needed for block)'}],
       run: async ({what, value}) => add({what, value}, true)},
-    {name: 'wait', does: 'Wait for the next alert from any watch (looking every 30 seconds), for up to the given seconds (default 120, most 600). Returns the alerts, or none if the time ran out.', untrusted: true, args: [{name: 'seconds', type: 'integer', does: 'how long to wait (default 120, most 600)'}],
+    {name: 'wait', does: 'Wait for the next alert from any watch (looking every 30 seconds), for up to the given seconds (default 120, most 600). Returns the alerts, or none if the time ran out. Gives back {alerts[], note} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"alerts":{"type":"array"},"note":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, untrusted: true, args: [{name: 'seconds', type: 'integer', does: 'how long to wait (default 120, most 600)'}],
       run: async ({seconds = 120}) => {
         if (!W.length) throw new Error('nothing is being watched: add a watch first');
         const from = seq, ms = Math.max(1, Math.min(600, +seconds || 120)) * 1000;
         await new Promise(res => { const t = setTimeout(res, ms); waiters.push(() => { clearTimeout(t); res(); }); });
         return {alerts: A.filter(e => e.n > from).reverse(), note: UNTRUSTED};
       }},
-    {name: 'alerts', does: 'The alerts so far (newest last), or only those after a number you have seen (each alert has its number n).', untrusted: true, args: [{name: 'after', type: 'integer', does: 'only alerts with n above this'}],
+    {name: 'alerts', does: 'The alerts so far (newest last), or only those after a number you have seen (each alert has its number n). Gives back {alerts[], note} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"alerts":{"type":"array"},"note":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, untrusted: true, args: [{name: 'after', type: 'integer', does: 'only alerts with n above this'}],
       run: ({after = 0}) => ({alerts: A.filter(e => e.n > (+after || 0)).reverse(), note: UNTRUSTED})},
-    {name: 'list', does: 'The watches, numbered, each with where things stand now.', args: [], run: () => ({watches: W.map((x, i) => ({n: i + 1, watching: DW.describe(x.w), what: x.w.what, value: x.w.value != null ? x.w.value : null, now: DW.standing(x.w, x.s), error: x.err || null}))})},
-    {name: 'remove', does: 'Stop a watch, by its number in list.', args: [{name: 'n', type: 'integer', does: 'the watch’s number'}], run: ({n}) => remove(n, true)},
-    {name: 'look', does: 'Look now instead of waiting for the next look (as the Look now button does).', untrusted: true, args: [], run: async () => { const from = seq; await look(); return {alerts: A.filter(e => e.n > from).reverse(), note: UNTRUSTED}; }},
-    {name: 'see', does: 'What the page shows now: the status line, the watches and the number of alerts.', args: [], run: () => ({status: $('status').textContent, watches: W.length, alerts: A.length, newestAlert: A[0] ? A[0].title : null, nextLookInSeconds: Math.max(0, Math.round((nextAt - Date.now()) / 1000))})}
+    {name: 'list', does: 'The watches, numbered, each with where things stand now. Gives back {watches[{n, watching, what, value, now, error}]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"watches":{"type":"array","items":{"type":"object","properties":{"n":{},"watching":{},"what":{},"value":{},"now":{},"error":{}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [], run: () => ({watches: W.map((x, i) => ({n: i + 1, watching: DW.describe(x.w), what: x.w.what, value: x.w.value != null ? x.w.value : null, now: DW.standing(x.w, x.s), error: x.err || null}))})},
+    {name: 'remove', does: 'Stop a watch, by its number in list. Gives back {stopped, left} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"stopped":{},"left":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'n', type: 'integer', does: 'the watch’s number'}], run: ({n}) => remove(n, true)},
+    {name: 'look', does: 'Look now instead of waiting for the next look (as the Look now button does). Gives back {alerts[], note} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"alerts":{"type":"array"},"note":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, untrusted: true, args: [], run: async () => { const from = seq; await look(); return {alerts: A.filter(e => e.n > from).reverse(), note: UNTRUSTED}; }},
+    {name: 'see', does: 'What the page shows now: the status line, the watches and the number of alerts. Gives back {status, watches, alerts, newestAlert, nextLookInSeconds} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"status":{},"watches":{},"alerts":{},"newestAlert":{},"nextLookInSeconds":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [], run: () => ({status: $('status').textContent, watches: W.length, alerts: A.length, newestAlert: A[0] ? A[0].title : null, nextLookInSeconds: Math.max(0, Math.round((nextAt - Date.now()) / 1000))})}
   ];
   const plain = r => JSON.parse(JSON.stringify(r));
   const api = {};
@@ -338,7 +338,7 @@
     for (const c of cmds) {
       const props = {}, req = c.name === 'add' ? ['what'] : c.name === 'remove' ? ['n'] : [];
       for (const d of c.args || []) props[d.name] = Object.assign({type: d.type || 'string', description: d.does}, d.enum ? {enum: d.enum} : {});
-      try { const p = mc.registerTool({name: 'dogewatch_' + c.name, description: c.does + (c.untrusted ? ' ' + UNTRUSTED : ''), inputSchema: {type: 'object', properties: props, required: req},
+      try { const p = mc.registerTool({name: 'dogewatch_' + c.name, ...(c.out ? {outputSchema: c.out} : {}), description: c.does + (c.untrusted ? ' ' + UNTRUSTED : ''), inputSchema: {type: 'object', properties: props, required: req},
         annotations: {readOnlyHint: !['add', 'remove'].includes(c.name), untrustedContentHint: !!c.untrusted}, execute: async args => JSON.stringify(await api[c.name](args || {}))}); if (p && p.catch) p.catch(() => {}); } catch (e) {}
     }
   }
