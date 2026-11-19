@@ -87,7 +87,7 @@
     if (u[0] === 0x1f && u[1] === 0x8b) return {type: 'application/gzip', name: 'gzip'};
     // words: SVG, HTML, JSON, glTF (JSON), OBJ, plain text
     const head = utf8(u.subarray(0, Math.min(u.length, 4096))).replace(/^\ufeff/, '').trimStart(), low = head.toLowerCase();
-    if (/^(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!doctype svg[^>]*>\s*)?<svg[\s>]/.test(low)) return {type: 'image/svg+xml', name: 'SVG'};
+    if (/^(<\?xml[^>]*>\s*)?(<!--(?:(?!-->)[\s\S])*-->\s*)*(<!doctype svg[^>]*>\s*)?<svg[\s>]/.test(low)) return {type: 'image/svg+xml', name: 'SVG'};
     if (/^(<!doctype html|<html|<head|<body|<script|<meta|<div|<canvas|<style)/.test(low)) return {type: 'text/html', name: 'HTML'};
     if (/^[{[]/.test(head)) { if (/"asset"\s*:\s*\{[^}]*"version"/.test(head) || /"asset"\s*:/.test(head) && /"meshes"|"nodes"/.test(utf8(u))) return {type: 'model/gltf+json', name: 'glTF (JSON)'}; return {type: 'application/json', name: 'JSON'}; }
     if (/^(#.*\n|\s)*(v|vn|vt|f|o|g|mtllib|usemtl)\s/m.test(head) && /^v\s+-?[\d.]+\s+-?[\d.]+\s+-?[\d.]+/m.test(head)) return {type: 'model/obj', name: 'OBJ'};

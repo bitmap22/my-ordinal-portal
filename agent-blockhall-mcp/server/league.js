@@ -160,7 +160,9 @@
     if (p !== X.length) throw new Error('the block has bytes left over');
     return {hash, root, bits, txs, height: txs[0] ? heightIn(txs[0].vin[0].script) : null, X};
   }
-  const pickOne = a => a[Math.floor(Math.random() * a.length)];
+  // proper random numbers (so no data site can guess which block or transaction it will be asked about next)
+  const rnd = () => { try { const c = globalThis.crypto, u = new Uint32Array(1); c.getRandomValues(u); return u[0] / 4294967296; } catch (e) { return Math.random(); } };
+  const pickOne = a => a[Math.floor(rnd() * a.length)];
   // a sample transaction (not the coinbase, if there is another)
   function sampleTx(B) { const t = B.txs.length > 1 ? pickOne(B.txs.slice(1)) : B.txs[0]; return {id: t.txid, hex: P.hex(B.X.subarray(t.a, t.end))}; }
 
@@ -169,7 +171,7 @@
     // the newest block: the second highest of what three copies say (one site alone can't set it)
     const tips = (await Promise.all(MPS.slice(0, 4).map(s => ask(s.base + '/api/blocks/tip/height', opt)))).map(r => r.http === 200 ? Number(txt(r.bytes)) : NaN).filter(Number.isInteger).sort((a, b) => b - a);
     if (!tips.length) throw new Error('no copy of mempool.space said how high the chain is');
-    const tip = tips.length >= 2 ? tips[1] : tips[0], h = opt.btcHeight || tip - 6 - Math.floor(Math.random() * 138);   // (about the last day, at least 6 blocks deep)
+    const tip = tips.length >= 2 ? tips[1] : tips[0], h = opt.btcHeight || tip - 6 - Math.floor(rnd() * 138);   // (about the last day, at least 6 blocks deep)
     say('bitcoin block', h);
     let B = null, from = null, why = [];
     for (const s of MPS) {
@@ -203,7 +205,7 @@
     const tip = tips.length >= 2 ? tips[1] : tips[0];
     // a block about a day deep, with a Doginal in it if one of a few tries finds one (the explorer's count only picks it; the bytes prove it)
     let h = opt.dogeHeight || null;
-    if (!h) for (let k = 0; k < 6 && !h; k++) { const c = tip - 20 - Math.floor(Math.random() * 1400); const r = await ask('https://thedoginalsexplorer.com/v1/block/' + c + '?limit=1', opt); try { if (r.http === 200 && js(r.bytes).inscription_count > 0) h = c; } catch (e) {} if (k === 5 && !h) h = c; }
+    if (!h) for (let k = 0; k < 6 && !h; k++) { const c = tip - 20 - Math.floor(rnd() * 1400); const r = await ask('https://thedoginalsexplorer.com/v1/block/' + c + '?limit=1', opt); try { if (r.http === 200 && js(r.bytes).inscription_count > 0) h = c; } catch (e) {} if (k === 5 && !h) h = c; }
     say('dogecoin block', h);
     // the whole block's bytes from Blockchair; if it gives none, the header's six fields and the transaction list from the
     // explorer, with transactions' bytes from BlockCypher (each still proved: the header's hash, the list's merkle root, and

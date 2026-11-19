@@ -1,0 +1,31 @@
+# temporary: runs the Agent Blockhall MCP tool's live test on this branch only (deleted before merging)
+name: scanfix live test (temporary)
+on:
+  push:
+    branches: [scanfix-test]
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - name: Live test (every tool, live data)
+        working-directory: agent-blockhall-mcp
+        run: |
+          node test/live.js
+          node -e "const r=require('./test/results.json'); const c=r.calls||[]; const bad=c.filter(x=>x.isError); console.log('calls', c.length, 'errors', bad.length); for (const b of bad) console.log('ERR', b.name, JSON.stringify(b.text||b.result||'').slice(0,300));"
+      - name: Media reader and Truth League (the two fixed files)
+        working-directory: agent-blockhall-mcp
+        run: |
+          node -e "
+          const M=require('./server/media.js'); const t=Date.now();
+          const enc=s=>new TextEncoder().encode(s);
+          const tryIt=(s)=>{ const f=M.detect||M.sniff||M.kind||M.read; return f? f(enc(s)) : 'no fn'; };
+          console.log('exports', Object.keys(M).join(','));
+          console.log('bomb', JSON.stringify(tryIt('<!--a-->'.repeat(500)+'x')), Date.now()-t, 'ms');
+          console.log('svg', JSON.stringify(tryIt('<?xml version=\"1.0\"?><!-- c --><svg width=\"1\"></svg>')));
+          const L=require('./server/league.js'); console.log('league ok', typeof L.check);"
