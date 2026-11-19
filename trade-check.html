@@ -120,6 +120,7 @@
       <button type="button" data-q="aa971d5dd1d6429076ad16aef35409f8363937e53786af37803c40923f9a4c2ei0">code: the Agent Blockhall Viewer</button>
       <button type="button" data-q="#0" data-chain="doge">Doginal #0</button>
     </div>
+    <p class="small hidden" id="filled" role="status" aria-live="polite"></p>
     <div id="status" role="status" aria-live="polite"></div>
     <ul id="steps" class="hidden"></ul>
   </div>
@@ -322,6 +323,29 @@
   for (const b of document.querySelectorAll('.pair .chip')) b.addEventListener('click', () => setChain(b.dataset.chain));
   const run = () => check($('q').value, {seller: $('seller').value.trim(), collection: $('coll').value.trim()}).catch(e => { say(String(e && e.message || e)); for (const li of document.querySelectorAll('#steps li.busy')) li.className = 'no'; });
   $('ask').addEventListener('submit', e => { e.preventDefault(); run(); });
+
+  // when an ID or number is pasted or typed, fill in the holder's address and the parent it names, read from the chain's explorers
+  const auto = {seller: '', coll: ''}; let fillFor = '', fillTimer = null;
+  const putAuto = (box, v) => { const cur = $(box).value.trim(); if (!cur || cur === auto[box]) { $(box).value = v || ''; auto[box] = v || ''; } };
+  async function prefill() {
+    const q = $('q').value.trim(), key = chain + ':' + q; if (!q || key === fillFor) return; fillFor = key;
+    const note = $('filled'); note.classList.remove('hidden'); note.textContent = 'Looking it up to fill in the other boxes…';
+    try {
+      let holder = null, parent = null;
+      if (chain === 'doge') { const id = await DPV.resolve(q, dio); if (fillFor !== key) return; const J = await dio.dx('/v1/inscription/' + id); holder = J && J.address || null; }
+      else { const io = makeIo(), id = await PV.resolve(q, io); if (fillFor !== key) return;
+        const [info, par] = await Promise.allSettled([io.ordJson('/r/inscription/' + id), io.ordJson('/r/parents/' + id)]);
+        holder = info.status === 'fulfilled' ? info.value.j.address || null : null;
+        const ids = par.status === 'fulfilled' ? (par.value.j.ids || []) : []; parent = ids[0] || null; }
+      if (fillFor !== key) return;
+      putAuto('seller', holder); if (chain !== 'doge') putAuto('coll', parent);
+      const got = [holder ? 'the address that holds it now' : '', parent ? 'the parent it names' : ''].filter(Boolean);
+      note.textContent = (got.length ? 'Filled in from the chain: ' + got.join(' and ') + '. If the seller or the listing gave you a different address or collection, type theirs over it, so theirs is what gets checked.' : 'Who holds it could not be read.') + (chain !== 'doge' && !parent ? ' It names no parent.' : '');
+    } catch (e) { if (fillFor === key) { fillFor = ''; note.textContent = 'Could not fill in the other boxes: ' + String(e && e.message || e); } }
+  }
+  $('q').addEventListener('paste', () => setTimeout(prefill, 50));
+  $('q').addEventListener('input', () => { clearTimeout(fillTimer); fillTimer = setTimeout(prefill, 700); });
+  $('q').addEventListener('change', prefill);
   for (const b of document.querySelectorAll('.examples button')) b.addEventListener('click', () => { setChain(b.dataset.chain || 'bitcoin'); $('q').value = b.dataset.q; $('seller').value = ''; $('coll').value = ''; run(); });
   const save = (text, type, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); };
   $('dlJson').addEventListener('click', () => { if (R) save(JSON.stringify(Object.assign({licence: '© 2026 bitmap22. All rights reserved. Free to download and use; not to be republished or sold without permission. Not financial advice.'}, R), null, 1), 'application/json', 'trade-check-' + (R.inscription.number != null ? R.inscription.number : 'x') + '.json'); });
