@@ -8,7 +8,7 @@
 const fs = require('fs'), path = require('path');
 const BM = require(path.join(__dirname, '..', '..', 'agent-blockhall-mcp', 'server', 'manifest.js'));
 const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/daily-' + VERSION;
-const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/', RAW = 'https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/';
+const PORTAL = 'https://ordportal.com/', RAW = 'https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/';
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (' + 'https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE' + '). Bitcoin’s own data is public.';
 
 /* ---------- being gentle with the sites: at most 30 at once, then 6 a second per site; rest any site that asks ---------- */
