@@ -49,6 +49,26 @@ Please don't run tests that could harm other people: no attacks on other players
 - **The MCP publish job** uses a fixed version of `mcp-publisher`, checked against its published fingerprint before it runs.
 - **The `main` branch** only takes changes through pull requests.
 
+## Free security scans
+
+On 19 November 2026 the Agent Blockhall MCP tool (version 1.15.0) was scanned with free, open-source scanners. They were run by bitmap22's own setup, not by an outside firm:
+
+| Scanner | What it checked | Result |
+|---|---|---|
+| [Cisco AI Defense mcp-scanner](https://github.com/cisco-ai-defense/mcp-scanner) 4.8.7 (YARA and schema checks) | All 28 tools, as an agent sees them over MCP | No findings |
+| [njsscan](https://github.com/ajinabraham/njsscan) 1.0.2, with Semgrep 1.172.0 | The tool's code | 14 findings, each checked by hand: 3 uses of `Math.random` in the Truth League (fixed, below); 11 pattern warnings that were false alarms (each pattern only matches fixed shapes). Its pattern check timed out on the 3 biggest files, so those were checked by hand and timed: that found the SVG check below |
+| Dependencies | Outside packages the tool uses | None: it uses only Node.js's own built-in modules |
+| [detect-secrets](https://github.com/Yelp/detect-secrets) 1.5.0 | Every text file in this repository, for keys or passwords | None real (only inscription IDs, hashes and public addresses) |
+
+Fixed in version 1.15.1:
+
+- **A file that could freeze the tool:** the check that tells whether a file is an SVG picture got exponentially slower with each `<!-- -->` comment at the start of a file, so an inscription made on purpose could freeze it. Each comment now ends at its own first `-->`, so it stays fast. The same check in Block Paint City was fixed too.
+- **Guessable quiz blocks:** the Truth League picked the block and transaction it quizzes data sites about with `Math.random`, which is not made for this. It now uses proper random numbers (`crypto.getRandomValues`), so no site can guess its next question.
+
+Every network request the tool makes goes to its own fixed list of sites. Addresses found inside an inscription are only listed, never fetched.
+
+Not run: Snyk Agent Scan (it needs a Snyk account) and Cisco's behavioural check (it needs a paid AI model key).
+
 More in the [Terms and disclaimer](https://ordportal.com/legal.html).
 
 © 2026 bitmap22. All rights reserved.
