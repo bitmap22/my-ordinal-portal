@@ -17,7 +17,7 @@
   else root.SafetyRead = make(root.CodeRead || null);
 })(typeof self !== 'undefined' ? self : this, function (CR) {
   'use strict';
-  const VERSION = '1.1.0';   // (1.1.0: scanWallet, every inscription an address holds; flashes, shared with the scan)
+  const VERSION = '1.1.1';   // (1.1.0: scanWallet, every inscription an address holds; flashes, shared with the scan. 1.1.1: gentler with the Doginals Explorer)
   // every kind: its key, name, symbol, colour, what it means, and whether the Safety Scan finds it by looking (pictures, films) or by reading
   const KINDS = [
     {key: 'adult', name: 'May be adult', symbol: '🔞', colour: '#e5484d', says: 'a picture or film that may show nudity (18+)', by: 'looking'},
@@ -178,12 +178,14 @@
       const t = await r.text(); list = [...new Set([...t.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)].map(m => m[1]))].map(id => ({id, type: null}));
     } else {
       for (let pg = 1; pg <= 200; pg++) {
-        const r = await F(DXS + '/v1/wallet/' + a + '/inscriptions?exclude=drc20&limit=100&page=' + pg); if (!r.ok) throw new Error('the Doginals Explorer did not answer (http ' + r.status + ')');
+        let r = await F(DXS + '/v1/wallet/' + a + '/inscriptions?exclude=drc20&limit=100&page=' + pg);
+        if (r.status === 429) { say('The Doginals Explorer asked us to slow down: waiting…'); await sleep(Math.min(60, +r.headers.get('retry-after') || 20) * 1000); r = await F(DXS + '/v1/wallet/' + a + '/inscriptions?exclude=drc20&limit=100&page=' + pg); }
+        if (!r.ok) throw new Error('the Doginals Explorer did not answer (http ' + r.status + ')');
         const j = await r.json(), L = j.inscriptions || [];
         for (const x of L) { if (!x || !x.id) continue; if ((x.kinds || []).includes('dogemap')) { out.namesAndTokens++; continue; } list.push({id: x.id, type: String(x.contentType || '').split(';')[0].trim().toLowerCase() || null}); }
         say('Reading which Doginals ' + a + ' holds: ' + (list.length + out.namesAndTokens) + ' of ' + (j.total || '?') + '…');
         if (!L.length || list.length + out.namesAndTokens >= (j.total || 0) || list.length >= MAX || stop()) break;
-        await sleep(250);
+        await sleep(800);   // (each page of a wallet's list costs 3 of the explorer's 300 units a minute: this stays well under)
       }
     }
     out.holds = list.length + out.namesAndTokens;
