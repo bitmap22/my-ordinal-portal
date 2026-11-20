@@ -38,11 +38,11 @@
       [/\b(ignore|disregard|forget|override|bypass)\s+(all\s+|any\s+|the\s+|your\s+)*(previous|prior|above|earlier|preceding|system|original|existing)\s+(instructions?|prompts?|rules?|guidelines?|directions?|messages?)/i, 'tells an AI to ignore its instructions'],
       [/\b(new|updated|real|secret|hidden|important)\s+(system\s+)?(instructions?|orders?|directives?)\s*(for\s+(the\s+)?(ai|agent|assistant|llm|model|bot)s?)?\s*:/i, 'gives "new instructions"'],
       [/\b(attention|note|message|instructions?)\s+(to|for)\s+(any\s+|all\s+|the\s+)?(ai|a\.i\.|agents?|assistants?|llms?|language models?|chatbots?|claude|chatgpt|gpt|gemini|copilot|grok)\b/i, 'speaks to AI agents directly'],
-      [/\b(you are now|from now on,? you|act as|pretend (to be|you are)|you must now|your new (role|task|goal) is)\b/i, 'tries to change what an AI is or does'],
+      [/\b(you are now|from now on,? you( are| will| must)?|act as|pretend (to be|you are)|you must now|your new (role|task|goal) is)\b[^.\n]{0,60}\b(ai|a\.i\.|assistant|agent|model|chatbot|bot|mode|dan|jailbr\w*|unrestricted|unfiltered|uncensored|developer mode)\b/i, 'tries to change what an AI is or does'],
       [/\b(do not|don't|never)\s+(tell|inform|show|mention|reveal|let)\s+(this\s+to\s+)?(the\s+)?(user|human|owner|person)\b/i, 'tells an AI to hide something from its user'],
       [/<\|im_start\|>|<\|im_end\|>|<\|system\|>|<\|assistant\|>|\[\/?INST\]|<<\/?SYS>>|<\/?(system|assistant|tool_call|function_call)>|^\s*(system|assistant)\s*:/im, 'copies the hidden markers chat AIs use'],
       [/\b(reveal|print|show|output|repeat|leak)\s+(your\s+|the\s+)(system\s+prompt|hidden\s+prompt|instructions|api\s+keys?|secrets?|seed|private\s+keys?)/i, 'asks an AI to give away its secrets'],
-      [/\b(agents?|assistants?|ai)\s+(must|should|shall|will)\s+(now\s+)?(send|transfer|sign|approve|pay|buy|sell|delete|run|execute|visit|open|click|connect)/i, 'orders AI agents to act'],
+      [/\b(agents?|assistants?|ai)\s+(must|should|shall|will)\s+(now\s+|immediately\s+|always\s+)?(send|transfer|sign|approve|pay|delete|execute|connect\s+(the\s+|a\s+|your\s+)?wallet|reveal|ignore|disregard)\b/i, 'orders AI agents to act'],
       [/\bnavigator\s*\.\s*modelContext\b|\bmodelContext\s*\.\s*(registerTool|provideContext|unregisterTool|clearContext)\b|\bregisterTool\s*\(/, 'code that offers tools to AI agents in the browser (WebMCP)'],
       [/\bwindow\s*\.\s*(agent|ai|claude|openai|anthropic|mcp)\b(?!\s*=)|\b(LanguageModel|ai\s*\.\s*languageModel)\s*\.\s*(create|availability|capabilities)\b|\bself\s*\.\s*ai\s*\.\s*/, 'code that reaches for an AI agent or the browser\'s AI'],
       [/["']method["']\s*:\s*["'](tools\/call|tools\/list|resources\/read|prompts\/get|sampling\/createMessage)["']/, 'speaks the AI tool language (MCP) to agents'],
@@ -61,7 +61,7 @@
       [/\b(bit\.ly|tinyurl\.com|t\.co|goo\.gl|is\.gd|cutt\.ly|rebrand\.ly|shorturl\.at|rb\.gy|tiny\.cc)\/[A-Za-z0-9]+/i, 'a hidden-address short link']],
     miner: [
       [/\b(coin-?hive|cryptonight|coinimp|crypto-?loot|webminepool|minero\.cc|jsecoin|deepminer|cryptoloot|webmine\.pro|monerominer|xmrig|nicehash|minergate)\b|stratum\+(tcp|ssl):\/\//i, 'a known coin-mining tool'],
-      [/\bnew\s+(Worker|SharedWorker)\s*\([\s\S]{0,400}\b(hash(rate|es)?|nonce|mining|miner|cryptonight)\b/i, 'starts background workers that hash (may be mining)'],
+      [/\bnew\s+(Worker|SharedWorker)\s*\([\s\S]{0,400}\b(hashrate|hashes per second|mining|miner|cryptonight|stratum)\b/i, 'starts background workers that mine (may be mining)'],
       [/\bwhile\s*\(\s*(true|1|!0|!!1)\s*\)\s*(\{\s*\}|;)/, 'a loop that never ends (freezes the page)'],
       [/\bwhile\s*\(\s*(true|1|!0|!!1)\s*\)\s*\{[^}]{0,200}\b(window\.open|alert|confirm|prompt|history\.pushState|location\s*=)/, 'opens windows or boxes forever'],
       [/\bfor\s*\(\s*;\s*;\s*\)\s*(\{\s*\}|;)/, 'a loop that never ends (freezes the page)'],
@@ -71,7 +71,7 @@
       [/\bsetInterval\s*\(\s*(function\s*\(\s*\)\s*\{|\(\s*\)\s*=>\s*\{?)\s*[^}]{0,80}\bwindow\.open\b/, 'keeps opening new windows']],
     hate: []};
   // hate words and slogans: kept encoded so the list isn't shown as plain words in the page
-  const HATE = 'bmlnZ2VyfG5pZ2dlcnN8bmlnZ2F8bmlnZ2FzfGtpa2V8a2lrZXN8c3BpY3xzcGljc3x3ZXRiYWNrfHdldGJhY2tzfGNoaW5rc3xnb29rfGdvb2tzfHJhZ2hlYWR8cmFnaGVhZHN8dG93ZWxoZWFkfHRvd2VsaGVhZHN8c2FuZG5pZ2dlcnxwYWtpfHBha2lzfGZhZ2dvdHxmYWdnb3RzfGZhZ3N8dHJhbm55fHRyYW5uaWVzfGRhcmtpZXxkYXJraWVzfGp1bmdsZSBidW5ueXxwb3JjaCBtb25rZXl8aGVpbCBoaXRsZXJ8c2llZyBoZWlsfHdoaXRlIHBvd2VyfDE0ODh8Z2FzIHRoZSBqZXdzfGpld3Mgd2lsbCBub3QgcmVwbGFjZSB1c3x3aGl0ZSBnZW5vY2lkZXxyYWNlIHdhciBub3d8a2lsbCBhbGwgKGpld3N8YmxhY2tzfG11c2xpbXN8Z2F5c3xpbW1pZ3JhbnRzKXxzdWJodW1hbnM=';
+  const HATE = 'bmlnZ2VyfG5pZ2dlcnN8bmlnZ2F8bmlnZ2FzfGtpa2V8a2lrZXN8c3BpY3xzcGljc3x3ZXRiYWNrfHdldGJhY2tzfGNoaW5rc3xnb29rfGdvb2tzfHJhZ2hlYWR8cmFnaGVhZHN8dG93ZWxoZWFkfHRvd2VsaGVhZHN8c2FuZG5pZ2dlcnxwYWtpfHBha2lzfGZhZ2dvdHxmYWdnb3RzfHRyYW5ueXx0cmFubmllc3xkYXJraWV8ZGFya2llc3xqdW5nbGUgYnVubnl8cG9yY2ggbW9ua2V5fGhlaWwgaGl0bGVyfHNpZWcgaGVpbHx3aGl0ZSBwb3dlcnwxNDg4fGdhcyB0aGUgamV3c3xqZXdzIHdpbGwgbm90IHJlcGxhY2UgdXN8d2hpdGUgZ2Vub2NpZGV8cmFjZSB3YXIgbm93fGtpbGwgYWxsIChqZXdzfGJsYWNrc3xtdXNsaW1zfGdheXN8aW1taWdyYW50cyl8c3ViaHVtYW5z';
   const b64 = s => typeof atob === 'function' ? atob(s) : Buffer.from(s, 'base64').toString('latin1');
   RULES.hate.push([new RegExp('(^|[^a-z0-9])(' + b64(HATE) + ')(?=$|[^a-z0-9])', 'i'), 'a hate word or slogan']);
   const PERSONAL = [
