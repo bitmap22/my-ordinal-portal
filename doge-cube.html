@@ -1548,20 +1548,63 @@ function mdlCtx(k = 'gl') {
   return mdl[k] = {c, g, P, L};
 }
 // the model's parts: its JSON, its data buffers, and each accessor read as numbers (with its own layout)
+// (20 Nov 2026) Draco: most GLB models are squeezed with Google's Draco (KHR_draco_mesh_compression). Its free unpacker (Apache-2.0,
+// vendor/draco, credited in the terms) is loaded only when such a model comes, and turns the squeezed numbers back into shapes:
+// corners, normals, colours, texture places and faces. Nothing from the inscription runs: it is only numbers to unpack.
+// Also allowed: KHR_mesh_quantization (numbers stored smaller, read as they are) and KHR_texture_transform (a texture's placing).
+const MDL_EXT_OK = new Set(['KHR_draco_mesh_compression', 'KHR_mesh_quantization', 'KHR_texture_transform']);
+const mdlExtOk = j => !(j.extensionsRequired || []).some(e => !MDL_EXT_OK.has(e));
+let dracoP = null;
+function dracoLoad() {
+  if (dracoP) return dracoP;
+  const onSite = /(^|\.)github\.io$|(^|\.)ordportal\.com$/.test(location.hostname), base = new URL((onSite ? (/\/test\//.test(location.pathname) ? '../' : '/') : 'https://ordportal.com/') + 'vendor/draco/', location.href).href;   // (as the Family Guard finds its files)
+  return dracoP = (async () => {
+    if (!window.DracoDecoderModule) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = base + 'draco_wasm_wrapper_gltf.js'; s.onload = ok; s.onerror = () => no(new Error('the Draco unpacker could not be loaded')); document.head.append(s); });
+    const wasm = await (await fetch(base + 'draco_decoder_gltf.wasm')).arrayBuffer();
+    return await new Promise(ok => { window.DracoDecoderModule({wasmBinary: wasm}).then(m => ok(m)); });
+  })().catch(e => { dracoP = null; throw e; });
+}
+async function mdlUndraco(M) {
+  const j = M.j, prims = []; for (const me of j.meshes || []) for (const p of me.primitives || []) { const x = p.extensions && p.extensions.KHR_draco_mesh_compression; if (x) prims.push([p, x]); }
+  if (!prims.length) return true;
+  const D = await dracoLoad(); M.dec = M.dec || new Map();
+  for (const [p, x] of prims) {
+    const v = j.bufferViews && j.bufferViews[x.bufferView], b = v && M.bin[v.buffer || 0]; if (!b) return false;
+    const data = b.subarray(v.byteOffset || 0, (v.byteOffset || 0) + v.byteLength), dec = new D.Decoder(), buf = new D.DecoderBuffer();
+    try {
+      buf.Init(new Int8Array(data.buffer, data.byteOffset, data.byteLength), data.byteLength);
+      if (dec.GetEncodedGeometryType(buf) !== D.TRIANGULAR_MESH) return false;
+      const mesh = new D.Mesh(), st = dec.DecodeBufferToMesh(buf, mesh); if (!st.ok() || !mesh.ptr) { D.destroy(mesh); return false; }
+      const np = mesh.num_points(), nf = mesh.num_faces();
+      if (nf > 3e5 || np > 1e6) { D.destroy(mesh); return false; }
+      if (p.indices != null) { const n = nf * 3, ptr = D._malloc(n * 4); dec.GetTrianglesUInt32Array(mesh, n * 4, ptr); const ix = new Uint32Array(D.HEAPU32.buffer, ptr, n).slice(); D._free(ptr); M.dec.set(p.indices, {d: ix, nc: 1, n}); }
+      for (const [name, uid] of Object.entries(x.attributes || {})) {
+        const ai = p.attributes && p.attributes[name]; if (ai == null) continue;
+        const at = dec.GetAttributeByUniqueId(mesh, uid); if (!at || !at.ptr) continue;
+        const nc = at.num_components(), n = np * nc, ptr = D._malloc(n * 4); dec.GetAttributeDataArrayForAllPoints(mesh, at, D.DT_FLOAT32, n * 4, ptr);
+        const d = new Float32Array(D.HEAPF32.buffer, ptr, n).slice(); D._free(ptr);
+        const acc = j.accessors && j.accessors[ai]; if (acc && acc.normalized && MDL_MAX[acc.componentType]) for (let q = 0; q < d.length; q++) d[q] = Math.max(d[q] / MDL_MAX[acc.componentType], -1);
+        M.dec.set(ai, {d, nc, n: np});
+      }
+      D.destroy(mesh);
+    } finally { D.destroy(buf); D.destroy(dec); }
+  }
+  return true;
+}
 function mdlParse(bytes) {
   const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), dv = new DataView(u.buffer, u.byteOffset, u.byteLength), td = new TextDecoder();
   let j = null; const bin = [];
   if (u.length >= 20 && dv.getUint32(0, true) === 0x46546c67) {
     for (let p = 12; p + 8 <= u.length;) { const L = dv.getUint32(p, true), T = dv.getUint32(p + 4, true), d = u.subarray(p + 8, p + 8 + L); if (T === 0x4e4f534a) j = JSON.parse(td.decode(d)); else if (T === 0x004e4942 && !bin.glb) bin.glb = d; p += 8 + L; }
   } else j = JSON.parse(td.decode(u));
-  if (!j || !j.asset || (j.extensionsRequired && j.extensionsRequired.length)) return null;
+  if (!j || !j.asset || !mdlExtOk(j)) return null;   // (20 Nov 2026: Draco and the like are unpacked; any other add-on it needs: not drawn)
   for (let i = 0; i < (j.buffers || []).length; i++) {
     const B = j.buffers[i], m = typeof B.uri === 'string' && /^data:[^,]*;base64,(.*)$/.exec(B.uri);
     if (m) { const s = atob(m[1]); const a = new Uint8Array(s.length); for (let k = 0; k < s.length; k++) a[k] = s.charCodeAt(k); bin[i] = a; }
     else if (B.uri == null && i === 0 && bin.glb) bin[i] = bin.glb;
     else return null;   // (a part fetched from elsewhere: not drawn)
   }
-  return {j, bin};
+  return {j, bin, dr: (j.extensionsUsed || []).includes('KHR_draco_mesh_compression')};
 }
 // an STL model (binary or text): its triangles, stood the way 3D printers stand them (Z up, turned here to the drawing's Y up), each
 // face lit by its own normal, in the colour its file gives where it gives one. Two ways of colouring an STL are read: Materialise
@@ -1706,6 +1749,7 @@ function mdlDir(o) {
 }
 const MDL_N = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16}, MDL_B = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}, MDL_MAX = {5120: 127, 5121: 255, 5122: 32767, 5123: 65535};
 async function mdlAcc(M, i) {
+  if (M.dec && M.dec.has(i)) return M.dec.get(i);   // (unpacked from Draco)
   const a = M.j.accessors && M.j.accessors[i]; if (!a) return null;
   const nc = MDL_N[a.type], bs = MDL_B[a.componentType]; if (!nc || !bs || !(a.count >= 0)) return null;
   const out = new Float32Array(a.count * nc); if (a.bufferView == null) return {d: out, nc, n: a.count};
@@ -1776,6 +1820,7 @@ function mdlPng(bytes, S = 256, o) { const p = mdl.busy.then(() => mdlDraw(bytes
 async function mdlDraw(bytes, S, o = {}) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), gltf = u8.length >= 4 && new DataView(u8.buffer, u8.byteOffset, 4).getUint32(0, true) === 0x46546c67 || /^(\xef\xbb\xbf)?\s*\{/.test(String.fromCharCode(...u8.subarray(0, 16)));   // (glTF: its binary mark, or JSON; anything else is read as an STL)
   const M = gltf ? mdlParse(bytes) : {j: {}}; if (!M) return null;
+  if (M.dr) { try { if (!(await mdlUndraco(M))) return null; } catch (e) { return null; } }
   let T; if (gltf) T = await mdlShrink(await mdlTris(M)); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = await mdlShrink(await (objLike(u8) ? objTris(u8) : stlTris(u8))); mdl.stl = T ? {b: bytes, T} : null; }   // (OBJ or STL)
   if (!T) return null;
   const mats = M.j.materials || [], texs = new Map();
@@ -1829,7 +1874,7 @@ function mdlMoving(bytes) {
     const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), dv = new DataView(u.buffer, u.byteOffset, u.byteLength); let j = null;
     if (u.length >= 20 && dv.getUint32(0, true) === 0x46546c67 && dv.getUint32(16, true) === 0x4e4f534a) j = JSON.parse(new TextDecoder().decode(u.subarray(20, 20 + dv.getUint32(12, true))));
     else if (/^(\xef\xbb\xbf)?\s*\{/.test(String.fromCharCode(...u.subarray(0, 16)))) j = JSON.parse(new TextDecoder().decode(u));
-    if (!j || !j.asset || !(j.meshes || []).length || (j.extensionsRequired && j.extensionsRequired.length)) return null;
+    if (!j || !j.asset || !(j.meshes || []).length || !mdlExtOk(j)) return null;
     const A = mdlMovesIn(j); return A.length ? {n: A.length} : null;
   } catch (e) { return null; }
 }
@@ -1851,6 +1896,7 @@ const MDLA = new WeakMap();
 function mdlAnim(bytes) { let p = MDLA.get(bytes); if (!p) { p = mdlAnimPrep(bytes).catch(() => null); MDLA.set(bytes, p); } return p; }
 async function mdlAnimPrep(bytes) {
   const M = mdlParse(bytes); if (!M) return null;
+  if (M.dr && !(await mdlUndraco(M))) return null;
   const j = M.j, nodes = j.nodes || [], NN = nodes.length; if (!NN || NN > 4096) return null;
   const anims = [];
   for (const a of mdlMovesIn(j)) {
