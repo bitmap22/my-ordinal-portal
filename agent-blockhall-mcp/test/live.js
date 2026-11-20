@@ -142,6 +142,9 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   // Doge Collection Check: a collection by name (first 6 pieces), by short name further on, a list of pieces, and one that isn't there
   for (const a of [{collection: 'Doginal Frogs', limit: 6}, {collection: 'doginal-dogs', from: 0, limit: 8}, {ids: ['#61345204', '91e0019e10a4a711f4af99820231be8f084b724bee8a0ba63a66a4b5331fd392i0']}, {collection: 'no such collection here'}]) calls.push(await call('dogeCollectionCheck', a));
   results.dogecollection = calls.filter(c => c.name === 'dogeCollectionCheck').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 160) : c.out.verdict.slice(0, 200) + ' | ' + JSON.stringify(c.out.counts).slice(0, 200) + ' | ' + (c.out.pieces || []).filter(p => p.ok !== true).map(p => p.why).slice(0, 3).join(' / ')));
+  // Earned Traits: a blockout bitmap never sold, one bought, one after the blockout, one from 942,000 up, not a bitmap
+  for (const a of [{bitmap: '333333'}, {bitmap: '388067.bitmap'}, {bitmap: '900000'}, {bitmap: '960000'}, {bitmap: 'hello'}]) calls.push(await call('earnedTraits', a));
+  results.traits = calls.filter(c => c.name === 'earnedTraits').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.bitmap + ' earned ' + (c.out.traits.map(t => t.trait).join(', ') || 'nothing') + ' | not: ' + c.out.notEarned.map(t => t.trait).join(', ') + ' | could not: ' + c.out.couldNotCheck.map(t => t.trait).join(', ')));
   // Citable checks: take the cite link from checks above and check them again; then one with a doctored fact (the holder), and one that is not a link
   const cites = calls.filter(c => !c.isError && c.out && c.out.cite && c.out.cite.link).map(c => c.out.cite.link);
   const pick = [...new Set([cites.find(l => /block-manifest/.test(l)), cites.find(l => /provenance-check/.test(l)), cites.find(l => /collection-check/.test(l)), cites.find(l => /recursion-map/.test(l)), cites.find(l => /second-opinion/.test(l)), cites.find(l => /\/daily\.html/.test(l)), cites.find(l => /doge-block-manifest/.test(l)), cites.find(l => /doge-provenance-check/.test(l)), cites.find(l => /doge-daily/.test(l)), cites.find(l => /stuck-transaction/.test(l)), cites.find(l => /code-read/.test(l)), cites.find(l => /rune-proof/.test(l)), cites.find(l => /doge-collection-check/.test(l))].filter(Boolean))];
@@ -165,6 +168,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Code Read:\n' + results.code.join('\n'));
   console.log('Rune Proof:\n' + results.rune.join('\n'));
   console.log('Doge Collection Check:\n' + results.dogecollection.join('\n'));
+  console.log('Earned Traits:\n' + results.traits.join('\n'));
   console.log('Citable checks:\n' + results.cite.join('\n'));
   server.kill();
   process.exit(0);
