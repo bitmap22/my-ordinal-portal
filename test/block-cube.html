@@ -1823,7 +1823,7 @@ vec2 T(int i){return (uTT[i]*vec3(vU,1.)).xy;}
 bool has(int i){return (uHas&(1<<i))!=0;}
 float lobe(vec3 d,vec3 K,float sz,float r){float w=r*r*1.6+.015,a=acos(clamp(dot(d,K),-1.,1.));return (1.-smoothstep(sz-w,sz+w,a))*sz*sz/((sz+w*.7)*(sz+w*.7));}
 vec3 env(vec3 d,float r){float y=dot(d,uUp);vec3 h=vec3(.30,.31,.33);
- vec3 bg=y>0.?mix(h,vec3(.52,.55,.60),sqrt(y)):mix(h*.6,vec3(.05,.045,.04),min(-y*3.,1.));
+ vec3 bg=y>0.?mix(h,vec3(.52,.55,.60),sqrt(y)):mix(h*.7,vec3(.13,.12,.11),min(-y*3.,1.));
  return bg+vec3(1.,.97,.92)*9.*lobe(d,uKey,.32,r)+vec3(.9,.95,1.)*6.*lobe(d,uRim,.16,r)+vec3(1.,.9,.82)*2.*lobe(d,uFill,.5,r);}
 vec3 irr(vec3 n){float y=dot(n,uUp);return mix(vec3(.10,.09,.08),vec3(.40,.42,.46),y*.5+.5)+vec3(1.,.97,.92)*1.5*max(dot(n,uKey),0.)
  +vec3(1.,.9,.82)*.45*max(dot(n,uFill),0.)+vec3(.9,.95,1.)*.7*max(dot(n,uRim),0.);}
@@ -1850,7 +1850,7 @@ void main(){
  vec3 c=df*ao+sp*mix(1.,ao,.6);
  if(max(uSheen.r,max(uSheen.g,uSheen.b))>0.)c+=uSheen*irr(n)*(.1+.8*pow(1.-nv,3.))*ao;
  if(uCc>0.){float nc=max(dot(ng,v),1e-3),Fc=.04+.96*pow(1.-nc,5.),cr=max(uCcR,.03);vec2 a3=brdf(nc,cr);c=c*(1.-uCc*Fc)+uCc*env(reflect(-v,ng),cr)*(.04*a3.x+a3.y);}
- if(uTr>0.){float Fr=dot(F0,vec3(.333))+(1.-dot(F0,vec3(.333)))*pow(1.-nv,5.);al*=1.-uTr*(1.-Fr)*(1.-met);c=c*mix(1.,.6,uTr)+sp*uTr;}
+ if(uTr>0.){float Fr=dot(F0,vec3(.333))+(1.-dot(F0,vec3(.333)))*pow(1.-nv,5.),gl=dot(sp,vec3(.3,.6,.1));al*=1.-uTr*(1.-Fr)*(1.-met)*(1.-min(gl,1.));al=max(al,.1*uTr);c=mix(c,sp+b.rgb*irr(n)*.08,uTr);}
  c+=em;o=vec4(enc(neutral(c)),al);}`;
 const MDL_VERT = `#version 300 es
 layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec2 aU;layout(location=3) in vec4 aK;
@@ -1936,7 +1936,7 @@ function mdlRender2(X, j, gltf, D, imgs, cache, cam, lo, hi, S, to, o = {}) {
   const mats = (j && j.materials) || [], M = new Map(); for (const d of D) if (!M.has(d.key)) M.set(d.key, mdlMat(mats[d.key], gltf));
   const n3 = v => { const l = Math.hypot(...v) || 1; return v.map(e => e / l); }, mix = (a, b, cc) => n3([0, 1, 2].map(i => a[i] * cc[0] + b[i] * cc[1] + cam.bk[i] * cc[2]));
   g.useProgram(X.P); g.uniform3fv(L.uEye, cam.eye); g.uniform3fv(L.uUp, cam.up);
-  g.uniform3fv(L.uKey, mix(cam.s, cam.up, [.55, .75, .6])); g.uniform3fv(L.uFill, mix(cam.s, cam.up, [-.8, .15, .55])); g.uniform3fv(L.uRim, mix(cam.s, cam.up, [-.45, .5, -.75]));
+  g.uniform3fv(L.uKey, mix(cam.s, cam.up, [.6, .65, .85])); g.uniform3fv(L.uFill, mix(cam.s, cam.up, [-.8, .15, .55])); g.uniform3fv(L.uRim, mix(cam.s, cam.up, [-.45, .5, -.75]));
   const bind = d => { [['p', 3], ['n', 3], ['u', 2], ['k', 4]].forEach(([a, k], i) => { g.bindBuffer(g.ARRAY_BUFFER, d.b[a]); g.enableVertexAttribArray(i); g.vertexAttribPointer(i, k, g.FLOAT, false, 0, 0); }); };
   const setMat = m => {
     let has = 0; for (let i = 0; i < 5; i++) {
