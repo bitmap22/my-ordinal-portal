@@ -6,7 +6,8 @@
                                  it ever made stayed in that wallet
      Held since claimed          the same, for a bitmap of any year
      Held N years                how long the wallet holding it now has had it, from the day it arrived there
-   Which inscription claimed N.bitmap: bop's on-chain index (OCI), read the way the OCI module reads it, then checked with ord
+   Which inscription claimed N.bitmap: below 942,000, bop's on-chain index (OCI), read the way the OCI module reads it; from 942,000 up,
+   the blocks themselves from block N onward (the first exact "N.bitmap" in Bitcoin order); either way checked with ord
    (the body exactly "N.bitmap", no delegate, made in block N or later). The trail: from where it sits now, back over each
    transaction to the one that made it, as the Provenance Check follows it (each step must spend the one before it).
    The same file runs in the free Agent Blockhall MCP tool and on the portal's Earned Traits page. It only reads and works
@@ -21,7 +22,7 @@
   // The blockout: when every block mined so far had been claimed as a bitmap. Block 796,515 was mined on 30 June 2023 at 05:24 UTC
   // (checked on the chain); "Blockout Day" and that height are the bitmap community's own record of it.
   const BLOCKOUT = {block: 796515, day: '2023-06-30', source: 'Block 796,515 was mined on 30 June 2023 (on the chain); the bitmap community marks that day as Blockout Day, when all blocks mined so far (to 796,515) had been claimed.'};
-  const TRAIL_MAX = 50, OCI_LIMIT = 942000;
+  const TRAIL_MAX = 50, OCI_LIMIT = 942000, fmt = n => Number(n).toLocaleString('en-GB');
 
   /* ---------- bop's on-chain index (OCI): the sat of each district's first claim, below 942,000 ----------
      (its pages are inscriptions; read the way the OCI module reads them, quirks included; the sat list for bitmaps below 840,000
@@ -54,11 +55,145 @@
     if (typeof sat !== 'number' || !(sat > 0) || sat % 1 || sat > 9007199254740991) return null;
     const j = (await io.ordJson('/r/sat/' + sat + '/at/' + at)).j; return (j && j.id) || null;
   }
+
+  /* ---------- districts from 942,000 up: the blocks themselves, from block N onward (as Agent Blockhall's tablet reads them):
+     the first exact "N.bitmap" (no compression, no delegate) in Bitcoin order is the claim ---------- */
+  // From 942,000 up: Bitcoin's own blocks, read straight from ord, in Bitcoin order (transaction, input, envelope).
+  function hexBytes(h) {
+  var n = h.length >> 1, b = new Uint8Array(n), i, a, c;
+  for (i = 0; i < n; i++) { a = h.charCodeAt(2 * i); c = h.charCodeAt(2 * i + 1); b[i] = ((a & 15) + (a > 57 ? 9 : 0)) << 4 | ((c & 15) + (c > 57 ? 9 : 0)); }
+  return b;
+  }
+  // The script parts of an ord envelope: pushes (OP_1NEGATE and OP_1..OP_16 count as pushes), or a bare opcode. null = broken script.
+  function scriptParts(s) {
+  var out = [], i = 0, op, k;
+  while (i < s.length) {
+    op = s[i++]; k = -1;
+    if (op <= 0x4b) k = op;
+    else if (op === 0x4c) { if (i + 1 > s.length) return null; k = s[i]; i += 1; }
+    else if (op === 0x4d) { if (i + 2 > s.length) return null; k = s[i] | s[i + 1] << 8; i += 2; }
+    else if (op === 0x4e) { if (i + 4 > s.length) return null; k = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+    if (k >= 0) { if (i + k > s.length) return null; out.push({ d: s.subarray(i, i + k) }); i += k; }
+    else if (op === 0x4f) out.push({ d: new Uint8Array([0x81]), num: 1 });
+    else if (op >= 0x51 && op <= 0x60) out.push({ d: new Uint8Array([op - 0x50]), num: 1 });
+    else out.push({ op: op });
+  }
+  return out;
+  }
+  // Each finished envelope (OP_FALSE OP_IF "ord" ... OP_ENDIF) in a script, as its list of pushes.
+  function envelopes(s) {
+  var t = scriptParts(s), out = [], i = 0, x, y, pay, end;
+  if (!t) return out;
+  while (i < t.length) {
+    x = t[i++];
+    if (!x.d || x.d.length || x.num) continue;
+    y = t[i];
+    if (!y || y.op !== 0x63) continue;
+    i++; y = t[i];
+    if (!y || !y.d || y.d.length !== 3 || y.d[0] !== 0x6f || y.d[1] !== 0x72 || y.d[2] !== 0x64) continue;
+    i++; pay = []; end = 0;
+    while (i < t.length) { y = t[i++]; if (y.op !== undefined) { end = y.op === 0x68 ? 1 : 2; break; } pay.push(y.d); }
+    if (end === 1) out.push(pay);
+  }
+  return out;
+  }
+  function hasOrd(s) { for (var i = 0; i + 2 < s.length; i++) if (s[i] === 0x6f && s[i + 1] === 0x72 && s[i + 2] === 0x64) return true; return false; }
+  // A transaction's id: double SHA-256 of it without its witness data, shown back to front.
+  function txidOf(c) {
+  var sub = (typeof crypto !== 'undefined' && crypto.subtle) || null, b = c.b, raw;
+  if (!sub) return Promise.reject(new Error('no hash'));
+  if (c.seg) {
+    raw = new Uint8Array(8 + c.endOut - c.mid);
+    raw.set(b.subarray(c.start, c.start + 4), 0); raw.set(b.subarray(c.mid, c.endOut), 4); raw.set(b.subarray(c.end - 4, c.end), 4 + c.endOut - c.mid);
+  } else raw = b.slice(c.start, c.end);
+  return sub.digest('SHA-256', raw).then(function (h) { return sub.digest('SHA-256', h); }).then(function (h) {
+    var a = new Uint8Array(h), s = '', i;
+    for (i = 31; i >= 0; i--) s += (a[i] < 16 ? '0' : '') + a[i].toString(16);
+    return s;
+  });
+  }
+  // the N of an exact "N.bitmap" body (no compression, no delegate: the same test as isClaim), else -1
+  function bmNum(pay) {
+    var at = -1, i, j, enc = null, del = null, s = '', len = 0, m;
+    for (i = 0; i < pay.length; i += 2) if (!pay[i].length) { at = i; break; }
+    if (at < 0) return -1;
+    for (i = 0; i + 1 < at; i += 2) {
+      if (pay[i].length === 1 && pay[i][0] === 9 && enc === null) enc = pay[i + 1];
+      if (pay[i].length === 1 && pay[i][0] === 11 && del === null) del = pay[i + 1];
+    }
+    if ((enc && enc.length) || (del && del.length)) return -1;
+    for (i = at + 1; i < pay.length; i++) len += pay[i].length;
+    if (len < 8 || len > 24) return -1;
+    for (i = at + 1; i < pay.length; i++) for (j = 0; j < pay[i].length; j++) s += String.fromCharCode(pay[i][j]);
+    m = /^(0|[1-9][0-9]{0,15})\.bitmap$/.exec(s);
+    return m ? +m[1] : -1;
+  }
+  // every bitmap claim in one block, the first per number, in Bitcoin order: {N: inscription ID}
+  async function allClaims(b) {
+    var p = 80, t, i, j, k, l, nin, nout, items, w, s, env, idx, start, mid, endOut, seg, count, n, got = {}, txs = [];
+    function vi() {
+      var x = b[p++];
+      if (x < 253) return x;
+      if (x === 253) { x = b[p] | b[p + 1] << 8; p += 2; return x; }
+      if (x === 254) { x = (b[p] | b[p + 1] << 8 | b[p + 2] << 16 | b[p + 3] << 24) >>> 0; p += 4; return x; }
+      throw new Error('bad block');
+    }
+    count = vi();
+    for (t = 0; t < count; t++) {
+      start = p; seg = b[p + 4] === 0 && b[p + 5] !== 0;
+      p += seg ? 6 : 4; mid = p;
+      nin = vi();
+      for (i = 0; i < nin; i++) { p += 36; l = vi(); p += l + 4; }
+      nout = vi();
+      for (i = 0; i < nout; i++) { p += 8; l = vi(); p += l; }
+      endOut = p; w = [];
+      if (seg) for (i = 0; i < nin; i++) { items = vi(); s = []; for (j = 0; j < items; j++) { l = vi(); s.push(b.subarray(p, p + l)); p += l; } w.push(s); }
+      p += 4;
+      if (p > b.length) throw new Error('bad block');
+      idx = 0;
+      for (i = 0; i < w.length; i++) {
+        s = w[i]; l = s.length;
+        s = l >= 2 && s[l - 1].length && s[l - 1][0] === 0x50 ? (l >= 3 ? s[l - 3] : null) : (l >= 2 ? s[l - 2] : null);
+        if (!s || !hasOrd(s)) continue;
+        env = envelopes(s);
+        for (k = 0; k < env.length; k++) {
+          n = bmNum(env[k]);
+          if (n >= 0 && !(n in got)) { got[n] = {i: idx, c: {b: b, start: start, mid: mid, endOut: endOut, end: p, seg: seg}}; txs.push(n); }
+          idx++;
+        }
+      }
+    }
+    var res = {};
+    for (k = 0; k < txs.length; k++) res[txs[k]] = (await txidOf(got[txs[k]].c)) + 'i' + got[txs[k]].i;
+    return res;
+  }
+  const WALK = 12, blocks = new Map();
+  async function blockClaims(h, io) {
+    if (blocks.has(h)) return blocks.get(h);
+    let b = null;
+    try { const hash = String((await io.mpText('/api/block-height/' + h)).t).trim(); if (/^[0-9a-f]{64}$/.test(hash)) b = (await io.mpBytes('/api/block/' + hash + '/raw')).bytes; } catch (e) {}
+    if (!b) b = hexBytes((await io.ordJson('/r/block/' + h)).j);
+    const got = await allClaims(b); blocks.set(h, got); if (blocks.size > 40) blocks.delete(blocks.keys().next().value);
+    return got;
+  }
+  // the first claim of N.bitmap, from 942,000 up: blocks N, N+1, ... until one holds a claim (at most WALK blocks; known: stop at its block)
+  async function walkClaim(n, io, known) {
+    const last = known ? known.block : n + WALK - 1;
+    if (last - n + 1 > WALK) return {none: true, why: 'its claim was made ' + fmt(last - n) + ' blocks after the block itself: more than the ' + WALK + ' blocks this reads to make sure no earlier claim came first'};
+    for (let h = n; h <= last; h++) {
+      if (h > n) await io.sleep(1000);
+      if (io.progress) io.progress('Reading block ' + fmt(h) + ' for the first claim of ' + n + '.bitmap…');
+      const got = await blockClaims(h, io);
+      if (got[n]) return {id: got[n]};
+    }
+    return {none: true, why: 'no claim of ' + n + '.bitmap in blocks ' + fmt(n) + ' to ' + fmt(last)};
+  }
   // which inscription claimed N.bitmap, checked with ord: {id, number, block, time, holder, satpoint} (or {none, why})
-  async function claimOf(n, io) {
+  async function claimOf(n, io, known) {
     if (!(Number.isInteger(n) && n >= 0)) throw new Error('give a bitmap: a block number, like 388067 or 388067.bitmap');
-    if (n >= OCI_LIMIT) return {none: true, why: 'districts from ' + OCI_LIMIT.toLocaleString('en-GB') + ' up are not in the on-chain index this reads yet: Agent Blockhall\'s tablet finds their claims block by block'};
-    const id = await ociClaimId(n, io); if (!id) return {none: true, why: 'the on-chain index has no claim for ' + n + '.bitmap'};
+    let id;
+    if (n >= OCI_LIMIT) { const W = await walkClaim(n, io, known); if (W.none) return W; id = W.id; }
+    else { id = await ociClaimId(n, io); if (!id) return {none: true, why: 'the on-chain index has no claim for ' + n + '.bitmap'}; }
     const want = n + '.bitmap', [o, t] = await Promise.all([io.ordJson('/r/inscription/' + id), io.ordText('/content/' + id)]), J = o.j;
     const ok = t.t === want && !J.delegate && (typeof J.content_length !== 'number' || J.content_length === want.length) && J.height >= n;
     if (!ok) return {none: true, why: 'the inscription the index points to (' + id + ') did not check out as ' + want + ' with ord', id};
@@ -95,7 +230,6 @@
   }
 
   /* ---------- the traits, worked out from the claim and the trail ---------- */
-  const fmt = n => Number(n).toLocaleString('en-GB');
   function build(n, C, T, now, unspent) {
     const R = {check: 'Agent Blockhall Earned Traits ' + VERSION, bitmap: n + '.bitmap', claim: null, holder: null, traits: [], notEarned: [], couldNotCheck: [], trail: T ? T.steps : [], blockout: BLOCKOUT};
     if (C.none) { R.couldNotCheck.push({trait: 'every trait', why: C.why}); return R; }
@@ -136,14 +270,15 @@
   }
 
   /* ---------- one bitmap, all the steps ----------
-     io: {ordJson(path) -> {j, site}, ordText(path) -> {t, site}, mpJson(path) -> {j, site}, sleep(ms), now (optional, ms)} */
+     io: {ordJson(path) -> {j, site}, ordText(path) -> {t, site}, mpJson(path) -> {j, site}, mpText(path) -> {t, site}, mpBytes(path) -> {bytes, site},
+        sleep(ms), now (optional, ms), progress(text) (optional)} */
   function bitmapNumber(q) {
     const m = /^\s*#?\s*(\d{1,7})(\.bitmap)?\s*$/i.exec(String(q == null ? '' : q).replace(/,/g, ''));
     return m ? +m[1] : null;
   }
-  async function bitmap(q, io) {
+  async function bitmap(q, io, known) {
     const n = typeof q === 'number' ? q : bitmapNumber(q); if (n == null) throw new Error('give a bitmap: a block number, like 388067 or 388067.bitmap');
-    const C = await claimOf(n, io); if (C.none) return build(n, C, null, io.now || Date.now());
+    const C = await claimOf(n, io, known); if (C.none) return build(n, C, null, io.now || Date.now());
     const T = await trailOf(C.id, C.satpoint, io);
     let unspent = null; try { const sp = String(C.satpoint).split(':'); unspent = !(await io.mpJson('/api/tx/' + sp[0] + '/outspend/' + sp[1])).j.spent; } catch (e) {}
     const R = build(n, C, T, io.now || Date.now(), unspent);
@@ -168,7 +303,7 @@
       let J; try { J = (await io.ordJson('/r/inscription/' + ids[i])).j; } catch (e) { continue; }
       if (!(J.content_length >= 8 && J.content_length <= 14) || !/^text\/plain/.test(J.content_type || '') || J.delegate) continue;
       let t; try { t = (await io.ordText('/content/' + ids[i])).t; } catch (e) { continue; }
-      const m = /^(0|[1-9]\d{0,6})\.bitmap$/.exec(t); if (m) found.push({n: +m[1], id: ids[i]});
+      const m = /^(0|[1-9]\d{0,6})\.bitmap$/.exec(t); if (m) found.push({n: +m[1], id: ids[i], block: J.height});
     }
     found.sort((x, y) => x.n - y.n);
     if (found.length > MAX) { out.skipped = found.length - MAX; found.length = MAX; }
@@ -176,7 +311,7 @@
       if (o.stopped && o.stopped()) break;
       say('Checking ' + found[i].n + '.bitmap (' + (i + 1) + ' of ' + found.length + ')…');
       try {
-        const R = await bitmap(found[i].n, io);
+        const R = await bitmap(found[i].n, io, found[i].n >= OCI_LIMIT && found[i].block >= found[i].n ? {block: found[i].block} : null);
         if (R.claim && R.claim.id !== found[i].id) { out.bitmaps.push({bitmap: found[i].n + '.bitmap', id: found[i].id, notTheClaim: 'an earlier inscription claimed ' + found[i].n + '.bitmap (' + R.claim.id + '): this one is a copy, so it earns nothing'}); continue; }
         out.bitmaps.push(R);
       } catch (e) { out.bitmaps.push({bitmap: found[i].n + '.bitmap', id: found[i].id, error: String(e.message || e)}); }
