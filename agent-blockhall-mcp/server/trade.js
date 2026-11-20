@@ -1,10 +1,10 @@
-/* Trade Check, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
-   Before you (or an AI agent) buy or trade an inscription: is it what it is said to be? One answer, GO, STOP or NOT SURE,
+/* Authenticity Check (once called Trade Check), by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+   Is an inscription what it is said to be? One answer, GO, STOP or NOT SURE,
    with every reason in plain words and a link to check it again later. It reads nothing itself: it runs the portal's own
    checks and judges what they found.
    - Where it came from: the Provenance Check (its file, transaction and block, read from the chain's own bytes, and who holds
      it now). For Dogecoin, the Doge Provenance Check.
-   - Whether it is held by the seller's address (if one is given).
+   - Whether it is held by the address it is said to be held by (if one is given).
    - Whether it is a real member of its collection: the Second Opinion's parent check (it names the parent in its own
      transaction, and the parent was spent to make it), for the collection given, or else the parent it names.
    - For code (HTML, SVG, JavaScript): what its code asks for (Code Read: a wallet, things outside the chain, sending data out,
@@ -15,9 +15,9 @@
    - NOT SURE: a check could not be made, or something needs care (its code asks a wallet for things, it loads things from
      outside the chain, a piece it loads is missing, it names no parent so a collection can't be proven).
    - GO: every check was made and agrees, and nothing needs care.
-   GO means it is what it is said to be. It is never advice on its price, or on whether to buy it.
+   GO means it is what it is said to be. It is never advice on what it is worth.
    The host gives the checks as functions (io): provenance(id), parent(id, parentId), code(id), recursion(id) for Bitcoin, and
-   dogeProvenance(id) for Dogecoin, each returning that tool's own answer. The same file is for the portal's Trade Check page
+   dogeProvenance(id) for Dogecoin, each returning that tool's own answer. The same file is for the portal's Authenticity Check page
    and the free Agent Blockhall MCP tool. No other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
 (function (root, make) {
@@ -27,7 +27,7 @@
   'use strict';
   const VERSION = '1.0.0';
   const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
-  const MEANING = 'GO means it is what it is said to be: every check was made and agrees, and nothing needs care. It is never advice on its price, or on whether to buy it.';
+  const MEANING = 'GO means it is what it is said to be: every check was made and agrees, and nothing needs care. It is never advice on what it is worth.';
   const fmt = n => typeof n === 'number' ? n.toLocaleString('en-GB') : String(n);
   const short = s => { s = String(s || ''); return s.length > 24 ? s.slice(0, 10) + '…' + s.slice(-8) : s; };
   const isId = s => /^[0-9a-f]{64}i\d+$/.test(String(s || ''));
@@ -70,10 +70,10 @@
     const I = P && P.inscription || {}, held = P && P.checked && P.checked.heldNow;
     if (!seller) return I.holder ? [reason('who holds it', 'info', 'Held now by ' + I.holder + (held && held.agrees ? ' (proven: the output it sits in is unspent, at that address).' : '.'), {holder: I.holder})] : [];
     const s = String(seller).trim();
-    if (!I.holder) return [reason('who holds it', 'unknown', 'Who holds it now could not be read, so it could not be checked against the seller’s address ' + s + '.')];
-    if (I.holder !== s) return [reason('who holds it', 'stop', 'Proven wrong: it is held by ' + I.holder + ', not by the seller’s address ' + s + '.', {holder: I.holder, seller: s})];
-    if (held && held.agrees === true) return [reason('who holds it', 'ok', 'Held by the seller’s address ' + s + ' (proven: the output it sits in is unspent, at that address).', {holder: I.holder})];
-    return [reason('who holds it', 'unknown', 'ord says it is held by the seller’s address ' + s + ', but that could not be proven from the chain this time.', {holder: I.holder})];
+    if (!I.holder) return [reason('who holds it', 'unknown', 'Who holds it now could not be read, so it could not be checked against the address given, ' + s + '.')];
+    if (I.holder !== s) return [reason('who holds it', 'stop', 'Proven wrong: it is held by ' + I.holder + ', not by the address given, ' + s + '.', {holder: I.holder, seller: s})];
+    if (held && held.agrees === true) return [reason('who holds it', 'ok', 'Held by the address given, ' + s + ' (proven: the output it sits in is unspent, at that address).', {holder: I.holder})];
+    return [reason('who holds it', 'unknown', 'ord says it is held by the address given, ' + s + ', but that could not be proven from the chain this time.', {holder: I.holder})];
   }
   function fromParent(O, pid, claimed, named) {
     if (!O) return [reason('its collection', 'unknown', 'Whether it is a child of ' + short(pid) + ' could not be checked this time.', {parent: pid})];
@@ -158,7 +158,7 @@
       : Object.assign({provenanceCheck: PORTAL + 'provenance-check.html?id=' + id, agentBlockhall: PORTAL + 'block-cube.html#find=' + id},
         ran.collection ? {secondOpinion: PORTAL + 'second-opinion.html?claim=' + encodeURIComponent(id + ' is a child of ' + (claimed || (I.parents || [])[0]))} : {},
         ran.code ? {codeRead: PORTAL + 'code-read.html?id=' + id, recursionMap: PORTAL + 'recursion-map.html?id=' + id} : {});
-    return {check: 'Agent Blockhall Trade Check ' + VERSION, at, chain, verdict: J.verdict, words: J.words, meaning: MEANING,
+    return {check: 'Agent Blockhall Authenticity Check ' + VERSION, at, chain, verdict: J.verdict, words: J.words, meaning: MEANING,
       inscription: {id, number: I.number, block: I.block, type: type || null, bytes: I.bytes, holder: I.holder || null, parents: I.parents || [], fingerprint: I.fingerprint ? I.fingerprint.sha256 : null},
       claims: {seller, collection: claimed}, reasons, ran, links, sources: P.sources || null};
   }
