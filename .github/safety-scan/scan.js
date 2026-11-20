@@ -218,7 +218,7 @@ async function main() {
   const out = {name: (CHAIN === 'btc' ? '' : 'Doge ') + 'Safety Scan', chain: CHAIN === 'btc' ? 'Bitcoin' : 'Dogecoin', version: VERSION, updated: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), tip,
     window: WINDOW, scanned: keep.length, missing: WINDOW - keep.length, totals, kinds: SR.KINDS,
     blocks: keep, files: 'blocks/<height>.json: what was found in that block, inscription by inscription',
-    about: 'Each inscription of the last ' + WINDOW + ' blocks, looked at and read without running it: pictures and films (may be adult, may flash, too big for phones), and words and code (agent traps, scams, miners and phone-killers, hate words, personal details, risky code). Made by GitHub on its own, about every hour. Every finding is a "may be".',
+    about: 'Each inscription of the last ' + WINDOW + ' blocks, looked at and read without running it: pictures, films, SVG drawings and the cover pictures in sound files (may be adult, may flash, too big for phones), 3D models, and words and code (agent traps, scams, miners and phone-killers, hate words, personal details, risky code). Made by GitHub on its own, about every hour. Every finding is a "may be".',
     see: PORTAL + (CHAIN === 'btc' ? 'safety-scan.html' : 'doge-safety-scan.html'), licence: LICENCE};
   fs.writeFileSync(ixFile, JSON.stringify(out, null, 1));
   log('done:', done, 'read,', failed, 'not read,', keep.length, 'kept,', Math.round((Date.now() - t0) / 1000) + 's');
