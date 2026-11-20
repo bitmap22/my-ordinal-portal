@@ -9760,7 +9760,7 @@ function tradeAsk(k) {
     kv(s, [['inscription', r.n != null ? '#' + fmt(r.n) : b.n ? '#' + fmt(b.n) : ''], ['inscription id', X],
       ['what it is', t && t.art && t.art.mdl ? '3D model (' + (r.ct || 'glTF') + '), drawn here from the model' : r.ct ? r.ct.split(';')[0] : ''], ['size', r.len ? fmt(r.len) + ' bytes' : ''],
       ['made', (r.ts ? new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' · ' : '') + (r.h != null ? 'block ' + fmt(r.h) : '')],
-      ['held by', mine ? 'your wallet: the chain says so' : 'their wallet: the chain says so']]);
+      ['sits on', c && c.v != null ? fmt(c.v) + ' sats (the sats this inscription sits on, as the chain says)' : ''], ['held by', mine ? 'your wallet: the chain says so' : 'their wallet: the chain says so']]);
     row(s, [I && !room.held ? btn('PICK IT UP TO LOOK CLOSER', () => { close(); rmHold(I.it); }) : null, X ? btn('OPEN ON ORDINALS.COM ↗', () => { try { window.open('https://ordinals.com/inscription/' + X, '_blank', 'noopener'); } catch (e) {} }) : null, X ? btn('RUN IT IN THE VIEWER ↗', () => { try { window.open(VIEWER + '#' + X, '_blank', 'noopener'); } catch (e) {} }) : null]);
     s.append(el('p', 'fine', 'Picked up, it shows on your tablet; VIEW BIG shows it full size' + (t && t.art && t.art.mdl ? (stlOf(t) ? ', where you turn the 3D model by dragging it.' : ', where ordinals.com\u2019s own viewer turns the 3D model.') : '.')));
   } else sec().append(el('p', '', (mine ? 'You' : nm(who)) + ' put a block here: the chain is being asked whether ' + (mine ? 'your' : 'their') + ' wallet holds it…'));
@@ -9847,6 +9847,7 @@ function showCard(t) {
   if (r.ts && !t.gal) rows.push(['made', new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
   if (!t.ct && r.ct) rows.push(['type', r.ct + (r.len ? ' · ' + fmt(r.len) + ' bytes' : '')]);
   if (t.art && t.art.mdl) rows.push(['picture', stlOf(t) ? 'its 3D model (STL), drawn here from the model · in VIEW BIG, drag it to turn it' : 'its 3D model, drawn here from the model · VIEW BIG turns the model (in ordinals.com\u2019s own viewer)']);
+  { const c = tradeCost(t.gal ? t.gid : t.ordIds && t.ordIds[0]); if (c && c.v != null) rows.push(['sits on', fmt(c.v) + ' sats']); }
   if (t.ct) rows.push(['type', t.ct + (t.len ? ' · ' + fmt(t.len) + ' bytes' : '')]);
   if (t.word && t.word.a && !t.art && !t.word.num) rows.push(['it says', t.word.a.length > 64 ? t.word.a.slice(0, 63) + '…' : t.word.a]);
   $cr.innerHTML = ''; addRows(rows); if (t._held && t._held.length && room && room.held && room.held.it.t === t) addRows(t._held);
@@ -15943,6 +15944,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (r) Object.assign(r, {contentType: q.ct || undefined, sizeBytes: q.len || undefined, madeAt: q.ts ? iso(q.ts) : undefined,
       shows: t ? (t.art && t.art.mdl ? 'its 3D model, as a picture drawn here from the model' : t.art ? 'its picture' : t.word && t.word.a ? 'words: ' + String(t.word.a).slice(0, 60) : undefined) : undefined,
       toLookCloser: 'inspectStand({stand: "' + (o ? o.who.p : 'P' + (k + 1)) + '"}) picks up a copy; then viewBig() and look({picture: true})'});
+    if (r && c && c.v != null) r.sitsOnSats = c.v;
     return r; }
   function tradeBlockOf0(k) { const o = trade.list[k] || (tradeList()[k]); const b = o && (o.s || o.wait); if (!b) return null; if (!o.who.me) { const r = own.chk.get(b.o[0]) || {}; return {inscription: b.o[0], inscriptionNumber: r.n != null ? r.n : undefined, madeInBlock: r.h != null ? r.h : undefined, txid: b.id, checked: o.s ? 'the chain says their wallet holds it' : undefined}; } return b.g ? {collectionPiece: b.gi + 1, inscriptionNumber: b.n || undefined, inscription: b.g} : {parcel: b.idx, block: b.h, txid: b.id, inscriptions: b.o.slice(), kind: TYPES[b.kk] ? TYPES[b.kk].name : undefined}; }
   // a trade base: where it is and how far, and whether you are near enough to use it (a player points at a base from up to 8 m)
