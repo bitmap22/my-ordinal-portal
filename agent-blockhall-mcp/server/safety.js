@@ -17,7 +17,7 @@
   else root.SafetyRead = make(root.CodeRead || null);
 })(typeof self !== 'undefined' ? self : this, function (CR) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';   // (1.1.0: scanWallet, every inscription an address holds; flashes, shared with the scan)
   // every kind: its key, name, symbol, colour, what it means, and whether the Safety Scan finds it by looking (pictures, films) or by reading
   const KINDS = [
     {key: 'adult', name: 'May be adult', symbol: '🔞', colour: '#e5484d', says: 'a picture or film that may show nudity (18+)', by: 'looking'},
@@ -135,8 +135,93 @@
     const keep = new Map(); for (const f of out) { const k = f.kind + '|' + f.what + '|' + f.line; if (!keep.has(k)) keep.set(k, f); }
     return [...keep.values()];
   }
+  /* ---------- flashing: the WCAG "three flashes" rule, read on each quarter of the picture (and its middle) ----------
+     frames: grey values (0-255), W x H each; times: when each frame starts (ms). Gives the most flashes in any one second. */
+  const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  function flashes(frames, times, W, H) {
+    if (!frames || frames.length < 4) return 0;
+    const parts = [[0, 0], [W / 2, 0], [0, H / 2], [W / 2, H / 2], [W / 4, H / 4]].map(([x, y]) => [x | 0, y | 0, W / 2 | 0, H / 2 | 0]);
+    let worst = 0;
+    for (const [px, py, pw, ph] of parts) {
+      const L = frames.map(f => { let s = 0; for (let y = py; y < py + ph; y++) for (let x = px; x < px + pw; x++) s += lin(f[y * W + x]); return s / (pw * ph); });
+      const turns = []; let ref = L[0], dir = 0;   // (a turn: the brightness changes by 10% or more, the darker side below 0.8; a flash is two opposite turns)
+      for (let i = 1; i < L.length; i++) {
+        const d = L[i] - ref;
+        if (Math.abs(d) >= 0.1 && Math.min(L[i], ref) < 0.8) { const g = Math.sign(d); if (g !== dir) { turns.push(times[i]); dir = g; } ref = L[i]; }
+        else if (dir && Math.sign(L[i] - ref) === dir) ref = L[i];
+      }
+      for (let i = 0; i + 1 < turns.length; i++) { let n = 0; for (let j = i; j + 1 < turns.length && turns[j + 1] - turns[i] < 1000; j += 2) n++; worst = Math.max(worst, n); }
+    }
+    return worst;
+  }
+
+  /* ---------- a wallet: every inscription an address holds, checked the Safety Scan's way ----------
+     scanWallet({chain: 'bitcoin'|'doge', address, fetch, look, progress, stopped, max})
+     look({id, type, bytes}): optional, looks at pictures and films (the portal's pages give one that uses the Family Guard);
+     without it, pictures and films are counted as not looked at. Nothing is run: files are only read as bytes.
+     Bitcoin: the address's inscriptions from ordinals.com (its address page), each file from ordinals.com/content/.
+     Dogecoin: from thedoginalsexplorer.com (its wallet list), each file from its /content/ (else Doggy Market's copy). */
+  const PIC = /^image\/(png|jpeg|jpg|webp|gif|avif|bmp)$/, FILM = /^video\//;
+  const isAddr = (c, a) => c === 'doge' ? /^[DA9][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) : /^(bc1[02-9ac-hj-np-z]{8,87}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$/i.test(a);
+  async function scanWallet(o) {
+    o = o || {}; const chain = /^d/i.test(o.chain || '') ? 'doge' : 'btc', a = String(o.address || '').trim();
+    if (!isAddr(chain, a)) throw new Error('give a ' + (chain === 'doge' ? 'Dogecoin address (starts with D, A or 9)' : 'Bitcoin address (starts with bc1, 1 or 3)'));
+    const F = o.fetch || ((u, i) => fetch(u, i)), MAX = Math.min(o.max || 3000, 10000), say = o.progress || (() => {}), stop = o.stopped || (() => false);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const DXS = 'https://thedoginalsexplorer.com', BASES = chain === 'doge' ? [DXS, 'https://cdn.doggy.market'] : ['https://ordinals.com'];
+    const out = {chain: chain === 'doge' ? 'Dogecoin' : 'Bitcoin', address: a, at: new Date().toISOString(), holds: 0, checked: 0, pictures: 0, films: 0, text: 0, other: 0, notLooked: 0, flashNotChecked: 0, namesAndTokens: 0, tooMany: 0, found: [], tally: {}};
+    // the list
+    let list = [];
+    say('Reading which inscriptions ' + a + ' holds…');
+    if (chain === 'btc') {
+      const r = await F('https://ordinals.com/address/' + encodeURIComponent(a)); if (!r.ok) throw new Error('ordinals.com did not answer (http ' + r.status + ')');
+      const t = await r.text(); list = [...new Set([...t.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)].map(m => m[1]))].map(id => ({id, type: null}));
+    } else {
+      for (let pg = 1; pg <= 200; pg++) {
+        const r = await F(DXS + '/v1/wallet/' + a + '/inscriptions?exclude=drc20&limit=100&page=' + pg); if (!r.ok) throw new Error('the Doginals Explorer did not answer (http ' + r.status + ')');
+        const j = await r.json(), L = j.inscriptions || [];
+        for (const x of L) { if (!x || !x.id) continue; if ((x.kinds || []).includes('dogemap')) { out.namesAndTokens++; continue; } list.push({id: x.id, type: String(x.contentType || '').split(';')[0].trim().toLowerCase() || null}); }
+        say('Reading which Doginals ' + a + ' holds: ' + (list.length + out.namesAndTokens) + ' of ' + (j.total || '?') + '…');
+        if (!L.length || list.length + out.namesAndTokens >= (j.total || 0) || list.length >= MAX || stop()) break;
+        await sleep(250);
+      }
+    }
+    out.holds = list.length + out.namesAndTokens;
+    if (list.length > MAX) { out.tooMany = list.length - MAX; list = list.slice(0, MAX); }
+    // each file: read as bytes, never run
+    let i = 0, done = 0;
+    const one = async x => {
+      let r = null, base = null;
+      for (const b of BASES) { try { r = await F(b + '/content/' + x.id); if (r.ok) { base = b; break; } } catch (e) {} r = null; }
+      if (!r) { out.notLooked++; return; }
+      const n = +r.headers.get('content-length'), ty = (x.type || (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase());
+      if (n > 8e6) { out.notLooked++; return; }
+      const bytes = new Uint8Array(await r.arrayBuffer()); if (bytes.length > 8e6) { out.notLooked++; return; }
+      let finds = [];
+      if (PIC.test(ty) || FILM.test(ty)) {
+        if (FILM.test(ty)) out.films++; else out.pictures++;
+        if (o.look) { try { const L = await o.look({id: x.id, type: ty, bytes}); finds = L.finds || []; if (L.flashNotChecked) out.flashNotChecked++; if (L.notLooked) out.notLooked++; } catch (e) { out.notLooked++; } } else out.notLooked++;
+      } else if (TEXTY.test(ty) || !ty) {
+        out.text++; const text = new TextDecoder().decode(bytes);
+        if (/json/.test(ty) && /^\s*\{\s*"p"\s*:/.test(text) && text.length < 600) { out.namesAndTokens++; out.text--; return; }
+        finds = read(ty || 'text/plain', text, x.id); for (const f of finds) delete f.file;
+        if (o.look) { let k = 0; for (const m of text.matchAll(/data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=]{2000,})/g)) { if (++k > 3) break;
+          try { const bin = typeof atob === 'function' ? Uint8Array.from(atob(m[2]), c => c.charCodeAt(0)) : new Uint8Array(Buffer.from(m[2], 'base64')); const L = await o.look({id: x.id + '#' + k, type: 'image/' + m[1].replace('jpg', 'jpeg'), bytes: bin}); for (const f of L.finds || []) { f.what += ' (inside the code)'; finds.push(f); } } catch (e) {} } }
+      } else out.other++;
+      if (finds.length) {
+        const kinds = KINDS.map(K => K.key).filter(k => finds.some(f => f.kind === k));
+        out.found.push({id: x.id, contentType: ty, bytes: bytes.length, kinds, finds: finds.slice(0, 8).map(f => { const g = {kind: f.kind, what: f.what}; for (const k of ['line', 'score', 'perSecond', 'hidden']) if (f[k] != null) g[k] = f[k]; if (f.sample) g.sample = {untrusted: String(f.sample.untrusted).slice(0, 160), masked: f.sample.masked || undefined}; return g; })});
+        for (const k of kinds) out.tally[k] = (out.tally[k] || 0) + 1;
+      }
+    };
+    const worker = async () => { while (i < list.length && !stop()) { const x = list[i++]; try { await one(x); } catch (e) { out.notLooked++; } out.checked++; done++; if (done % 5 === 0 || done === list.length) say('Checked ' + done + ' of ' + list.length + (out.found.length ? ': ' + out.found.length + ' marked so far' : '') + '…', out); await sleep(120); } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    out.stopped = stop() && done < list.length ? true : undefined;
+    out.found.sort((p, q) => KINDS.findIndex(K => K.key === p.kinds[0]) - KINDS.findIndex(K => K.key === q.kinds[0]));
+    return out;
+  }
   // a short summary: how many of each kind
   const tally = finds => { const t = {}; for (const f of finds || []) t[f.kind] = (t[f.kind] || 0) + 1; return t; };
   const isText = t => TEXTY.test(String(t || ''));
-  return {VERSION, KINDS, KIND, read, tally, isText, visible};
+  return {VERSION, KINDS, KIND, read, tally, isText, visible, flashes, scanWallet, isAddr};
 });

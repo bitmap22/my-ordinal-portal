@@ -64,24 +64,7 @@ async function adultScore(rgb) {   // rgb: 224 x 224 x 3 bytes
   const x = tf.tensor3d(rgb, [224, 224, 3], 'int32'); try { const p = await M.classify(x); const s = n => (p.find(q => q.className === n) || {}).probability || 0; return +(s('Porn') + s('Hentai') + s('Sexy')).toFixed(3); } finally { x.dispose(); }
 }
 // flashing: the WCAG "three flashes" rule, read on each quarter of the picture (a quarter is the area the rule counts)
-const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-function flashes(frames, times, W, H) {   // frames: grey bytes (W x H each); times: when each frame starts (ms)
-  if (frames.length < 4) return 0;
-  const parts = [[0, 0], [W / 2, 0], [0, H / 2], [W / 2, H / 2], [W / 4, H / 4]].map(([x, y]) => [x | 0, y | 0, W / 2 | 0, H / 2 | 0]);
-  let worst = 0;
-  for (const [px, py, pw, ph] of parts) {
-    const L = frames.map(f => { let s = 0; for (let y = py; y < py + ph; y++) for (let x = px; x < px + pw; x++) s += lin(f[y * W + x]); return s / (pw * ph); });
-    // turns: where the brightness changes by 10% or more and the darker side is below 0.8; a flash is two opposite turns
-    const turns = []; let ref = L[0], dir = 0;
-    for (let i = 1; i < L.length; i++) {
-      const d = L[i] - ref;
-      if (Math.abs(d) >= 0.1 && Math.min(L[i], ref) < 0.8) { const s = Math.sign(d); if (s !== dir) { turns.push(times[i]); dir = s; } ref = L[i]; }
-      else if (dir && Math.sign(L[i] - ref) === dir) ref = L[i];   // (still going the same way: follow it)
-    }
-    for (let i = 0; i + 1 < turns.length; i++) { let n = 0; for (let j = i; j + 1 < turns.length && turns[j + 1] - turns[i] < 1000; j += 2) n++; worst = Math.max(worst, n); }
-  }
-  return worst;   // the most flashes in any one second
-}
+const flashes = SR.flashes;   // (the WCAG three-flashes rule, shared with the portal's wallet check: safety.js)
 async function lookPicture(buf, ty) {
   const finds = []; let meta;
   try { meta = await sharp(buf, {animated: true, limitInputPixels: 1e8}).metadata(); }
