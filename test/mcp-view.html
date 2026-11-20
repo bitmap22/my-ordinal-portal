@@ -219,7 +219,7 @@
       facts.push([words(k), fmt(v)]);
     };
     for (const s of SUBJECTS) if (isObj(o[s])) for (const [k, v] of Object.entries(o[s])) take(k, v, s);
-    for (const [k, v] of Object.entries(o)) if (!SKIP.has(k) && !SUBJECTS.includes(k)) take(k, v);
+    for (const [k, v] of Object.entries(o)) if (!SKIP.has(k) && !SUBJECTS.includes(k) && !(k === 'untrusted' && typeof v === 'string')) take(k, v);
     return {facts, untrusted};
   }
   function trailOf(o) {
@@ -232,13 +232,23 @@
     for (const [k, v] of Object.entries(o)) { look(k, v); if (isObj(v) && Array.isArray(v.list)) look(k, v.list); }
     return lists.slice(0, 3);
   }
+  const PAGES = {'provenance-check': 'Provenance Check', 'trade-check': 'Authenticity Check', 'collection-check': 'Collection Check', 'earned-traits': 'Earned Traits',
+    'block-manifest': 'Block Manifest', 'recursion-map': 'Recursion Map', 'code-read': 'Code Read', 'rune-proof': 'Rune Proof', 'second-opinion': 'Second Opinion',
+    'stuck-transaction': 'Stuck Transaction Doctor', 'safety-scan': 'Safety Scan', 'source-health': 'Source Health', 'truth-league': 'Truth League', 'daily': 'Daily Data',
+    'watch': 'Watch it move', 'doge-block-manifest': 'Doge Block Manifest', 'doge-provenance-check': 'Doge Provenance Check', 'doge-collection-check': 'Doge Collection Check',
+    'doge-watch': 'Doge Watch', 'doge-daily': 'Doge Daily Data', 'doge-safety-scan': 'Doge Safety Scan', 'block-cube': 'Walk in, in Agent Blockhall', 'doge-cube': 'Walk in, in Doge Cube'};
+  const pageOf = url => { const m = /\/([a-z-]+)\.html/.exec(url); return m ? m[1] : null; };
   function linksOf(o) {
-    const found = new Map();
-    const add = (label, url) => { if (typeof url === 'string' && SAFE.test(url) && !found.has(url) && found.size < 4) found.set(url, label); };
+    const found = new Map(), pages = new Set();
+    const add = (label, url) => {
+      if (typeof url !== 'string' || !SAFE.test(url) || found.has(url) || found.size >= 3) return;
+      const pg = pageOf(url); if (pg && pages.has(pg)) return; if (pg) pages.add(pg);
+      found.set(url, label || (pg && PAGES[pg]) || (/^https:\/\/ordinals\.com/.test(url) ? 'Its page on ordinals.com' : 'Open on Ord Portal'));
+    };
     if (o.cite && o.cite.link) add('Open this check on Ord Portal', o.cite.link);
     const scan = (v, label, depth) => {
       if (depth > 2 || v == null) return;
-      if (typeof v === 'string') { const m = /https:\/\/[^\s)"']+/.exec(v); if (m) add(label, m[0]); return; }
+      if (typeof v === 'string') { const m = /https:\/\/[^\s)"']+/.exec(v); if (m) add(null, m[0]); return; }
       if (Array.isArray(v)) return v.slice(0, 6).forEach(x => scan(x, label, depth + 1));
       if (isObj(v) && !hasUntrusted(v)) for (const [k, x] of Object.entries(v)) if (!['sources', 'checked', 'cite'].includes(k)) scan(x, k === 'galleryRoom' || /game|walk/i.test(k) ? 'Walk in, in Agent Blockhall' : label, depth + 1);
     };
@@ -258,7 +268,7 @@
       card.replaceChildren(...parts); return resize();
     }
     const titled = typeof o.check === 'string' ? o.check.replace(/^Agent Blockhall /, '').replace(/ \d+\.\d+\.\d+$/, '') : typeof o.manifest === 'string' ? o.manifest.replace(/^Agent Blockhall /, '').replace(/ \d+\.\d+\.\d+$/, '') : null;
-    if (titled && !toolName) setTool(titled);
+    if (titled) setTool(titled);
     parts.push(header(subjectOf(o, lastArgs) || ''));
     const v = verdictOf(o);
     if (v && v.big) { const d = el('div', 'verdict ' + v.s, v.big); if (v.small) d.append(el('small', null, v.small)); parts.push(d); }
