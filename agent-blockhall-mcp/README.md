@@ -60,6 +60,14 @@ Trust: `feeAdvice` keeps score of itself, and every `chain`, `block` and `inscri
 
 Two things stay in the game's tablet: which inscription claimed a bitmap, and names like `satoshi.sats`.
 
+## The newest MCP, views in the chat, long jobs and the skill
+
+It speaks the newest MCP, **2026-07-28**: there is no handshake, every request carries its version, and `server/discover` says what the tool supports. It still answers the older versions (2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05) with their `initialize` handshake, as before.
+
+- **Views in the chat (MCP Apps).** In AI apps that show MCP Apps, a check's answer also shows as a view in the chat (`ui://agent-blockhall/view`): the verdict, what each source said, the trail, the traits and counts, and buttons that open the check on the portal or make it again (`checkAgain`). The view is drawn from the answer alone. It fetches nothing, loads nothing from outside, and never shows or runs an inscription's file. The answer is always there as text too.
+- **Long jobs (Tasks).** With 2026-07-28, a client that declares the Tasks extension (`io.modelcontextprotocol/tasks`) gets a task for any check still working after 4 seconds. Ask `tasks/get` with its `taskId` (every 3 seconds is enough) until it is `completed`: its answer is the same as it would have been. Tasks are kept for 30 minutes, in the running tool.
+- **The Ord Portal skill (Skills over MCP).** `skills/list` gives the Ord Portal skill (`skill://ord-portal/SKILL.md`): which tool answers which question, and how to use them well. It is the same file the website lists for any agent at [/.well-known/agent-skills/index.json](https://ordportal.com/.well-known/agent-skills/index.json).
+
 ## Install
 
 You need [Node.js](https://nodejs.org) 18 or newer.

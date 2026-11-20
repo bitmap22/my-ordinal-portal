@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Blockhall</title>
+<!-- Agent Blockhall's view for AI chat apps (MCP Apps, io.modelcontextprotocol/ui), by bitmap22.
+     It draws a check's answer from the answer alone: it fetches nothing, loads nothing from outside, never shows or runs an
+     inscription's file, and puts every word from the chain on the page as plain text. Links go only to the portal and the
+     public sites the tools read, through the chat app (ui/open-link).
+     © 2026 bitmap22. All rights reserved. Free to use as part of the Agent Blockhall MCP tool (see its LICENCE). -->
+<style>
+  :root {
+    color-scheme: light dark;
+    --color-background-primary: light-dark(#ffffff, #0a0f1c);
+    --color-background-secondary: light-dark(#f4f6fa, #111a2c);
+    --color-text-primary: light-dark(#141a26, #e8edf6);
+    --color-text-secondary: light-dark(#4a5568, #9aa8be);
+    --color-border-primary: light-dark(#d5dbe6, #23304a);
+    --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, Menlo, Consolas, monospace;
+    --border-radius-md: 10px;
+    --frame: light-dark(#b8740f, #f3a530);
+    --frame-hot: light-dark(#8a5500, #ffcf7a);
+    --good: light-dark(#1f8a52, #6fd39a);
+    --bad: light-dark(#b8306c, #e0629a);
+    --unsure: light-dark(#a8640a, #f3a530);
+    --link: light-dark(#1f7f84, #63d2d6);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  body { font: 14px/1.5 var(--font-sans); color: var(--color-text-primary); }
+  .card { background: var(--color-background-primary); border: 2px solid var(--frame); border-radius: var(--border-radius-md); padding: 18px 18px 14px; position: relative; }
+  .card::before { content: ""; position: absolute; inset: 6px; border: 1px solid color-mix(in srgb, var(--frame) 40%, transparent); border-radius: calc(var(--border-radius-md) - 4px); pointer-events: none; }
+  header { text-align: center; position: relative; }
+  .tool { font: 600 13px var(--font-mono); color: var(--frame-hot); letter-spacing: .02em; }
+  .of { margin: 2px 0 0; font-size: 18px; font-weight: 650; overflow-wrap: anywhere; }
+  .verdict { margin: 14px auto 0; max-width: 560px; padding: 10px 14px; border: 2px solid currentColor; border-radius: 8px; text-align: center; font-weight: 650; font-size: 16px; overflow-wrap: anywhere; }
+  .verdict.good { color: var(--good); } .verdict.bad { color: var(--bad); } .verdict.unsure { color: var(--unsure); } .verdict.plain { color: var(--color-text-primary); border-color: var(--color-border-primary); }
+  .verdict small { display: block; margin-top: 2px; font-weight: 400; font-size: 13px; color: var(--color-text-secondary); }
+  section { margin-top: 16px; position: relative; }
+  h2 { margin: 0 0 8px; font-size: 13px; font-weight: 650; color: var(--color-text-secondary); text-align: center; }
+  .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
+  .fact { background: var(--color-background-secondary); border-radius: 6px; padding: 6px 9px; min-width: 0; }
+  .fact b { display: block; font-size: 11.5px; font-weight: 600; color: var(--color-text-secondary); }
+  .fact span { display: block; font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .checks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; padding: 6px 0; border-top: 1px solid var(--color-border-primary); }
+  .checks li:first-child { border-top: 0; }
+  .mark { font: 700 14px var(--font-mono); text-align: center; }
+  .mark.good { color: var(--good); } .mark.bad { color: var(--bad); } .mark.unsure { color: var(--unsure); } .mark.plain { color: var(--color-text-secondary); }
+  .checks .what { overflow-wrap: anywhere; } .checks .who { display: block; font-size: 12px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+  .trail { position: relative; padding-left: 18px; }
+  .trail::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: color-mix(in srgb, var(--frame) 55%, transparent); }
+  .trail li { position: relative; padding: 4px 0 6px; font-size: 13px; }
+  .trail li::before { content: ""; position: absolute; left: -16px; top: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--frame); }
+  .trail .t { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+  .bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; }
+  .bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; font-size: 12.5px; align-items: center; }
+  .bar i { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--frame) 25%, transparent); position: relative; }
+  .bar i em { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--frame); }
+  .bar span:last-of-type { font-family: var(--font-mono); }
+  .badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .badge { border: 2px solid var(--good); border-radius: 8px; padding: 7px 10px; max-width: 280px; text-align: center; }
+  .badge.no { border-color: var(--color-border-primary); opacity: .75; }
+  .badge b { display: block; color: var(--good); } .badge.no b { color: var(--color-text-secondary); }
+  .badge span { display: block; font-size: 12px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+  th, td { text-align: left; padding: 4px 6px; border-top: 1px solid var(--color-border-primary); overflow-wrap: anywhere; vertical-align: top; }
+  th { font-weight: 600; color: var(--color-text-secondary); border-top: 0; }
+  td { font-family: var(--font-mono); }
+  .more { margin-top: 4px; text-align: center; font-size: 12px; color: var(--color-text-secondary); }
+  .untrusted { margin-top: 6px; padding: 6px 9px; border: 1px dashed var(--color-border-primary); border-radius: 6px; font-size: 12.5px; overflow-wrap: anywhere; }
+  .untrusted b { display: block; font-size: 11.5px; color: var(--unsure); }
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+  button { font: 600 13px var(--font-sans); color: var(--color-text-primary); background: var(--color-background-secondary); border: 1px solid var(--frame); border-radius: 7px; padding: 7px 12px; cursor: pointer; }
+  button:hover { border-color: var(--frame-hot); }
+  button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  button[disabled] { opacity: .55; cursor: default; }
+  .note { margin: 12px 0 0; text-align: center; font-size: 12px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+  .url { font-family: var(--font-mono); font-size: 12px; color: var(--link); overflow-wrap: anywhere; user-select: all; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; text-align: center; font-size: 12.5px; color: var(--color-text-secondary); }
+  pre { margin: 8px 0 0; max-height: 360px; overflow: auto; padding: 8px; background: var(--color-background-secondary); border-radius: 6px; font: 11.5px/1.45 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .waiting .frames { display: block; margin: 16px auto 4px; width: 120px; height: 72px; }
+  .frames rect { fill: none; stroke: var(--frame); }
+  @media (prefers-reduced-motion: no-preference) { .waiting .frames rect { animation: walk 1.6s ease-in-out infinite; } .waiting .frames rect:nth-child(2) { animation-delay: .2s; } .waiting .frames rect:nth-child(3) { animation-delay: .4s; } }
+  @keyframes walk { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+  @media (max-width: 460px) { .facts, .bars { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<main class="card waiting" id="card" aria-live="polite">
+  <header><div class="tool" id="tool">Agent Blockhall</div><p class="of" id="of">Checking</p></header>
+  <svg class="frames" viewBox="0 0 120 72" aria-hidden="true"><rect x="4" y="4" width="112" height="64" rx="3" stroke-width="2"/><rect x="24" y="16" width="72" height="40" rx="2" stroke-width="2"/><rect x="42" y="26" width="36" height="20" rx="1" stroke-width="2"/></svg>
+  <p class="note" id="wait">Reading the chain and asking a second site. Big checks can take a minute.</p>
+</main>
+<script>
+'use strict';
+(() => {
+  /* ---- talking to the chat app: JSON-RPC 2.0 over postMessage, only with the window that holds this view ---- */
+  const host = window.parent;
+  let nextId = 1, hostCaps = {}, toolName = null, lastArgs = null;
+  const waiting = new Map();
+  function request(method, params) {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      waiting.set(id, {resolve, reject});
+      host.postMessage({jsonrpc: '2.0', id, method, params}, '*');
+      setTimeout(() => { if (waiting.delete(id)) reject(new Error('no answer')); }, 300000);
+    });
+  }
+  const notify = (method, params) => host.postMessage({jsonrpc: '2.0', method, params: params || {}}, '*');
+  window.addEventListener('message', ev => {
+    if (ev.source !== host) return;
+    const m = ev.data;
+    if (!m || m.jsonrpc !== '2.0') return;
+    if (m.id != null && !m.method) {   // an answer to something this view asked
+      const w = waiting.get(m.id); if (!w) return; waiting.delete(m.id);
+      return m.error ? w.reject(new Error(m.error.message || 'error')) : w.resolve(m.result);
+    }
+    switch (m.method) {
+      case 'ui/notifications/tool-input': lastArgs = (m.params && m.params.arguments) || {}; drawWaiting(); break;
+      case 'ui/notifications/tool-result': draw(m.params || {}); break;
+      case 'ui/notifications/tool-cancelled': drawStopped((m.params && m.params.reason) || 'The check was stopped.'); break;
+      case 'ui/notifications/host-context-changed': applyContext(m.params || {}); break;
+      case 'ui/resource-teardown': if (m.id != null) host.postMessage({jsonrpc: '2.0', id: m.id, result: {}}, '*'); break;
+      case 'ping': if (m.id != null) host.postMessage({jsonrpc: '2.0', id: m.id, result: {}}, '*'); break;
+      default: if (m.id != null) host.postMessage({jsonrpc: '2.0', id: m.id, error: {code: -32601, message: 'Method not found'}}, '*');
+    }
+  });
+
+  /* ---- the chat app's look: its colours and fonts where it gives them (only CSS custom properties are taken) ---- */
+  function applyContext(c) {
+    if (c.theme === 'light' || c.theme === 'dark') document.documentElement.style.colorScheme = c.theme;
+    const vars = c.styles && c.styles.variables;
+    if (vars) for (const [k, v] of Object.entries(vars)) if (/^--[a-z0-9-]+$/i.test(k) && typeof v === 'string' && v && !/[;{}<>]/.test(v)) document.documentElement.style.setProperty(k, v);
+    if (c.toolInfo && c.toolInfo.tool) { toolName = c.toolInfo.tool.name; setTool(c.toolInfo.tool.title || c.toolInfo.tool.name); }
+  }
+
+  /* ---- small helpers: every word goes in as text, never as HTML ---- */
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; };
+  const card = document.getElementById('card');
+  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  const words = k => String(k).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
+  const fmt = v => typeof v === 'number' ? (Number.isInteger(v) && Math.abs(v) >= 10000 && Math.abs(v) < 1e15 ? v.toLocaleString('en-GB') : String(v))
+    : typeof v === 'boolean' ? (v ? 'yes' : 'no') : v == null ? '-' : String(v);
+  const short = (s, n) => { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  const SAFE = /^https:\/\/(ordportal\.com|bitmap22\.github\.io|ordinals\.com|ordiscan\.com|mempool\.space|github\.com\/bitmap22)(\/|$)/;
+  const hasUntrusted = v => isObj(v) && typeof v.untrusted === 'string';
+  function setTool(name) { document.getElementById('tool').textContent = name; }
+
+  function drawWaiting() {
+    if (!card.classList.contains('waiting')) return;
+    const a = lastArgs || {};
+    const what = a.id || a.parent || a.bitmap || a.address || a.rune || a.claim || a.txid || a.query || (a.height != null ? 'block ' + fmt(a.height) : '') || a.day || a.what || a.link || '';
+    document.getElementById('of').textContent = what ? 'Checking ' + short(what, 90) : 'Checking';
+  }
+  function drawStopped(reason) {
+    card.classList.remove('waiting'); card.replaceChildren(header('Stopped'), el('p', 'note', reason)); resize();
+  }
+  function header(of) {
+    const h = el('header'); h.append(el('div', 'tool', document.getElementById('tool') ? document.getElementById('tool').textContent : 'Agent Blockhall'), el('p', 'of', of)); return h;
+  }
+
+  /* ---- reading an answer ---- */
+  const SUBJECTS = ['inscription', 'block', 'parent', 'claim', 'rune', 'transaction', 'tx', 'bitmap', 'doginal', 'address', 'wallet', 'subject'];
+  const SKIP = new Set(['check', 'manifest', 'verdict', 'words', 'meaning', 'answer', 'reasons', 'ran', 'claims', 'note', 'notes', 'howToUse', 'since', 'next', 'cite', 'checked', 'trail', 'steps', 'counts', 'traits',
+    'sources', 'seeIt', 'page', 'pages', 'links', 'lookCloser', 'howProven', 'kinds', 'why', 'say', 'says', 'feeUnit', 'checkedAt', 'reader']);
+  const GOOD = new Set(['true', 'GO', 'proven', 'same', 'yes', 'ok', 'mined', 'set in ord\'s code', 'completed', 'waiting but not stuck', 'agrees']);
+  const BAD = new Set(['false', 'STOP', 'differs', 'changed', 'not made', 'stuck', 'stop', 'no', 'bad']);
+  const UNSURE = new Set(['mixed', 'unknown', 'NOT SURE', 'not reached', 'waiting', 'not found', 'no etching', 'not etched', 'warn', 'care', 'same core, some facts not read now']);
+  function statusOf(v) {
+    if (v === null) return 'unsure';
+    const k = String(v);
+    return GOOD.has(k) ? 'good' : BAD.has(k) ? 'bad' : UNSURE.has(k) ? 'unsure' : k === 'info' ? 'plain' : null;
+  }
+  function checksOf(o) {
+    const out = [];
+    const one = (name, c) => {
+      if (!isObj(c)) { if (typeof c === 'boolean' || c === null) out.push({name: words(name), s: statusOf(c), what: '', who: ''}); return; }
+      let s = 'mark' in c ? statusOf(c.mark) : 'agrees' in c ? statusOf(c.agrees) : 'agree' in c ? statusOf(c.agree) : 'ok' in c ? statusOf(c.ok) : 'proven' in c ? statusOf(c.proven)
+        : ('matched' in c && 'of' in c) ? statusOf(c.matched === c.of) : ('agreed' in c && 'of' in c) ? statusOf(c.agreed === c.of) : 'pass' in c ? statusOf(c.pass) : undefined;
+      if (s === undefined) return;
+      const what = c.what || c.check || c.says || c.why || (('matched' in c) ? fmt(c.matched) + ' of ' + fmt(c.of) : ('agreed' in c) ? fmt(c.agreed) + ' of ' + fmt(c.of) : '');
+      if (s === null) s = 'plain';
+      out.push({name: words(c.about || c.name || c.source || name), s, what: typeof what === 'string' ? what : JSON.stringify(what), who: c.against || c.site || c.how || ''});
+    };
+    if (isObj(o.checked)) for (const [k, c] of Object.entries(o.checked)) one(k, c);
+    for (const [k, c] of Object.entries(o)) if (isObj(c) && typeof c.right === 'number' && typeof c.of === 'number')   // a score it keeps of itself
+      out.push({name: words(k), s: 'plain', what: c.right + ' of ' + c.of + ' right' + (c.percent != null ? ' (' + c.percent + '%)' : '') + (c.way ? ', ' + c.way : ''), who: typeof c.meaning === 'string' ? c.meaning : ''});
+    for (const key of ['checks', 'sources', 'reasons']) if (Array.isArray(o[key])) o[key].forEach((c, i) => isObj(c) && one(c.check || c.source || c.name || key + ' ' + (i + 1), c));
+    return out;
+  }
+  function verdictOf(o) {
+    const shortVerdict = typeof o.verdict === 'string' && o.verdict.length <= 24 ? o.verdict : null;
+    const answer = o.answer != null ? o.answer : shortVerdict != null ? shortVerdict : typeof o.result === 'string' ? o.result : o.state != null ? o.state : null;
+    const text = typeof o.words === 'string' ? o.words : typeof o.verdict === 'string' && !shortVerdict ? o.verdict : typeof o.say === 'string' ? o.say : typeof o.says === 'string' ? o.says : null;
+    if (answer == null && text == null) return null;
+    let s = statusOf(answer);
+    if (!s && text) { const cs = checksOf(o); if (cs.length) s = cs.some(c => c.s === 'bad') ? 'bad' : cs.some(c => c.s === 'unsure') ? 'unsure' : 'good'; }
+    return {s: s || 'plain', big: answer != null && String(answer).length < 30 ? String(answer) : text, small: answer != null && String(answer).length < 30 ? text : null};
+  }
+  function subjectOf(o, args) {
+    if (o.cite && typeof o.cite.of === 'string') return o.cite.of;
+    if (typeof o.bitmap === 'string') return o.bitmap;
+    if (isObj(o.claim) && o.claim.text) return '"' + o.claim.text + '"';
+    if (isObj(o.inscription) && o.inscription.number != null) return 'inscription #' + fmt(o.inscription.number);
+    if (isObj(o.block) && o.block.height != null) return 'block ' + fmt(o.block.height);
+    if (typeof o.watching === 'string') return o.watching;
+    const a = args || {};
+    return a.id || a.parent || a.bitmap || a.address || a.rune || a.claim || a.txid || a.query || (a.height != null ? 'block ' + fmt(a.height) : '') || a.day || '';
+  }
+  function factsOf(o) {
+    const facts = [], untrusted = [];
+    const take = (k, v, from) => {
+      if (facts.length >= 14) return;
+      if (hasUntrusted(v)) { untrusted.push([words(from ? from + ' ' + k : k), v.untrusted]); return; }
+      if (v == null || typeof v === 'object') return;
+      if (typeof v === 'string' && (v.length > 140 || /^https?:/.test(v))) return;
+      facts.push([words(k), fmt(v)]);
+    };
+    for (const s of SUBJECTS) if (isObj(o[s])) for (const [k, v] of Object.entries(o[s])) take(k, v, s);
+    for (const [k, v] of Object.entries(o)) if (!SKIP.has(k) && !SUBJECTS.includes(k) && !(k === 'untrusted' && typeof v === 'string')) take(k, v);
+    return {facts, untrusted};
+  }
+  function trailOf(o) {
+    const t = Array.isArray(o.trail) ? o.trail : Array.isArray(o.steps) ? o.steps : Array.isArray(o.moves) ? o.moves : null;
+    return t && t.length && isObj(t[0]) ? t : null;
+  }
+  function listsOf(o) {
+    const lists = [];
+    const look = (name, a) => { if (Array.isArray(a) && a.length && isObj(a[0]) && !['trail', 'steps', 'moves', 'checks', 'sources', 'traits', 'reasons'].includes(name)) lists.push([name, a]); };
+    for (const [k, v] of Object.entries(o)) { look(k, v); if (isObj(v) && Array.isArray(v.list)) look(k, v.list); }
+    return lists.slice(0, 3);
+  }
+  const PAGES = {'provenance-check': 'Provenance Check', 'trade-check': 'Authenticity Check', 'collection-check': 'Collection Check', 'earned-traits': 'Earned Traits',
+    'block-manifest': 'Block Manifest', 'recursion-map': 'Recursion Map', 'code-read': 'Code Read', 'rune-proof': 'Rune Proof', 'second-opinion': 'Second Opinion',
+    'stuck-transaction': 'Stuck Transaction Doctor', 'safety-scan': 'Safety Scan', 'source-health': 'Source Health', 'truth-league': 'Truth League', 'daily': 'Daily Data',
+    'watch': 'Watch it move', 'doge-block-manifest': 'Doge Block Manifest', 'doge-provenance-check': 'Doge Provenance Check', 'doge-collection-check': 'Doge Collection Check',
+    'doge-watch': 'Doge Watch', 'doge-daily': 'Doge Daily Data', 'doge-safety-scan': 'Doge Safety Scan', 'block-cube': 'Walk in, in Agent Blockhall', 'doge-cube': 'Walk in, in Doge Cube'};
+  const pageOf = url => { const m = /\/([a-z-]+)\.html/.exec(url); return m ? m[1] : null; };
+  function linksOf(o) {
+    const found = new Map(), pages = new Set();
+    const add = (label, url) => {
+      if (typeof url !== 'string' || !SAFE.test(url) || found.has(url) || found.size >= 3) return;
+      const pg = pageOf(url); if (pg && pages.has(pg)) return; if (pg) pages.add(pg);
+      found.set(url, label || (pg && PAGES[pg]) || (/^https:\/\/ordinals\.com/.test(url) ? 'Its page on ordinals.com' : 'Open on Ord Portal'));
+    };
+    if (o.cite && o.cite.link) add('Open this check on Ord Portal', o.cite.link);
+    const scan = (v, label, depth) => {
+      if (depth > 2 || v == null) return;
+      if (typeof v === 'string') { const m = /https:\/\/[^\s)"']+/.exec(v); if (m) add(null, m[0]); return; }
+      if (Array.isArray(v)) return v.slice(0, 6).forEach(x => scan(x, label, depth + 1));
+      if (isObj(v) && !hasUntrusted(v)) for (const [k, x] of Object.entries(v)) if (!['sources', 'checked', 'cite'].includes(k)) scan(x, k === 'galleryRoom' || /game|walk/i.test(k) ? 'Walk in, in Agent Blockhall' : label, depth + 1);
+    };
+    for (const k of ['seeIt', 'page', 'open', 'walkIn', 'links']) if (o[k] != null) scan(o[k], /walk/i.test(k) ? 'Walk in, in Agent Blockhall' : 'Open on Ord Portal', 0);
+    return [...found].map(([url, label]) => ({url, label}));
+  }
+
+  /* ---- drawing it ---- */
+  function draw(res) {
+    const o = isObj(res.structuredContent) ? res.structuredContent : (() => { try { const t = res.content && res.content[0] && res.content[0].text; return JSON.parse(t); } catch (e) { return null; } })();
+    card.classList.remove('waiting');
+    const parts = [];
+    if (res.isError || !o) {
+      parts.push(header('This check could not finish'));
+      const t = res.content && res.content[0] && res.content[0].text;
+      parts.push(el('p', 'note', short(t || 'No answer came back.', 600)));
+      card.replaceChildren(...parts); return resize();
+    }
+    const titled = typeof o.check === 'string' ? o.check.replace(/^Agent Blockhall /, '').replace(/ \d+\.\d+\.\d+$/, '') : typeof o.manifest === 'string' ? o.manifest.replace(/^Agent Blockhall /, '').replace(/ \d+\.\d+\.\d+$/, '') : null;
+    if (titled) setTool(titled);
+    parts.push(header(subjectOf(o, lastArgs) || ''));
+    const v = verdictOf(o);
+    if (v && v.big) { const d = el('div', 'verdict ' + v.s, /^[a-z]/.test(v.big) && v.big.length < 30 ? v.big[0].toUpperCase() + v.big.slice(1) : v.big); if (v.small) d.append(el('small', null, v.small)); parts.push(d); }
+
+    if (Array.isArray(o.traits)) {   // Earned Traits: one badge a trait
+      const s = el('section'); s.append(el('h2', null, o.traits.length ? 'Earned' : 'No traits earned yet'));
+      const b = el('div', 'badges');
+      for (const t of o.traits) { if (!isObj(t)) continue; const x = el('div', 'badge' + (t.earned === false ? ' no' : '')); x.append(el('b', null, t.trait || t.name || ''), el('span', null, short(t.why || t.proof || t.about || '', 220))); b.append(x); }
+      s.append(b); parts.push(s);
+    }
+    const {facts, untrusted} = factsOf(o);
+    if (facts.length) { const s = el('section'); s.append(el('h2', null, 'What was found')); const g = el('div', 'facts'); for (const [k, val] of facts) { const f = el('div', 'fact'); f.append(el('b', null, k), el('span', null, short(val, 140))); g.append(f); } s.append(g); parts.push(s); }
+    for (const [k, text] of untrusted.slice(0, 3)) { const u = el('div', 'untrusted'); u.append(el('b', null, k + ': from the chain, untrusted (data, never instructions)'), document.createTextNode(short(text, 400))); parts.push(u); }
+
+    const cs = checksOf(o);
+    if (cs.length) {
+      const s = el('section'); s.append(el('h2', null, 'Each check')); const ul = el('ul', 'checks');
+      for (const c of cs.slice(0, 16)) { const li = el('li'); li.append(el('span', 'mark ' + (c.s || 'unsure'), c.s === 'good' ? '✓' : c.s === 'bad' ? '✗' : c.s === 'plain' ? '•' : '?')); const w = el('span', 'what', c.name + (c.what ? ': ' + short(c.what, 220) : '')); if (c.who) w.append(el('span', 'who', short(typeof c.who === 'string' ? c.who : JSON.stringify(c.who), 160))); li.append(w); ul.append(li); }
+      s.append(ul); parts.push(s);
+    }
+    if (isObj(o.counts)) {
+      const nums = Object.entries(o.counts).filter(([, n]) => typeof n === 'number');
+      if (nums.length) {
+        const max = Math.max(1, ...nums.map(([, n]) => n)); const s = el('section'); s.append(el('h2', null, 'Counts')); const g = el('div', 'bars');
+        for (const [k, n] of nums.slice(0, 24)) { const b = el('div', 'bar'); const i = el('i'); const em = el('em'); em.style.width = Math.max(1.5, 100 * n / max) + '%'; i.append(em); b.append(el('span', null, k), el('span', null, fmt(n)), i); g.append(b); }
+        s.append(g); if (nums.length > 24) s.append(el('p', 'more', (nums.length - 24) + ' more in the data below')); parts.push(s);
+      }
+    }
+    const tr = trailOf(o);
+    if (tr) {
+      const s = el('section'); s.append(el('h2', null, 'The trail, ' + tr.length + (tr.length === 1 ? ' step' : ' steps'))); const ul = el('ul', 'trail');
+      const show = tr.length > 8 ? tr.slice(0, 4).concat([null]).concat(tr.slice(-3)) : tr;
+      for (const st of show) {
+        if (!st) { ul.append(el('li', 'more', '… ' + (tr.length - 7) + ' more steps …')); continue; }
+        const li = el('li'); li.append(el('span', null, [st.block != null ? 'block ' + fmt(st.block) : '', st.time ? String(st.time).replace('T', ' ').replace(/:\d\dZ$|Z$/, ' UTC') : '', st.made ? 'made here' : ''].filter(Boolean).join(', ') || 'a step'));
+        const t = [st.to ? 'to ' + short(st.to, 70) : '', st.txid ? 'tx ' + short(st.txid, 20) : ''].filter(Boolean).join('  '); if (t) li.append(el('span', 't', ' ' + t)); ul.append(li);
+      }
+      s.append(ul); parts.push(s);
+    }
+    for (const [name, rows] of listsOf(o)) {
+      const cols = Object.keys(rows[0]).filter(k => rows.some(r => r[k] != null && typeof r[k] !== 'object')).slice(0, 4);
+      if (!cols.length) continue;
+      const s = el('section'); s.append(el('h2', null, words(name) + ' (' + rows.length + ')'));
+      const tb = el('table'), hr = el('tr'); cols.forEach(c => hr.append(el('th', null, words(c)))); tb.append(hr);
+      for (const r of rows.slice(0, 8)) { const tr2 = el('tr'); cols.forEach(c => tr2.append(el('td', null, short(hasUntrusted(r[c]) ? r[c].untrusted : fmt(r[c]), 70)))); tb.append(tr2); }
+      s.append(tb); if (rows.length > 8) s.append(el('p', 'more', (rows.length - 8) + ' more in the data below')); parts.push(s);
+    }
+
+    const acts = el('div', 'actions');
+    const canOpen = !!hostCaps.openLinks;
+    for (const l of linksOf(o)) {
+      const b = el('button', null, l.label); b.type = 'button'; b.title = l.url;
+      b.addEventListener('click', () => (canOpen ? request('ui/open-link', {url: l.url}) : Promise.reject()).catch(() => { b.replaceWith(el('span', 'url', l.url)); resize(); }));
+      acts.append(b);
+    }
+    if (o.cite && o.cite.link && hostCaps.serverTools) {   // check again: the same check, made now, through the chat app
+      const b = el('button', null, 'Check again now'); b.type = 'button';
+      b.addEventListener('click', async () => { b.disabled = true; b.textContent = 'Checking again…';
+        try { const r = await request('tools/call', {name: 'checkAgain', arguments: {link: o.cite.link}}); draw(r || {}); } catch (e) { b.textContent = 'Could not check again'; } });
+      acts.append(b);
+    }
+    if (acts.childNodes.length) parts.push(acts);
+    if (o.cite && o.cite.fingerprint) parts.push(el('p', 'note', 'Checked' + (o.cite.at ? ' ' + String(o.cite.at).replace('T', ' ').replace('Z', ' UTC') : '') + '. Fingerprint ' + o.cite.fingerprint + '.' + (Array.isArray(o.cite.sources) ? ' Asked ' + o.cite.sources.join(', ') + '.' : '')));
+    const det = el('details'); det.append(el('summary', null, 'All the data'), el('pre', null, JSON.stringify(o, null, 1))); det.addEventListener('toggle', resize); parts.push(det);
+    parts.push(el('p', 'note', 'Read only: nothing was signed, sent or paid. Not financial advice. Agent Blockhall, by bitmap22.'));
+    card.replaceChildren(...parts);
+    resize();
+  }
+
+  /* ---- size: tell the chat app how tall the view is ---- */
+  let lastH = 0;
+  function resize() { requestAnimationFrame(() => { const h = Math.ceil(document.documentElement.getBoundingClientRect().height); if (h !== lastH) { lastH = h; notify('ui/notifications/size-changed', {width: Math.ceil(document.documentElement.getBoundingClientRect().width), height: h}); } }); }
+  if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(document.body);
+
+  /* ---- start: introduce this view, then the chat app sends the tool's input and its answer ---- */
+  request('ui/initialize', {appInfo: {name: 'agent-blockhall-view', version: '1.0.0'}, appCapabilities: {availableDisplayModes: ['inline']}, protocolVersion: '2026-01-26'})
+    .then(r => { hostCaps = (r && r.hostCapabilities) || {}; applyContext((r && r.hostContext) || {}); notify('ui/notifications/initialized'); drawWaiting(); resize(); })
+    .catch(() => { document.getElementById('wait').textContent = 'This view needs an app that shows MCP Apps. The answer is in the text.'; resize(); });
+})();
+</script>
+</body>
+</html>
