@@ -96,7 +96,7 @@
   function sample(src) {
     try {
       if (!src) return null; if (typeof ImageData !== 'undefined' && src instanceof ImageData) return src;
-      const w = src.naturalWidth || src.videoWidth || src.width, h = src.naturalHeight || src.videoHeight || src.height; if (!w || !h) return null;
+      const w = src.naturalWidth || src.videoWidth || src.displayWidth || src.width, h = src.naturalHeight || src.videoHeight || src.displayHeight || src.height; if (!w || !h) return null;   // (displayWidth: a frame split out of a moving picture)
       const c = document.createElement('canvas'); c.width = c.height = 224; const x = c.getContext('2d', {willReadFrequently: true});
       x.fillStyle = '#000'; x.fillRect(0, 0, 224, 224); x.drawImage(src, 0, 0, 224, 224);
       return x.getImageData(0, 0, 224, 224);
@@ -145,7 +145,8 @@
           if (/^video\//.test(src.type || '')) { samples = src.bytes.length <= 40e6 ? await filmSamples(src.bytes, src.type) : []; meta = {anim: true, frames: 'film', flash: samples.flash || 0}; }
           else {
             const A = await animFrames(src.bytes, src.type);
-            if (A && A.n > 1 && A.big && A.big.length) { samples = A.big; meta = {anim: true, frames: 'all', flash: A.flash || 0}; }
+            if (A && A.n > 1) meta = {anim: true, frames: A.big && A.big.length ? 'all' : 'first', flash: A.flash || 0};
+            if (A && A.n > 1 && A.big && A.big.length) samples = A.big;
             else { const im = await decode(src.bytes, src.type); samples = [sample(im)]; if (im && im.close) im.close(); if (A && A.firstOnly) meta = {anim: null, frames: 'first', flash: null}; }
           }
         } else samples = [sample(src)];
