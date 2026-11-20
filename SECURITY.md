@@ -1,6 +1,6 @@
 # Security policy
 
-This covers the Ordinal Portal (https://ordportal.com, also at bitmap22.github.io/my-ordinal-portal) and everything in this repository: Agent Blockhall, Doge Cube, Block Paint City, the Play Together pages, the tools, the agent kits on each page, the GitHub workflows, and the Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`, in `agent-blockhall-mcp/`).
+This covers the Ord Portal (https://ordportal.com, also at bitmap22.github.io/my-ordinal-portal) and everything in this repository: Agent Blockhall, Doge Cube, Block Paint City, the Play Together pages, the tools, the agent kits on each page, the GitHub workflows, and the Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`, in `agent-blockhall-mcp/`).
 
 ## Supported versions
 

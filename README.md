@@ -1,4 +1,4 @@
-# Ordinal Portal
+# Ord Portal
 
 Bitcoin ordinal games, tools and creative pieces by bitmap22, to use in the browser.
 

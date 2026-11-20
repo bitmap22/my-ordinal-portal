@@ -1,6 +1,6 @@
 # Security policy: Agent Blockhall MCP tool
 
-The Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`) follows the Ordinal Portal's security policy:
+The Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`) follows the Ord Portal's security policy:
 [SECURITY.md](https://github.com/bitmap22/my-ordinal-portal/blob/main/SECURITY.md).
 
 To report a vulnerability, please do it privately: this repository's **Security** tab, **Report a vulnerability**,

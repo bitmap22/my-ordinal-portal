@@ -1,6 +1,6 @@
 # Truth League: the record
 
-Every few hours, GitHub's computers prove one Bitcoin block and one Dogecoin block from their own bytes, then ask each free public data site that the Ordinal Portal's tools read a few facts about them, and mark each answer right or wrong against those bytes (never against another site). The last 30 days are kept here. The [Truth League page](https://ordportal.com/truth-league.html) and the free Agent Blockhall MCP tool (`truthLeague`) read it.
+Every few hours, GitHub's computers prove one Bitcoin block and one Dogecoin block from their own bytes, then ask each free public data site that the Ord Portal's tools read a few facts about them, and mark each answer right or wrong against those bytes (never against another site). The last 30 days are kept here. The [Truth League page](https://ordportal.com/truth-league.html) and the free Agent Blockhall MCP tool (`truthLeague`) read it.
 
 How a block proves itself:
 - Bitcoin: its hash is worked out from its header and starts with at least 70 zero bits (its proof of work), its transactions are each worked out to their ids and lead to the header's merkle root (so the list is whole and in order), and its first transaction says its height.
