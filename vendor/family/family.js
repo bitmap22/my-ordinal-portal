@@ -20,6 +20,8 @@
   'use strict';
   if (window.FamilyGuard) return;
   const onSite = /(^|\.)github\.io$|(^|\.)ordportal\.com$/.test(location.hostname) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  // (20 Nov 2026) still frames are kept in wide colour (Display P3), so deep reds and greens are not dulled to ordinary colour
+  const WIDE = {colorSpace: 'display-p3'};
   const BASE = new URL((onSite ? (/\/test\//.test(location.pathname) ? '../' : '/') : 'https://ordportal.com/') + 'vendor/family/', location.href).href;
   const SKEY = 'ordportal-family', LIMIT = 0.5;   // adult: Porn, Hentai and Sexy together score 0.5 or more
   let strict = false; try { strict = localStorage.getItem(SKEY) === '1'; } catch (e) {}
@@ -59,7 +61,7 @@
       const N = Math.min(n, 400), pick = [...new Set([0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1])];
       const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d', {willReadFrequently: true});
       const small = [], times = [], big = []; let t = 0, still = null;
-      for (let i = 0; i < N; i++) { if (i && !(i % 40)) await new Promise(r => setTimeout(r)); const {image} = await dec.decode({frameIndex: i}); small.push(grey32(x, image)); if (!i) try { const w = image.displayWidth, h = image.displayHeight, k = Math.min(1, 640 / Math.max(w, h)), c0 = document.createElement('canvas'); c0.width = Math.max(1, Math.round(w * k)); c0.height = Math.max(1, Math.round(h * k)); const x0 = c0.getContext('2d'); x0.imageSmoothingEnabled = k < 1; x0.drawImage(image, 0, 0, c0.width, c0.height); still = c0.toDataURL('image/png'); } catch (e) {} /* (its first frame, kept to show it still) */ times.push(t); const ms = (image.duration || 0) / 1000; t += ms <= 10 ? 100 : ms; if (pick.includes(i)) big.push(sample(image)); image.close(); }
+      for (let i = 0; i < N; i++) { if (i && !(i % 40)) await new Promise(r => setTimeout(r)); const {image} = await dec.decode({frameIndex: i}); small.push(grey32(x, image)); if (!i) try { const w = image.displayWidth, h = image.displayHeight, k = Math.min(1, 2048 / Math.max(w, h)), c0 = document.createElement('canvas'); c0.width = Math.max(1, Math.round(w * k)); c0.height = Math.max(1, Math.round(h * k)); const x0 = c0.getContext('2d', WIDE); x0.imageSmoothingEnabled = k < 1; x0.drawImage(image, 0, 0, c0.width, c0.height); still = c0.toDataURL('image/png'); } catch (e) {} /* (its first frame, kept to show it still) */ times.push(t); const ms = (image.duration || 0) / 1000; t += ms <= 10 ? 100 : ms; if (pick.includes(i)) big.push(sample(image)); image.close(); }
       for (const i of pick) if (i >= N) { const {image} = await dec.decode({frameIndex: i}); big.push(sample(image)); image.close(); }
       for (let i = 0, L = small.length, T = t; i < L && times[times.length - 1] - T < 1000; i++) { small.push(small[i]); times.push(T + times[i]); }   // (it loops: the join counts too)
       return {n, big: big.filter(Boolean), flash: flashes(small, times, 32, 32), still};
@@ -234,7 +236,7 @@
     b.onclick = go;
     if (el.tagName === 'VIDEO') { try { el.pause(); } catch (e) {} const stop = () => { if (n.isConnected) { try { el.pause(); } catch (e) {} } else el.removeEventListener('play', stop); }; el.addEventListener('play', stop); }
     else if (el.tagName === 'IMG') {   // (its first frame, drawn once, stands in for it)
-      const freeze = () => { if (M.still) { el._fgOrig = el.currentSrc || el.src; el.src = M.still; return; } try { const c = document.createElement('canvas'); c.width = el.naturalWidth || 1; c.height = el.naturalHeight || 1; c.getContext('2d').drawImage(el, 0, 0); el._fgOrig = el.currentSrc || el.src; el.src = c.toDataURL('image/png'); } catch (e) {} };
+      const freeze = () => { if (M.still) { el._fgOrig = el.currentSrc || el.src; el.src = M.still; return; } try { const c = document.createElement('canvas'); c.width = el.naturalWidth || 1; c.height = el.naturalHeight || 1; c.getContext('2d', WIDE).drawImage(el, 0, 0); el._fgOrig = el.currentSrc || el.src; el.src = c.toDataURL('image/png'); } catch (e) {} };
       if (M.still || el.complete && el.naturalWidth) freeze(); else el.addEventListener('load', freeze, {once: true});
     } else return;
     if (el.isConnected && el.parentNode) el.insertAdjacentElement('afterend', n);
@@ -260,5 +262,5 @@
     return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
       recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.1.0'};
+  window.FamilyGuard = {check, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.1.1'};
 })();
