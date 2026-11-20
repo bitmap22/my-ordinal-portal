@@ -1,0 +1,73 @@
+# The Safety Scan: about every hour, each new Bitcoin and Dogecoin block's inscriptions are looked at and read, without running
+# anything (pictures and films: may be adult, may flash, too big for phones; words and code: agent traps, scams, miners and
+# phone-killers, hate words, personal details, risky code). The last 144 Bitcoin blocks and the last 1,440 Dogecoin blocks (about
+# a day each) are kept on the safety-scan branch, one JSON file a block. Free: GitHub runs it. It only writes to that branch.
+# The keeper (keeper.yml) also starts it when its last run is over an hour old. © 2026 bitmap22. All rights reserved.
+name: Safety Scan
+
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+    inputs:
+      ifDue:
+        description: 'yes: only scan if the last scan is 50 minutes old or more (the keeper uses this). Leave empty to always scan.'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: safety-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - name: Is a scan due?
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/safety-scan" --jq .commit.committer.date 2>/dev/null || true)
+          age=999999; [ -n "$last" ] && age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) ))
+          if [ "${{ github.event.inputs.ifDue }}" = "yes" ] && [ "$age" -lt 3000 ]; then echo "go=false" >> "$GITHUB_OUTPUT"; echo "The last scan was $((age / 60)) minutes ago: nothing to do."
+          else echo "go=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.due.outputs.go == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.due.outputs.go == 'true'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: .github/safety-scan/package-lock.json
+      - name: Get the picture checker
+        if: steps.due.outputs.go == 'true'
+        run: |
+          cd .github/safety-scan && npm ci --no-audit --no-fund
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+      - name: Open the safety-scan branch
+        if: steps.due.outputs.go == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin safety-scan:safety-scan; then git worktree add data safety-scan; else
+            git worktree add --detach data && cd data && git checkout --orphan safety-scan && git rm -rfq . && cd ..; fi
+      - name: Scan Bitcoin
+        if: steps.due.outputs.go == 'true'
+        continue-on-error: true
+        run: node .github/safety-scan/scan.js btc data
+      - name: Scan Dogecoin
+        if: steps.due.outputs.go == 'true'
+        continue-on-error: true
+        run: node .github/safety-scan/scan.js doge data
+      - name: Save it
+        if: steps.due.outputs.go == 'true'
+        run: |
+          cd data
+          cp ../.github/safety-scan/README.md README.md
+          git add -A
+          git commit -qm "Safety Scan: $(date -u +'%F %H:%M') UTC" || exit 0
+          for i in 1 2 3; do git push origin safety-scan && exit 0; git pull -q --rebase origin safety-scan || true; done; exit 1

@@ -1,0 +1,19 @@
+name: Safety Scan try
+on:
+  push:
+    branches: [safety-try-1]
+jobs:
+  try:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - run: cd .github/safety-scan && npm ci --no-audit --no-fund && (command -v ffmpeg || echo NO-FFMPEG)
+      - run: SS_PER_RUN=4 node .github/safety-scan/scan.js btc try
+      - run: SS_PER_RUN=15 node .github/safety-scan/scan.js doge try
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: try, path: try}
