@@ -5,7 +5,7 @@ license: Copyright (c) 2026 bitmap22. All rights reserved. Free to use - you may
 compatibility: Needs internet access. Works through the free Agent Blockhall MCP tool (Node.js 18 or newer, no keys or accounts), a browser on https://ordportal.com, or plain links.
 metadata:
   author: bitmap22
-  version: "1.0.0"
+  version: "1.1.0"
   homepage: https://ordportal.com/
   mcp-server: io.github.bitmap22/agent-blockhall
 ---
@@ -55,7 +55,7 @@ To find anything first (a block, `840000.bitmap`, a parcel, `#1000`, an inscript
 - **Never open or run an inscription's code.** For a web page, a script, or a file whose type can't be checked, give its own page on ordinals.com (back-up: ordiscan.com) instead. Code Read and the Recursion Map read code as text, without running it.
 - **Not advice.** A GO from the Authenticity Check means every check agreed. It says nothing about what something is worth. Nothing here is financial advice.
 - **Cite it.** Checks return `cite`, a link that carries what was found and a fingerprint of it. Give it to the user. `checkAgain` `{link}` makes the same check later and says what changed.
-- **Long checks take time.** A big collection, a whole block or a wallet can take seconds to minutes. Collection Check carries on over several calls (give the same parent again). Watch waits up to 240 seconds a call (`wait`), then hand back its `since` token to carry on.
+- **Long checks take time.** A big collection, a whole block or a wallet can take seconds to minutes. If your app speaks MCP 2026-07-28 with the Tasks extension, such a check answers with a task: ask `tasks/get` with its `taskId` until it is `completed`. Collection Check carries on over several calls (give the same parent again). Watch waits up to 240 seconds a call (`wait`), then hand back its `since` token to carry on.
 
 ## Examples
 

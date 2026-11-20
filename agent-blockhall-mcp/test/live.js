@@ -171,5 +171,33 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Earned Traits:\n' + results.traits.join('\n'));
   console.log('Citable checks:\n' + results.cite.join('\n'));
   server.kill();
+  // The newest MCP (2026-07-28) on live data, as a client that knows Tasks and MCP Apps: no handshake, server/discover,
+  // the view, and a long check (a whole block's manifest) that answers with a task, asked about until its answer comes
+  const s2 = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'index.js')], {stdio: ['pipe', 'pipe', 'inherit']});
+  let b2 = ''; const w2 = new Map(); let n2 = 1;
+  s2.stdout.setEncoding('utf8');
+  s2.stdout.on('data', d => { b2 += d; let i; while ((i = b2.indexOf('\n')) >= 0) { const line = b2.slice(0, i); b2 = b2.slice(i + 1); if (!line.trim()) continue; const m = JSON.parse(line); const w = w2.get(m.id); if (w) { w2.delete(m.id); w(m); } } });
+  const K = k => 'io.modelcontextprotocol/' + k;
+  const meta = {[K('protocolVersion')]: '2026-07-28', [K('clientInfo')]: {name: 'live-test', version: '1'}, [K('clientCapabilities')]: {extensions: {[K('tasks')]: {}, [K('ui')]: {mimeTypes: ['text/html;profile=mcp-app']}}}};
+  const ask2 = (method, params) => new Promise(res => { const id = n2++; w2.set(id, res); s2.stdin.write(JSON.stringify({jsonrpc: '2.0', id, method, params: Object.assign({_meta: meta}, params || {})}) + '\n'); });
+  results.modern = [];
+  const disc = await ask2('server/discover');
+  results.modern.push('server/discover: ' + (disc.result ? disc.result.supportedVersions.join(', ') + ' | extensions ' + Object.keys(disc.result.capabilities.extensions).join(', ') : 'ERROR ' + JSON.stringify(disc.error)));
+  const tl2 = await ask2('tools/list');
+  results.modern.push('tools/list: ' + tl2.result.tools.length + ' tools, ' + tl2.result.tools.filter(t => t._meta && t._meta.ui).length + ' with the view');
+  const tipNow2 = calls.find(c => c.name === 'chain' && c.out && c.out.newestBlock);
+  const t0 = Date.now();
+  const big = await ask2('tools/call', {name: 'blockManifest', arguments: {height: tipNow2 ? tipNow2.out.newestBlock - 3 : 840000, limit: 3}});
+  let line = 'blockManifest as a task: first answer ' + (big.result && big.result.resultType) + ' after ' + (Date.now() - t0) + ' ms';
+  if (big.result && big.result.resultType === 'task') {
+    let g; for (let i = 0; i < 100; i++) { await new Promise(r => setTimeout(r, big.result.pollIntervalMs || 3000)); g = await ask2('tasks/get', {taskId: big.result.taskId}); if (!g.result || g.result.status !== 'working') break; }
+    line += ' | tasks/get: ' + (g.result ? g.result.status + ' after ' + (Date.now() - t0) + ' ms' + (g.result.result && g.result.result.structuredContent ? ', block ' + g.result.result.structuredContent.block.height + ', ' + g.result.result.structuredContent.block.transactions + ' transactions' : '') : 'ERROR ' + JSON.stringify(g.error));
+  } else if (big.result && big.result.structuredContent) line += ', block ' + big.result.structuredContent.block.height;
+  results.modern.push(line);
+  const quick = await ask2('tools/call', {name: 'earnedTraits', arguments: {bitmap: '333333'}});
+  results.modern.push('earnedTraits 333333: ' + (quick.result ? quick.result.resultType + (quick.result.structuredContent ? ' | ' + quick.result.structuredContent.traits.map(x => x.trait).join(', ') : '') : 'ERROR'));
+  s2.kill();
+  fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 1));
+  console.log('The newest MCP (2026-07-28), Tasks and the view:\n' + results.modern.join('\n'));
   process.exit(0);
 })().catch(e => { console.error(e); server.kill(); process.exit(1); });

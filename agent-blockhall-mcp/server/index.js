@@ -47,11 +47,15 @@
    tools for Dogecoin: dogeBlockManifest, dogeProvenanceCheck, dogeCollectionCheck, dogeWatch and dogeDailyData (server/doge-manifest.js,
    doge-provenance.js, doge-collection.js and doge-watch.js, the same files the portal's Doge pages use). Doginals have no parents, so
    dogeCollectionCheck checks each piece the explorer lists for a collection (real, in its block, the same file on two sites, held there).
+   It speaks the newest MCP, 2026-07-28 (no handshake: server/discover, and every request carries its version), and the
+   older handshake versions. Where the AI app can, each check's answer shows as a view in the chat (MCP Apps, server/view.html,
+   drawn from the answer alone), a long check answers with a task to ask about (Tasks), and the Ord Portal skill is served
+   (Skills over MCP, skills/ord-portal/SKILL.md, the same file the website lists at /.well-known/agent-skills/).
    Needs Node.js 18 or newer. No other packages. It speaks MCP over stdio.
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.18.0';
+const VERSION = '1.19.0';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
 const GAME = PORTAL + 'block-cube.html';
@@ -1027,37 +1031,204 @@ const TOOLS = [
 const byName = new Map(TOOLS.map(t => [t.name, t]));
 byName.set('tradeCheck', byName.get('authenticityCheck'));   // (its older name still answers)
 
-/* ---------- MCP over stdio (JSON-RPC 2.0, one message per line) ---------- */
-const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
-const INSTRUCTIONS = 'Agent Blockhall\'s catalogue of Bitcoin, always free. Start with chain or search. feeAdvice keeps score of itself, chain, block and inscription answers say whether a second, separate site agrees (checked), blockManifest lists every transaction in a block, sorted into the halls\' kinds, each one checked, provenanceCheck proves where an inscription came from, every step checked, collectionCheck proves which pieces are a parent\'s real children, recursionMap maps everything an inscription loads from the chain, secondOpinion checks a claim against several sources, sourceHealth says which data sites are answering and up to date (now, and over the last week), every check gives cite (a link to cite it) and checkAgain says whether a cited check is still the same, watch says when something happens (the next block, a fee level, an inscription moving, an address, a kind in a new block), and dailyData gives every block of a day, made each night. The doge tools (dogeBlockManifest, dogeProvenanceCheck, dogeCollectionCheck, dogeWatch, dogeDailyData) do the same for Dogecoin and its Doginals, for Doge Cube (' + DOGE_GAME + '). Inscriptions come from ordinals.com and its back-ups; fees and transactions from mempool.space and its copies. ' + UNTRUSTED + ' For the full 3D world (walking the halls, the common room, crews), open ' + GAME + ' in a browser.';
+/* ---------- MCP over stdio (JSON-RPC 2.0, one message per line) ----------
+   It speaks both kinds of MCP. The newest, 2026-07-28, has no handshake: every request carries its protocol version
+   and the client's capabilities in _meta, and server/discover says what this tool supports. The older versions
+   (2025-11-25 and before) start with initialize, and are answered as before.
+   Extensions: MCP Apps (io.modelcontextprotocol/ui): each check's answer can show as a view in the chat
+   (ui://agent-blockhall/view, server/view.html), drawn from the answer alone; it fetches nothing and never shows or
+   runs an inscription's file. Tasks (io.modelcontextprotocol/tasks, 2026-07-28 only): a check that takes longer than
+   a few seconds answers with a task, to ask about with tasks/get. Skills over MCP (io.modelcontextprotocol/skills):
+   the Ord Portal skill, skill://ord-portal/SKILL.md, the same file the website lists at /.well-known/agent-skills/. */
+const fs = require('fs');
+const path = require('path');
+const MODERN = ['2026-07-28'];
+const LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+const PROTOCOLS = MODERN.concat(LEGACY);
+const MCPK = k => 'io.modelcontextprotocol/' + k;
+const EXT_UI = MCPK('ui'), EXT_TASKS = MCPK('tasks'), EXT_SKILLS = MCPK('skills');
+const SERVER_INFO = {name: NAME, title: 'Agent Blockhall', version: VERSION, websiteUrl: PORTAL};
+const INSTRUCTIONS = 'Agent Blockhall\'s catalogue of Bitcoin, always free. Start with chain or search. feeAdvice keeps score of itself, chain, block and inscription answers say whether a second, separate site agrees (checked), blockManifest lists every transaction in a block, sorted into the halls\' kinds, each one checked, provenanceCheck proves where an inscription came from, every step checked, collectionCheck proves which pieces are a parent\'s real children, recursionMap maps everything an inscription loads from the chain, secondOpinion checks a claim against several sources, sourceHealth says which data sites are answering and up to date (now, and over the last week), every check gives cite (a link to cite it) and checkAgain says whether a cited check is still the same, watch says when something happens (the next block, a fee level, an inscription moving, an address, a kind in a new block), and dailyData gives every block of a day, made each night. The doge tools (dogeBlockManifest, dogeProvenanceCheck, dogeCollectionCheck, dogeWatch, dogeDailyData) do the same for Dogecoin and its Doginals, for Doge Cube (' + DOGE_GAME + '). Inscriptions come from ordinals.com and its back-ups; fees and transactions from mempool.space and its copies. ' + UNTRUSTED + ' Answers show as a view in the chat where the app can (MCP Apps). Long checks answer with a task to poll (Tasks, protocol 2026-07-28). The Ord Portal skill (skill://ord-portal/SKILL.md) says which tool answers which question. For the full 3D world (walking the halls, the common room, crews), open ' + GAME + ' in a browser.';
+const HOUR = 3600000;
+
+/* The view (MCP Apps) and the skill (Skills over MCP), read once from this tool's own folder */
+const readOwn = f => { try { return fs.readFileSync(path.join(__dirname, f)); } catch (e) { return null; } };
+const VIEW_URI = 'ui://agent-blockhall/view', VIEW_MIME = 'text/html;profile=mcp-app';
+const VIEW_HTML = readOwn('view.html');
+const VIEW_META = {ui: {prefersBorder: true}};   // no csp: the view asks nothing of the network
+const SKILL_URI = 'skill://ord-portal/SKILL.md';
+const SKILL_BYTES = readOwn('../skills/ord-portal/SKILL.md');
+function frontmatter(text) {   // the skill's YAML frontmatter: key: value lines, and one level of key: value under a key
+  const m = /^---\n([\s\S]*?)\n---\n/.exec(text); if (!m) return null;
+  const out = {}; let under = null;
+  const val = v => { v = v.trim(); return /^"(.*)"$/.test(v) ? v.slice(1, -1) : v; };
+  for (const line of m[1].split('\n')) {
+    const sub = /^  ([A-Za-z0-9_-]+): (.*)$/.exec(line), top = /^([A-Za-z0-9_-]+):(?: (.*))?$/.exec(line);
+    if (sub && under) out[under][sub[1]] = val(sub[2]);
+    else if (top) { if (top[2] == null || top[2] === '') { under = top[1]; out[under] = {}; } else { under = null; out[top[1]] = val(top[2]); } }
+  }
+  return out;
+}
+const SKILL = SKILL_BYTES && {uri: SKILL_URI, frontmatter: frontmatter(SKILL_BYTES.toString('utf8')),
+  resources: [{uri: SKILL_URI, digest: 'sha256:' + require('crypto').createHash('sha256').update(SKILL_BYTES).digest('hex'), size: SKILL_BYTES.length}]};
+const RESOURCES = [
+  VIEW_HTML && {uri: VIEW_URI, name: 'agent-blockhall-view', title: 'Agent Blockhall view', mimeType: VIEW_MIME, _meta: VIEW_META,
+    description: 'Shows a check\'s answer in the chat (MCP Apps): its verdict, what each source said, the trail, the traits and links on to the portal. Drawn from the answer alone.'},
+  SKILL && {uri: SKILL_URI, name: 'ord-portal', title: 'The Ord Portal skill', mimeType: 'text/markdown',
+    description: 'An Agent Skill: which of these tools answers which question, and how to use them well.'}].filter(Boolean);
+function readResource(uri) {
+  if (uri === VIEW_URI && VIEW_HTML) return [{uri, mimeType: VIEW_MIME, text: VIEW_HTML.toString('utf8'), _meta: VIEW_META}];
+  if (uri === SKILL_URI && SKILL) return [{uri, mimeType: 'text/markdown', text: SKILL_BYTES.toString('utf8')}];
+  return null;
+}
+// tools whose answer the view knows how to draw (others answer as text alone)
+const VIEWED = new Set(['chain', 'feeAdvice', 'block', 'inscription', 'search', 'blockManifest', 'provenanceCheck', 'collectionCheck',
+  'recursionMap', 'secondOpinion', 'sourceHealth', 'truthLeague', 'safetyScan', 'authenticityCheck', 'stuckTx', 'codeRead', 'runeProof',
+  'earnedTraits', 'checkAgain', 'watch', 'followBack', 'dailyData', 'dogeBlockManifest', 'dogeProvenanceCheck', 'dogeCollectionCheck',
+  'dogeWatch', 'dogeDailyData', 'rareSats']);
+const toolList = () => TOOLS.map(({run, ...t}) => VIEW_HTML && VIEWED.has(t.name)
+  ? Object.assign({}, t, {_meta: {ui: {resourceUri: VIEW_URI}, 'ui/resourceUri': VIEW_URI}}) : t);
+
+/* Messages out. A request that was cancelled gets no answer (notifications/cancelled). */
+const cancelled = new Set();
 function send(msg) { process.stdout.write(JSON.stringify(msg) + '\n'); }
-const reply = (id, result) => send({jsonrpc: '2.0', id, result});
-const fail = (id, code, message) => send({jsonrpc: '2.0', id, error: {code, message}});
+const answer = (id, result) => { if (id != null && cancelled.delete(id)) return; send({jsonrpc: '2.0', id, result}); };
+const fail = (id, code, message, data) => { if (id != null && cancelled.delete(id)) return; send({jsonrpc: '2.0', id, error: Object.assign({code, message}, data === undefined ? {} : {data})}); };
+const reply = answer;   // (the older versions: results as before)
+
+async function runTool(t, args) {
+  try {
+    const out = await t.run(args || {});
+    return {content: [{type: 'text', text: JSON.stringify(out, null, 1)}], structuredContent: out};
+  } catch (e) {
+    return {content: [{type: 'text', text: String(e && e.message || e)}], isError: true};
+  }
+}
+
+/* Tasks (io.modelcontextprotocol/tasks): a check still working after TASK_WAIT answers with a task instead. The task lives
+   in this process: its ID is random and long, it is kept for TASK_TTL, and tasks/get, tasks/update and tasks/cancel find it. */
+const TASK_WAIT = +process.env.AGENT_BLOCKHALL_TASK_WAIT_MS >= 0 && process.env.AGENT_BLOCKHALL_TASK_WAIT_MS !== '' ? +process.env.AGENT_BLOCKHALL_TASK_WAIT_MS : 4000;   // (the test sets it lower)
+const TASK_TTL = 30 * 60 * 1000, TASK_POLL = 3000;
+const tasks = new Map();
+const taskView = k => { const v = {taskId: k.taskId, status: k.status, statusMessage: k.statusMessage, createdAt: k.createdAt, lastUpdatedAt: k.lastUpdatedAt, ttlMs: k.ttlMs, pollIntervalMs: TASK_POLL};
+  if (k.status === 'completed') v.result = k.result; if (k.status === 'failed') v.error = k.error; return v; };
+function startTask(t, work) {
+  const now = new Date().toISOString();
+  const k = {taskId: require('crypto').randomUUID() + '-' + require('crypto').randomBytes(8).toString('hex'), status: 'working',
+    statusMessage: (t.title || t.name) + ': still checking.', createdAt: now, lastUpdatedAt: now, ttlMs: TASK_TTL, born: Date.now()};
+  tasks.set(k.taskId, k);
+  work.then(res => {
+    if (k.status !== 'working') return;
+    Object.assign(k, {status: 'completed', result: Object.assign({resultType: 'complete'}, res), lastUpdatedAt: new Date().toISOString(),
+      statusMessage: (t.title || t.name) + (res.isError ? ': finished with an error.' : ': done.')});
+  }, e => {
+    if (k.status !== 'working') return;
+    Object.assign(k, {status: 'failed', error: {code: -32603, message: String(e && e.message || e)}, lastUpdatedAt: new Date().toISOString(), statusMessage: 'It stopped: ' + String(e && e.message || e)});
+  });
+  return k;
+}
+setInterval(() => { const now = Date.now(); for (const [id, k] of tasks) if (now - k.born > k.ttlMs) tasks.delete(id); }, 60000).unref();
+
+/* subscriptions/listen: nothing here changes while it runs (the tool list, the view and the skill are fixed), so a listen
+   is acknowledged with nothing to send, and stays open until the client cancels it or the tool stops. */
+const listening = new Set();
+
+const BAD = -32602, NO_METHOD = -32601, NO_VERSION = -32022, NEEDS_CAPABILITY = -32021;
+const needsTasks = {requiredCapabilities: {extensions: {[EXT_TASKS]: {}}}};
+
+async function handleModern(m, id, meta) {
+  const caps = meta[MCPK('clientCapabilities')];
+  const ext = (caps && caps.extensions) || {};
+  const done = (result, cache) => answer(id, Object.assign({resultType: 'complete'}, result, cache ? {ttlMs: cache, cacheScope: 'public'} : {},
+    {_meta: Object.assign({}, result && result._meta, {[MCPK('serverInfo')]: SERVER_INFO})}));
+  const p = m.params || {};
+  switch (m.method) {
+    case 'server/discover':
+      return done({supportedVersions: PROTOCOLS, capabilities: {tools: {listChanged: false}, resources: {},
+        extensions: Object.assign({[EXT_TASKS]: {}}, SKILL ? {[EXT_SKILLS]: {}} : {})}, instructions: INSTRUCTIONS}, HOUR);
+    case 'tools/list': return done({tools: toolList()}, HOUR);
+    case 'tools/call': {
+      const t = byName.get(p.name);
+      if (!t) return fail(id, BAD, 'Unknown tool: ' + p.name);
+      const work = runTool(t, p.arguments);
+      if (!ext[EXT_TASKS]) return done(await work);
+      if (TASK_WAIT > 0) {   // a quick check answers at once; one still working after TASK_WAIT becomes a task
+        let timer; const first = await Promise.race([work, new Promise(r => { timer = setTimeout(() => r(null), TASK_WAIT); })]);
+        clearTimeout(timer);
+        if (first) return done(first);
+      }
+      const k = startTask(t, work);
+      return answer(id, Object.assign({resultType: 'task'}, taskView(k), {_meta: {[MCPK('serverInfo')]: SERVER_INFO}}));
+    }
+    case 'tasks/get': case 'tasks/update': case 'tasks/cancel': {
+      if (!ext[EXT_TASKS]) return fail(id, NEEDS_CAPABILITY, 'Missing required client capability', needsTasks);
+      const k = typeof p.taskId === 'string' && tasks.get(p.taskId);
+      if (!k) return fail(id, BAD, 'Failed to retrieve task: Task not found (or it has expired)');
+      if (m.method === 'tasks/get') return done(taskView(k));
+      if (m.method === 'tasks/cancel' && k.status === 'working')
+        Object.assign(k, {status: 'cancelled', statusMessage: 'Cancelled: the check was stopped and its answer will not be kept.', lastUpdatedAt: new Date().toISOString()});
+      return done({});   // tasks/update: these checks never ask for input, so there is nothing to take
+    }
+    case 'resources/list': return done({resources: RESOURCES}, HOUR);
+    case 'resources/templates/list': return done({resourceTemplates: []}, HOUR);
+    case 'resources/read': {
+      const c = readResource(p.uri);
+      return c ? done({contents: c}, HOUR) : fail(id, BAD, 'Resource not found: ' + p.uri);
+    }
+    case 'skills/list': return SKILL ? done({skills: [SKILL]}, HOUR) : fail(id, NO_METHOD, 'Method not found: skills/list');
+    case 'skills/get': return !SKILL ? fail(id, NO_METHOD, 'Method not found: skills/get') : p.uri === SKILL_URI ? done({skill: SKILL}, HOUR) : fail(id, BAD, 'Unknown skill: ' + p.uri);
+    case 'subscriptions/listen': {
+      const asked = (p.notifications && typeof p.notifications === 'object') ? p.notifications : {};
+      if (asked.taskIds && !ext[EXT_TASKS]) return fail(id, NEEDS_CAPABILITY, 'Missing required client capability', needsTasks);
+      listening.add(id);
+      return send({jsonrpc: '2.0', method: 'notifications/subscriptions/acknowledged', params: {_meta: {[MCPK('subscriptionId')]: id}, notifications: {}}});
+    }
+    default: return fail(id, NO_METHOD, 'Method not found: ' + m.method);
+  }
+}
+
 async function handle(m) {
   if (!m || m.jsonrpc !== '2.0' || typeof m.method !== 'string') { if (m && m.id != null) fail(m.id, -32600, 'Invalid request'); return; }
   const id = m.id, notice = id === undefined || id === null;
+  if (m.method === 'notifications/cancelled') {
+    const rid = m.params && m.params.requestId;
+    if (rid != null) { if (listening.delete(rid)) return; cancelled.add(rid); setTimeout(() => cancelled.delete(rid), 10 * 60000).unref(); }
+    return;
+  }
+  if (notice) return;   // (initialized and other notifications: nothing to do)
+  const meta = m.params && m.params._meta;
+  const asked = meta && typeof meta === 'object' ? meta[MCPK('protocolVersion')] : undefined;
+  if (asked !== undefined && m.method !== 'initialize') {
+    if (!MODERN.includes(asked)) return fail(id, NO_VERSION, 'Unsupported protocol version', {supported: PROTOCOLS, requested: asked});
+    if (!meta[MCPK('clientCapabilities')] || typeof meta[MCPK('clientCapabilities')] !== 'object')
+      return fail(id, BAD, 'Invalid params: each request needs _meta["' + MCPK('clientCapabilities') + '"]');
+    return handleModern(m, id, meta);
+  }
+  if (m.method === 'server/discover') return fail(id, BAD, 'Invalid params: server/discover needs _meta["' + MCPK('protocolVersion') + '"] (supported: ' + PROTOCOLS.join(', ') + ')');
+  const p = m.params || {};
   switch (m.method) {
     case 'initialize': {
-      const want = m.params && m.params.protocolVersion;
-      return reply(id, {protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0], capabilities: {tools: {listChanged: false}},
-        serverInfo: {name: NAME, title: 'Agent Blockhall', version: VERSION, websiteUrl: PORTAL}, instructions: INSTRUCTIONS});
+      const want = p.protocolVersion;   // (2026-07-28 has no initialize: a client asking for it here gets the newest older version)
+      return reply(id, {protocolVersion: LEGACY.includes(want) ? want : LEGACY[0], capabilities: {tools: {listChanged: false}, resources: {},
+        extensions: SKILL ? {[EXT_SKILLS]: {}} : {}}, serverInfo: SERVER_INFO, instructions: INSTRUCTIONS});
     }
-    case 'ping': return notice ? undefined : reply(id, {});
-    case 'tools/list': return reply(id, {tools: TOOLS.map(({run, ...t}) => t)});
+    case 'ping': return reply(id, {});
+    case 'tools/list': return reply(id, {tools: toolList()});
     case 'tools/call': {
-      const p = m.params || {}, t = byName.get(p.name);
-      if (!t) return fail(id, -32602, 'Unknown tool: ' + p.name);
-      try {
-        const out = await t.run(p.arguments || {});
-        return reply(id, {content: [{type: 'text', text: JSON.stringify(out, null, 1)}], structuredContent: out});
-      } catch (e) {
-        return reply(id, {content: [{type: 'text', text: String(e && e.message || e)}], isError: true});
-      }
+      const t = byName.get(p.name);
+      if (!t) return fail(id, BAD, 'Unknown tool: ' + p.name);
+      return reply(id, await runTool(t, p.arguments));
     }
-    default:
-      if (m.method.startsWith('notifications/')) return;   // (initialized, cancelled: nothing to do)
-      if (!notice) fail(id, -32601, 'Method not found: ' + m.method);
+    case 'resources/list': return reply(id, {resources: RESOURCES});
+    case 'resources/templates/list': return reply(id, {resourceTemplates: []});
+    case 'resources/read': {
+      const c = readResource(p.uri);
+      return c ? reply(id, {contents: c}) : fail(id, -32002, 'Resource not found: ' + p.uri);
+    }
+    case 'skills/list': if (SKILL) return reply(id, {skills: [SKILL]}); break;
+    case 'skills/get': if (SKILL) return p.uri === SKILL_URI ? reply(id, {skill: SKILL}) : fail(id, BAD, 'Unknown skill: ' + p.uri); break;
   }
+  fail(id, NO_METHOD, 'Method not found: ' + m.method);
 }
 
 if (require.main === module) {
@@ -1073,6 +1244,9 @@ if (require.main === module) {
       Promise.resolve(handle(m)).catch(e => { if (m && m.id != null) fail(m.id, -32603, String(e && e.message || e)); });
     }
   });
-  process.stdin.on('end', () => process.exit(0));
+  process.stdin.on('end', () => {   // the client closed: end any open listens gracefully, then stop
+    for (const id of listening) send({jsonrpc: '2.0', id, result: {resultType: 'complete', _meta: {[MCPK('subscriptionId')]: id}}});
+    process.exit(0);
+  });
 }
 module.exports = {TOOLS, handle, chain, feeAdvice, block, inscription, children, followBack, search, rareSats, about, collectionCheck, recursionMap, secondOpinion, sourceHealth, truthLeague, tradeCheck, stuckTx, codeRead, runeProof, dogeCollectionCheck, checkAgain};
