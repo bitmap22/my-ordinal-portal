@@ -118,9 +118,9 @@
         if (d) await new Promise(ok => { v.onseeked = ok; v.currentTime = d * f; setTimeout(ok, 4000); });
         const s = sample(v); if (s) out.push(s);
       }
-      if (d) {   // flashing: its first 6 seconds, 10 frames a second
+      if (d) {   // flashing: its first 5 seconds, 30 frames a second (fine enough not to keep landing on the same colour)
         const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d', {willReadFrequently: true}), fr = [], tm = [];
-        for (let t = 0; t < Math.min(6, d); t += .1) { await new Promise(ok => { v.onseeked = ok; v.currentTime = t; setTimeout(ok, 1500); }); try { fr.push(grey32(x, v)); tm.push(t * 1000); } catch (e) { break; } }
+        for (let t = 0; t < Math.min(5, d); t += 1 / 30) { await new Promise(ok => { v.onseeked = ok; v.currentTime = t; setTimeout(ok, 1500); }); try { fr.push(grey32(x, v)); tm.push(t * 1000); } catch (e) { break; } }
         out.flash = flashes(fr, tm, 32, 32);
       }
     } finally { URL.revokeObjectURL(url); v.removeAttribute('src'); }
