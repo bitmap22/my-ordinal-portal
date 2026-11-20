@@ -17,7 +17,7 @@
   else root.SafetyRead = make(root.CodeRead || null);
 })(typeof self !== 'undefined' ? self : this, function (CR) {
   'use strict';
-  const VERSION = '1.2.0';   // (1.1.0: scanWallet, every inscription an address holds; flashes, shared with the scan. 1.1.1: gentler with the Doginals Explorer. 1.2.0: 3D models)
+  const VERSION = '1.3.0';   // (1.1.0: scanWallet, every inscription an address holds; flashes, shared with the scan. 1.1.1: gentler with the Doginals Explorer. 1.2.0: 3D models. 1.3.0: sound files, SVG drawings looked at)
   // every kind: its key, name, symbol, colour, what it means, and whether the Safety Scan finds it by looking (pictures, films) or by reading
   const KINDS = [
     {key: 'adult', name: 'May be adult', symbol: '🔞', colour: '#e5484d', says: 'a picture or film that may show nudity (18+)', by: 'looking'},
@@ -69,7 +69,12 @@
       [/\bnew\s+(Array|ArrayBuffer|SharedArrayBuffer|(Uint|Int|Float)(8|16|32|64)Array|BigInt64Array)\s*\(\s*(\d{9,}|\d+e(9|\d{2,})|2\s*\*\*\s*(3[0-9]|[4-9]\d))\s*\)/i, 'asks for a giant block of memory'],
       [/<!ENTITY\s+\w+\s+["'](&\w+;){4,}/i, 'nested entities that blow up when opened (a "billion laughs")'],
       [/\bsetInterval\s*\(\s*(function\s*\(\s*\)\s*\{|\(\s*\)\s*=>\s*\{?)\s*[^}]{0,80}\bwindow\.open\b/, 'keeps opening new windows']],
-    hate: []};
+    hate: [],
+    // outside loads Code Read doesn't look for: an SVG's own pictures and patterns, and CSS backgrounds and fonts from the web
+    code: [
+      [/<(image|use|feImage|pattern)\b[^>]*\b(xlink:)?href\s*=\s*["']?\s*(https?:)?\/\//i, 'a drawing (SVG) that loads from outside the chain'],
+      [/\burl\(\s*["']?\s*(https?:)?\/\/[^)]+\)/i, 'a style that loads from outside the chain'],
+      [/@import\s+(url\()?\s*["']?\s*(https?:)?\/\//i, 'a style sheet from outside the chain']]};
   // hate words and slogans: kept encoded so the list isn't shown as plain words in the page
   const HATE = 'bmlnZ2VyfG5pZ2dlcnN8bmlnZ2F8bmlnZ2FzfGtpa2V8a2lrZXN8c3BpY3xzcGljc3x3ZXRiYWNrfHdldGJhY2tzfGNoaW5rc3xnb29rfGdvb2tzfHJhZ2hlYWR8cmFnaGVhZHN8dG93ZWxoZWFkfHRvd2VsaGVhZHN8c2FuZG5pZ2dlcnxwYWtpfHBha2lzfGZhZ2dvdHxmYWdnb3RzfHRyYW5ueXx0cmFubmllc3xkYXJraWV8ZGFya2llc3xqdW5nbGUgYnVubnl8cG9yY2ggbW9ua2V5fGhlaWwgaGl0bGVyfHNpZWcgaGVpbHx3aGl0ZSBwb3dlcnwxNDg4fGdhcyB0aGUgamV3c3xqZXdzIHdpbGwgbm90IHJlcGxhY2UgdXN8d2hpdGUgZ2Vub2NpZGV8cmFjZSB3YXIgbm93fGtpbGwgYWxsIChqZXdzfGJsYWNrc3xtdXNsaW1zfGdheXN8aW1taWdyYW50cyl8c3ViaHVtYW5z';
   const b64 = s => typeof atob === 'function' ? atob(s) : Buffer.from(s, 'base64').toString('latin1');
@@ -121,6 +126,7 @@
     if (code) run(RULES.miner, s, 'miner', file, out);
     run(RULES.hate, seen, 'hate', file, out);
     if (!code || isHtml) run(PERSONAL, seen, 'personal', file, out);
+    if (code) run(RULES.code, s, 'code', file, out);
     if (code && CR && typeof CR.scan === 'function') {
       for (const f of CR.scan(s, file)) if (/^(wallet|outside|sends|tracks)$/.test(f.kind) && out.filter(x => x.kind === 'code').length < 12)
         out.push({kind: 'code', what: f.what, file, line: f.line, sample: f.code || {untrusted: ''}, codeRead: f.kind});
@@ -198,6 +204,66 @@
   }
   const b64u = s => typeof atob === 'function' ? Uint8Array.from(atob(s), c => c.charCodeAt(0)) : new Uint8Array(Buffer.from(s, 'base64'));
 
+  /* ---------- sound files (MP3, FLAC, OGG / Opus): the words and the cover picture packed in with the sound ----------
+     readSound(type, bytes): {finds[], pictures[{type, bytes, where}]}. The sound itself is not judged: only its tags (title, artist,
+     album, comments, lyrics and the like) are read, the Safety Scan's way, and any cover picture is handed back to be looked at. */
+  function readSound(type, bytes) {
+    const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), out = {finds: [], pictures: []}, words = [];
+    const latin = (a, b) => { let t = ''; for (let i = a; i < b && i < u.length; i++) t += String.fromCharCode(u[i]); return t; };
+    const txt = (d, enc) => { try { return enc === 1 || enc === 2 ? new TextDecoder(enc === 2 ? 'utf-16be' : 'utf-16').decode(d) : enc === 3 ? utf8(d) : Array.from(d, c => String.fromCharCode(c)).join(''); } catch (e) { return ''; } };
+    const picType = d => /^\x89PNG/.test(u8s(d, 0, 4)) ? 'image/png' : d[0] === 0xff && d[1] === 0xd8 ? 'image/jpeg' : /^GIF8/.test(u8s(d, 0, 4)) ? 'image/gif' : /^RIFF/.test(u8s(d, 0, 4)) ? 'image/webp' : '';
+    const addPic = (pic, where) => { const ty = picType(pic); if (ty && out.pictures.length < 3) out.pictures.push({type: ty, bytes: pic, where}); };
+    function vorbis(d) {
+      const r = [];
+      try {
+        const dv = new DataView(d.buffer, d.byteOffset, d.byteLength); let q = 0; const vl = dv.getUint32(q, true); q += 4 + vl;
+        const n = Math.min(dv.getUint32(q, true), 500); q += 4;
+        for (let k = 0; k < n && q + 4 <= d.length; k++) {
+          const l = dv.getUint32(q, true); q += 4; const s = utf8(d.subarray(q, q + l)); q += l;
+          if (/^METADATA_BLOCK_PICTURE=/i.test(s)) { try { const b = b64u(s.slice(23)), bd = new DataView(b.buffer, b.byteOffset, b.byteLength); let z = 4; z += 4 + bd.getUint32(z); const dl = bd.getUint32(z); z += 4 + dl + 16; const pl = bd.getUint32(z); z += 4; addPic(b.subarray(z, z + pl), 'the cover picture inside the sound file'); } catch (e) {} }
+          else r.push(s.replace(/^[^=]*=/, ''));
+        }
+      } catch (e) {}
+      return r;
+    }
+    try {
+      // ID3v2 (MP3, and some AAC): frames of words and pictures at the start of the file
+      if (u.length > 10 && latin(0, 3) === 'ID3') {
+        const ver = u[3], size = (u[6] & 127) << 21 | (u[7] & 127) << 14 | (u[8] & 127) << 7 | (u[9] & 127), end = Math.min(u.length, 10 + size);
+        let p = 10; if (u[5] & 0x40) { const ext = ver === 4 ? (u[10] & 127) << 21 | (u[11] & 127) << 14 | (u[12] & 127) << 7 | (u[13] & 127) : (u[10] << 24 | u[11] << 16 | u[12] << 8 | u[13]) >>> 0; p += ver === 4 ? ext : ext + 4; }
+        for (let guard = 0; guard < 2000 && p + (ver === 2 ? 6 : 10) <= end; guard++) {
+          const id = latin(p, p + (ver === 2 ? 3 : 4)); if (!/^[A-Z0-9]{3,4}$/.test(id)) break;
+          const n = ver === 2 ? u[p + 3] << 16 | u[p + 4] << 8 | u[p + 5] : ver === 4 ? (u[p + 4] & 127) << 21 | (u[p + 5] & 127) << 14 | (u[p + 6] & 127) << 7 | (u[p + 7] & 127) : (u[p + 4] << 24 | u[p + 5] << 16 | u[p + 6] << 8 | u[p + 7]) >>> 0;
+          const h = ver === 2 ? 6 : 10, d = u.subarray(p + h, Math.min(end, p + h + n)); p += h + n; if (!n) continue;
+          if (id === 'APIC' || id === 'PIC') {
+            const two = d[0] === 1 || d[0] === 2; let q = 1;
+            if (id === 'APIC') { while (q < d.length && d[q]) q++; q++; } else q = 4;   // (its picture type: a word like image/jpeg, or 3 letters)
+            q++;   // (what the picture is: cover, artist...)
+            while (q < d.length && (two ? d[q] || d[q + 1] : d[q])) q += two ? 2 : 1; q += two ? 2 : 1;   // (its description, then the picture)
+            addPic(d.subarray(q), 'the cover picture inside the sound file');
+          } else if (id[0] === 'T' || id[0] === 'W' || /^(COMM|USLT|COM|ULT)$/.test(id)) words.push(txt(d.subarray(1), d[0]).replace(/\0/g, ' '));
+        }
+      }
+      // ID3v1: 128 bytes at the end of an MP3
+      if (u.length > 128 && latin(u.length - 128, u.length - 125) === 'TAG') words.push(latin(u.length - 125, u.length - 2).replace(/\0+/g, ' '));
+      // FLAC: its blocks of words (VORBIS_COMMENT) and pictures
+      if (latin(0, 4) === 'fLaC') {
+        let p = 4;
+        for (let k = 0; k < 64 && p + 4 <= u.length; k++) {
+          const last = u[p] & 0x80, ty = u[p] & 127, n = u[p + 1] << 16 | u[p + 2] << 8 | u[p + 3], d = u.subarray(p + 4, p + 4 + n); p += 4 + n;
+          if (ty === 4) words.push(...vorbis(d));
+          else if (ty === 6) { try { const dv = new DataView(d.buffer, d.byteOffset, d.byteLength); let q = 4; q += 4 + dv.getUint32(q); const dl = dv.getUint32(q); q += 4; words.push(utf8(d.subarray(q, q + dl))); q += dl + 16; const pl = dv.getUint32(q); q += 4; addPic(d.subarray(q, q + pl), 'the cover picture inside the sound file'); } catch (e) {} }
+          if (last) break;
+        }
+      }
+      // OGG (Vorbis or Opus): the comment packet near the start
+      if (latin(0, 4) === 'OggS') { const head = latin(0, Math.min(u.length, 65536)); let i = head.indexOf('\x03vorbis'), o = i >= 0 ? i + 7 : (i = head.indexOf('OpusTags')) >= 0 ? i + 8 : -1; if (o > 0) words.push(...vorbis(u.subarray(o))); }
+    } catch (e) {}
+    const w = words.filter(Boolean).join('\n').slice(0, 100000);
+    if (w.trim()) for (const f of read('text/plain', w, 'sound')) { delete f.file; f.what += ' (written in the sound file\'s tags)'; out.finds.push(f); }
+    return out;
+  }
+
   /* ---------- flashing: the WCAG "three flashes" rule, read on each quarter of the picture (and its middle) ----------
      frames: grey values (0-255), W x H each; times: when each frame starts (ms). Gives the most flashes in any one second. */
   const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
@@ -232,7 +298,7 @@
     const F = o.fetch || ((u, i) => fetch(u, i)), MAX = Math.min(o.max || 3000, 10000), say = o.progress || (() => {}), stop = o.stopped || (() => false);
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const DXS = 'https://thedoginalsexplorer.com', BASES = chain === 'doge' ? [DXS, 'https://cdn.doggy.market'] : ['https://ordinals.com'];
-    const out = {chain: chain === 'doge' ? 'Dogecoin' : 'Bitcoin', address: a, at: new Date().toISOString(), holds: 0, checked: 0, pictures: 0, films: 0, models: 0, text: 0, other: 0, notLooked: 0, flashNotChecked: 0, namesAndTokens: 0, tooMany: 0, found: [], tally: {}};
+    const out = {chain: chain === 'doge' ? 'Dogecoin' : 'Bitcoin', address: a, at: new Date().toISOString(), holds: 0, checked: 0, pictures: 0, films: 0, models: 0, sounds: 0, text: 0, other: 0, notLooked: 0, flashNotChecked: 0, namesAndTokens: 0, tooMany: 0, found: [], tally: {}};
     // the list
     let list = [];
     say('Reading which inscriptions ' + a + ' holds…');
@@ -266,6 +332,10 @@
       if (PIC.test(ty) || FILM.test(ty)) {
         if (FILM.test(ty)) out.films++; else out.pictures++;
         if (o.look) { try { const L = await o.look({id: x.id, type: ty, bytes}); finds = L.finds || []; if (L.flashNotChecked) out.flashNotChecked++; if (L.notLooked) out.notLooked++; } catch (e) { out.notLooked++; } } else out.notLooked++;
+      } else if (/^audio\//.test(ty)) {
+        out.sounds++; const A = readSound(ty, bytes); finds = A.finds;
+        if (o.look) { for (const p of A.pictures) { try { const L = await o.look({id: x.id + '#cover', type: p.type, bytes: p.bytes}); for (const f of L.finds || []) { f.what += ' (' + p.where + ')'; finds.push(f); } } catch (e) {} } }
+        else if (A.pictures.length) out.notLooked++;
       } else if (/^model\//.test(ty)) {
         out.models++; const M = readModel(ty, bytes); finds = M.finds;
         if (o.look) { for (const p of M.pictures) { try { const L = await o.look({id: x.id + '#model', type: p.type, bytes: p.bytes}); for (const f of L.finds || []) { f.what += ' (' + p.where + ')'; finds.push(f); } } catch (e) {} } }
@@ -274,6 +344,7 @@
         out.text++; const text = new TextDecoder().decode(bytes);
         if (/json/.test(ty) && /^\s*\{\s*"p"\s*:/.test(text) && text.length < 600) { out.namesAndTokens++; out.text--; return; }
         finds = read(ty || 'text/plain', text, x.id); for (const f of finds) delete f.file;
+        if (/svg/.test(ty) && o.look) { try { const L = await o.look({id: x.id, type: 'image/svg+xml', bytes}); for (const f of L.finds || []) { f.what = f.what.replace('a picture', 'a drawing (SVG)'); finds.push(f); } } catch (e) {} }   // (an SVG drawn and looked at too)
         if (o.look) { let k = 0; for (const m of text.matchAll(/data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=]{2000,})/g)) { if (++k > 3) break;
           try { const bin = typeof atob === 'function' ? Uint8Array.from(atob(m[2]), c => c.charCodeAt(0)) : new Uint8Array(Buffer.from(m[2], 'base64')); const L = await o.look({id: x.id + '#' + k, type: 'image/' + m[1].replace('jpg', 'jpeg'), bytes: bin}); for (const f of L.finds || []) { f.what += ' (inside the code)'; finds.push(f); } } catch (e) {} } }
       } else out.other++;
@@ -292,5 +363,5 @@
   // a short summary: how many of each kind
   const tally = finds => { const t = {}; for (const f of finds || []) t[f.kind] = (t[f.kind] || 0) + 1; return t; };
   const isText = t => TEXTY.test(String(t || ''));
-  return {VERSION, KINDS, KIND, read, tally, isText, visible, flashes, scanWallet, isAddr, readModel, isModel: t => /^model\//i.test(String(t || '').trim())};
+  return {VERSION, KINDS, KIND, read, tally, isText, visible, flashes, scanWallet, isAddr, readModel, readSound, isModel: t => /^model\//i.test(String(t || '').trim())};
 });
