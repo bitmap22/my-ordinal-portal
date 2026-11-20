@@ -12,7 +12,7 @@
 <meta charset="utf-8">
 <script>/* the Family Guard (vendor/family): checks pictures, films and words from inscriptions before they are shown clearly */
 (function () { var h = /(^|\.)github\.io$|(^|\.)ordportal\.com$/.test(location.hostname), b = (h ? (/\/test\//.test(location.pathname) ? '../' : '') : 'https://ordportal.com/') + 'vendor/family/';
-  document.write('<script src="' + b + 'family.js"><\/script><script src="' + b + 'words.min.js"><\/script>'); })();</script>
+  document.write('<script src="' + b + 'family.js?v=1.1.0"><\/script><script src="' + b + 'words.min.js"><\/script>'); })();</script>
 <meta http-equiv="origin-trial" content="AoKI6gF5Vb3urEbD8CIMEduhceUv28Yg46LWDFh9VXbTvD2M2+HH1DpcSul6Qb14hagcBn7tpsyBkQjospK3uQUAAABSeyJvcmlnaW4iOiJodHRwczovL2JpdG1hcDIyLmdpdGh1Yi5pbzo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxODA2MzY0ODAwfQ==">
 <meta http-equiv="origin-trial" content="AtYmAgRCHYC3MkqPhTPfowWMNQRQZ1m22gC2sZ+WS4J8AasTXNDqqm4D6ChXs/Wg6ZgSAJTQ3cK3BVt70ZWcDAcAAABNeyJvcmlnaW4iOiJodHRwczovL29yZHBvcnRhbC5jb206NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTgwNjM2NDgwMH0="><!-- Chrome WebMCP origin trial for bitmap22.github.io (lets Chrome hand this page's agent tools to AI agents), registered 14 Nov 2026, ends 30 Mar 2027 -->
 <script>/* the start guard: when the cube cannot start (the page did not finish arriving, the browser could not start its 3D graphics,
@@ -1749,7 +1749,18 @@ function fgTile(t, img) {
 function fgWhen(t, f) { const G = window.FamilyGuard; if (G && t.art) G.check(null, t.art).then(v => f(v)); }
 const fgPaint = (v, sharp, n) => v === 'ok' ? sharp : v === 'adult' ? window.FamilyGuard.placard(n) : window.FamilyGuard ? window.FamilyGuard.coarse(sharp, n) : sharp;
 // an element on screen that shows it: blurred while it is checked, hidden behind the 18+ warning when it may be adult
-function fgShow(el, key, src, o) { const G = window.FamilyGuard; if (!G || !el) return el; G.guard(el, G.check(src, key, {soon: true, label: (o && o.label) || 'an inscription'}), Object.assign({key}, o || {})); return el; }
+// (20 Nov 2026) a picture this browser can't open (a JPEG XL in Chrome, say): a clear note instead of a blank, and its own page
+function picFail(el, key, src) {
+  if (!el || el.tagName !== 'IMG' || el._pfOn) return; el._pfOn = 1;
+  el.addEventListener('error', () => {
+    const ty = String(src && src.type || (el._pfType || '')).split(';')[0], id = typeof key === 'string' && /^[0-9a-f]{64}i\d+$/.test(key) ? key : null;
+    const d = document.createElement('div'); d.className = 'pvm pvx'; const b = document.createElement('b'); b.textContent = "CAN'T SHOW THIS PICTURE HERE";
+    const w = document.createElement('span'); w.textContent = (ty ? 'It is a ' + ty + ' picture, which this browser cannot open' : 'This browser cannot open this picture') + (/jxl/.test(ty) ? ' (JPEG XL: Safari can)' : '') + '.' + (id ? ' Its own page:' : '');
+    d.append(b, w); if (id) { const a = document.createElement('a'); a.href = 'https://ordinals.com/inscription/' + id; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'open it there ↗'; a.onclick = e => e.stopPropagation(); d.append(a); }
+    if (el._fgNote) { el._fgNote.remove(); el._fgNote = null; } el.replaceWith(d);
+  }, {once: true});
+}
+function fgShow(el, key, src, o) { const G = window.FamilyGuard; if (!G || !el) return el; picFail(el, key, src); G.guard(el, G.check(src, key, {soon: true, label: (o && o.label) || 'an inscription'}), Object.assign({key}, o || {})); return el; }
 function fgWords(el, key, url) { const G = window.FamilyGuard; if (!G || !el) return el; G.guard(el, fetch(url).then(r => r.ok ? r.text() : Promise.reject()).then(t => G.checkWords(t.slice(0, 200000), key, {label: 'a text inscription'}), () => 'unchecked'), {key, kind: 'text'}); return el; }
 let artGen = 0;
 const ATLAS = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048, matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700 ? 2048 : 4096);

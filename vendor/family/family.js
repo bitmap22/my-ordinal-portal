@@ -4,7 +4,11 @@
    - while it is being checked, it is blurred;
    - when the checker thinks it may be adult content, it stays hidden behind an 18+ warning, and only a person can choose to show it;
    - when it could not be checked, it stays hidden until a person chooses to show it;
-   - in Family mode (a switch kept in this browser), every picture from an inscription stays hidden until a person chooses.
+   - in Family mode (a switch kept in this browser), every picture from an inscription stays hidden until a person chooses;
+   - a moving picture (GIF, moving WebP or PNG) is checked on several of its frames, where the browser can split it into frames
+     (Chrome and Edge can; elsewhere its first frame is checked);
+   - a moving picture or film that flashes more than 3 times a second (the WCAG rule: a seizure risk for some people) shows still,
+     with a warning, until a person chooses to play it; and with "reduce motion" turned on, every moving picture shows still.
    Words written in an inscription, and what players type in chat, are checked for rude words too.
    The picture checker is NSFWJS (MIT licence, by Infinite Red) with its MobileNetV2 model, run in a background worker so games
    stay smooth. The word checker is AllProfanity (MIT licence, by Ayush Jadaun). Both live in this folder, with their licences.
@@ -26,6 +30,41 @@
   const valSet = (k, v) => { if (k == null) return; if (typeof k === 'object') valObj.set(k, v); else { valStr.set(String(k), v); if (valStr.size > 6000) valStr.delete(valStr.keys().next().value); } };
   const keySet = (k, v) => { if (k == null) return; if (typeof k === 'object') byObj.set(k, v); else { byStr.set(String(k), v); if (byStr.size > 6000) byStr.delete(byStr.keys().next().value); } };
   const tell = () => { for (const f of subs) { try { f(); } catch (e) {} } };
+  // how it moves, once known: {anim: moves or not, frames: 'all' (several checked) or 'first', flash: flashes in its worst second}
+  const metaStr = new Map(), metaObj = new WeakMap(), partial = new Set(), partialObj = new WeakSet();
+  const metaSet = (k, v) => { if (k == null) return; if (typeof k === 'object') metaObj.set(k, v); else { metaStr.set(String(k), v); if (metaStr.size > 6000) metaStr.delete(metaStr.keys().next().value); } };
+  const metaOf = k => k == null ? null : (typeof k === 'object' ? metaObj.get(k) : metaStr.get(String(k))) || null;
+  const reduceMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+  // flashing, the WCAG "three flashes" rule, read on each quarter of the picture and its middle (as the Safety Scan reads it)
+  const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  function flashes(frames, times, W, H) {
+    if (!frames || frames.length < 4) return 0;
+    let worst = 0;
+    for (const [px, py] of [[0, 0], [W / 2, 0], [0, H / 2], [W / 2, H / 2], [W / 4, H / 4]]) {
+      const pw = W / 2, ph = H / 2, L = frames.map(f => { let s = 0; for (let y = py; y < py + ph; y++) for (let x = px; x < px + pw; x++) s += lin(f[y * W + x]); return s / (pw * ph); });
+      const turns = []; let ref = L[0], dir = 0;
+      for (let i = 1; i < L.length; i++) { const d = L[i] - ref; if (Math.abs(d) >= 0.1 && Math.min(L[i], ref) < 0.8) { const g = Math.sign(d); if (g !== dir) { turns.push(times[i]); dir = g; } ref = L[i]; } else if (dir && Math.sign(L[i] - ref) === dir) ref = L[i]; }
+      for (let i = 0; i + 1 < turns.length; i++) { let n = 0; for (let j = i; j + 1 < turns.length && turns[j + 1] - turns[i] < 1000; j += 2) n++; worst = Math.max(worst, n); }
+    }
+    return worst;
+  }
+  const grey32 = (x, src) => { x.fillStyle = '#000'; x.fillRect(0, 0, 32, 32); x.drawImage(src, 0, 0, 32, 32); const d = x.getImageData(0, 0, 32, 32).data, g = new Uint8Array(1024); for (let k = 0; k < 1024; k++) g[k] = Math.round(.2126 * d[k * 4] + .7152 * d[k * 4 + 1] + .0722 * d[k * 4 + 2]); return g; };
+  // a moving picture's frames: four spread through it for the checker, and up to 400 small grey ones for flashing
+  async function animFrames(bytes, type) {
+    const ty = String(type || '').toLowerCase(); if (!/^image\/(gif|webp|png|apng|avif)/.test(ty)) return null;
+    if (typeof ImageDecoder === 'undefined') return /gif|webp|apng/.test(ty) ? {n: 0, firstOnly: true} : null;
+    let dec; try { dec = new ImageDecoder({data: bytes, type: ty === 'image/apng' ? 'image/png' : ty}); await dec.tracks.ready; } catch (e) { return null; }
+    try {
+      const tr = dec.tracks.selectedTrack, n = tr ? tr.frameCount : 1; if (!(n > 1)) return {n: 1};
+      const N = Math.min(n, 400), pick = [...new Set([0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1])];
+      const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d', {willReadFrequently: true});
+      const small = [], times = [], big = []; let t = 0, still = null;
+      for (let i = 0; i < N; i++) { if (i && !(i % 40)) await new Promise(r => setTimeout(r)); const {image} = await dec.decode({frameIndex: i}); small.push(grey32(x, image)); if (!i) try { const w = image.displayWidth, h = image.displayHeight, k = Math.min(1, 640 / Math.max(w, h)), c0 = document.createElement('canvas'); c0.width = Math.max(1, Math.round(w * k)); c0.height = Math.max(1, Math.round(h * k)); const x0 = c0.getContext('2d'); x0.imageSmoothingEnabled = k < 1; x0.drawImage(image, 0, 0, c0.width, c0.height); still = c0.toDataURL('image/png'); } catch (e) {} /* (its first frame, kept to show it still) */ times.push(t); const ms = (image.duration || 0) / 1000; t += ms <= 10 ? 100 : ms; if (pick.includes(i)) big.push(sample(image)); image.close(); }
+      for (const i of pick) if (i >= N) { const {image} = await dec.decode({frameIndex: i}); big.push(sample(image)); image.close(); }
+      for (let i = 0, L = small.length, T = t; i < L && times[times.length - 1] - T < 1000; i++) { small.push(small[i]); times.push(T + times[i]); }   // (it loops: the join counts too)
+      return {n, big: big.filter(Boolean), flash: flashes(small, times, 32, 32), still};
+    } finally { try { dec.close(); } catch (e) {} }
+  }
 
   /* ---------- the picture checker: a worker, loaded the first time a picture needs it ---------- */
   let W = null, dead = '', seq = 0, busy = 0;
@@ -57,7 +96,7 @@
   function sample(src) {
     try {
       if (!src) return null; if (typeof ImageData !== 'undefined' && src instanceof ImageData) return src;
-      const w = src.naturalWidth || src.videoWidth || src.width, h = src.naturalHeight || src.videoHeight || src.height; if (!w || !h) return null;
+      const w = src.naturalWidth || src.videoWidth || src.displayWidth || src.width, h = src.naturalHeight || src.videoHeight || src.displayHeight || src.height; if (!w || !h) return null;   // (displayWidth: a frame split out of a moving picture)
       const c = document.createElement('canvas'); c.width = c.height = 224; const x = c.getContext('2d', {willReadFrequently: true});
       x.fillStyle = '#000'; x.fillRect(0, 0, 224, 224); x.drawImage(src, 0, 0, 224, 224);
       return x.getImageData(0, 0, 224, 224);
@@ -79,6 +118,11 @@
         if (d) await new Promise(ok => { v.onseeked = ok; v.currentTime = d * f; setTimeout(ok, 4000); });
         const s = sample(v); if (s) out.push(s);
       }
+      if (d) {   // flashing: its first 5 seconds, 30 frames a second (fine enough not to keep landing on the same colour)
+        const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d', {willReadFrequently: true}), fr = [], tm = [];
+        for (let t = 0; t < Math.min(5, d); t += 1 / 30) { await new Promise(ok => { v.onseeked = ok; v.currentTime = t; setTimeout(ok, 1500); }); try { fr.push(grey32(x, v)); tm.push(t * 1000); } catch (e) { break; } }
+        out.flash = flashes(fr, tm, 32, 32);
+      }
     } finally { URL.revokeObjectURL(url); v.removeAttribute('src'); }
     return out;
   }
@@ -89,18 +133,27 @@
   // {bytes, type}, or a web address. key: what it is (an inscription ID, or the object it belongs to), so it is checked once.
   function check(src, key, o) {
     o = o || {};
-    const had = keyGet(key); if (had) return had;
+    const fuller = src && (src.bytes || typeof src === 'string'), wasPartial = key != null && (typeof key === 'object' ? partialObj.has(key) : partial.has(String(key)));
+    const had = keyGet(key); if (had && !(fuller && wasPartial)) return had;
+    if (key != null) { if (fuller) { if (typeof key === 'object') partialObj.delete(key); else partial.delete(String(key)); } else if (src) { if (typeof key === 'object') partialObj.add(key); else partial.add(String(key)); } }
     const p = (async () => {
-      let samples = [];
+      if (had) { const v0 = await had; if (v0 === 'adult') return v0; }   // (checked before from one frame: still adult if it was; else checked again, fully)
+      let samples = [], meta = null;
       try {
         if (typeof src === 'string') { const r = await fetch(src); if (!r.ok) throw Error('not answered'); const ty = (r.headers.get('content-type') || '').split(';')[0]; src = {bytes: new Uint8Array(await r.arrayBuffer()), type: ty}; }
         if (src && src.bytes) {
-          if (/^video\//.test(src.type || '')) samples = src.bytes.length <= 40e6 ? await filmSamples(src.bytes, src.type) : [];
-          else { const im = await decode(src.bytes, src.type); samples = [sample(im)]; if (im && im.close) im.close(); }
+          if (/^video\//.test(src.type || '')) { samples = src.bytes.length <= 40e6 ? await filmSamples(src.bytes, src.type) : []; meta = {anim: true, frames: 'film', flash: samples.flash || 0}; }
+          else {
+            const A = await animFrames(src.bytes, src.type);
+            if (A && A.n > 1) meta = {anim: true, frames: A.big && A.big.length ? 'all' : 'first', flash: A.flash || 0, still: A.still || null};
+            if (A && A.n > 1 && A.big && A.big.length) samples = A.big;
+            else { const im = await decode(src.bytes, src.type); samples = [sample(im)]; if (im && im.close) im.close(); if (A && A.firstOnly) meta = {anim: null, frames: 'first', flash: null}; }
+          }
         } else samples = [sample(src)];
         samples = samples.filter(Boolean); if (!samples.length) throw Error('nothing to look at');
         let worst = {v: 'ok', score: 0};
         for (const s of samples) { const r = verdictOf(await classify(s, o.soon)); if (r.score > worst.score) worst = r; if (r.v === 'adult') { worst = r; break; } }
+        if (meta) metaSet(key, meta);
         stats.checked++; if (worst.v === 'adult') stats.adult++; note(key, worst.v, o.label, worst.score); tell();
         return worst.v;
       } catch (e) { stats.unchecked++; note(key, 'unchecked', o.label); tell(); return 'unchecked'; }
@@ -163,9 +216,28 @@
       if (v === 'adult') { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b class="fg-18">18+</b><b>Hidden: this may be adult content</b>Anyone can inscribe anything, and our checker thinks this ' + kind + ' may not be family friendly. Only show it if you are 18 or over.', 'Show it (I am 18 or over)'); }
       if (v === 'unchecked') { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b>Not checked</b>This ' + kind + ' could not be checked just now, so it is hidden.', 'Show it'); }
       if (strict) { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b>Family mode</b>Pictures from inscriptions stay hidden until you choose.', 'Show it'); }
-      clear();
+      clear(); still(el, key, kind);
     });
     return el;
+  }
+
+  // a moving picture or film that may flash (or any moving picture, with "reduce motion" on): shown still until a person plays it
+  const played = new Set();
+  function still(el, key, kind) {
+    const M = metaOf(key); if (!M || !el || !M.anim) return;
+    const flash = M.flash > 3, calm = reduceMotion(); if (!flash && !calm) return;
+    const k = key != null ? (typeof key === 'object' ? key : String(key)) : null; if (k != null && played.has(k)) return;
+    const n = document.createElement('div'); n.className = 'fg-note ' + (el.tagName === 'VIDEO' ? 'fg-below' : 'fg-over') + (flash ? '' : ' fg-small'); n.setAttribute('role', 'note');
+    n.innerHTML = flash ? '<b>⚡ May flash</b>This ' + kind + ' flashes ' + M.flash + ' times a second, which can set off seizures in some people. It is shown still.' : '<b>Still picture</b>Reduce motion is on, so this moving ' + kind + ' is shown still.';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = flash ? 'Play it anyway' : 'Play it'; n.appendChild(b);
+    const go = e => { if (e) { e.preventDefault(); e.stopPropagation(); } if (k != null) played.add(k); n.remove(); if (el._fgOrig) { el.src = el._fgOrig; el._fgOrig = null; } };
+    b.onclick = go;
+    if (el.tagName === 'VIDEO') { try { el.pause(); } catch (e) {} const stop = () => { if (n.isConnected) { try { el.pause(); } catch (e) {} } else el.removeEventListener('play', stop); }; el.addEventListener('play', stop); }
+    else if (el.tagName === 'IMG') {   // (its first frame, drawn once, stands in for it)
+      const freeze = () => { if (M.still) { el._fgOrig = el.currentSrc || el.src; el.src = M.still; return; } try { const c = document.createElement('canvas'); c.width = el.naturalWidth || 1; c.height = el.naturalHeight || 1; c.getContext('2d').drawImage(el, 0, 0); el._fgOrig = el.currentSrc || el.src; el.src = c.toDataURL('image/png'); } catch (e) {} };
+      if (M.still || el.complete && el.naturalWidth) freeze(); else el.addEventListener('load', freeze, {once: true});
+    } else return;
+    if (el.isConnected && el.parentNode) el.insertAdjacentElement('afterend', n);
   }
 
   /* ---------- for 3D worlds: a tile that says it is hidden, and a blurred stand-in while it is checked ---------- */
@@ -185,8 +257,8 @@
   /* ---------- the switch, and what agents can read ---------- */
   function setStrict(on) { strict = !!on; try { on ? localStorage.setItem(SKEY, '1') : localStorage.removeItem(SKEY); } catch (e) {} tell(); return strict; }
   function state() {
-    return {familyMode: strict, checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
-      recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
+    return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
+      recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, checkWords, known: knownOf, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.0.0'};
+  window.FamilyGuard = {check, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.1.0'};
 })();

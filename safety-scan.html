@@ -14,7 +14,7 @@
 <meta http-equiv="origin-trial" content="AtYmAgRCHYC3MkqPhTPfowWMNQRQZ1m22gC2sZ+WS4J8AasTXNDqqm4D6ChXs/Wg6ZgSAJTQ3cK3BVt70ZWcDAcAAABNeyJvcmlnaW4iOiJodHRwczovL29yZHBvcnRhbC5jb206NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTgwNjM2NDgwMH0="><!-- Chrome WebMCP origin trial for bitmap22.github.io (lets Chrome hand this page's agent tools to AI agents), registered 14 Nov 2026, ends 30 Mar 2027 -->
 <script>/* the Family Guard (vendor/family): the picture checker the wallet check uses */
 (function () { var h = /(^|\.)github\.io$|(^|\.)ordportal\.com$/.test(location.hostname), b = (h ? (/\/test\//.test(location.pathname) ? '../' : '') : 'https://ordportal.com/') + 'vendor/family/';
-  document.write('<script src="' + b + 'family.js"><\/script>'); })();</script>
+  document.write('<script src="' + b + 'family.js?v=1.1.0"><\/script>'); })();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Safety Scan: what to watch out for in the last day of Bitcoin blocks | Ord Portal</title>
 <meta name="description" content="The Safety Scan looks at and reads every inscription in the last day of Bitcoin blocks, without running any of it, and marks what to watch out for with a colour and a symbol: may be adult, flashing, scams, agent traps, risky code, miners and phone-killers, hate words and personal details. Made by GitHub about every hour. Free, for people and AI agents. By bitmap22.">
@@ -191,7 +191,7 @@
 
 <script src="agent-blockhall-mcp/server/recursion.js"></script>
 <script src="agent-blockhall-mcp/server/coderead.js"></script>
-<script src="agent-blockhall-mcp/server/safety.js?v=1.2.0"></script>
+<script src="agent-blockhall-mcp/server/safety.js?v=1.3.0"></script>
 <script>
 'use strict';
 (() => {
@@ -296,7 +296,7 @@
   function drawOne(agent) {
     const R = ONE, ul = $('finds'); ul.textContent = '';
     const list = R.found.filter(f => !only || f.kinds.includes(only));
-    $('oLine').textContent = (agent ? 'An AI agent opened this block. ' : '') + hhmm(R.time) + ' · ' + fmt(R.inscriptions) + ' inscriptions (' + fmt(R.pictures) + ' pictures, ' + fmt(R.films) + ' films, ' + (R.models ? fmt(R.models) + ' 3D models, ' : '') + fmt(R.text) + ' words or code looked at' + (R.notLooked ? ', ' + fmt(R.notLooked) + ' not looked at' : '') + ') · scanned ' + hhmm(R.scannedAt) + '. ' + (R.found.length ? fmt(R.found.length) + ' marked' + (only ? ', ' + fmt(list.length) + ' with ' + KIND[only].name : '') + '.' : 'Nothing marked.');
+    $('oLine').textContent = (agent ? 'An AI agent opened this block. ' : '') + hhmm(R.time) + ' · ' + fmt(R.inscriptions) + ' inscriptions (' + fmt(R.pictures) + ' pictures, ' + fmt(R.films) + ' films, ' + (R.models ? fmt(R.models) + ' 3D models, ' : '') + (R.sounds ? fmt(R.sounds) + ' sound files, ' : '') + fmt(R.text) + ' words or code looked at' + (R.notLooked ? ', ' + fmt(R.notLooked) + ' not looked at' : '') + ') · scanned ' + hhmm(R.scannedAt) + '. ' + (R.found.length ? fmt(R.found.length) + ' marked' + (only ? ', ' + fmt(list.length) + ' with ' + KIND[only].name : '') + '.' : 'Nothing marked.');
     for (const f of list) ul.appendChild(findItem(f));
     const m = el('li'); m.style.borderLeftColor = '#444'; const a = el('a', null, 'The whole block in the ' + (CHAIN === 'btc' ? '' : 'Doge ') + 'Block Manifest'); a.href = W.manifest + R.height; m.appendChild(a); ul.appendChild(m);
   }
@@ -306,6 +306,10 @@
   // and Edge have it); too big for phones. The file is only decoded as a picture, never run.
   async function look({id, type, bytes}) {
     const finds = [], G = window.FamilyGuard; let notLooked = false, flashNotChecked = false;
+    if (/svg/.test(type)) {   // (an SVG: drawn as a picture, where nothing in it can run, then checked)
+      if (G) { const v = await G.check({bytes, type: 'image/svg+xml'}, 'safety:' + id, {label: 'a drawing in a wallet check'}); if (v === 'adult') finds.push({kind: 'adult', what: 'a picture that may show nudity'}); else if (v !== 'ok') notLooked = true; } else notLooked = true;
+      return {finds, notLooked};
+    }
     if (/^image\//.test(type)) {
       let w = 0, h = 0; try { const bm = await createImageBitmap(new Blob([bytes], {type})); w = bm.width; h = bm.height; bm.close(); } catch (e) { return {finds, notLooked: true}; }
       if (w * h > 6e7 || w > 16384 || h > 16384) finds.push({kind: 'miner', what: 'a picture so big it can freeze a phone (' + w + ' x ' + h + ')'});
