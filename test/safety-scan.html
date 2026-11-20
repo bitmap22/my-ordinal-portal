@@ -118,7 +118,7 @@
   <p class="lead">Every inscription in the last 144 blocks (about a day), looked at and read by GitHub's computers about every hour, without running any of it. Anything to watch out for gets a colour and a symbol, here and on the boxes in <a href="block-cube.html">Agent Blockhall</a>. This page never shows or runs an inscription: it says what was found, and links out if you choose to look. Every mark is a "may be": the scan can be wrong both ways. You can also check a wallet: every inscription an address holds, checked in your browser.</p>
 
   <div class="panel">
-    <nav class="pair" aria-label="Which chain"><a href="safety-scan.html" data-chain="btc">Bitcoin (144 blocks)</a><a href="doge-safety-scan.html" data-chain="doge">Dogecoin (1,440 blocks)</a></nav>
+    <nav class="pair" aria-label="Which chain"><a href="safety-scan.html" data-chain="btc">Bitcoin (144 blocks)</a><a href="doge-safety-scan.html" data-chain="doge">Dogecoin (144 blocks)</a></nav>
     <div class="facts">
       <div class="fact"><b>Blocks scanned</b><span id="fB">–</span></div>
       <div class="fact"><b>Inscriptions</b><span id="fI">–</span></div>
@@ -191,7 +191,7 @@
 
 <script src="../agent-blockhall-mcp/server/recursion.js"></script>
 <script src="../agent-blockhall-mcp/server/coderead.js"></script>
-<script src="../agent-blockhall-mcp/server/safety.js"></script>
+<script src="../agent-blockhall-mcp/server/safety.js?v=1.1.0"></script>
 <script>
 'use strict';
 (() => {
@@ -200,7 +200,7 @@
   const PORTAL = 'https://ordportal.com/', BRANCH = 'safety-scan';
   const SRC = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/' + BRANCH + '/', 'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@' + BRANCH + '/'];
   const W = CHAIN === 'btc' ? {word: 'Bitcoin', game: 'block-cube.html', gameName: 'Agent Blockhall', twin: 'doge-safety-scan.html', look: [['ordinals.com', 'https://ordinals.com/inscription/'], ['ordiscan.com', 'https://ordiscan.com/inscription/']], prov: 'provenance-check.html?id=', manifest: 'block-manifest.html?block=', code: 'code-read.html?id=', window: 144}
-    : {word: 'Dogecoin', game: 'doge-cube.html', gameName: 'Doge Cube', twin: 'safety-scan.html', look: [['thedoginalsexplorer.com', 'https://thedoginalsexplorer.com/inscription/']], prov: 'doge-provenance-check.html?id=', manifest: 'doge-block-manifest.html?block=', code: null, window: 1440};
+    : {word: 'Dogecoin', game: 'doge-cube.html', gameName: 'Doge Cube', twin: 'safety-scan.html', look: [['thedoginalsexplorer.com', 'https://thedoginalsexplorer.com/inscription/']], prov: 'doge-provenance-check.html?id=', manifest: 'doge-block-manifest.html?block=', code: null, window: 144};
   const $ = id => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const fmt = n => n == null ? '–' : Number(n).toLocaleString('en-GB');
@@ -381,7 +381,7 @@
   const kinds = () => KINDS.map(K => ({key: K.key, name: K.name, symbol: K.symbol, colour: K.colour, means: K.says}));
   const lookAt = id => Object.fromEntries(W.look.map(([n, u]) => [n, u + id]));
   const cmds = [
-    {name: 'summary', does: 'Every ' + W.word + ' block the Safety Scan keeps (the last ' + W.window + ', about a day), newest first, with how many inscriptions in each have each mark; the totals; when GitHub last scanned; and what each mark means. Gives back {chain, updated, tip, window, scanned, missing, totals{kind: n}, kinds[{key, name, symbol, colour, means}], blocks[{height, time, inscriptions, found, tally{kind: n}}], note} (or {ok: false, error} if it could not).', args: [{name: 'kind', does: 'only blocks with this mark: adult, flash, scam, agent, code, miner, hate or personal (optional)'}],
+    {name: 'summary', does: 'Every ' + W.word + ' block the Safety Scan keeps (the last ' + W.window + ', about ' + (CHAIN === 'btc' ? 'a day' : '2.4 hours') + '), newest first, with how many inscriptions in each have each mark; the totals; when GitHub last scanned; and what each mark means. Gives back {chain, updated, tip, window, scanned, missing, totals{kind: n}, kinds[{key, name, symbol, colour, means}], blocks[{height, time, inscriptions, found, tally{kind: n}}], note} (or {ok: false, error} if it could not).', args: [{name: 'kind', does: 'only blocks with this mark: adult, flash, scam, agent, code, miner, hate or personal (optional)'}],
       run: async ({kind}) => { if (!IX) await loadIndex(); if (!IX) throw new Error('GitHub\'s scan could not be read: ' + ixErr); if (kind && !KIND[kind]) throw new Error('no such kind: the kinds are ' + KINDS.map(K => K.key).join(', '));
         if (kind !== undefined && kind !== only) { only = kind || null; page = 0; drawKinds(); drawBlocks(); }
         return {chain: W.word, updated: IX.updated, tip: IX.tip, window: IX.window, scanned: IX.blocks.length, missing: IX.missing, totals: IX.totals, kinds: kinds(), blocks: IX.blocks.filter(b => !kind || (b.tally || {})[kind]), note: NOTE}; }},
@@ -409,7 +409,7 @@
     const args = a[0] && typeof a[0] === 'object' && !Array.isArray(a[0]) ? a[0] : Object.fromEntries((c.args || []).map((d, i) => [d.name, a[i]]));
     try { return plain(await c.run(args || {})); } catch (e) { return {ok: false, error: String(e && e.message || e)}; }
   };
-  api.help = async () => [(CHAIN === 'btc' ? '' : 'Doge ') + 'Safety Scan by bitmap22, always free: every inscription in the last ' + W.window + ' ' + W.word + ' blocks (about a day), looked at and read by GitHub\'s computers about every hour without running any of it, and marked by colour and symbol.',
+  api.help = async () => [(CHAIN === 'btc' ? '' : 'Doge ') + 'Safety Scan by bitmap22, always free: every inscription in the last ' + W.window + ' ' + W.word + ' blocks (about ' + (CHAIN === 'btc' ? 'a day' : '2.4 hours') + '), looked at and read by GitHub\'s computers about every hour without running any of it, and marked by colour and symbol.',
     'Marks: ' + KINDS.map(K => K.symbol + ' ' + K.key + ' (' + K.name + ': ' + K.says + ')').join('; ') + '.',
     'Every command returns a promise. Call with one object of named arguments, e.g. agent.block({height: ' + (IX ? IX.tip : 900000) + '}).', NOTE, '', 'Commands:']
     .concat(cmds.map(c => '  agent.' + c.name + '(' + (c.args || []).map(d => d.name).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : '')))
