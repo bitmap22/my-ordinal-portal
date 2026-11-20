@@ -21,6 +21,8 @@ const DX = 'https://thedoginalsexplorer.com', BTC = 'https://api.bitcore.io/api/
 /* ---------- being gentle with the sites ---------- */
 // the explorer: 300 units a minute for everyone; Blockchair: 30 asks a minute, 1,800 an hour (it says so itself); Bitcore: a few a second
 const PACE = {[DX]: {rate: 2, burst: 10}, [BTC]: {rate: 2, burst: 6}, [BCR]: {rate: 0.42, burst: 5}}, sites = new Map();
+// Blockchair's key, if one has been given (a GitHub secret, BLOCKCHAIR_KEY: never in the code). Without one, the free allowance is used.
+const BCR_KEY = /^[A-Za-z0-9_-]{8,128}$/.test(process.env.BLOCKCHAIR_KEY || '') ? '?key=' + process.env.BLOCKCHAIR_KEY : '';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const base = u => Object.keys(PACE).find(b => u.startsWith(b)) || new URL(u).origin;
 async function paceWait(b) {
@@ -77,7 +79,7 @@ async function readBlock(h) {
   for (const t of list) { const x = S.get(t.txid); if (x) { inSecond++; if (!x.coinbase) fees += x.fee; size += x.size; } }
   // the coinbase, from its own bytes
   let cb = null;
-  if (!bcrStopped) try { const j = await getJ(BCR + '/raw/transaction/' + list[0].txid); const hx = j.data && j.data[list[0].txid] && j.data[list[0].txid].raw_transaction; if (hx) { const r = DM.readTx(DM.fromHex(hx), true); cb = {ok: r.txid === list[0].txid, words: r.coinbaseWords}; } bcrSlow = 0; }
+  if (!bcrStopped) try { const j = await getJ(BCR + '/raw/transaction/' + list[0].txid + BCR_KEY); const hx = j.data && j.data[list[0].txid] && j.data[list[0].txid].raw_transaction; if (hx) { const r = DM.readTx(DM.fromHex(hx), true); cb = {ok: r.txid === list[0].txid, words: r.coinbaseWords}; } bcrSlow = 0; }
   catch (e) { if (/slow down/.test(String(e)) && ++bcrSlow >= 3) { bcrStopped = 'Blockchair said slow down three times in a row (block ' + h + '), so it was not asked for the rest of the day.'; console.log('  ' + bcrStopped); } }
   // what the explorer's list says each transaction carries
   const counts = {};
