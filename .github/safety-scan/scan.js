@@ -29,7 +29,7 @@ const t0 = Date.now(), log = (...a) => console.log(...a);
 
 /* ---------- fetching, asked gently (each site: a few a second, and a rest when it says "too many") ---------- */
 const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://blockstream.info'];
-const ORD_R = ['https://ordinals.com', 'https://static.unisat.io', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+const ORD_R = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
 const DX = 'https://thedoginalsexplorer.com', DOGE_CONTENT = [DX, 'https://cdn.doggy.market'];
 const PACE = {[new URL(DX).host]: {rate: 4, burst: 12}}, sites = new Map(), sleep = ms => new Promise(r => setTimeout(r, ms));
 async function paceWait(host) {
@@ -38,11 +38,14 @@ async function paceWait(host) {
 }
 async function fetchT(url, ms) {
   const host = new URL(url).host, b = await paceWait(host);
-  if (b.restUntil > Date.now()) throw new Error('resting ' + host);
+  if (b.restUntil > Date.now()) { if (b.restUntil - Date.now() > 65000) throw new Error('resting ' + host); await sleep(b.restUntil - Date.now()); }   // (a short rest is waited out; a long one moves on to the next site)
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms || 20000); let r;
   try { r = await fetch(url, {signal: ctl.signal, headers: {'User-Agent': UA}}); } catch (e) { b.restUntil = Date.now() + 20000; throw new Error('no answer from ' + host); } finally { clearTimeout(timer); }
   if (r.status === 429 || r.status === 503) { b.restUntil = Date.now() + (+r.headers.get('retry-after') || 30) * 1000; throw new Error('http ' + r.status + ' from ' + host); }
   if (!r.ok) throw new Error('http ' + r.status + ' from ' + host);
+  // a site that says how much it has left (the Doginals Explorer: 300 units a minute, X-RateLimit-Remaining): near the end, rest until the minute is up
+  const left = parseFloat(r.headers.get('x-ratelimit-remaining')), lim = parseFloat(r.headers.get('x-ratelimit-limit'));
+  if (Number.isFinite(left) && Number.isFinite(lim) && left < lim * 0.15) b.restUntil = Math.max(b.restUntil, Date.now() + 20000);
   return r;
 }
 async function fromAny(list, p, ms, how) {
@@ -157,7 +160,7 @@ async function btcBlock(h) {
 const bytesOfBig = async r => new Uint8Array(await r.arrayBuffer());
 
 /* ---------- Dogecoin: a block's inscriptions, from the explorer ---------- */
-const dj = async (p, ms) => JSON.parse((await fromAny([DX], p, ms || 30000)).v);
+const dj = async (p, ms) => { try { return JSON.parse((await fromAny([DX], p, ms || 30000)).v); } catch (e) { if (!/http 429|http 503|resting/.test(String(e))) throw e; await sleep(30000); return JSON.parse((await fromAny([DX], p, ms || 30000)).v); } };   // ("too many": rest, then once more)
 async function dogeTip() { const j = await dj('/v1/blocks?limit=1'); return j.blocks[0].height; }
 async function dogeBlock(h) {
   const B = await dj('/v1/block/' + h + '?limit=100'), list = (B.txs || []).slice();

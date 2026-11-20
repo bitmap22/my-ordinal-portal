@@ -14,7 +14,7 @@ const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use
 /* ---------- being gentle with the sites: at most 30 at once, then 6 a second per site; rest any site that asks ---------- */
 const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://mempool.bitaroo.net', 'https://blockstream.info'];
 const MIRROR_V1 = 5;
-const ORD_R = ['https://ordinals.com', 'https://static.unisat.io', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+const ORD_R = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
 const ORD_LIST = 'https://ordinals.com';
 const PACE = {rate: 6, burst: 30, rest: 30}, sites = new Map();
 const site = h => { let b = sites.get(h); if (!b) sites.set(h, b = {tok: PACE.burst, t: Date.now(), restUntil: 0}); return b; };
