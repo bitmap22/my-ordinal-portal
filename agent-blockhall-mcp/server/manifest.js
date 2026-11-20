@@ -156,7 +156,8 @@
   const ctype = ty => /^[a-z0-9!#$&^_.+-]{1,40}\/[a-z0-9!#$&^_.+-]{1,60}$/.test(ty) ? ty : ty ? 'not a standard type' : '';
 
   // every transaction in the block, read once from its bytes
-  function scanBlock(X, h) {
+  function scanBlock(X, h, opts) {   // (opts.onBody(n, index, contentType, bodyPieces, compressed): optional, gives each inscription's contents, for the Safety Scan)
+    const onBody = opts && typeof opts.onBody === 'function' ? opts.onBody : null;
     if (!(X instanceof Uint8Array) || X.length < 81) throw new Error('not a block');
     let p = 80;
     const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
@@ -248,6 +249,7 @@
             if (del) r.dele = true;
             const bl = body.reduce((n, x) => n + x.length, 0);
             r.ins.push({index: ei++, contentType: ctype(ty) || (del ? 'delegate' : 'unknown'), bytes: bl, child: par, delegate: del, compressed: enc});
+            if (onBody && bl) onBody(t, ei - 1, ty || (del ? 'delegate' : ''), body, enc);
             if (!enc && bl && bl <= 1000) {
               const txt = U8D.decode(catB(body)).trim();
               if (/^\d{1,7}\.bitmap$/.test(txt)) { set(TF.bitmap); if (r.bitmap == null) r.bitmap = +txt.split('.')[0]; }
