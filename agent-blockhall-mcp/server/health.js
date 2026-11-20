@@ -2,7 +2,7 @@
    Which of the free public data sites the portal's tools read are answering, how fast, and whether their answers are up to
    date, so a person or an AI agent knows how far to trust an answer and which site to ask. Each site is asked one small thing
    (most: the newest block's height, which says both whether it answers and whether it has kept up with the chain):
-   - Bitcoin: mempool.space and its 6 copies, ordinals.com and its 4 copies, stampchain.io, api.counterparty.io, api.bnrp.name
+   - Bitcoin: mempool.space and its 6 copies, ordinals.com and its 3 copies, stampchain.io, api.counterparty.io, api.bnrp.name
    - Dogecoin: thedoginalsexplorer.com, Blockchair, BlockCypher, BitPay's Bitcore, 3xpl's sandbox, and Doggy Market's file copies
    What each says is only ever what it said: nothing is guessed. A site that answers in 2.5 seconds or more is slow (the
    portal's tools ask the next site after 2.5 seconds); a site 2 or more blocks behind the others is behind.
@@ -35,7 +35,6 @@
     mp('mempool.bitaroo.net', 'a copy of mempool.space'),
     mp('blockstream.info', 'blocks and transactions (the last copy asked)'),
     ord('ordinals.com', 'inscriptions, their files and records, rune pages and each block\'s list of inscriptions (asked first)'),
-    ord('static.unisat.io', 'a copy of ordinals.com\'s recursive endpoints (/r/) and files'),
     ord('ordiscan.com', 'a copy of ordinals.com\'s recursive endpoints (/r/) and files'),
     ord('ordinalswallet.com', 'a copy of ordinals.com\'s recursive endpoints (/r/) and files'),
     ord('ord.xverse.app', 'a copy of ordinals.com\'s recursive endpoints (/r/) and files'),

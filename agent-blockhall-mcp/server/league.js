@@ -36,7 +36,7 @@
     mp('mempool.space', 'blocks, transactions, fees and prices'), mp('ordpool.space', 'a copy of mempool.space'), mp('mempool.emzy.de', 'a copy of mempool.space'),
     mp('mempool.ninja', 'a copy of mempool.space'), mp('mempool.fra.mempool.space', 'a copy of mempool.space'), mp('mempool.bitaroo.net', 'a copy of mempool.space'),
     mp('blockstream.info', 'blocks and transactions'),
-    ord('ordinals.com', 'inscriptions, their files and records (ord’s own site)'), ord('static.unisat.io', 'a copy of ordinals.com’s files and records'),
+    ord('ordinals.com', 'inscriptions, their files and records (ord’s own site)'),
     ord('ordiscan.com', 'a copy of ordinals.com’s files and records'), ord('ordinalswallet.com', 'a copy of ordinals.com’s files and records'),
     ord('ord.xverse.app', 'a copy of ordinals.com’s files and records'),
     {site: 'stampchain.io', chain: 'bitcoin', kind: 'none', group: 'Stamps, Counterparty and names', what: 'Stamp numbers and SRC-20 token totals'},
