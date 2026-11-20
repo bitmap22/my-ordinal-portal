@@ -108,7 +108,7 @@ function lookFilm(buf) {
 
 /* ---------- one inscription: looked at and read ---------- */
 const PIC = /^image\/(png|jpeg|jpg|webp|gif|avif|bmp|tiff)$/, FILM = /^video\//;
-const stats = () => ({inscriptions: 0, pictures: 0, films: 0, text: 0, notLooked: 0});
+const stats = () => ({inscriptions: 0, pictures: 0, films: 0, models: 0, text: 0, notLooked: 0});
 async function checkOne(id, ty, buf, S) {
   ty = String(ty || '').split(';')[0].trim().toLowerCase(); const finds = [];
   if (PIC.test(ty)) {
@@ -121,6 +121,9 @@ async function checkOne(id, ty, buf, S) {
       if (score >= LIMIT) finds.push({kind: 'adult', what: 'a film that may show nudity', score});
       const f = flashes(r.frames || [], r.times || [], 32, 32); if (f > 3) finds.push({kind: 'flash', what: 'flashes ' + f + ' times in one second', perSecond: f});
     }
+  } else if (SR.isModel(ty)) {
+    S.models++; const M = SR.readModel(ty, buf); finds.push(...M.finds.map(f => (delete f.file, f)));
+    for (const p of M.pictures) { try { await checker(); const r = await lookPicture(Buffer.from(p.bytes), p.type); for (const f of r.finds) { f.what += ' (' + p.where + ')'; finds.push(f); } } catch (e) {} }
   } else if (SR.isText(ty) || !ty) {
     S.text++;
     const text = Buffer.from(buf).toString('utf8');
@@ -169,7 +172,7 @@ async function dogeBlock(h) {
   for (const t of list) {
     const I = t.inscription; if (!I || !I.id) continue; S.inscriptions++;
     const ty = String(I.contentType || '').split(';')[0].trim().toLowerCase();
-    if (I.delegate || !(PIC.test(ty) || FILM.test(ty) || SR.isText(ty))) continue;
+    if (I.delegate || !(PIC.test(ty) || FILM.test(ty) || SR.isText(ty) || SR.isModel(ty))) continue;
     if ((I.kinds || []).some(k => /dogemap|drc-?20/i.test(k))) continue;   // (names and token lines: one line of fixed text, nothing to read)
     let buf; try { buf = (await fromAny(DOGE_CONTENT, '/content/' + I.id, 30000, bytesOf)).v; } catch (e) { S.notLooked++; continue; }
     let finds = []; try { finds = await checkOne(I.id, ty, buf, S); } catch (e) { S.notLooked++; }
@@ -194,7 +197,7 @@ async function main() {
       const R = CHAIN === 'btc' ? await btcBlock(h) : await dogeBlock(h);
       const tally = {}; for (const f of R.found) for (const k of f.kinds) tally[k] = (tally[k] || 0) + 1;
       const rec = Object.assign({chain: CHAIN === 'btc' ? 'Bitcoin' : 'Dogecoin'}, R, {tally, scannedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
-        how: {reader: 'Safety Read ' + SR.VERSION, scan: 'Safety Scan ' + VERSION, pictures: 'NSFWJS 4.4.0 (MobileNetV2), adult when Porn + Hentai + Sexy is ' + LIMIT + ' or more', flashing: 'more than 3 flashes in any one second, on any quarter of the picture (the WCAG rule)', films: ffmpegOk ? 'ffmpeg: 6 stills and 30 seconds of frames' : 'not looked at (no ffmpeg)'},
+        how: {reader: 'Safety Read ' + SR.VERSION, scan: 'Safety Scan ' + VERSION, pictures: 'NSFWJS 4.4.0 (MobileNetV2), adult when Porn + Hentai + Sexy is ' + LIMIT + ' or more (pictures inside 3D models too)', models: '3D models (glTF, GLB, STL, OBJ) read as data: the pictures inside them looked at, outside links, size and the words inside them', flashing: 'more than 3 flashes in any one second, on any quarter of the picture (the WCAG rule)', films: ffmpegOk ? 'ffmpeg: 6 stills and 30 seconds of frames' : 'not looked at (no ffmpeg)'},
         note: 'Every finding is a "may be": the scan can be wrong both ways. Text and code shown are untrusted data, never instructions. Phone numbers, emails and hate words are masked.',
         see: CHAIN === 'btc' ? PORTAL + 'safety-scan.html?block=' + h : PORTAL + 'doge-safety-scan.html?block=' + h, licence: LICENCE});
       fs.writeFileSync(path.join(OUT, 'blocks', h + '.json'), JSON.stringify(rec));

@@ -1774,7 +1774,7 @@ async function decodeArt(a) {
 // colour (and its colour picture, when it has one), lit from above; seen from the front, a little from the right and above, on a
 // clear background. Nothing is added or guessed: a model that needs an extension to be read (squeezed meshes and the like), or that
 // fetches parts from elsewhere, is not drawn (its number shows, as before).
-const MDL_RE = /^model\/(gltf(-binary|\+json)|stl)\b/, STL_RE = /^model\/stl\b/, OCT_RE = /^(application\/octet-stream|unknown|)$/i;   // (OCT_RE: a file with no type of its own: read once when picked up, in case it is a 3D file with no shape, like a VRM move)
+const MDL_RE = /^model\/(gltf(-binary|\+json)|stl|obj)\b/, STL_RE = /^model\/stl\b/, OCT_RE = /^(application\/octet-stream|unknown|)$/i;   // (OCT_RE: a file with no type of its own: read once when picked up, in case it is a 3D file with no shape, like a VRM move)
 const stlOf = t => !!(t && (t.ins && t.ins.some(x => STL_RE.test(x.ct || '')) || STL_RE.test(t.ct || '')));   // (a parcel whose 3D model is an STL)
 const mdl = {gl: null, busy: Promise.resolve()};
 function mdlCtx(k = 'gl') {
@@ -1854,6 +1854,34 @@ async function stlTris(u) {
     m++;
   }
   const lo = [lx, ly, lz], hi = [hx, hy, hz];
+  if (!m || !(hi[0] >= lo[0])) return null;
+  return {groups: new Map([[-1, {p: p.subarray(0, m * 9), n: n.subarray(0, m * 9), u: uv.subarray(0, m * 6), k: k.subarray(0, m * 12)}]]), lo, hi};
+}
+// (20 Nov 2026) an OBJ model (words): its corners ("v x y z", with a colour after them when the file gives one) and its faces ("f a b c
+// ...", each corner by number, counted from 1, or from the end when below 0), every face cut into triangles from its first corner.
+// OBJ stands Y up, as the drawing does. Each face is lit by its own normal, in its corners' colours, else a plain light grey (the
+// colours an OBJ keeps in a separate .mtl file are not fetched). At most 300,000 triangles, as for the others.
+const objLike = u => { const h = new TextDecoder().decode(u.subarray(0, Math.min(u.length, 4096))); return !/^\s*solid\b/i.test(h) && /(^|\n)\s*v\s+-?[\d.]/.test(h) && /(^|\n)\s*(f|o|g|mtllib|usemtl|vn|vt)\s/.test(h); };
+async function objTris(u) {
+  const txt = new TextDecoder().decode(u), P = [], C = [], F = []; let lines = 0;
+  for (const line of txt.split(/\r?\n/)) {
+    if (++lines % 20000 === 0) await new Promise(r => setTimeout(r));
+    const s = line.trim(); if (!s || s[0] === '#') continue;
+    if (s[0] === 'v' && s[1] === ' ') { const k = s.split(/\s+/); P.push(+k[1], +k[2], +k[3]); C.push(k.length >= 7 ? [+k[4], +k[5], +k[6]] : null); }
+    else if (s[0] === 'f' && s[1] === ' ') { const k = s.split(/\s+/).slice(1).map(x => { const i = parseInt(x, 10); return i < 0 ? P.length / 3 + i : i - 1; }); for (let q = 1; q + 1 < k.length; q++) { F.push(k[0], k[q], k[q + 1]); if (F.length > 9e5) return null; } }
+  }
+  const nt = F.length / 3; if (!nt) return null;
+  const p = new Float32Array(nt * 9), n = new Float32Array(nt * 9), uv = new Float32Array(nt * 6), k = new Float32Array(nt * 12);
+  let m = 0; const lo = [1e30, 1e30, 1e30], hi = [-1e30, -1e30, -1e30];
+  for (let t = 0; t < nt; t++) {
+    const a = F[t * 3], b = F[t * 3 + 1], c = F[t * 3 + 2]; if (!(a >= 0 && b >= 0 && c >= 0 && a * 3 + 2 < P.length && b * 3 + 2 < P.length && c * 3 + 2 < P.length)) continue;
+    const v = [a, b, c].map(i => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]]); if (!v.every(w => isFinite(w[0] + w[1] + w[2]))) continue;
+    const ax = v[1][0] - v[0][0], ay = v[1][1] - v[0][1], az = v[1][2] - v[0][2], bx = v[2][0] - v[0][0], by = v[2][1] - v[0][1], bz = v[2][2] - v[0][2];
+    let fx = ay * bz - az * by, fy = az * bx - ax * bz, fz = ax * by - ay * bx; const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+    for (let j = 0; j < 3; j++) { const o = m * 9 + j * 3, cc = C[[a, b, c][j]], q = m * 12 + j * 4; p[o] = v[j][0]; p[o + 1] = v[j][1]; p[o + 2] = v[j][2]; n[o] = fx; n[o + 1] = fy; n[o + 2] = fz;
+      k[q] = cc ? cc[0] : .82; k[q + 1] = cc ? cc[1] : .82; k[q + 2] = cc ? cc[2] : .82; k[q + 3] = 1; for (let d = 0; d < 3; d++) { if (v[j][d] < lo[d]) lo[d] = v[j][d]; if (v[j][d] > hi[d]) hi[d] = v[j][d]; } }
+    m++;
+  }
   if (!m || !(hi[0] >= lo[0])) return null;
   return {groups: new Map([[-1, {p: p.subarray(0, m * 9), n: n.subarray(0, m * 9), u: uv.subarray(0, m * 6), k: k.subarray(0, m * 12)}]]), lo, hi};
 }
@@ -1993,7 +2021,7 @@ function mdlPng(bytes, S = 256, o) { const p = mdl.busy.then(() => mdlDraw(bytes
 async function mdlDraw(bytes, S, o = {}) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), gltf = u8.length >= 4 && new DataView(u8.buffer, u8.byteOffset, 4).getUint32(0, true) === 0x46546c67 || /^(\xef\xbb\xbf)?\s*\{/.test(String.fromCharCode(...u8.subarray(0, 16)));   // (glTF: its binary mark, or JSON; anything else is read as an STL)
   const M = gltf ? mdlParse(bytes) : {j: {}}; if (!M) return null;
-  let T; if (gltf) T = await mdlShrink(await mdlTris(M)); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = await mdlShrink(await stlTris(u8)); mdl.stl = T ? {b: bytes, T} : null; }
+  let T; if (gltf) T = await mdlShrink(await mdlTris(M)); else if (mdl.stl && mdl.stl.b === bytes) T = mdl.stl.T; else { T = await mdlShrink(await (objLike(u8) ? objTris(u8) : stlTris(u8))); mdl.stl = T ? {b: bytes, T} : null; }   // (OBJ or STL)
   if (!T) return null;
   const mats = M.j.materials || [], texs = new Map();
   for (const key of T.groups.keys()) { const m = mats[key], ti = m && m.pbrMetallicRoughness && m.pbrMetallicRoughness.baseColorTexture; if (ti && ti.index != null && !texs.has(ti.index)) texs.set(ti.index, await mdlTex(M, ti.index)); }
@@ -2246,6 +2274,7 @@ function mdlMvPv(t, ids, mv) {
 function vwMoving(t) {
   if (!t || !t.mdl) return null;
   if (t.mdlMv === undefined) t.mdlMv = mdlMoving(t.mdl);
+  if (window.FamilyGuard && (FamilyGuard.known(t.art) !== 'ok' || FamilyGuard.strict())) return null;   // (20 Nov 2026: played only once its picture is checked fine, and not in Family mode)
   return t.mdlMv && !t.mdlMv.no ? t : null;
 }
 // a block hall's 3D models, drawn one at a time once the block is read (the model's own bytes, from the block itself)
@@ -3161,7 +3190,7 @@ function preview(t) {
   if (room && t.art && t.art.mdl && t.mdl && !t.art.big && !t.mdlBig) { t.mdlBig = 1; mdlPng(t.mdl, 512).then(b => { if (b) { t.art = {ct: 'image/png', bytes: b, mdl: true, big: true}; if (sel === t) preview(t); } }); }
   if (room && t.art && t.art.mdl && t.mdl && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {   // (a 3D model that moves by itself: played, not a still picture)
     if (t.mdlMv === undefined) t.mdlMv = mdlMoving(t.mdl);
-    if (t.mdlMv && !t.mdlMv.no) { mdlMvPv(t, ids, t.mdlMv); return; }
+    if (t.mdlMv && !t.mdlMv.no && (!window.FamilyGuard || FamilyGuard.known(t.art) === 'ok' && !FamilyGuard.strict())) { mdlMvPv(t, ids, t.mdlMv); return; }   // (20 Nov 2026: only once its picture is checked fine)
   }
   if (room && t.art && /^image\//.test(t.art.ct || '') && (t.gal || t.cat21 || t.labitbu || t.art.mdl || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
     $cp.style.display = 'block'; $cp.innerHTML = '';

@@ -17,7 +17,7 @@
   else root.SafetyRead = make(root.CodeRead || null);
 })(typeof self !== 'undefined' ? self : this, function (CR) {
   'use strict';
-  const VERSION = '1.1.1';   // (1.1.0: scanWallet, every inscription an address holds; flashes, shared with the scan. 1.1.1: gentler with the Doginals Explorer)
+  const VERSION = '1.2.0';   // (1.1.0: scanWallet, every inscription an address holds; flashes, shared with the scan. 1.1.1: gentler with the Doginals Explorer. 1.2.0: 3D models)
   // every kind: its key, name, symbol, colour, what it means, and whether the Safety Scan finds it by looking (pictures, films) or by reading
   const KINDS = [
     {key: 'adult', name: 'May be adult', symbol: '🔞', colour: '#e5484d', says: 'a picture or film that may show nudity (18+)', by: 'looking'},
@@ -135,6 +135,69 @@
     const keep = new Map(); for (const f of out) { const k = f.kind + '|' + f.what + '|' + f.line; if (!keep.has(k)) keep.set(k, f); }
     return [...keep.values()];
   }
+  /* ---------- 3D models (glTF and GLB, STL, OBJ): read as data, never shown or run ----------
+     readModel(type, bytes): {model: 'GLB'|'glTF'|'STL'|'OBJ'|null, finds[], pictures[{type, bytes, where}], triangles, points}
+     finds: loads from outside the chain (code), too big for a phone (miner), and words written inside it (agent traps, scams, hate
+     words, personal details). pictures: the pictures packed inside it (its "skins"), for the picture checker to look at. */
+  const MBIG_TRIS = 3e6, MBIG_POINTS = 5e6, MBIG_BYTES = 2e8;
+  const u8s = (u, a, b) => { let t = ''; for (let i = a; i < b && i < u.length; i++) t += String.fromCharCode(u[i]); return t; };
+  const le32 = (u, p) => (u[p] | u[p + 1] << 8 | u[p + 2] << 16 | u[p + 3] << 24) >>> 0;
+  const utf8 = u => new TextDecoder().decode(u);
+  const outside = x => /^\s*(https?:)?\/\//i.test(String(x || ''));
+  function modelKind(type, u) {
+    const t = String(type || '').split(';')[0].trim().toLowerCase();
+    if (u.length >= 12 && u8s(u, 0, 4) === 'glTF') return 'GLB';
+    if (/gltf/.test(t) || /^\s*\{/.test(u8s(u, 0, 64)) && /"asset"\s*:/.test(u8s(u, 0, 4000))) { if (/^\s*\{/.test(u8s(u, 0, 64))) return 'glTF'; }
+    if (/stl|sla/.test(t)) return 'STL';
+    if (/obj/.test(t)) return 'OBJ';
+    if (/^model\//.test(t)) { if (u.length >= 84 && 84 + le32(u, 80) * 50 === u.length) return 'STL'; if (/^solid\s/.test(u8s(u, 0, 6))) return 'STL'; }
+    return null;
+  }
+  function readModel(type, bytes) {
+    const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), out = {model: modelKind(type, u), finds: [], pictures: [], triangles: 0, points: 0};
+    const big = what => out.finds.push({kind: 'miner', what: 'a 3D model so big it can freeze a phone (' + what + ')'});
+    const words = [];
+    try {
+      if (out.model === 'GLB' || out.model === 'glTF') {
+        let J = null, bin = null;
+        if (out.model === 'GLB') { let p = 12; while (p + 8 <= u.length) { const len = le32(u, p), ty = le32(u, p + 4), d = u.subarray(p + 8, p + 8 + len); if (ty === 0x4e4f534a) J = JSON.parse(utf8(d).replace(/[\0 ]+$/, '')); else if (ty === 0x004e4942) bin = d; p += 8 + len; } }
+        else J = JSON.parse(utf8(u));
+        if (!J || typeof J !== 'object') return out;
+        const views = J.bufferViews || [], bufs = J.buffers || [], acc = J.accessors || [], bufBytes = [];
+        let declared = 0;
+        bufs.forEach((b, i) => { declared += +b.byteLength || 0; if (b.uri == null) bufBytes[i] = bin; else if (/^data:/.test(b.uri)) { try { bufBytes[i] = b64u(String(b.uri).split(',')[1] || ''); } catch (e) {} } else if (outside(b.uri)) out.finds.push({kind: 'code', what: 'a 3D model that loads its shapes from outside the chain', sample: {untrusted: String(b.uri).slice(0, 140)}}); });
+        (J.meshes || []).forEach(m => (m.primitives || []).forEach(p => { const pos = acc[p.attributes && p.attributes.POSITION], n = p.indices != null && acc[p.indices] ? +acc[p.indices].count || 0 : pos ? +pos.count || 0 : 0; if (pos) out.points += +pos.count || 0; const mode = p.mode == null ? 4 : p.mode; if (mode === 4) out.triangles += Math.floor(n / 3); else if (mode === 5 || mode === 6) out.triangles += Math.max(0, n - 2); }));
+        if (out.triangles > MBIG_TRIS) big(Math.round(out.triangles).toLocaleString('en-GB') + ' triangles'); else if (out.points > MBIG_POINTS) big(Math.round(out.points).toLocaleString('en-GB') + ' points'); else if (declared > MBIG_BYTES) big('it says its data is ' + Math.round(declared / 1e6) + ' MB');
+        (J.images || []).forEach((im, i) => {
+          if (out.pictures.length >= 6) return;
+          let b = null;
+          if (im.bufferView != null && views[im.bufferView]) { const v = views[im.bufferView], B = bufBytes[v.buffer]; if (B) b = B.subarray(v.byteOffset || 0, (v.byteOffset || 0) + (v.byteLength || 0)); }
+          else if (im.uri && /^data:/.test(im.uri)) { try { b = b64u(String(im.uri).split(',')[1] || ''); } catch (e) {} }
+          else if (outside(im.uri)) { out.finds.push({kind: 'code', what: 'a 3D model that loads a picture from outside the chain', sample: {untrusted: String(im.uri).slice(0, 140)}}); return; }
+          if (b && b.length) { const ty = im.mimeType || (/^\x89PNG/.test(u8s(b, 0, 4)) ? 'image/png' : b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg' : /^RIFF/.test(u8s(b, 0, 4)) ? 'image/webp' : ''); if (ty) out.pictures.push({type: ty, bytes: b, where: 'picture ' + (i + 1) + ' inside the 3D model'}); }
+        });
+        // the words written inside it: who made it, names of its parts, notes ("extras")
+        const A = J.asset || {}; for (const k of ['generator', 'copyright']) if (A[k]) words.push(String(A[k]));
+        for (const list of ['scenes', 'nodes', 'meshes', 'materials', 'textures', 'images', 'animations', 'skins', 'cameras']) for (const x of (J[list] || []).slice(0, 2000)) if (x && x.name) words.push(String(x.name));
+        const ex = []; (function walk(o, d) { if (!o || typeof o !== 'object' || d > 8 || ex.length > 400) return; for (const [k, v] of Object.entries(o)) { if (k === 'extras' && v != null) ex.push(typeof v === 'string' ? v : JSON.stringify(v).slice(0, 4000)); else if (typeof v === 'object') walk(v, d + 1); } })(J, 0);
+        words.push(...ex);
+      } else if (out.model === 'STL') {
+        if (/^solid\s/.test(u8s(u, 0, 6)) && !(u.length >= 84 && 84 + le32(u, 80) * 50 === u.length)) { const t = utf8(u.subarray(0, Math.min(u.length, 2e7))); out.triangles = (t.match(/\bfacet\b/g) || []).length; words.push((t.match(/^solid[ \t]+([^\r\n]*)/) || ['', ''])[1]); }
+        else if (u.length >= 84) { out.triangles = le32(u, 80); words.push(u8s(u, 0, 80).replace(/[^\x20-\x7e]+/g, ' ')); }
+        if (out.triangles > MBIG_TRIS) big(out.triangles.toLocaleString('en-GB') + ' triangles');
+      } else if (out.model === 'OBJ') {
+        const t = utf8(u.subarray(0, Math.min(u.length, 2e7)));
+        for (const line of t.split(/\r?\n/)) { const c = line.trimStart(); if (c[0] === 'v' && c[1] === ' ') out.points++; else if (c[0] === 'f' && c[1] === ' ') out.triangles += Math.max(1, c.split(/\s+/).length - 3);
+          else if (c[0] === '#') words.push(c.slice(1)); else if (/^(o|g|usemtl|mtllib)\s/.test(c)) { words.push(c.replace(/^\S+\s+/, '')); if (/^mtllib\s/.test(c) && outside(c.slice(7))) out.finds.push({kind: 'code', what: 'a 3D model that loads its looks from outside the chain', sample: {untrusted: c.slice(0, 140)}}); } }
+        if (out.triangles > MBIG_TRIS) big(out.triangles.toLocaleString('en-GB') + ' faces'); else if (out.points > MBIG_POINTS) big(out.points.toLocaleString('en-GB') + ' points');
+      }
+    } catch (e) { out.unread = String(e && e.message || e).slice(0, 120); }
+    const w = words.filter(Boolean).join('\n').slice(0, 200000);
+    if (w.trim()) for (const f of read('text/plain', w, 'model')) { if (f.kind === 'personal' && /^made with|generator/i.test(f.what)) continue; delete f.file; f.what += ' (written inside the 3D model)'; out.finds.push(f); }
+    return out;
+  }
+  const b64u = s => typeof atob === 'function' ? Uint8Array.from(atob(s), c => c.charCodeAt(0)) : new Uint8Array(Buffer.from(s, 'base64'));
+
   /* ---------- flashing: the WCAG "three flashes" rule, read on each quarter of the picture (and its middle) ----------
      frames: grey values (0-255), W x H each; times: when each frame starts (ms). Gives the most flashes in any one second. */
   const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
@@ -169,7 +232,7 @@
     const F = o.fetch || ((u, i) => fetch(u, i)), MAX = Math.min(o.max || 3000, 10000), say = o.progress || (() => {}), stop = o.stopped || (() => false);
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const DXS = 'https://thedoginalsexplorer.com', BASES = chain === 'doge' ? [DXS, 'https://cdn.doggy.market'] : ['https://ordinals.com'];
-    const out = {chain: chain === 'doge' ? 'Dogecoin' : 'Bitcoin', address: a, at: new Date().toISOString(), holds: 0, checked: 0, pictures: 0, films: 0, text: 0, other: 0, notLooked: 0, flashNotChecked: 0, namesAndTokens: 0, tooMany: 0, found: [], tally: {}};
+    const out = {chain: chain === 'doge' ? 'Dogecoin' : 'Bitcoin', address: a, at: new Date().toISOString(), holds: 0, checked: 0, pictures: 0, films: 0, models: 0, text: 0, other: 0, notLooked: 0, flashNotChecked: 0, namesAndTokens: 0, tooMany: 0, found: [], tally: {}};
     // the list
     let list = [];
     say('Reading which inscriptions ' + a + ' holds…');
@@ -203,6 +266,10 @@
       if (PIC.test(ty) || FILM.test(ty)) {
         if (FILM.test(ty)) out.films++; else out.pictures++;
         if (o.look) { try { const L = await o.look({id: x.id, type: ty, bytes}); finds = L.finds || []; if (L.flashNotChecked) out.flashNotChecked++; if (L.notLooked) out.notLooked++; } catch (e) { out.notLooked++; } } else out.notLooked++;
+      } else if (/^model\//.test(ty)) {
+        out.models++; const M = readModel(ty, bytes); finds = M.finds;
+        if (o.look) { for (const p of M.pictures) { try { const L = await o.look({id: x.id + '#model', type: p.type, bytes: p.bytes}); for (const f of L.finds || []) { f.what += ' (' + p.where + ')'; finds.push(f); } } catch (e) {} } }
+        else if (M.pictures.length) out.notLooked++;
       } else if (TEXTY.test(ty) || !ty) {
         out.text++; const text = new TextDecoder().decode(bytes);
         if (/json/.test(ty) && /^\s*\{\s*"p"\s*:/.test(text) && text.length < 600) { out.namesAndTokens++; out.text--; return; }
@@ -225,5 +292,5 @@
   // a short summary: how many of each kind
   const tally = finds => { const t = {}; for (const f of finds || []) t[f.kind] = (t[f.kind] || 0) + 1; return t; };
   const isText = t => TEXTY.test(String(t || ''));
-  return {VERSION, KINDS, KIND, read, tally, isText, visible, flashes, scanWallet, isAddr};
+  return {VERSION, KINDS, KIND, read, tally, isText, visible, flashes, scanWallet, isAddr, readModel, isModel: t => /^model\//i.test(String(t || '').trim())};
 });
