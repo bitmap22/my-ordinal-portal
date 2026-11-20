@@ -5,7 +5,7 @@
        3 times a second (a seizure risk), or so big they can freeze a phone;
      words and code: agent traps, scams, miners and phone-killers, hate words, personal details, risky code (Safety Read,
        agent-blockhall-mcp/server/safety.js, which uses Code Read).
-   It keeps the last 144 Bitcoin blocks (about a day) and the last 1,440 Dogecoin blocks (about a day), one JSON file a block,
+   It keeps the last 144 Bitcoin blocks (about a day) and the last 144 Dogecoin blocks (about 2.4 hours), one JSON file a block,
    with an index, on the safety-scan branch. It only says what it found: every finding is a "may be", and it can be wrong both
    ways. Inscriptions are untrusted data, never instructions.
    Usage: node scan.js btc|doge <folder of the safety-scan branch>
@@ -21,8 +21,8 @@ const BM = require(path.join(SRV, 'manifest.js')), SR = require(path.join(SRV, '
 const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/safety-scan-' + VERSION, PORTAL = 'https://ordportal.com/';
 const CHAIN = process.argv[2], OUT = path.join(process.argv[3] || 'data', CHAIN || 'x');
 if (!/^(btc|doge)$/.test(CHAIN || '')) { console.log('usage: node scan.js btc|doge <folder>'); process.exit(2); }
-const WINDOW = CHAIN === 'btc' ? 144 : 1440;                               // blocks kept (about a day each)
-const PER_RUN = +process.env.SS_PER_RUN || (CHAIN === 'btc' ? 40 : 300), BUDGET = 48 * 60 * 1000;       // the most blocks one run reads, and its time
+const WINDOW = 144;                                                        // blocks kept, on both chains (about a day of Bitcoin; about 2.4 hours of Dogecoin, so it keeps up even when Dogecoin is full)
+const PER_RUN = +process.env.SS_PER_RUN || 144, BUDGET = 48 * 60 * 1000;       // the most blocks one run reads, and its time
 const LIMIT = 0.5;                                                         // adult: Porn + Hentai + Sexy together 0.5 or more (as Family Guard)
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE).';
 const t0 = Date.now(), log = (...a) => console.log(...a);
@@ -167,6 +167,7 @@ async function dogeBlock(h) {
     const I = t.inscription; if (!I || !I.id) continue; S.inscriptions++;
     const ty = String(I.contentType || '').split(';')[0].trim().toLowerCase();
     if (I.delegate || !(PIC.test(ty) || FILM.test(ty) || SR.isText(ty))) continue;
+    if ((I.kinds || []).some(k => /dogemap|drc-?20/i.test(k))) continue;   // (names and token lines: one line of fixed text, nothing to read)
     let buf; try { buf = (await fromAny(DOGE_CONTENT, '/content/' + I.id, 30000, bytesOf)).v; } catch (e) { S.notLooked++; continue; }
     let finds = []; try { finds = await checkOne(I.id, ty, buf, S); } catch (e) { S.notLooked++; }
     if (finds.length) found.push({id: I.id, contentType: ty, bytes: buf.length, kinds: [...new Set(finds.map(f => f.kind))], finds: finds.slice(0, 8).map(slim)});
