@@ -571,7 +571,7 @@ async function safetyScan({chain, block, id, kind, contentType, text, address}) 
   const c = chain && /^d/i.test(chain) ? 'doge' : 'btc', page = PORTAL + (c === 'doge' ? 'doge-safety-scan.html' : 'safety-scan.html');
   if (address) {   // a wallet: every inscription it holds, read here (pictures and films are looked at on the portal's page, not here)
     const R = await SR.scanWallet({chain: c, address, fetch: fetchUA, max: 3000});
-    return Object.assign(R, {found: R.found.map(f => Object.assign({}, f, {lookAt: c === 'doge' ? {'thedoginalsexplorer.com': 'https://thedoginalsexplorer.com/inscription/' + f.id} : {'ordinals.com': 'https://ordinals.com/inscription/' + f.id}}))}),
+    return Object.assign(R, {found: R.found.map(f => Object.assign({}, f, {lookAt: c === 'doge' ? {'thedoginalsexplorer.com': 'https://thedoginalsexplorer.com/inscription/' + f.id} : {'ordinals.com': 'https://ordinals.com/inscription/' + f.id}}))},
       {key, pictures: 'Pictures and films are not looked at here (that needs the picture checker): open ' + page + ' and use Check a wallet, or call agent.scanWallet({address}) there, to look at them too.', seeIt: page, note: NOTE});
   }
   if (kind && !SR.KIND[kind]) throw new Error('no such kind: the kinds are ' + SR.KINDS.map(K => K.key).join(', '));
