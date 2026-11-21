@@ -769,8 +769,10 @@ let burst = 6;   // (in a walk-in room bursts stay at 4 ms, so walking never jol
 // appeared, and the screen stood still for up to half a second. Now, once 10 ms have gone by since the screen last drew, the
 // next burst waits for the next frame to be drawn first. (In a hidden tab, where no frames come, it carries on as before.)
 let lastDraw = performance.now(); (function drawn() { lastDraw = performance.now(); requestAnimationFrame(drawn); })();
-const yieldNow = () => new Promise(r => { const t = performance.now(), go = () => { const c = new MessageChannel(); c.port1.onmessage = () => { burst = room ? 4 : Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); };
-  if (!document.hidden && t - lastDraw > 10) requestAnimationFrame(go); else go(); });
+// (After waiting for a frame the next burst is a steady 8 ms: the wait itself says nothing about a slow device, and letting it
+// grow the burst made some bursts 100 ms long.)
+const yieldNow = () => new Promise(r => { const t = performance.now(), go = f => { const c = new MessageChannel(); c.port1.onmessage = () => { burst = room ? 4 : f ? 8 : Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); };
+  if (!document.hidden && t - lastDraw > 10) requestAnimationFrame(() => go(true)); else go(false); });
 // pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
 // If a block has many very big transactions, near-cube boxes can't stack inside (e.g. nine 59,000 vB boxes, 24 units a
 // side: only four fit across, so a third layer pokes out of the top). Then it is packed again with those big boxes
