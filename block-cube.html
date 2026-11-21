@@ -1836,6 +1836,16 @@ async function decodeArt(a) {
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
 }
+// a picture from someone else's bytes, for an <img> people can see. A blob: link made here belongs to ordportal.com, so an SVG
+// (which can hold script) opened from it in a tab of its own would run as this site. Anything that isn't a plain picture goes in
+// as a data: link instead, which belongs to no site: opened on its own, nothing in it can reach this one. Plain pictures stay blob: links.
+const SAFE_PIC_T = /^image\/(png|jpe?g|gif|webp|avif|bmp|apng|x-icon|vnd\.microsoft\.icon)$/;
+function shownPic(bytes, type) {
+  const ty = String(type || '').split(';')[0].trim().toLowerCase(), u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (SAFE_PIC_T.test(ty)) return URL.createObjectURL(new Blob([u], {type: ty}));
+  let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return 'data:' + (/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(ty) ? ty : 'application/octet-stream') + ';base64,' + btoa(s);
+}
 /* ---------- 3D models (glTF): drawn once into a picture, from the model's own shapes and colours ---------- */
 // A glTF inscription (.glb, or glTF JSON with its data inside): its meshes in their resting pose, each in its material's own
 // colour (and its colour picture, when it has one), lit from above; seen from the front, a little from the right and above, on a
@@ -3526,7 +3536,7 @@ function preview(t) {
   }
   if (room && t.art && /^image\//.test(t.art.ct || '') && (t.gal || t.cat21 || t.labitbu || t.art.mdl || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
     $cp.style.display = 'block'; $cp.innerHTML = '';
-    if (preview.url) URL.revokeObjectURL(preview.url); preview.url = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct}));
+    if (preview.url) URL.revokeObjectURL(preview.url); preview.url = shownPic(t.art.bytes, t.art.ct);
     const im = document.createElement('img'); im.className = 'pa'; im.alt = ''; im.src = preview.url; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $cp.append(im); fgShow(im, t.art, {bytes: t.art.bytes, type: t.art.ct}, {below: true});
     if (t.art.mdl && t.mdlMv && t.mdlMv.no === 'big') { const n = document.createElement('div'); n.className = 'pvt'; n.textContent = 'this model moves by itself, but it is too big to play here (over ' + fmt(MDL_MAXT) + ' triangles): its still picture'; $cp.append(n); }
     if (ids && ids.length) $cp.append(pvRow(ids, 0, t));
@@ -8529,8 +8539,8 @@ function vwRender() {
   } else if (it.k === 'stamp') {
     const ty = it.type || 'application/octet-stream';
     what = 'stamp · ' + vwKind(ty) + ' · ' + fmt(it.bytes.length) + ' bytes' + (it.proto === 'olga' ? ' · OLGA' : it.proto === 'classic' ? ' · classic' : '');
-    if (/^image\//.test(ty) && ty !== 'image/svg+xml') { vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: ty})); const im = new Image(); im.src = vwUrl; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); fgShow(im, it.id || it, {bytes: it.bytes, type: ty}); }
-    else if (ty === 'image/svg+xml') { vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: ty})); const im = new Image(); im.alt = ''; im.src = vwUrl; $vwc.appendChild(im); fgShow(im, it.id || it, {bytes: it.bytes, type: ty}); }   // (an SVG as a picture: nothing in a picture runs)
+    if (/^image\//.test(ty) && ty !== 'image/svg+xml') { vwUrl = shownPic(it.bytes, ty); const im = new Image(); im.src = vwUrl; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); fgShow(im, it.id || it, {bytes: it.bytes, type: ty}); }
+    else if (ty === 'image/svg+xml') { vwUrl = shownPic(it.bytes, ty); const im = new Image(); im.alt = ''; im.src = vwUrl; $vwc.appendChild(im); fgShow(im, it.id || it, {bytes: it.bytes, type: ty}); }   // (an SVG as a picture, from a data: link: nothing in a picture runs, and opened on its own it can't reach this site)
     else if (ty === 'text/html') { const p = document.createElement('pre'); p.textContent = 'A stamp that is a web page. To keep you safe, its code is not run here. Its code, as text:\n\n' + RR.utf8(it.bytes.subarray(0, 200000)); $vwc.appendChild(p); }
     else { const p = document.createElement('pre'); p.textContent = RR.utf8(it.bytes.subarray(0, 200000)); $vwc.appendChild(p); }
     $vwo.style.display = $vwv.style.display = 'none';
@@ -8547,7 +8557,7 @@ function vwRender() {
   } else if (it.k === 'pic') {   // (a picture made or read here: shown as a picture, where nothing can run)
     if (it.mdlT && it.mdlT.mdlMv && it.mdlT.mdlMv.no === 'big') it.what = 'its 3D model \u00b7 it moves by itself, but it is too big to play here (over ' + fmt(MDL_MAXT) + ' triangles): its still picture';
     what = it.what + ' · ' + vwKind(it.type) + ' · ' + fmt(it.bytes.length) + ' bytes';
-    vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: it.type})); const im = new Image(); im.src = vwUrl; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); fgShow(im, it.mdlT ? it.mdlT.art || it : it.id || it, {bytes: it.bytes, type: it.type});
+    vwUrl = shownPic(it.bytes, it.type); const im = new Image(); im.src = vwUrl; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); fgShow(im, it.mdlT ? it.mdlT.art || it : it.id || it, {bytes: it.bytes, type: it.type});
     $vwo.style.display = $vwv.style.display = 'none';
   } else {
     what = it.title.toLowerCase();
@@ -10231,7 +10241,7 @@ function tradeAsk(k) {
   else if (o.s) {
     // the block: its picture (or model), and everything the chain says about it
     const s = sec((mine ? 'YOUR BLOCK' : String(nm(who)).toUpperCase() + '’S BLOCK') + ' · ON DISPLAY');
-    if (t && t.art && t.art.bytes && /^image\//.test(t.art.ct || '')) { if (trade.picUrl) URL.revokeObjectURL(trade.picUrl); trade.picUrl = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct})); const im = el('img', 'pic'); im.alt = ''; im.src = trade.picUrl; s.append(im); if (typeof fgShow === 'function') fgShow(im, t.art, {bytes: t.art.bytes, type: t.art.ct}, {below: true}); }
+    if (t && t.art && t.art.bytes && /^image\//.test(t.art.ct || '')) { if (trade.picUrl) URL.revokeObjectURL(trade.picUrl); trade.picUrl = shownPic(t.art.bytes, t.art.ct); const im = el('img', 'pic'); im.alt = ''; im.src = trade.picUrl; s.append(im); if (typeof fgShow === 'function') fgShow(im, t.art, {bytes: t.art.bytes, type: t.art.ct}, {below: true}); }
     kv(s, [['inscription', r.n != null ? '#' + fmt(r.n) : b.n ? '#' + fmt(b.n) : ''], ['inscription id', X],
       ['what it is', t && t.art && t.art.mdl ? '3D model (' + (r.ct || 'glTF') + '), drawn here from the model' : r.ct ? r.ct.split(';')[0] : ''], ['size', r.len ? fmt(r.len) + ' bytes' : ''],
       ['made', (r.ts ? new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' · ' : '') + (r.h != null ? 'block ' + fmt(r.h) : '')],
@@ -12472,7 +12482,7 @@ function mateGone(id, door) { if (!door) { own.mates.delete(id); trade.mates.del
   const M = crew.mates.get(id); if (!M) return; M.tag.remove(); crew.mates.delete(id); if (M.H) BCH.drop(M.H); M.H = null; }
 const cleanS = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, n);
 addEventListener('message', e => {
-  if (e.source !== parent || parent === window) return;
+  if (e.source !== parent || parent === window || e.origin !== location.origin) return;   // (only our own Play together page: another website that frames the game can't feed it crewmates)
   const m = e.data; if (!m || m.app !== 'blockcube-host') return;
   if (m.type === 'page') { if (!crew.page) { crew.page = true; document.body.classList.add('crewpage'); } toPage({type: 'hello'}); return; }
   if (m.type === 'ready') { crew.on = true; document.body.classList.add('crewon'); crew.me = typeof (m.me && m.me.id) === 'string' ? m.me.id : ''; crew.myName = cleanS(m.me && m.me.name, 20); const self = crew.mates.get(crew.me); if (self) { crew.look = self.look; mateGone(crew.me); } if (!crew.inYet) { crew.inYet = true; crewIn(); setTimeout(() => { if (crew.on) cmShare({k: 'hi'}); }, 1500); } return; }

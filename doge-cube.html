@@ -1584,6 +1584,16 @@ async function decodeArt(a) {
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
 }
+// a picture from someone else's bytes, for an <img> people can see. A blob: link made here belongs to ordportal.com, so an SVG
+// (which can hold script) opened from it in a tab of its own would run as this site. Anything that isn't a plain picture goes in
+// as a data: link instead, which belongs to no site: opened on its own, nothing in it can reach this one. Plain pictures stay blob: links.
+const SAFE_PIC_T = /^image\/(png|jpe?g|gif|webp|avif|bmp|apng|x-icon|vnd\.microsoft\.icon)$/;
+function shownPic(bytes, type) {
+  const ty = String(type || '').split(';')[0].trim().toLowerCase(), u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (SAFE_PIC_T.test(ty)) return URL.createObjectURL(new Blob([u], {type: ty}));
+  let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return 'data:' + (/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(ty) ? ty : 'application/octet-stream') + ';base64,' + btoa(s);
+}
 const artCvs = {};
 const artCanvas = n => { if (!artCvs[n]) { const c = document.createElement('canvas'); c.width = c.height = n; artCvs[n] = [c, c.getContext('2d')]; } return artCvs[n]; };
 const wRank = w => w.k === 'rune' ? w.s || 4 : w.k === 'alk' || w.k === 'cp' ? 1 : 0;
@@ -3357,7 +3367,7 @@ function preview(t) {
   }
   if (room && t.art && /^image\//.test(t.art.ct || '') && (t.art.mdl || t.ins && t.ins[0] && /^image\//.test(t.ins[0].ct || '')) && !((t._pi || 0) % Math.max(1, ids ? ids.length : 1))) {
     $cp.style.display = 'block'; $cp.innerHTML = '';
-    if (preview.url) URL.revokeObjectURL(preview.url); preview.url = URL.createObjectURL(new Blob([t.art.bytes], {type: t.art.ct}));
+    if (preview.url) URL.revokeObjectURL(preview.url); preview.url = shownPic(t.art.bytes, t.art.ct);
     const im = document.createElement('img'); im.className = 'pa'; im.alt = ''; im.src = preview.url; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); $cp.append(im); fgShow(im, t.art, {bytes: t.art.bytes, type: t.art.ct}, {below: true});
     if (ids && ids.length > 1) { const p = document.createElement('div'); p.className = 'pv2'; p.innerHTML = `<span>inscription 1 of ${fmt(ids.length)}</span><button>next ›</button>`; p.querySelector('button').onclick = e => { e.stopPropagation(); t._pi = 1; preview(t); }; $cp.append(p); }
     return;
@@ -8026,7 +8036,7 @@ function vwRender() {
     if (it.num == null && !it._asked) { it._asked = 1; djP(DX + '/v1/inscription/' + it.id, 15000).then(o => { it.num = o.number; if (!it.type) it.type = o.contentType; if (vw && vw.items[vw.i] === it) vwRender(); }, () => {}); }
   } else if (it.k === 'pic') {   // (a picture drawn here from its 3D model: shown as a picture, where nothing can run; checked by the Family Guard)
     what = it.what + ' · ' + fmt(it.bytes.length) + ' bytes';
-    vwUrl = URL.createObjectURL(new Blob([it.bytes], {type: it.type})); const im = new Image(); im.src = vwUrl; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); fgShow(im, it.mdlT ? it.mdlT.art || it : it, {bytes: it.bytes, type: it.type});
+    vwUrl = shownPic(it.bytes, it.type); const im = new Image(); im.src = vwUrl; im.alt = ''; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320); $vwc.appendChild(im); fgShow(im, it.mdlT ? it.mdlT.art || it : it, {bytes: it.bytes, type: it.type});
     $vwo.style.display = 'none';
   } else {
     what = it.title.toLowerCase();
@@ -9135,7 +9145,7 @@ function mate(id) {
 function mateGone(id) { const M = crew.mates.get(id); if (!M) return; M.tag.remove(); crew.mates.delete(id); }
 const cleanS = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, n);
 addEventListener('message', e => {
-  if (e.source !== parent || parent === window) return;
+  if (e.source !== parent || parent === window || e.origin !== location.origin) return;   // (only our own Play together page: another website that frames the game can't feed it crewmates)
   const m = e.data; if (!m || m.app !== 'blockcube-host') return;
   if (m.type === 'page') { if (!crew.page) { crew.page = true; document.body.classList.add('crewpage'); } toPage({type: 'hello'}); return; }
   if (m.type === 'ready') { crew.on = true; crew.me = typeof (m.me && m.me.id) === 'string' ? m.me.id : ''; const self = crew.mates.get(crew.me); if (self) { crew.look = self.look; mateGone(crew.me); } crewIn(); return; }
