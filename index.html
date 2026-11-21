@@ -52,7 +52,7 @@
         .topnav a:hover { color: var(--text); }
 
         /* the front door: the corridor (a canvas of real blocks) behind, the words in its nearest frame */
-        .hero { position: relative; min-height: max(640px, calc(100svh - 60px)); display: grid; align-items: end; justify-items: center; overflow: hidden;
+        .hero { position: relative; min-height: max(640px, calc(100svh - 60px)); display: grid; grid-template-columns: minmax(0, 1fr); align-items: end; justify-items: center; overflow: hidden;
             background: radial-gradient(ellipse 70% 55% at 50% 44%, #18233d 0%, #0e1526 45%, var(--night) 75%); }
         .hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: default; touch-action: pan-y; }
         .hero canvas.on-frame { cursor: pointer; }
@@ -81,6 +81,28 @@
         .frame-say { position: absolute; z-index: 3; left: 0; top: 0; max-width: min(340px, 80vw); padding: 9px 12px; border: 1px solid var(--amber); border-radius: 8px;
             background: rgba(10, 15, 28, .94); font: 13px/1.45 var(--sign); color: var(--text); pointer-events: none; opacity: 0; transition: opacity .15s; box-shadow: 0 8px 26px rgba(0, 0, 0, .5); }
         .frame-say.on { opacity: 1; }
+        .frame-say.pinned { pointer-events: auto; z-index: 4; }
+        .say-acts { display: flex; gap: 8px; margin-top: 10px; }
+        .say-acts .btn { flex: 1; min-height: 40px; padding: 0 14px; font-size: 14px; }
+        /* moving through time: Older and Newer either side of the line under the title, then spacing and Go to, equal widths */
+        .time-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 22px; }
+        .time-row .tip { margin: 0; }
+        .tbtn { min-height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid rgba(243, 165, 48, .45); background: rgba(10, 15, 28, .7);
+            color: var(--amber-hot); font: 500 14px var(--sign); cursor: pointer; white-space: nowrap; }
+        .tbtn:hover { border-color: var(--amber); background: rgba(243, 165, 48, .12); }
+        .tbtn:focus-visible, .time-go input:focus-visible, .chip:focus-visible, .tip-back:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+        .time-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; margin-top: 12px; }
+        .spacing, .time-go { display: flex; flex: 0 1 290px; min-width: 0; }
+        .spacing .tbtn { flex: 1; border-radius: 0; }
+        .spacing .tbtn:first-child { border-radius: 17px 0 0 17px; border-right: 0; }
+        .spacing .tbtn:last-child { border-radius: 0 17px 17px 0; }
+        .spacing .tbtn[aria-pressed="true"] { background: rgba(243, 165, 48, .22); border-color: var(--amber); color: var(--text); }
+        .time-go input { flex: 1; min-width: 0; min-height: 34px; padding: 0 14px; border: 1px solid rgba(243, 165, 48, .45); border-right: 0; border-radius: 17px 0 0 17px;
+            background: rgba(10, 15, 28, .7); color: var(--text); font: 14px var(--sign); }
+        .time-go input::placeholder { color: var(--muted); }
+        .time-go .tbtn { border-radius: 0 17px 17px 0; }
+        .tip-back { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--cyan); font: inherit; text-decoration: underline; cursor: pointer; }
+        .time-strip { display: none; }
         .frame-say b { color: var(--amber-hot); font-weight: 600; }
         .frame-say span { color: var(--muted); }
         .recent { position: absolute; left: 0; bottom: 0; z-index: 2; list-style: none; margin: 0; padding: 0; }
@@ -191,16 +213,27 @@
         @media (max-width: 900px) {
             .halls, .ways { grid-template-columns: 1fr; }
         }
+        /* touch screens (no hover) and phones: the blocks in the corridor as a strip to swipe, each one tapped to see its card */
+        @media (hover: none), (max-width: 640px) {
+            .time-strip { display: flex; gap: 8px; overflow-x: auto; margin: 14px -22px 0; padding: 2px 22px 8px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+            .chip { flex: 0 0 auto; scroll-snap-align: start; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 12px; border: 1px solid var(--line);
+                border-radius: 8px; background: rgba(10, 15, 28, .85); color: var(--muted); font: 12px var(--sign); cursor: pointer; }
+            .chip b { color: var(--amber-hot); font-size: 14px; font-weight: 600; }
+            .chip.on { border-color: var(--amber); }
+        }
         @media (max-width: 640px) {
             body { font-size: 16px; }
             .wrap { padding: 0 18px; }
             .topnav { gap: 14px; font-size: 14px; }
             .topnav .wide { display: none; }
-            .hero { min-height: max(720px, calc(100svh - 60px)); }
+            .hero { min-height: 0; padding-top: clamp(300px, 46svh, 400px); }   /* the corridor above, the words below it: no sign under the title */
             .hero-in { padding-bottom: 40px; }
             .hero .subtitle { font-size: 16px; }
             .hero-actions .btn { width: 100%; max-width: 320px; }
             .tip { font-size: 13px; }
+            .time-row { gap: 8px; }
+            .time-row .w { display: none; }
+            .time-row .step { min-width: 40px; padding: 0 12px; }
             .shelf .card { flex-basis: 100%; }
             .shelf .button-row a, .shelf .button-row button { padding: 9px 0; }
             .agents { padding: 26px 16px; }
@@ -263,7 +296,16 @@
                     <div class="card-top"><span class="card-number">#039</span><span class="card-tag">Tool</span></div>
                     <h1 id="ab-title">Agent Blockhall</h1>
                     <p class="subtitle card-note">Walk into any Bitcoin block. Every transaction is a box on a shelf, sorted by what it is: inscriptions, runes, bitmaps, payments. Pick one up to see what's inside. Built for people and AI agents.</p>
-                    <p class="tip" id="tip" aria-live="polite"></p>
+                    <div class="time-row" role="group" aria-label="Move through time">
+                        <button type="button" class="tbtn step" data-time-step="-1" aria-label="One block older"><span aria-hidden="true">&#9664;</span><span class="w"> Older</span></button>
+                        <p class="tip" id="tip" aria-live="polite"></p>
+                        <button type="button" class="tbtn step" data-time-step="1" aria-label="One block newer"><span class="w">Newer </span><span aria-hidden="true">&#9654;</span></button>
+                    </div>
+                    <div class="time-tools">
+                        <div class="spacing" role="group" aria-label="Space the frames"><button type="button" class="tbtn" data-spacing="even" aria-pressed="true">Even spacing</button><button type="button" class="tbtn" data-spacing="time" aria-pressed="false">Real time</button></div>
+                        <form class="time-go" id="time-go"><input id="time-go-in" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="Go to block or bitmap" aria-label="Go to a block or bitmap, like 840000"><button type="submit" class="tbtn">Go</button></form>
+                    </div>
+                    <div class="time-strip" id="time-strip" role="group" aria-label="The blocks in the corridor: tap one to see it"></div>
                     <div class="hero-actions button-row">
                         <a class="btn main" href="block-cube.html">Walk in</a>
                         <button type="button" class="btn open-in-portal">Open inside the portal</button>
@@ -1112,7 +1154,19 @@ window.AgentKit = window.AgentKit || (() => {
   }
   const cmds = [
     {name: 'see', ro: true, untrusted: true, does: 'Everything on the portal now, by section: each game and tool, its note and its buttons, and what is open in the viewer. Gives back text.', run: () => see()},
-    {name: 'state', ro: true, untrusted: true, does: 'The same as data. frontDoor is the front page\'s corridor: the newest Bitcoin blocks as door frames, each with its height, transactions, pool, when it was mined and walkIn (block-cube.html#block=N walks straight into its hall). Gives back {page, frontDoor{from, blocks[{height, transactions, pool, minedAt, walkIn}]}, about, counts[], filter, search, viewer{open}, storage{repo, megabytes, of, percent, read, from}, cards[{n, title, kind, section, note, page, shown, buttons[{does, page}]}]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"page":{},"about":{},"counts":{"type":"array"},"filter":{},"search":{},"viewer":{"type":"object","properties":{"open":{}}},"storage":{"type":"object","properties":{"repo":{},"megabytes":{},"of":{},"percent":{},"read":{},"from":{}}},"cards":{"type":"array","items":{"type":"object","properties":{"n":{},"title":{},"kind":{},"section":{},"note":{},"page":{},"shown":{},"buttons":{"type":"array","items":{"type":"object","properties":{"does":{},"page":{}}}}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: () => state()},
+    {name: 'state', ro: true, untrusted: true, does: 'The same as data. frontDoor is the front page\'s corridor: Bitcoin blocks as door frames, the nearest one the block it is at (the newest, unless it has been moved back in time), each with its height, transactions, pool, when it was mined and walkIn (block-cube.html#block=N walks straight into its hall); corridor() gives it in full, and corridorGo moves it through time. Gives back {page, frontDoor{from, blocks[{height, transactions, pool, minedAt, walkIn}]}, about, counts[], filter, search, viewer{open}, storage{repo, megabytes, of, percent, read, from}, cards[{n, title, kind, section, note, page, shown, buttons[{does, page}]}]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"page":{},"about":{},"counts":{"type":"array"},"filter":{},"search":{},"viewer":{"type":"object","properties":{"open":{}}},"storage":{"type":"object","properties":{"repo":{},"megabytes":{},"of":{},"percent":{},"read":{},"from":{}}},"cards":{"type":"array","items":{"type":"object","properties":{"n":{},"title":{},"kind":{},"section":{},"note":{},"page":{},"shown":{},"buttons":{"type":"array","items":{"type":"object","properties":{"does":{},"page":{}}}}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: () => state()},
+    {name: 'corridor', ro: true, does: 'The front page\'s corridor now: the block it is at (at), whether it follows the newest block (live), the newest block (newest), how the frames are spaced (spacing: even, one step a block, or time, where the gap between two frames is the time between their blocks), and each block in view, nearest first: height, transactions, pool, minedAt, afterPrevious (seconds after the block before it, as the blocks\' own clocks say: miners\' clocks can differ), milestone (a halving, inscription #0\'s block, Blockout Day and the like), bitmap and walkIn. Gives back {from, live, at, newest, spacing, blocks[]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"from":{},"live":{"type":"boolean"},"at":{"type":"integer"},"newest":{"type":"integer"},"spacing":{},"blocks":{"type":"array","items":{"type":"object","properties":{"height":{"type":"integer"},"transactions":{},"pool":{},"minedAt":{},"afterPrevious":{},"milestone":{},"bitmap":{},"walkIn":{}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}},
+      run: () => window.__corridor ? window.__corridor.state() : {ok: false, error: 'the corridor is not on this page'}},
+    {name: 'corridorGo', does: 'Move the corridor through time, as a visitor does with Older, Newer and Go to: to a block number, a bitmap (840000.bitmap), newest, or older or newer (one block). Walking deeper into the corridor goes back in time. The page\'s Walk in button then walks into that block. Gives back the corridor as corridor() does, once that block has been read (or {ok: false, error} if it could not).', args: [{name: 'to', does: 'a block number, a bitmap like 840000.bitmap, newest, older or newer', req: true}],
+      run: async ({to}) => {
+        const C = window.__corridor; if (!C) return {ok: false, error: 'the corridor is not on this page'};
+        const v = String(to == null ? '' : to).trim().toLowerCase().replace(/[,\s]/g, '').replace(/\.bitmap$/, '');
+        const r = v === 'older' ? C.step(-1) : v === 'newer' ? C.step(1) : /^(newest|now|latest)$/.test(v) ? C.go('newest') : /^\d{1,7}$/.test(v) ? C.go(+v) : {ok: false, error: 'give a block number, a bitmap like 840000.bitmap, newest, older or newer'};
+        if (!r.ok) return r;
+        await until(() => { const s = C.state(); return s && s.at === r.at && s.blocks && s.blocks[0] && s.blocks[0].height === r.at; }, 12000);
+        return C.state(); }},
+    {name: 'corridorSpacing', does: 'Space the corridor\'s frames evenly (even: one step a block) or by real time (time: the gap between two frames is the time between their blocks, so a long wait is a long stretch of hall). Gives back the corridor as corridor() does (or {ok: false, error} if it could not).', args: [{name: 'by', does: 'even or time', enum: ['even', 'time'], req: true}],
+      run: ({by}) => { const C = window.__corridor; if (!C) return {ok: false, error: 'the corridor is not on this page'}; if (by !== 'even' && by !== 'time') return {ok: false, error: 'by: even or time'}; C.spacing(by); return C.state(); }},
     {name: 'cards', ro: true, does: 'The portal\'s games and tools as data (number, title, kind, section, note, page, buttons). Gives back [{n, title, kind, section, note, page, shown, buttons[{does, page}]}] (or {ok: false, error} if it could not).', args: [{name: 'section', does: 'only one section: featured, tools-check, tools-make, tools-block, tools-sources, tools-doge, legacy-games or legacy-tools'}],
       run: ({section}) => { const L = cards().map(card), all = [...new Set(L.map(c => c.section))]; if (!section) return L; const k = String(section).toLowerCase(); if (!all.includes(k)) return {ok: false, error: 'sections: ' + all.join(', ') + ' (for the Tools filter use filter({kind: "Tools"}))'}; return L.filter(c => c.section === k); }},
     {name: 'open', does: 'Open a game or tool by its title (or number), as a visitor does: in the portal\'s viewer ("Open in Portal"), or Play Together (Agent Blockhall, Doge Cube and Block Paint City have it). Gives back {open, title, page, zoom, kit} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"open":{},"title":{},"page":{},"zoom":{},"kit":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'title', does: 'its title, e.g. "Agent Blockhall", or its number', req: true}, {name: 'how', enum: ['portal', 'together', 'page'], does: 'portal (the viewer, default), together (Play Together: Agent Blockhall, Doge Cube and Block Paint City), or page (go to the page itself in this tab: only the portal\'s own pages)'}],
@@ -1146,73 +1200,122 @@ window.AgentKit = window.AgentKit || (() => {
 <!-- agent-kit: end -->
 <script>
 /* (20 Nov 2026) The front door: the halls' own corridor of amber door frames, drawn live. Each frame is a real Bitcoin block
-   (mempool.space's newest 15, else its copy), the newest one nearest, its number on the sign over it as in the halls. When a block
-   is mined it flies in at the front. Point at a frame to read its block; click it (or tap it) to walk into its hall
-   (block-cube.html#block=N). The newest block also goes under the title ("Its hall is open"). Drawn only while it is on screen;
-   with "reduce motion" on, it is drawn still. Nothing is made up: a frame with no block yet carries no sign. */
+   (from mempool.space, else its copy), the nearest one the newest you are looking at, its number on the sign over it as in the
+   halls. When a block is mined it flies in at the front. Point at a frame to read its block; click it to walk into its hall
+   (block-cube.html#block=N); on a touch screen, a tap shows the block's card first, with Walk in on it.
+   (21 Nov 2026) Moving through time: drag or swipe sideways, scroll sideways, Older / Newer, or go straight to any block or
+   bitmap. Walking deeper into the corridor goes back in time. Milestones carry a plaque under their sign. Spacing: Even (one
+   step a block) or Real time (the gap between two frames is the time between their blocks, as their own clocks say).
+   Agents: window.__corridor and the portal kit's corridor commands. With "reduce motion" on, it jumps instead of flying.
+   Nothing is made up: a frame whose block has not been read yet carries no sign, and none is drawn past the newest block. */
 (function () {
     var cv = document.getElementById("tunnel"), hero = document.getElementById("agent-blockhall");
     if (!cv || !cv.getContext || !hero) return;
     var x = cv.getContext("2d"), say = document.getElementById("frame-say"), list = document.getElementById("recent-halls"), tipEl = document.getElementById("tip");
+    var strip = document.getElementById("time-strip"), goForm = document.getElementById("time-go"), goIn = document.getElementById("time-go-in"), walkBtn = document.querySelector(".hero .hero-actions .btn.main");
     var SITES = ["https://mempool.space", "https://mempool.emzy.de"];
     var still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-    var N = 15, GAP = 0.6, Z0 = 1.08;
-    var blocks = [];          // newest first: {h, tx, pool, t}
-    var shift = 0, shiftAt = 0, flashAt = 0, born = performance.now();
-    var W = 0, H = 0, dpr = 1, rects = [], hover = -1, seen = false, raf = 0, ptr = null;
+    var N = 15, GAP = 0.6, Z0 = 1.08, FAR = Z0 + N * GAP;
+    var byH = new Map();      // height -> {h, tx, pool, t}
+    var tip = -1;             // the newest block known
+    var cam = -1, goal = -1, live = true, spacing = "even";
+    var flashAt = 0, born = performance.now(), last = performance.now();
+    var W = 0, H = 0, FREE = 0, dpr = 1, rects = [], hover = -1, pinned = -1, seen = false, raf = 0, ptr = null, card = hero.querySelector(".hero-in .card");
+    try { if (localStorage.getItem("ab-corridor-spacing") === "time") spacing = "time"; } catch (e) {}
     var fmt = function (n) { return Number(n).toLocaleString("en-GB"); };
+    var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    function day(t) { var d = new Date(t * 1000); return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()] + " " + d.getUTCFullYear(); }
     function ago(t) {
         var m = Math.max(0, Math.round((Date.now() / 1000 - t) / 60));
-        return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.floor(m / 60) + " h " + (m % 60) + " min ago";
+        return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 48 * 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min ago" : "on " + day(t);
     }
+    function span(s) { s = Math.abs(s); var m = Math.round(s / 60); return s < 60 ? Math.round(s) + " s" : m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; }
+    // milestones: a plaque under the sign (the same ones the halls and the tools know)
+    var MILESTONES = {0: ["THE GENESIS BLOCK", "the first block of Bitcoin, mined by Satoshi Nakamoto"], 210000: ["THE 1ST HALVING", "the first halving: the reward fell from 50 to 25 BTC"],
+        420000: ["THE 2ND HALVING", "the second halving: 25 to 12.5 BTC"], 481824: ["SEGWIT TURNS ON", "the block where SegWit began"],
+        630000: ["THE 3RD HALVING", "the third halving: 12.5 to 6.25 BTC"], 709632: ["TAPROOT TURNS ON", "the block where Taproot began, which inscriptions are written with"],
+        767430: ["INSCRIPTION #0", "inscription #0, the first ordinal inscription, was made in this block"], 796515: ["BLOCKOUT DAY", "Blockout Day: by this block every block mined so far had its bitmap claimed"],
+        840000: ["THE 4TH HALVING · RUNES", "the fourth halving (6.25 to 3.125 BTC), and the block where runes began"], 1050000: ["THE 5TH HALVING", "the fifth halving: 3.125 to 1.5625 BTC"]};
+
     function size() {
         dpr = Math.min(2, window.devicePixelRatio || 1); W = hero.clientWidth; H = hero.clientHeight;
+        FREE = card ? Math.max(0, card.getBoundingClientRect().top - hero.getBoundingClientRect().top) : H;   // (the room above the words)
         cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); x.setTransform(dpr, 0, 0, dpr, 0, 0);
         kick();
     }
     var ease = function (u) { return 1 - Math.pow(1 - u, 3); };
+
+    /* where each frame stands: its depth (z) for the camera's place (cam, a height that can be part-way between two blocks) */
+    function gapAfter(h) {   // the depth between block h and the one before it (h - 1)
+        if (spacing !== "time") return GAP;
+        var a = byH.get(h), b = byH.get(h - 1);
+        if (!a || !b) return GAP;
+        return GAP * Math.max(0.2, Math.min(5, (a.t - b.t) / 600));
+    }
+    function frames() {   // [{h, z}] nearest first, for the frames in view
+        var out = [], base = Math.floor(cam), f = cam - base, zBase = Z0 + (f > 0 ? f * gapAfter(base + 1) : 0), z = zBase, h;
+        for (h = base + 1; h <= tip && out.length < 4; h++) { z -= gapAfter(h); if (z < 0.35) break; out.unshift({h: h, z: z}); }   // newer ones, passing behind the viewer
+        z = zBase;
+        for (h = base; h >= 0 && out.length < 64; h--) { if (z > FAR + GAP) break; out.push({h: h, z: z}); z += gapAfter(h); }
+        return out;
+    }
+
     function draw(now) {
+        var dt = Math.min(0.1, (now - last) / 1000); last = now;
+        if (goal >= 0) {
+            if (cam < 0 || still) cam = goal;
+            else { var d = goal - cam; cam += Math.abs(d) < 0.002 ? d : d * Math.min(1, dt * 5.5); }
+            for (var q = Math.round(cam) + 2, qEnd = Math.round(cam) - (spacing === "time" ? 64 : 20); q > qEnd; q -= 14) need(q);
+        }
         x.clearRect(0, 0, W, H);
-        var narrow = W < H * 0.8, vx = W / 2 + (still ? 0 : Math.sin(now / 7000) * W * 0.004), vy = H * (narrow ? 0.25 : 0.43);
-        var HW = W * (narrow ? 0.47 : 0.46), HH = H * (narrow ? 0.30 : 0.47);
-        var sh = 0; if (shift) { var u = Math.min(1, (now - shiftAt) / 1700); sh = 1 - ease(u); if (u >= 1) shift = 0; }
+        var narrow = W < H * 0.8, room = narrow && FREE > 220 ? FREE : 0;   // (narrow screens: the corridor stands in the room above the words)
+        var vx = W / 2 + (still ? 0 : Math.sin(now / 7000) * W * 0.004), vy = room ? room * 0.5 : H * (narrow ? 0.25 : 0.43);
+        var HW = W * (narrow ? 0.47 : 0.46), HH = room ? room * 0.45 : H * (narrow ? 0.30 : 0.47);
         var intro = still ? 1 : Math.min(1, (now - born) / 1600);
-        // the far end's light
         var g = x.createRadialGradient(vx, vy, 0, vx, vy, Math.max(W, H) * 0.32);
         g.addColorStop(0, "rgba(255, 200, 120, .20)"); g.addColorStop(1, "rgba(255, 200, 120, 0)");
         x.fillStyle = g; x.fillRect(0, 0, W, H);
         rects = [];
+        if (cam < 0) return;
         var shelfCol = ["rgba(99, 210, 214, ", "rgba(224, 98, 154, ", "rgba(238, 242, 248, "];
-        for (var k = N - 1; k >= 0; k--) {
-            var z = Z0 + (k - sh) * GAP; if (z < 0.35) continue;
-            var reach = Math.max(0, Math.min(1, intro * (N + 2) - (N - 1 - k) * 0.85 - 0.5)); if (reach <= 0) continue;   // (on arrival: far frames first, then nearer)
-            var s = 1 / z, fog = Math.pow(Math.max(0, 1 - (z - Z0) / (N * GAP)), 1.25) * reach;
-            var l = vx - HW * s, r = vx + HW * s, t = vy - HH * s, b = vy + HH * s, lw = Math.max(1, 11 * s * Math.min(1, H / 760));
+        var F = frames();
+        // which signs can be read: nearest first, a sign that would sit on a nearer one's is left off (blocks mined close together, in Real time)
+        var signed = {}, taken = [];
+        for (var i0 = 0; i0 < F.length; i0++) {
+            var z0 = F[i0].z, B0 = byH.get(F[i0].h); if (!B0 || z0 < Z0 * 0.9) continue;
+            var s0 = 1 / z0, t0 = vy - HH * s0, lw0 = Math.max(1, 11 * s0 * Math.min(1, (room || H) / 760)), fs0 = Math.min(30, HH * 0.075 * s0); if (fs0 < 7.5) continue;
+            var py0 = Math.max(t0 + lw0 / 2 + fs0 * 1.05, fs0 * 1.4), top0 = py0 - fs0 * 0.8, bot0 = py0 + fs0 * (MILESTONES[B0.h] ? 2.0 : 0.8);
+            if (taken.some(function (R) { return top0 < R[1] + 2 && bot0 > R[0] - 2; })) continue;
+            taken.push([top0, bot0]); signed[F[i0].h] = 1;
+        }
+        for (var i = F.length - 1; i >= 0; i--) {
+            var h = F[i].h, z = F[i].z;
+            var reach = Math.max(0, Math.min(1, intro * (N + 2) - Math.min(N - 1, (z - Z0) / GAP) * 0.85 - 0.5)); if (reach <= 0) continue;   // (on arrival: far frames first, then nearer)
+            var s = 1 / z, fog = Math.pow(Math.max(0, 1 - (z - Z0) / (N * GAP)), 1.25) * reach * Math.min(1, (z - 0.35) / 0.5);
+            if (fog <= 0.004) continue;
+            var l = vx - HW * s, r = vx + HW * s, t = vy - HH * s, b = vy + HH * s, lw = Math.max(1, 11 * s * Math.min(1, (room || H) / 760));
+            var zn = i < F.length - 1 ? F[i + 1].z : z + GAP, s2 = 1 / zn;
             // the walls between this frame and the next one back: shelf edges running to the far end
-            if (k < N - 1) {
-                var s2 = 1 / (z + GAP);
-                for (var j = 0; j < 5; j++) {
-                    var yy = -0.55 + j * 0.27;
-                    x.strokeStyle = shelfCol[(j + k) % 3] + (0.16 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.6, 2.2 * s);
-                    x.beginPath(); x.moveTo(vx - HW * 0.97 * s, vy + HH * yy * s); x.lineTo(vx - HW * 0.97 * s2, vy + HH * yy * s2);
-                    x.moveTo(vx + HW * 0.97 * s, vy + HH * yy * s); x.lineTo(vx + HW * 0.97 * s2, vy + HH * yy * s2); x.stroke();
-                }
-                // its shelves' boxes: one for every 250 of this block's real transactions, along both walls (as its hall's shelves are)
-                var Bk = blocks[k];
-                if (Bk && s > 0.08) {
-                    var nb = Math.max(1, Math.min(48, Math.round(Bk.tx / 250))), per = Math.ceil(nb / 8);
-                    for (var q = 0; q < nb; q++) {
-                        var side = q % 2 ? 1 : -1, row = Math.floor(q / 2) % 4, slot = Math.floor(q / 8), f0 = 0.08 + slot * (0.84 / Math.max(1, per)), f1 = f0 + Math.min(0.16, 0.7 / Math.max(1, per));
-                        var za = z + f0 * GAP, zb = z + f1 * GAP, wx = HW * 0.97 * side, y1 = HH * (-0.55 + row * 0.27), y0 = y1 - HH * 0.11;
-                        x.fillStyle = shelfCol[(row + 1) % 3] + (0.13 * fog).toFixed(3) + ")";
-                        x.beginPath(); x.moveTo(vx + wx / za, vy + y0 / za); x.lineTo(vx + wx / zb, vy + y0 / zb); x.lineTo(vx + wx / zb, vy + y1 / zb); x.lineTo(vx + wx / za, vy + y1 / za); x.closePath(); x.fill();
-                    }
-                }
-                // the floor's seams
-                x.strokeStyle = "rgba(243, 165, 48, " + (0.10 * fog).toFixed(3) + ")"; x.lineWidth = 1;
-                x.beginPath(); x.moveTo(l, b); x.lineTo(r, b); x.stroke();
+            for (var j = 0; j < 5; j++) {
+                var yy = -0.55 + j * 0.27;
+                x.strokeStyle = shelfCol[(j + h) % 3] + (0.16 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.6, 2.2 * s);
+                x.beginPath(); x.moveTo(vx - HW * 0.97 * s, vy + HH * yy * s); x.lineTo(vx - HW * 0.97 * s2, vy + HH * yy * s2);
+                x.moveTo(vx + HW * 0.97 * s, vy + HH * yy * s); x.lineTo(vx + HW * 0.97 * s2, vy + HH * yy * s2); x.stroke();
             }
-            var B = blocks[k], hot = k === hover, newest = k === 0 && B;
+            var B = byH.get(h);
+            // its shelves' boxes: one for every 250 of this block's real transactions, along both walls (as its hall's shelves are)
+            if (B && s > 0.08) {
+                var nb = Math.max(1, Math.min(48, Math.round(B.tx / 250))), per = Math.ceil(nb / 8), dz = zn - z;
+                for (var q = 0; q < nb; q++) {
+                    var side = q % 2 ? 1 : -1, row = Math.floor(q / 2) % 4, slot = Math.floor(q / 8), f0 = 0.08 + slot * (0.84 / Math.max(1, per)), f1 = f0 + Math.min(0.16, 0.7 / Math.max(1, per));
+                    var za = z + f0 * dz, zb = z + f1 * dz, wx = HW * 0.97 * side, y1 = HH * (-0.55 + row * 0.27), y0 = y1 - HH * 0.11;
+                    x.fillStyle = shelfCol[(row + 1) % 3] + (0.13 * fog).toFixed(3) + ")";
+                    x.beginPath(); x.moveTo(vx + wx / za, vy + y0 / za); x.lineTo(vx + wx / zb, vy + y0 / zb); x.lineTo(vx + wx / zb, vy + y1 / zb); x.lineTo(vx + wx / za, vy + y1 / za); x.closePath(); x.fill();
+                }
+            }
+            x.strokeStyle = "rgba(243, 165, 48, " + (0.10 * fog).toFixed(3) + ")"; x.lineWidth = 1;   // the floor's seam
+            x.beginPath(); x.moveTo(l, b); x.lineTo(r, b); x.stroke();
+            var hot = h === hover || h === pinned, newest = h === tip && B;
             var pulse = newest && !still ? 0.82 + 0.18 * Math.sin(now / 520) : 1, flash = newest && flashAt ? Math.max(0, 1 - (now - flashAt) / 2200) : 0;
             var a = Math.min(1, (0.85 * fog * pulse) + flash * 0.6 + (hot ? 0.35 : 0));
             x.save();
@@ -1223,10 +1326,9 @@ window.AgentKit = window.AgentKit || (() => {
             var ins = lw * 1.9;
             x.strokeStyle = "rgba(243, 165, 48, " + (0.42 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.7, lw * 0.45);
             x.strokeRect(l + ins, t + ins, r - l - 2 * ins, b - t - 2 * ins);
-            // the floor's reflection of the frame's foot
             x.fillStyle = "rgba(243, 165, 48, " + (0.07 * fog).toFixed(3) + ")"; x.fillRect(l, b + lw, r - l, Math.max(1, lw * 1.6));
-            // its sign: the block's number, as over each hall's door
-            if (B) {
+            // its sign: the block's number, as over each hall's door; a milestone's plaque under it
+            if (B && signed[h]) {
                 var fs = Math.min(30, HH * 0.075 * s);
                 if (fs >= 7.5) {
                     var label = "BLOCK " + fmt(B.h);
@@ -1235,69 +1337,212 @@ window.AgentKit = window.AgentKit || (() => {
                     x.fillStyle = "rgba(10, 15, 28, " + (0.82 * fog).toFixed(3) + ")"; x.fillRect(px - tw / 2 - fs * 0.6, py - fs * 0.78, tw + fs * 1.2, fs * 1.56);
                     x.strokeStyle = "rgba(243, 165, 48, " + (0.7 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.8, fs * 0.07); x.strokeRect(px - tw / 2 - fs * 0.6, py - fs * 0.78, tw + fs * 1.2, fs * 1.56);
                     x.fillStyle = hot ? "rgba(255, 228, 170, " + fog.toFixed(3) + ")" : "rgba(255, 207, 122, " + (fog * 0.95).toFixed(3) + ")"; x.fillText(label, px, py + fs * 0.04);
+                    var M = MILESTONES[B.h];
+                    if (M && fs >= 9) {
+                        var ps = fs * 0.62; x.font = "600 " + ps.toFixed(1) + "px ui-monospace, Menlo, Consolas, monospace";
+                        var pw = x.measureText(M[0]).width, qy = py + fs * 0.78 + ps * 1.25;
+                        x.fillStyle = "rgba(243, 165, 48, " + (0.9 * fog).toFixed(3) + ")"; x.fillRect(px - pw / 2 - ps * 0.7, qy - ps * 0.8, pw + ps * 1.4, ps * 1.6);
+                        x.fillStyle = "rgba(10, 15, 28, " + fog.toFixed(3) + ")"; x.fillText(M[0], px, qy + ps * 0.04);
+                    }
                 }
-                rects.push({k: k, l: l, t: t, r: r, b: b, lw: lw});
             }
+            if (z >= Z0 * 0.92) rects.push({h: h, l: l, t: t, r: r, b: b, lw: lw});
         }
     }
-    function loop(now) { raf = 0; draw(now); if (!still && seen && !document.hidden) raf = requestAnimationFrame(loop); }
+    function loop(now) { raf = 0; draw(now); if (seen && !document.hidden && (!still || Math.abs(goal - cam) > 0.001)) raf = requestAnimationFrame(loop); }
     function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+
+    /* the blocks, from mempool.space (or its copy): 15 at a time, from a height down */
+    var asked = new Map();   // start height -> time asked
+    function keep(L) {
+        var newTip = false;
+        L.forEach(function (b) { if (b && b.height >= 0) { byH.set(b.height, {h: b.height, tx: b.tx_count, pool: b.extras && b.extras.pool && b.extras.pool.name || "", t: b.timestamp}); if (b.height > tip) { tip = b.height; newTip = true; } } });
+        return newTip;
+    }
+    function fetchFrom(path, k, done) {
+        k = k || 0; if (k >= SITES.length) { done && done(false); return; }
+        fetch(SITES[k] + path).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (L) {
+            if (!Array.isArray(L) || !L.length || !(L[0].height >= 0)) throw 0; done && done(L);
+        }).catch(function () { fetchFrom(path, k + 1, done); });
+    }
+    function need(h) {   // read the 15 blocks from h down, if any of them is missing
+        if (tip < 0) return; h = Math.max(0, Math.min(tip, h));
+        var miss = false; for (var i = 0; i < 15 && h - i >= 0; i++) if (!byH.has(h - i)) { miss = true; break; }
+        if (!miss) return;
+        var start = Math.min(tip, h), was = asked.get(start); if (was && performance.now() - was < 15000) return;
+        var busy = 0; asked.forEach(function (t) { if (performance.now() - t < 4000) busy++; }); if (busy >= 3) return;
+        asked.set(start, performance.now());
+        fetchFrom("/api/v1/blocks/" + start, 0, function (L) { if (L) { keep(L); tell(hover, ptr && ptr[0], ptr && ptr[1]); publish(); kick(); } });
+    }
+    function newest() {
+        fetchFrom("/api/v1/blocks", 0, function (L) {
+            if (!L) {   // (the copy may only give the height: the newest block's number alone, so the words under the title stay true)
+                fetch(SITES[0] + "/api/blocks/tip/height").then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (t) {
+                    var h = parseInt(t, 10); if (h > 0 && tip < 0 && tipEl) { tipEl.innerHTML = "<i></i>The newest block is <b></b>. Its hall is open."; tipEl.querySelector("b").textContent = fmt(h); }
+                }).catch(function () {});
+                return;
+            }
+            var before = tip, grew = keep(L);
+            if (live) { if (before >= 0 && grew) { flashAt = performance.now(); } goal = tip; if (cam < 0) cam = tip; }
+            publish(); kick();
+        });
+    }
+
+    /* moving through time */
+    function go(to, how) {
+        if (tip < 0) return {ok: false, error: "the blocks have not arrived yet"};
+        var h = to === "newest" ? tip : Math.round(Number(to));
+        if (!(h >= 0)) return {ok: false, error: "give a block number (or a bitmap, like 840000.bitmap), or newest"};
+        if (h > tip) return {ok: false, error: "block " + fmt(h) + " has not been mined yet: the newest is " + fmt(tip)};
+        live = h === tip; goal = h; pinned = -1; showCard(-1);
+        if (!still && Math.abs(goal - cam) > 30 && how !== "step") cam = goal > cam ? goal - 9 : Math.min(tip, goal + 9);   // a long way: arrive by walking the last few frames
+        need(goal + 2); need(goal - 1);
+        publish(); kick();
+        return {ok: true, at: goal};
+    }
+    function step(n) { var to = Math.max(0, Math.min(tip, Math.round(goal) + n)); return go(to, "step"); }
+    function setSpacing(by) {
+        spacing = by === "time" ? "time" : "even";
+        try { localStorage.setItem("ab-corridor-spacing", spacing); } catch (e) {}
+        document.querySelectorAll("[data-spacing]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-spacing") === spacing)); });
+        publish(); kick();
+        return {ok: true, spacing: spacing};
+    }
+
+    /* what a frame says: on a pointer (hover), and on a touch screen as a card to tap */
+    function lines(h) {
+        var B = byH.get(h); if (!B) return null;
+        var M = MILESTONES[h], P = byH.get(h - 1), gap = P ? B.t - P.t : null;
+        var head = "Block " + fmt(h) + (h === tip ? ", the newest" : "") + (M ? ": " + M[1] : "");
+        var body = fmt(B.tx) + " transactions (a box on its walls for every 250), mined " + ago(B.t) + (B.pool ? " by " + B.pool : "") + ". Its bitmap is " + h + ".bitmap.";
+        if (gap != null) body += gap >= 0 ? " Mined " + span(gap) + " after block " + fmt(h - 1) + "." : " Its clock says " + span(gap) + " before block " + fmt(h - 1) + " (miners' clocks can differ).";
+        return {head: head, body: body};
+    }
+    function place(px, py) {
+        var w = say.offsetWidth || 260, hgt = say.offsetHeight || 60;
+        say.style.transform = "translate(" + Math.round(Math.min(W - w - 8, Math.max(8, px + 16))) + "px," + Math.round(Math.min(H - hgt - 8, Math.max(8, py + 16))) + "px)";
+    }
+    function tell(h, px, py) {
+        if (pinned >= 0) return;
+        hover = h; cv.classList.toggle("on-frame", h >= 0);
+        if (!say) return;
+        var L = h >= 0 && lines(h);
+        if (!L) { say.classList.remove("on"); return; }
+        say.innerHTML = "<b></b><br><span></span>";
+        say.querySelector("b").textContent = L.head;
+        say.querySelector("span").textContent = L.body + " Click to walk into its hall.";
+        place(px, py); say.classList.add("on");
+    }
+    function showCard(h, px, py) {
+        pinned = h; hover = -1;
+        if (!say) return;
+        var L = h >= 0 && lines(h);
+        if (!L) { say.classList.remove("on", "pinned"); say.setAttribute("aria-hidden", "true"); if (strip) strip.querySelectorAll(".chip.on").forEach(function (c) { c.classList.remove("on"); }); kick(); return; }
+        say.innerHTML = "<b></b><br><span></span><div class=\"say-acts\"><a class=\"btn main\"></a><button type=\"button\" class=\"btn\">Close</button></div>";
+        say.querySelector("b").textContent = L.head;
+        say.querySelector("span").textContent = L.body;
+        var a = say.querySelector("a"); a.href = "block-cube.html#block=" + h; a.textContent = "Walk in";
+        say.querySelector("button").onclick = function () { showCard(-1); };
+        say.classList.add("on", "pinned"); say.setAttribute("aria-hidden", "false");
+        place(px == null ? W / 2 - 150 : px - 140, py == null ? H * 0.12 : py - 20);
+        kick();
+    }
     // which frame is under the pointer: the one whose edge is nearest (the frames nest, so it is the edge that counts)
     function at(px, py) {
         var best = -1, bd = 1e9;
         for (var i = 0; i < rects.length; i++) {
             var R = rects[i], inside = px >= R.l - 14 && px <= R.r + 14 && py >= R.t - 14 && py <= R.b + 14; if (!inside) continue;
             var d = Math.min(Math.abs(px - R.l), Math.abs(px - R.r), Math.abs(py - R.t), Math.abs(py - R.b)), lim = Math.max(12, R.lw * 2.2);
-            if (d <= lim && d < bd) { bd = d; best = R.k; }
+            if (d <= lim && d < bd) { bd = d; best = R.h; }
         }
         return best;
     }
-    function tell(k, px, py) {
-        hover = k; cv.classList.toggle("on-frame", k >= 0);
-        if (!say) return;
-        if (k < 0 || !blocks[k]) { say.classList.remove("on"); return; }
-        var B = blocks[k];
-        say.innerHTML = "<b></b><br><span></span>";
-        say.querySelector("b").textContent = "Block " + fmt(B.h) + (k === 0 ? " · the newest" : "");
-        say.querySelector("span").textContent = fmt(B.tx) + " transactions (a box on its walls for every 250) · mined " + ago(B.t) + (B.pool ? " by " + B.pool : "") + " · click to walk into its hall";
-        var w = say.offsetWidth || 260, hgt = say.offsetHeight || 60;
-        say.style.transform = "translate(" + Math.round(Math.min(W - w - 8, Math.max(8, px + 16))) + "px," + Math.round(Math.min(H - hgt - 8, Math.max(8, py + 16))) + "px)";
-        say.classList.add("on");
-    }
-    function walk(k) { if (blocks[k]) location.href = "block-cube.html#block=" + blocks[k].h; }
-    cv.addEventListener("pointermove", function (e) { var r = cv.getBoundingClientRect(); ptr = [e.clientX - r.left, e.clientY - r.top]; tell(at(ptr[0], ptr[1]), ptr[0], ptr[1]); kick(); });
-    cv.addEventListener("pointerleave", function () { tell(-1); kick(); });
-    cv.addEventListener("click", function (e) { var r = cv.getBoundingClientRect(), k = at(e.clientX - r.left, e.clientY - r.top); if (k >= 0) walk(k); });
-    // the blocks, from mempool.space (or its copy): newest first
-    function show(L) {
-        var top = blocks[0] ? blocks[0].h : 0;
-        blocks = L.slice(0, N).map(function (b) { return {h: b.height, tx: b.tx_count, pool: b.extras && b.extras.pool && b.extras.pool.name || "", t: b.timestamp}; });
-        if (top && blocks[0] && blocks[0].h > top) { shift = Math.min(3, blocks[0].h - top) > 0 ? 1 : 0; shiftAt = flashAt = performance.now(); }
-        if (tipEl && blocks[0]) { tipEl.innerHTML = "<i></i>The newest block is <b></b>. Its hall is open."; tipEl.querySelector("b").textContent = fmt(blocks[0].h); }
+    function walk(h) { if (byH.has(h)) location.href = "block-cube.html#block=" + h; }
+
+    /* hands: drag or swipe sideways moves through time (left: deeper, so older); a click (or a tap's card) walks in */
+    var drag = null;
+    cv.addEventListener("pointerdown", function (e) { drag = {x: e.clientX, y: e.clientY, from: goal, moved: false, id: e.pointerId, type: e.pointerType}; });
+    cv.addEventListener("pointermove", function (e) {
+        var r = cv.getBoundingClientRect(); ptr = [e.clientX - r.left, e.clientY - r.top];
+        if (drag && drag.id === e.pointerId) {
+            var dx = e.clientX - drag.x;
+            if (!drag.moved && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(e.clientY - drag.y)) { drag.moved = true; try { cv.setPointerCapture(e.pointerId); } catch (er) {} showCard(-1); }
+            if (drag.moved) { var to = Math.max(0, Math.min(tip, Math.round(drag.from + dx / (drag.type === "touch" ? 28 : 36)))); if (to !== goal) { live = to === tip; goal = to; need(goal - 1); publish(); } kick(); return; }
+        }
+        if (e.pointerType !== "touch") { tell(at(ptr[0], ptr[1]), ptr[0], ptr[1]); kick(); }
+    });
+    cv.addEventListener("pointerup", function (e) {
+        var d = drag; drag = null; if (!d || d.moved) return;
+        var r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, h = at(px, py);
+        if (e.pointerType === "touch") { if (h >= 0 && h === pinned) walk(h); else showCard(h, px, py); }
+        else if (h >= 0) walk(h);
+    });
+    cv.addEventListener("pointercancel", function () { drag = null; });
+    cv.addEventListener("pointerleave", function () { if (!drag) { tell(-1); kick(); } });
+    cv.addEventListener("wheel", function (e) {   // sideways scrolling only (or Shift + wheel): up and down still scrolls the page
+        var dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
+        if (!dx) return;
+        e.preventDefault(); wheelAcc += dx;
+        var n = Math.trunc(wheelAcc / 40); if (n) { wheelAcc -= n * 40; step(-n); }
+    }, {passive: false});
+    var wheelAcc = 0;
+    document.querySelectorAll("[data-time-step]").forEach(function (b) { b.addEventListener("click", function () { step(+b.getAttribute("data-time-step")); }); });
+    document.querySelectorAll("[data-spacing]").forEach(function (b) { b.addEventListener("click", function () { setSpacing(b.getAttribute("data-spacing")); }); });
+    if (goForm) goForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var v = String(goIn.value || "").trim().toLowerCase().replace(/[,\s]/g, "").replace(/\.bitmap$/, "");
+        var r = /^(newest|now|latest)$/.test(v) ? go("newest") : /^\d{1,7}$/.test(v) ? go(+v) : {ok: false, error: "Type a block number, like 840000, or a bitmap, like 840000.bitmap"};
+        goIn.setCustomValidity(r.ok ? "" : r.error); if (!r.ok) goIn.reportValidity(); else goIn.blur();
+    });
+    goIn && goIn.addEventListener("input", function () { goIn.setCustomValidity(""); });
+
+    /* words: the line under the title, the Walk in button, the phone strip, the hidden list, and the agents' view */
+    var lastWords = "";
+    function publish() {
+        var g = Math.round(goal), B = byH.get(g);
+        if (tipEl && B) {
+            var M = MILESTONES[g], words = (live ? "live" : "at") + g;
+            if (words !== lastWords) {
+                lastWords = words;
+                if (live) { tipEl.innerHTML = "<i></i>The newest block is <b></b>. Its hall is open."; tipEl.querySelector("b").textContent = fmt(g); }
+                else {
+                    tipEl.innerHTML = "You are at block <b></b>, mined <span></span>. <button type=\"button\" class=\"tip-back\">Back to the newest</button>";
+                    tipEl.querySelector("b").textContent = fmt(g); tipEl.querySelector("span").textContent = day(B.t) + (M ? ": " + M[1] : "");
+                    tipEl.querySelector("button").onclick = function () { go("newest"); };
+                }
+            }
+        }
+        if (walkBtn) { walkBtn.href = live ? "block-cube.html" : "block-cube.html#block=" + g; walkBtn.textContent = live ? "Walk in" : "Walk into block " + fmt(g); }
+        var shown = []; for (var h = g; h >= 0 && h > g - N; h--) if (byH.has(h)) shown.push(byH.get(h));
+        if (strip) {
+            strip.textContent = "";
+            shown.forEach(function (B) {
+                var b = document.createElement("button"); b.type = "button"; b.className = "chip" + (B.h === pinned ? " on" : "");
+                var n = document.createElement("b"); n.textContent = fmt(B.h); b.append(n, document.createTextNode(fmt(B.tx) + " tx, " + ago(B.t)));
+                b.addEventListener("click", function () { var R = rects.find(function (q) { return q.h === B.h; }); showCard(B.h, R ? (R.l + R.r) / 2 : null, R ? R.t + 10 : null); });
+                strip.append(b);
+            });
+        }
         if (list) {
             list.textContent = "";
-            blocks.forEach(function (B, i) { var li = document.createElement("li"), a = document.createElement("a"); a.href = "block-cube.html#block=" + B.h; a.textContent = "Walk into block " + fmt(B.h) + (i ? "" : " (the newest)") + ": " + fmt(B.tx) + " transactions, mined " + ago(B.t); li.appendChild(a); list.appendChild(li); });
+            shown.forEach(function (B, i) { var li = document.createElement("li"), a = document.createElement("a"); a.href = "block-cube.html#block=" + B.h; a.textContent = "Walk into block " + fmt(B.h) + (B.h === tip ? " (the newest)" : "") + ": " + fmt(B.tx) + " transactions, mined " + ago(B.t) + (B.pool ? " by " + B.pool : ""); li.append(a); list.append(li); });
         }
-        window.__frontDoor = {from: "mempool.space's newest blocks", blocks: blocks.map(function (B) { return {height: B.h, transactions: B.tx, pool: B.pool || null, minedAt: new Date(B.t * 1000).toISOString(), walkIn: "block-cube.html#block=" + B.h}; })};
-        kick();
+        window.__frontDoor = {from: "mempool.space's blocks", live: live, at: g, newest: tip, spacing: spacing,
+            blocks: shown.map(function (B) { var P = byH.get(B.h - 1); return {height: B.h, transactions: B.tx, pool: B.pool || null, minedAt: new Date(B.t * 1000).toISOString(),
+                afterPrevious: P ? B.t - P.t : null, milestone: MILESTONES[B.h] ? MILESTONES[B.h][1] : null, bitmap: B.h + ".bitmap", walkIn: "block-cube.html#block=" + B.h}; })};
     }
-    function ask(k) {
-        if (k >= SITES.length) return;
-        fetch(SITES[k] + "/api/v1/blocks").then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (L) {
-            if (!Array.isArray(L) || !L.length || !(L[0].height > 0)) throw 0; show(L);
-        }).catch(function () {
-            // (the copy may only give the height: the newest block's number alone, so the words under the title stay true)
-            fetch(SITES[k] + "/api/blocks/tip/height").then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (t) {
-                var h = parseInt(t, 10); if (!(h > 0)) throw 0;
-                if (tipEl && !blocks.length) { tipEl.innerHTML = "<i></i>The newest block is <b></b>. Its hall is open."; tipEl.querySelector("b").textContent = fmt(h); }
-            }).catch(function () { ask(k + 1); });
-        });
-    }
+    window.__corridor = {
+        go: function (to) { return go(to); }, step: step, spacing: setSpacing,
+        state: function () { return window.__frontDoor || {ok: false, error: "the blocks have not arrived yet"}; }
+    };
+
     if ("IntersectionObserver" in window) new IntersectionObserver(function (E) { seen = E[0].isIntersecting; if (seen) kick(); }).observe(hero); else seen = true;
-    document.addEventListener("visibilitychange", function () { if (!document.hidden) { ask(0); kick(); } });
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) { newest(); kick(); } });
     window.addEventListener("resize", size);
-    size(); ask(0);
-    setInterval(function () { if (!document.hidden) ask(0); }, 60000);
+    if ("ResizeObserver" in window && card) new ResizeObserver(function () { size(); }).observe(card);   // (the words grow when the blocks arrive)
+    setSpacing(spacing);
+    size(); newest();
+    setInterval(function () { if (!document.hidden) { newest(); if (strip) publish(); } }, 60000);
 })();
 </script>
 <!-- visitor counter: start -->
