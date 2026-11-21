@@ -3317,10 +3317,16 @@ document.getElementById('cm').onclick = () => { const big = !$card.classList.con
 document.getElementById('cx').onclick = () => { if (pinK != null) { pinK = hovK = null; setHK(); } select(null); };
 function fitCard() {
   if (room) { $card.style.maxHeight = Math.round(innerHeight * .8) + 'px'; return; }   // the tablet in the walk-in room
-  if (innerWidth <= 640) { $card.style.maxHeight = ($card.classList.contains('big') ? Math.round(innerHeight * 0.62) : innerHeight <= 720 ? 140 : 168) + 'px'; return; }
+  if (innerWidth <= 640) {
+    let mh = $card.classList.contains('big') ? Math.round(innerHeight * 0.62) : innerHeight <= 720 ? 140 : 168;
+    // (21 Nov 2026) on a short phone the bigger card stops below the block's own row (its name, number and FEED), so it no longer slides under them
+    if ($card.classList.contains('big')) { const cs = getComputedStyle($card), pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 2, low = ['h', 'fb'].map(i => document.getElementById(i)).filter(e => e && e.getClientRects().length).reduce((m, e) => Math.max(m, e.getBoundingClientRect().bottom), 0); if (low > 0) mh = Math.max(140, Math.min(mh, Math.floor(innerHeight - (parseFloat(cs.bottom) || 0) - low - 8 - pad))); }
+    $card.style.maxHeight = mh + 'px'; return;
+  }
   const tp = rectOf($top), cs = getComputedStyle($card), b = parseFloat(cs.bottom) || 26, pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 2;
   $card.style.maxHeight = Math.max(140, innerHeight - b - (tp ? tp[3] : 0) - 14 - pad) + 'px';
 }
+addEventListener('resize', () => { if ($card.classList.contains('on')) fitCard(); });   // (21 Nov 2026) and again when the phone turns or the window changes size
 // more about one transaction, from the explorer: inputs, outputs, the kinds of address, how long it waited (if it was seen waiting)
 const TYPE = {pubkeyhash: 'address (key hash)', scripthash: 'script (P2SH)', pubkey: 'bare key (oldest)', multisig: 'bare multisig', nulldata: 'OP_RETURN data', nonstandard: 'nonstandard'};
 const typeName = k => TYPE[k] || k || 'other';
