@@ -9,7 +9,7 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const {readBlock, mpJson, sleep} = require(path.join(__dirname, '..', 'daily-data', 'build-day.js'));
-const VERSION = '1.0.0', KEEP = 144, MAX_READ = 40, TIME_BOX = 14 * 60 * 1000;   // (the time box decides: about 15 blocks a run)
+const VERSION = '1.0.0', KEEP = 144, MAX_READ = 150, TIME_BOX = 14 * 60 * 1000;   // (a block takes about 2 seconds to read: one run can fill the day; the time box keeps it short)
 const PORTAL = 'https://ordportal.com/';
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE).';
 // the halls' shelf kinds, in the halls' own order and colours (block-cube.html, KINDS); the Block Manifest's names where they differ
