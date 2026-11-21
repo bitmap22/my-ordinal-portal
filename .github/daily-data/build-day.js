@@ -58,12 +58,17 @@ async function rawBlockOf(h, hash) {
     const u = new Uint8Array(t.length >> 1); for (let i = 0; i < u.length; i++) u[i] = parseInt(t.substr(i * 2, 2), 16); return {bytes: u, site};
 }
 // Blockspace Share: the block's bytes by kind, from this reader's own reading only (so every day is read the same way), and only
-// if the bytes are that block (their header's hash is its hash)
-function spaceOfBlock(scan, bytes, hash) {
+// if the bytes are that block (their header's hash is its hash); and the fees each kind paid, from the block's fee list (summary),
+// kept only if they add up to what its coinbase pays out less the new coins
+function spaceOfBlock(scan, bytes, hash, summary, height) {
   if (scan.hash !== hash) throw new Error('the bytes are not block ' + hash);
   const own = BM.buildManifest({height: null, scan, hash, summary: [], tags: null, ordIds: null});
-  return SP.splitBlock(own.items, scan.txs.map(t => t.size), bytes.length);
+  let fees = null;
+  if (summary) try { fees = SP.feesOf(scan.txs.map(t => t.txid), summary, bytes, height); } catch (e) { console.log('  ' + height + ': fees not counted (' + e.message + ')'); }
+  return SP.splitBlock(own.items, scan.txs.map(t => t.size), bytes.length, fees);
 }
+// a block's fee list (each transaction's id and fee) from mempool.space or a copy
+async function summaryOf(hash) { const x = await mpFetch('/api/v1/block/' + hash + '/summary', 120000); return BM.readSummary(await x.r.text()); }
 async function readBlock(h, hash) {
   const rawBlock = () => rawBlockOf(h, hash);
   const ids = async () => { const S = new Set(); for (let p = 0; p < 400; p++) { const {r} = await ordFetch('/inscriptions/block/' + h + (p ? '/' + p : ''), 30000, [ORD_LIST]); const html = await r.text(); for (const m of html.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)) S.add(m[1]); if (!html.includes('/inscriptions/block/' + h + '/' + (p + 1))) break; } return [...S]; };
@@ -75,7 +80,7 @@ async function readBlock(h, hash) {
   if (sum.status !== 'fulfilled') throw new Error('its transaction list could not be had: ' + (sum.reason && sum.reason.message));
   const scan = BM.scanBlock(raw.value.bytes, h);
   let runesHtml = null; if (scan.txs.some(t => t.rune && t.rune.etched)) try { runesHtml = await (await ordFetch('/block/' + h, 45000, [ORD_LIST])).r.text(); } catch (e) {}
-  let space = null; try { space = spaceOfBlock(scan, raw.value.bytes, hash); } catch (e) { console.log('  ' + h + ': blockspace not counted (' + e.message + ')'); }
+  let space = null; try { space = spaceOfBlock(scan, raw.value.bytes, hash, sum.value.list, h); } catch (e) { console.log('  ' + h + ': blockspace not counted (' + e.message + ')'); }
   const M = BM.buildManifest({height: h, time: null, scan, rawSite: raw.value.site, hash, hashSite: 'https://mempool.space',
     secondHash: second.status === 'fulfilled' ? second.value.hash : null, secondSite: second.status === 'fulfilled' ? second.value.site : null,
     summary: sum.value.list, summarySite: sum.value.site, tags: tags.status === 'fulfilled' ? tags.value : null, tagSite: 'https://ordpool.space',
@@ -180,9 +185,9 @@ async function main() {
   fs.writeFileSync(ip, JSON.stringify(index, null, 1));
   // Blockspace Share: the day's bytes by kind (space/days/<day>.json and space/index.json)
   const sp = SP.dayRecord(day, spaceBlocks); SP.writeDay(out, sp);
-  console.log('Blockspace Share: ' + sp.read + ' of ' + sp.blocks + ' blocks counted, ' + sp.size + ' bytes');
+  console.log('Blockspace Share: ' + sp.read + ' of ' + sp.blocks + ' blocks counted, ' + sp.size + ' bytes; fees of ' + sp.feesRead + ' blocks, ' + sp.fees + ' sats');
   console.log('Wrote ' + day + ': ' + blocks.length + ' blocks, ' + T.transactions + ' transactions, ids ' + T.checked.ids.join('/') + ', kinds ' + (T.checked.kinds || ['not checked']).join('/') + ', inscriptions ' + (T.checked.inscriptions || ['not checked']).join('/') + ', not read ' + T.checked.notRead);
   console.log('Notes: ' + notes.join(' | '));
 }
 if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });
-module.exports = {readBlock, mpJson, sleep, BM, SP, blocksOfDay, rawBlockOf, spaceOfBlock};   // (the corridor's shelves read their blocks the same way: .github/shelves/build-shelves.js)
+module.exports = {readBlock, mpJson, sleep, BM, SP, blocksOfDay, rawBlockOf, spaceOfBlock, summaryOf};   // (the corridor's shelves read their blocks the same way: .github/shelves/build-shelves.js)
