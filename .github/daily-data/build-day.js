@@ -167,4 +167,5 @@ async function main() {
   console.log('Wrote ' + day + ': ' + blocks.length + ' blocks, ' + T.transactions + ' transactions, ids ' + T.checked.ids.join('/') + ', kinds ' + (T.checked.kinds || ['not checked']).join('/') + ', inscriptions ' + (T.checked.inscriptions || ['not checked']).join('/') + ', not read ' + T.checked.notRead);
   console.log('Notes: ' + notes.join(' | '));
 }
-main().catch(e => { console.error(e); process.exit(1); });
+if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });
+module.exports = {readBlock, mpJson, sleep, BM};   // (the corridor's shelves read their blocks the same way: .github/shelves/build-shelves.js)

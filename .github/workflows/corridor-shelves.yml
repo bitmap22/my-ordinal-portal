@@ -1,0 +1,44 @@
+# The front page corridor's shelves: about every half hour, each of the newest Bitcoin blocks is read the Block Manifest way
+# and how many of its transactions go on each kind of shelf in its hall is kept, for the last 144 blocks (about a day), on the
+# shelves branch (btc/shelves.json). The front page colours each frame's boxes with it. Free: GitHub runs it. It only writes
+# to the shelves branch. It also runs when its script changes on main. © 2026 bitmap22. All rights reserved.
+name: Corridor shelves
+
+on:
+  schedule:
+    - cron: '13,43 * * * *'
+  push:
+    branches: [main]
+    paths: ['.github/shelves/**', '.github/workflows/corridor-shelves.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corridor-shelves
+  cancel-in-progress: false
+
+jobs:
+  shelves:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Open the shelves branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin shelves:shelves; then git worktree add data shelves; else
+            git worktree add --detach data && cd data && git checkout --orphan shelves && git rm -rfq . && cd ..; fi
+      - name: Read the newest blocks
+        run: node .github/shelves/build-shelves.js data
+      - name: Save them
+        run: |
+          cd data
+          git add -A
+          git commit -qm "Corridor shelves: up to block $(node -p "require('./btc/shelves.json').upTo")" || exit 0
+          git push origin shelves
