@@ -285,7 +285,7 @@
       // its id (from the transaction without its witness data) and its size
       const base = 4 + (r.e - r.s) + 4, total = r.z - r.a;
       r.txid = hashHex(catB([X.subarray(r.a, r.a + 4), X.subarray(r.s, r.e), X.subarray(r.z - 4, r.z)]));
-      r.weight = base * 3 + total; r.vsize = Math.ceil(r.weight / 4);
+      r.weight = base * 3 + total; r.vsize = Math.ceil(r.weight / 4); r.size = total;   // (size: its bytes as the block holds them, for Blockspace Share)
       delete r.a; delete r.s; delete r.e; delete r.z;
       out[t] = r;
     }

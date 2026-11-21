@@ -1,0 +1,59 @@
+# Blockspace Share's fill-in: reads the Bitcoin blocks of past days from their own bytes and saves only each day's bytes by kind
+# on the daily-data branch (space/). It is for days from before Daily Data counted bytes; each night Daily Data adds the day
+# before by itself. Free: GitHub runs it. Only by hand: Actions > Blockspace Share fill-in > Run workflow (give the first and
+# last day). It never runs at the same time as Daily Data (they write to the same branch).
+name: Blockspace Share fill-in
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'The first UTC day (YYYY-MM-DD)'
+        required: true
+        default: '2026-10-01'
+      to:
+        description: 'The last UTC day (YYYY-MM-DD). Leave empty for the day before yesterday.'
+        required: false
+      redo:
+        description: 'yes: read days that are already saved again. Leave empty to skip them.'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-data
+  cancel-in-progress: false
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Open the daily-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git fetch origin daily-data:daily-data && git worktree add data daily-data
+      - name: Read the days, oldest first
+        env:
+          FROM: ${{ github.event.inputs.from }}
+          TO: ${{ github.event.inputs.to }}
+          REDO: ${{ github.event.inputs.redo }}
+        run: |
+          [ -n "$TO" ] || TO="$(date -u -d '2 days ago' +%F)"
+          for d in "$FROM" "$TO"; do case "$d" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "Days must be YYYY-MM-DD"; exit 1;; esac; done
+          DAY="$FROM"; n=0
+          while [ ! "$DAY" \> "$TO" ]; do
+            if [ -f "data/space/days/$DAY.json" ] && [ "$REDO" != "yes" ]; then echo "$DAY is already saved"; else
+              node .github/daily-data/space-day.js "$DAY" data || echo "$DAY could not be read"
+              (cd data && git add -A && git commit -qm "Blockspace Share: $DAY" || true)
+              n=$((n+1)); if [ $((n % 5)) -eq 0 ]; then (cd data && git push -q origin daily-data); fi
+            fi
+            DAY="$(date -u -d "$DAY + 1 day" +%F)"
+          done
+          cd data && git push -q origin daily-data || true
