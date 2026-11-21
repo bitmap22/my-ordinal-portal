@@ -69,6 +69,9 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   // Daily Data: the list of days, one day, one block, and a day with no file
   for (const a of [{}, {day: '2026-11-13'}, {block: 975657}, {day: '2001-01-01'}]) calls.push(await call('dailyData', a));
   results.daily = calls.filter(c => c.name === 'dailyData').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : c.out.days ? c.out.days.length + ' days' : c.out.totals ? c.out.day + ': ' + c.out.totals.blocks + ' blocks, ' + c.out.blocks.length + ' listed' : c.out.height ? 'block ' + c.out.height + ', ' + c.out.transactions + ' txs' : JSON.stringify(c.out).slice(0, 100)));
+  // Blockspace Share: the list of weeks, one day, and a day that is not saved
+  for (const a of [{period: 'week'}, {period: 'day', at: '2026-11-19'}, {period: 'day', at: '2001-01-01'}]) calls.push(await call('blockspaceShare', a));
+  results.space = calls.filter(c => c.name === 'blockspaceShare').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : c.out.periods ? c.out.periods.length + ' periods' : c.out.period + ': ' + c.out.bytes + ' bytes, ' + c.out.kinds.filter(k => k.shareOfAll >= 1).map(k => k.kind + ' ' + k.shareOfAll + '%').join(', ')));
   // Collection Check: a small, a middling and a big collection (the big one carried on over calls), a list of pieces without a parent, and mistakes
   const BIG = '219d87f0d44ab4a1bf79f87ee11ee5ce90ea9e4efaa263052b2fa309e119ff3fi0';
   for (const a of [{parent: '#126744012'}, {parent: 'd7dc12d0df773e1cbf9605ae8b1e09f38f7cde5f9fb797651fb698aa7964e794i0', limit: 3}, {parent: BIG, limit: 2}, {parent: BIG, limit: 2}, {parent: BIG, filter: 'notProven', limit: 2},
@@ -157,6 +160,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Provenance checks:\n' + results.provenance.join('\n'));
   console.log('Watch:\n' + results.watch.join('\n'));
   console.log('Daily Data:\n' + results.daily.join('\n'));
+  console.log('Blockspace Share:\n' + results.space.join('\n'));
   console.log('Doge Cube (Dogecoin):\n' + results.doge.join('\n'));
   console.log('Doge first block: ' + results.dogeFirstBlock);
   console.log('What is in the file (Media Reader):\n' + results.media.join('\n'));
