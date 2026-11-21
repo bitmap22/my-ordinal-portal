@@ -221,7 +221,7 @@
       if (!mine()) return;
       if (n) n.remove(); n = el._fgNote = document.createElement('div'); n.className = 'fg-note ' + (o.below ? 'fg-below' : 'fg-over') + (small ? ' fg-small' : '');
       n.innerHTML = html; n.setAttribute('role', 'note');
-      if (btn) { const b = document.createElement('button'); b.type = 'button'; b.textContent = btn; b.onclick = e => { e.preventDefault(); e.stopPropagation(); if (key != null) shown.add(typeof key === 'object' ? key : String(key)); stats.shownByPerson++; clear(); tell(); }; n.appendChild(b); }
+      if (btn) { const b = document.createElement('button'); b.type = 'button'; b.textContent = btn; b.onclick = e => { e.preventDefault(); e.stopPropagation(); if (!e.isTrusted) return; if (key != null) shown.add(typeof key === 'object' ? key : String(key)); stats.shownByPerson++; clear(); tell(); }; n.appendChild(b); }
       place();
     };
     const isShown = () => key != null && shown.has(typeof key === 'object' ? key : String(key));
@@ -248,7 +248,7 @@
     const n = document.createElement('div'); n.className = 'fg-note ' + (el.tagName === 'VIDEO' ? 'fg-below' : 'fg-over') + (flash ? '' : ' fg-small'); n.setAttribute('role', 'note');
     n.innerHTML = flash ? '<b>⚡ May flash</b>This ' + kind + ' flashes ' + M.flash + ' times a second, which can set off seizures in some people. It is shown still.' : '<b>Still picture</b>Reduce motion is on, so this moving ' + kind + ' is shown still.';
     const b = document.createElement('button'); b.type = 'button'; b.textContent = flash ? 'Play it anyway' : 'Play it'; n.appendChild(b);
-    const go = e => { if (e) { e.preventDefault(); e.stopPropagation(); } if (k != null) played.add(k); n.remove(); if (el._fgOrig) { el.src = el._fgOrig; el._fgOrig = null; } };
+    const go = e => { if (e) { e.preventDefault(); e.stopPropagation(); if (!e.isTrusted) return; } if (k != null) played.add(k); n.remove(); if (el._fgOrig) { el.src = el._fgOrig; el._fgOrig = null; } };
     b.onclick = go;
     if (el.tagName === 'VIDEO') { try { el.pause(); } catch (e) {} const stop = () => { if (n.isConnected) { try { el.pause(); } catch (e) {} } else el.removeEventListener('play', stop); }; el.addEventListener('play', stop); }
     else if (el.tagName === 'IMG') {   // (its first frame, drawn once, stands in for it)
@@ -282,5 +282,5 @@
     return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checksOn: engine || (W && !dead ? 'starting' : 'not started yet'), checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
       recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.0'};
+  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.1'};
 })();
