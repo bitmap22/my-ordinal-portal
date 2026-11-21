@@ -284,6 +284,11 @@ body.pf3:not(.room) #kh{flex:none;margin:0;flex-wrap:nowrap;white-space:nowrap}b
 body.ph:not(.room) .phfr,body.pl:not(.room) .phfr{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
 body.ph:not(.room) .phfl,body.pl:not(.room) .phfl{-webkit-mask-image:linear-gradient(90deg,transparent,#000 26px);mask-image:linear-gradient(90deg,transparent,#000 26px)}
 body.ph:not(.room) .phfl.phfr,body.pl:not(.room) .phfl.phfr{-webkit-mask-image:linear-gradient(90deg,transparent,#000 26px,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,transparent,#000 26px,#000 calc(100% - 26px),transparent)}
+/* (21 Nov 2026, asked for) in a hall: the block's number is a small badge in the top row, in the middle of the free space between the
+   round buttons, so it is out of the way of the hall (rtag: placed by roomTag in the script; where the row has no room, it stays as before) */
+body.room.rtag #top{transform:none;opacity:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 12px;box-sizing:border-box;border-radius:14px;background:rgba(18,11,5,.62);border:1px solid rgba(247,147,26,.28);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);margin:0}
+body.room.rtag #top #tg{margin:0;font-size:8.5px;letter-spacing:1.4px;line-height:1.15;gap:5px;white-space:nowrap}body.room.rtag #top #tg i{width:5px;height:5px}
+body.room.rtag #top #h{font-size:16px;line-height:20px;height:20px;min-height:0;width:11ch;text-align:center;letter-spacing:0;padding:0}
 /* the walk-in room */
 #rf{position:fixed;inset:0;background:#050406;opacity:0;pointer-events:none;transition:opacity .4s;z-index:60}#rf.on{opacity:1}#rf::after{content:attr(data-say);position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;font:700 13px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.18em;color:#f0c75e;text-shadow:0 0 14px rgba(227,179,65,.7)}
 #sr{display:none}body.room #sr.on{display:block;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:31;width:min(560px,calc(100vw - 24px));max-height:min(82vh,640px);overflow:auto;box-sizing:border-box;padding:16px 18px 14px;border:10px solid #0c0805;border-radius:28px;background:rgba(10,7,4,.96);box-shadow:0 0 0 1px rgba(227,179,65,.6),0 0 50px rgba(227,179,65,.3),0 30px 90px rgba(0,0,0,.8);font:600 12px ui-monospace,Menlo,Consolas,monospace;color:#f0c75e;letter-spacing:.08em}
@@ -3647,6 +3652,7 @@ function phSideways(f) {
   return {free: [x1 + 12, I.t + 10, X0 - 12, floor - 8], ok};
 }
 function phLayout() {
+  try { roomTag(); } catch (e) {}
   const B = document.body, W = innerWidth, H = innerHeight;
   const mode = B.classList.contains('room') || B.classList.contains('tiny') ? '' : W <= 640 && W <= H ? 'ph' : H <= 500 && W > H ? 'pl' : W <= 640 ? 'ph' : '';
   if (mode !== PH.mode) { phClear(); B.classList.remove('ph', 'pl', 'pf1', 'pf2', 'pf3', 'pfo', 'khs'); PH.mode = mode; PH.fold = 0; if (mode) B.classList.add(mode); }
@@ -3673,6 +3679,25 @@ function phFades() {
     e.classList.toggle('phfr', !!more && e.scrollLeft + e.clientWidth < e.scrollWidth - 2); e.classList.toggle('phfl', !!more && e.scrollLeft > 2);
   }
 }
+// (21 Nov 2026, asked for) in a hall: the block number's badge sits in the top row, between the round buttons, nearest the middle of
+// the screen where it fits; it keeps out of the hall's view. In the together page, or where the row has no room, it stays as it was.
+var RTG = {set: new Map(), t: 0};
+function rtSet(e, k, v) { if (!e) return; if (e.style.getPropertyValue(k) !== v) e.style.setProperty(k, v); let s = RTG.set.get(e); if (!s) RTG.set.set(e, s = new Set()); s.add(k); }
+function rtClear() { for (const [e, s] of RTG.set) for (const k of s) e.style.removeProperty(k); RTG.set.clear(); document.body.classList.remove('rtag'); }
+function roomTag() {
+  const B = document.body, T = phEl('top'), th = phBox(phEl('th'));
+  if (!B.classList.contains('room') || B.classList.contains('crewpage') || B.classList.contains('tiny') || !T || !th) { if (RTG.set.size || B.classList.contains('rtag')) rtClear(); return; }
+  B.classList.add('rtag'); rtSet(T, 'right', 'auto'); rtSet(T, 'bottom', 'auto');
+  const W = innerWidth, y0 = th.top, y1 = th.bottom, tb = T.getBoundingClientRect(), w = tb.width, h = tb.height;
+  const obs = ['th', 'pt', 'ti', 'tm', 'tools', 'gb', 'fol'].map(id => phBox(phEl(id)));
+  for (const b of document.querySelectorAll('#tools > *, [data-agentbox]')) obs.push(phBox(b));
+  const xs = obs.filter(r => r && r.bottom > y0 && r.top < y1 && !(r.left < 8 && r.right > W - 8)).map(r => [r.left - 10, r.right + 10]).sort((a, b) => a[0] - b[0]);
+  const gaps = []; let x = 8; for (const [a, b] of xs) { if (a > x) gaps.push([x, a]); x = Math.max(x, b); } if (W - 8 > x) gaps.push([x, W - 8]);
+  let best = null; for (const [a, b] of gaps) if (b - a >= w) { const c = Math.min(Math.max(W / 2, a + w / 2), b - w / 2), d = Math.abs(c - W / 2); if (!best || d < best.d) best = {c, d}; }
+  if (!best) { rtClear(); return; }   // (no room in the top row: it stays where it was, under the round buttons)
+  rtSet(T, 'left', Math.round(best.c - w / 2) + 'px'); rtSet(T, 'top', Math.round((y0 + y1) / 2 - h / 2) + 'px');
+}
+setInterval(() => { if (document.body.classList.contains('room')) try { roomTag(); } catch (e) {} }, 1500);   // (its words change as you walk from hall to hall)
 ['kl', 'kinds', 'strip'].forEach(id => { const e = phEl(id); if (e) e.addEventListener('scroll', phFades, {passive: true}); });
 // the block cards: drag them across for older blocks (asked for, instead of an arrow button). Near the end, 12 more join.
 { const S = phEl('strip'); PH.stripN = 12;
@@ -3688,7 +3713,7 @@ function phFades() {
 addEventListener('resize', phSoon); addEventListener('orientationchange', phSoon);
 if (window.ResizeObserver) { const ro = new ResizeObserver(phSoon); ['strip', 'fut', 'past', 'fw', 'top', 'kinds', 'kl', 'tools', 'nav', 'fb', 'th', 'tm'].forEach(id => { const e = phEl(id); if (e) ro.observe(e); }); }
 if (window.MutationObserver) {   // (a class the layout sets itself never starts it again)
-  const own = /^(ph|pl|pf[123]|pfo|pfm|khs|tl1|cmp|cmpo)$/, key = () => [...document.body.classList].filter(c => !own.test(c)).sort().join(' ');
+  const own = /^(ph|pl|pf[123]|pfo|pfm|khs|tl1|cmp|cmpo|rtag)$/, key = () => [...document.body.classList].filter(c => !own.test(c)).sort().join(' ');
   let last = key(); new MutationObserver(() => { const k = key(); if (k !== last) { last = k; phSoon(); } }).observe(document.body, {attributes: true, attributeFilter: ['class']});
 }
 setTimeout(phLayout, 0);
@@ -9514,9 +9539,15 @@ window.AgentKit = window.AgentKit || (() => {
     if (!B.log.length) { const p = d.createElement('p'); p.style.cssText = 'margin:5px 0;opacity:.7'; p.textContent = 'An AI agent is using this page. Type here to talk to it; it answers here. Only this screen sees this box.'; log.append(p); }
     log.scrollTop = log.scrollHeight;
     r.querySelector('[data-body]').style.display = B.open ? '' : 'none';
-    r.style.width = B.open ? 'min(320px, calc(100vw - 16px))' : 'auto';   // (closed, it is a small tab: easier to keep clear of the screen's words)
-    r.querySelector('[data-n]').textContent = !B.open && B.unread ? B.unread + ' new' : '';
-    r.querySelector('[data-min]').textContent = B.open ? 'Hide' : 'Talk';
+    // (21 Nov 2026, asked for) closed, it is a small round button (a chat bubble), not a tab with words; a small number says the agent wrote
+    const hd = r.querySelector('[data-h]'), lab = hd.querySelector('b'), ic = hd.querySelector('[data-ic]'), nn = r.querySelector('[data-n]'), mn = r.querySelector('[data-min]');
+    r.style.width = B.open ? 'min(320px, calc(100vw - 16px))' : '30px'; r.style.height = B.open ? '' : '30px'; r.style.borderRadius = B.open ? '10px' : '15px';
+    hd.style.padding = B.open ? '6px 8px' : '0'; hd.style.height = B.open ? '' : '100%'; hd.style.justifyContent = B.open ? '' : 'center';
+    lab.style.display = mn.style.display = B.open ? '' : 'none'; if (ic) ic.style.display = B.open ? 'none' : '';
+    nn.textContent = !B.open && B.unread ? String(B.unread) : '';
+    nn.style.cssText = !B.open && B.unread ? 'position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;padding:0 3px;box-sizing:border-box;border-radius:8px;background:#7fd8ff;color:#06121a;font:700 10px/15px system-ui,sans-serif;text-align:center' : 'color:#7fd8ff;font-size:12px';
+    mn.textContent = B.open ? 'Hide' : 'Talk';
+    hd.setAttribute('aria-expanded', B.open ? 'true' : 'false'); hd.setAttribute('aria-label', B.open ? 'AI agent' : 'Talk to the AI agent' + (B.unread ? ' (' + B.unread + ' new)' : ''));
   }
   // where the box sits: the first spot from the top where it covers no words, buttons or pictures on screen (the game's own
   // frames on this page included); if none is free, the spot where it covers least. Looked at again when it opens or closes,
@@ -9565,10 +9596,11 @@ window.AgentKit = window.AgentKit || (() => {
     const d = topWin().document; if (!d || !d.body) return B;
     const r = d.createElement('div'); r.setAttribute('data-agentbox', ''); r.setAttribute('role', 'region'); r.setAttribute('aria-label', 'Talk to the AI agent');
     r.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483000;width:auto;max-width:calc(100vw - 16px);box-sizing:border-box;background:rgba(14,11,22,.94);color:#eee;border:1px solid #f7931a;border-radius:10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text;touch-action:auto';
-    r.innerHTML = '<div data-h style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><b style="flex:1;color:#f7931a;font-size:13px;white-space:nowrap">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
+    r.innerHTML = '<div data-h role="button" tabindex="0" aria-expanded="false" aria-label="Talk to the AI agent" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><span data-ic aria-hidden="true" style="display:none;line-height:0;color:#f7931a"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 4.5h13v8.5h-7l-4 3v-3h-2z"/></svg></span><b style="flex:1;color:#f7931a;font-size:13px;white-space:nowrap">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
       + '<div data-body><div data-log style="max-height:150px;overflow-y:auto;padding:0 10px"></div><form data-f style="display:flex;gap:6px;padding:6px 8px 8px"><input data-i maxlength="300" placeholder="Talk to the agent" autocomplete="off" aria-label="Talk to the agent" style="flex:1;min-width:0;background:#000;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 8px;font:14px system-ui,sans-serif"><button type="submit" style="' + BTN + '">Send</button></form></div>';
     const stop = e => e.stopPropagation();   // (typing and tapping here never reach the game: W is a letter here, not a step)
     for (const t of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'touchmove', 'wheel', 'contextmenu']) r.addEventListener(t, stop);
+    r.querySelector('[data-h]').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); e.currentTarget.click(); } });
     r.querySelector('[data-h]').addEventListener('click', () => { B.open = !B.open; if (B.open) B.unread = 0; boxDraw(); boxPlace(true); if (B.open) r.querySelector('[data-i]').focus(); });
     r.querySelector('[data-f]').addEventListener('submit', e => { e.preventDefault(); const i = r.querySelector('[data-i]'), t = i.value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 300); if (!t) return; i.value = ''; boxPush('you', t); });
     d.body.append(r); B.el = r; boxDraw(); boxPlace(true);

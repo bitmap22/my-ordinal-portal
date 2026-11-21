@@ -941,9 +941,15 @@ window.AgentKit = window.AgentKit || (() => {
     if (!B.log.length) { const p = d.createElement('p'); p.style.cssText = 'margin:5px 0;opacity:.7'; p.textContent = 'An AI agent is using this page. Type here to talk to it; it answers here. Only this screen sees this box.'; log.append(p); }
     log.scrollTop = log.scrollHeight;
     r.querySelector('[data-body]').style.display = B.open ? '' : 'none';
-    r.style.width = B.open ? 'min(320px, calc(100vw - 16px))' : 'auto';   // (closed, it is a small tab: easier to keep clear of the screen's words)
-    r.querySelector('[data-n]').textContent = !B.open && B.unread ? B.unread + ' new' : '';
-    r.querySelector('[data-min]').textContent = B.open ? 'Hide' : 'Talk';
+    // (21 Nov 2026, asked for) closed, it is a small round button (a chat bubble), not a tab with words; a small number says the agent wrote
+    const hd = r.querySelector('[data-h]'), lab = hd.querySelector('b'), ic = hd.querySelector('[data-ic]'), nn = r.querySelector('[data-n]'), mn = r.querySelector('[data-min]');
+    r.style.width = B.open ? 'min(320px, calc(100vw - 16px))' : '30px'; r.style.height = B.open ? '' : '30px'; r.style.borderRadius = B.open ? '10px' : '15px';
+    hd.style.padding = B.open ? '6px 8px' : '0'; hd.style.height = B.open ? '' : '100%'; hd.style.justifyContent = B.open ? '' : 'center';
+    lab.style.display = mn.style.display = B.open ? '' : 'none'; if (ic) ic.style.display = B.open ? 'none' : '';
+    nn.textContent = !B.open && B.unread ? String(B.unread) : '';
+    nn.style.cssText = !B.open && B.unread ? 'position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;padding:0 3px;box-sizing:border-box;border-radius:8px;background:#7fd8ff;color:#06121a;font:700 10px/15px system-ui,sans-serif;text-align:center' : 'color:#7fd8ff;font-size:12px';
+    mn.textContent = B.open ? 'Hide' : 'Talk';
+    hd.setAttribute('aria-expanded', B.open ? 'true' : 'false'); hd.setAttribute('aria-label', B.open ? 'AI agent' : 'Talk to the AI agent' + (B.unread ? ' (' + B.unread + ' new)' : ''));
   }
   // where the box sits: the first spot from the top where it covers no words, buttons or pictures on screen (the game's own
   // frames on this page included); if none is free, the spot where it covers least. Looked at again when it opens or closes,
@@ -992,10 +998,11 @@ window.AgentKit = window.AgentKit || (() => {
     const d = topWin().document; if (!d || !d.body) return B;
     const r = d.createElement('div'); r.setAttribute('data-agentbox', ''); r.setAttribute('role', 'region'); r.setAttribute('aria-label', 'Talk to the AI agent');
     r.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483000;width:auto;max-width:calc(100vw - 16px);box-sizing:border-box;background:rgba(14,11,22,.94);color:#eee;border:1px solid #f7931a;border-radius:10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text;touch-action:auto';
-    r.innerHTML = '<div data-h style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><b style="flex:1;color:#f7931a;font-size:13px;white-space:nowrap">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
+    r.innerHTML = '<div data-h role="button" tabindex="0" aria-expanded="false" aria-label="Talk to the AI agent" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer"><span data-ic aria-hidden="true" style="display:none;line-height:0;color:#f7931a"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 4.5h13v8.5h-7l-4 3v-3h-2z"/></svg></span><b style="flex:1;color:#f7931a;font-size:13px;white-space:nowrap">AI agent</b><span data-n style="color:#7fd8ff;font-size:12px"></span><button type="button" data-min style="' + BTN + '"></button></div>'
       + '<div data-body><div data-log style="max-height:150px;overflow-y:auto;padding:0 10px"></div><form data-f style="display:flex;gap:6px;padding:6px 8px 8px"><input data-i maxlength="300" placeholder="Talk to the agent" autocomplete="off" aria-label="Talk to the agent" style="flex:1;min-width:0;background:#000;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 8px;font:14px system-ui,sans-serif"><button type="submit" style="' + BTN + '">Send</button></form></div>';
     const stop = e => e.stopPropagation();   // (typing and tapping here never reach the game: W is a letter here, not a step)
     for (const t of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'touchmove', 'wheel', 'contextmenu']) r.addEventListener(t, stop);
+    r.querySelector('[data-h]').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); e.currentTarget.click(); } });
     r.querySelector('[data-h]').addEventListener('click', () => { B.open = !B.open; if (B.open) B.unread = 0; boxDraw(); boxPlace(true); if (B.open) r.querySelector('[data-i]').focus(); });
     r.querySelector('[data-f]').addEventListener('submit', e => { e.preventDefault(); const i = r.querySelector('[data-i]'), t = i.value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 300); if (!t) return; i.value = ''; boxPush('you', t); });
     d.body.append(r); B.el = r; boxDraw(); boxPlace(true);
