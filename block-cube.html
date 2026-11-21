@@ -1834,7 +1834,7 @@ const artCv = document.createElement('canvas'); artCv.width = artCv.height = 128
 const artCx = artCv.getContext('2d');
 // raster images decode off the main thread; SVG goes through an <img>
 async function decodeArt(a) {
-  const blob = new Blob([a.bytes], {type: a.ct});
+  const blob = new Blob([a.bytes], {type: a.ct}); /* blob-ok: decoded off-screen into the cube's picture sheet, its address dropped at once */
   if (!/svg/.test(a.ct) && window.createImageBitmap) return createImageBitmap(blob);
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
@@ -2348,7 +2348,7 @@ async function mdlTex(M, ti, lin) {
   if (im.bufferView != null) { const v = M.j.bufferViews[im.bufferView], B = v && M.bin[v.buffer || 0]; if (B) b = B.subarray(v.byteOffset || 0, (v.byteOffset || 0) + v.byteLength); }
   else if (typeof im.uri === 'string') { const m = /^data:([^;,]*)[^,]*;base64,(.*)$/.exec(im.uri); if (m) { ty = m[1] || ty; const s = atob(m[2]); b = new Uint8Array(s.length); for (let k = 0; k < s.length; k++) b[k] = s.charCodeAt(k); } }
   if (!b || !window.createImageBitmap) return null;
-  try { return await createImageBitmap(new Blob([b], {type: ty}), {premultiplyAlpha: 'none', colorSpaceConversion: lin ? 'none' : 'default'}); } catch (e) { return null; }
+  try { return await createImageBitmap(new Blob([b], {type: ty}), /* blob-ok: made into a bitmap, no address at all */ {premultiplyAlpha: 'none', colorSpaceConversion: lin ? 'none' : 'default'}); } catch (e) { return null; }
 }
 // the picture: PNG bytes, S pixels square (null when the model cannot be drawn). One model at a time.
 function mdlPng(bytes, S = 256, o) { const p = mdl.busy.then(() => mdlDraw(bytes, S, o)).catch(() => null); mdl.busy = p.then(() => {}, () => {}); return p; }
@@ -7915,7 +7915,7 @@ function cmScreen() {
   if (!here || m.k === 'live') { if (cm.sc) { cm.sc.remove(); cm.sc = null; } cm.scKey = ''; return; }
   const key = m.k + m.v + m.t0; if (cm.sc && cm.scKey === key) return; cm.scKey = key;
   if (cm.sc) cm.sc.remove();
-  const f = cm.sc = document.createElement('iframe'); f.className = 'cmov'; f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); f.style.width = '1280px'; f.style.height = '720px'; f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture'); f.title = 'The big screen';
+  const f = cm.sc = document.createElement('iframe'); /* frame-ok: YouTube's own player, on its own site */ f.className = 'cmov'; f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); f.style.width = '1280px'; f.style.height = '720px'; f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture'); f.title = 'The big screen';
   document.body.appendChild(f);
   if (m.k === 'yt') { const off = Math.max(0, Math.floor((Date.now() - m.t0) / 1000)); f.src = 'https://www.youtube-nocookie.com/embed/' + m.v + '?autoplay=1&playsinline=1&rel=0&modestbranding=1&start=' + off; return; }
   cmHead(m.v).then(([u, c]) => {
@@ -8502,7 +8502,7 @@ function pvSafe(t, ids, k, id, base, row) {   // the card's preview of one inscr
   else $cp.append(insSafeEl(K, id, 'pa') || insClosedEl(K, id));
   if (row) $cp.append(row);
 }
-function vwFrame(attrs) { const f = document.createElement('iframe'); for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
+function vwFrame(attrs) { const f = document.createElement('iframe'); /* frame-ok: not used; it sets the sandbox it is given */ for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
 function vwStl(it) {
   const cv = document.createElement('canvas'), w = document.createElement('div'); cv.className = 'stl'; w.className = 'wait'; w.textContent = 'DRAWING ITS 3D MODEL\u2026';
   const hn = document.createElement('div'); hn.className = 'vh'; hn.textContent = 'Drag it to turn it';
@@ -14663,7 +14663,7 @@ async function clPic(id) {
     if (d.delegate && /^[0-9a-f]{64}i\d+$/.test(d.delegate)) { try { const e = await galGet('/r/inscription/' + d.delegate); ct = e.content_type || ct; len = e.content_length || len; } catch (er) {} }
     const info = {id, n: d.number, h: d.height, sat: d.sat, ts: d.timestamp, ct, addr: d.address || ''}; cl.picInfo.set(id, info);
     if (!/^image\//.test(ct) || len > 1500000) return {info, img: null};
-    const bytes = await galGet('/content/' + id, 'bytes'), url = URL.createObjectURL(new Blob([bytes], {type: ct.split(';')[0]})), im = new Image();
+    const bytes = await galGet('/content/' + id, 'bytes'), url = URL.createObjectURL(new Blob([bytes], {type: ct.split(';')[0]})) /* blob-ok: a gallery picture, decoded off-screen into the gallery's walls */, im = new Image();
     try { im.src = url; await im.decode(); } finally { setTimeout(() => URL.revokeObjectURL(url), 4000); }
     { const G = window.FamilyGuard; if (G) { const fgGal = await G.check(im, id, {label: 'a gallery piece'}); if (fgGal !== 'ok' || G.strict()) return {info, img: fgGal === 'adult' ? G.placard(512) : G.coarse(im, 512)}; } }
     if (!im.naturalWidth) return {info, img: null};
@@ -15715,7 +15715,7 @@ function wpFill(s) {
   const b = el('div', 'b');
   if (wp.url) { const o = el('a', '', 'OPEN IN A NEW TAB'); o.href = wp.url; o.target = '_blank'; o.rel = 'noopener'; const d = el('a', 'o', 'DOWNLOAD bitcoin.pdf'); d.href = wp.url; d.download = 'bitcoin.pdf'; b.append(o, d); }
   const c = el('button', wp.url ? 'o' : '', 'CLOSE (Esc)'); c.onclick = clWinClose; b.appendChild(c); s.appendChild(b);
-  if (wp.url) { const f = document.createElement('iframe'); f.src = wp.url; f.title = 'Bitcoin: A Peer-to-Peer Electronic Cash System'; s.appendChild(f); s.appendChild(el('p', '', 'Page blank? Some browsers (phones, and some app windows) cannot show a PDF inside a page: open it in a new tab, or download it.')); }
+  if (wp.url) { const f = document.createElement('iframe'); /* frame-ok: the whitepaper PDF, rebuilt here from block 230,009 (a PDF, never a web page) */ f.src = wp.url; f.title = 'Bitcoin: A Peer-to-Peer Electronic Cash System'; s.appendChild(f); s.appendChild(el('p', '', 'Page blank? Some browsers (phones, and some app windows) cannot show a PDF inside a page: open it in a new tab, or download it.')); }
   else s.appendChild(el('div', 'wait', wp.err || 'Reading it from the Bitcoin blockchain…'));
   const p = el('p'); p.append(document.createTextNode('This copy was rebuilt just now from Bitcoin itself: a transaction in block ' + fmt(WP_BLOCK) + ' (April 2013) stores the PDF in its outputs (' + WP_TX + '). '));
   if (wp.pdf) p.appendChild(el('span', wp.crc ? 'ok' : 'no', wp.crc ? 'Its length (' + fmt(wp.len) + ' bytes) and CRC-32 checksum, stored with it, match.' : 'Its CRC-32 checksum did not match: this copy may be damaged.'));
@@ -16139,7 +16139,7 @@ function cmPaintPrep(now) {
   return;   // (nothing loads Block Paint City now)
   if (crew.page) { toPage({type: 'paint-soon'}); return; }
   if (cmPaintFrame || (cmPaintPhone && !now)) return;
-  const f = cmPaintFrame = document.createElement('iframe'); cmPaintReady = false;
+  const f = cmPaintFrame = document.createElement('iframe'); /* frame-ok: our own Block Paint page */ cmPaintReady = false;
   f.title = 'Block Paint City'; f.allow = 'autoplay; microphone'; f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:60;display:none;background:#0f1115';
   f.onload = () => { try { f.contentWindow.postMessage({app: 'blockpaint-host', type: 'embed'}, '*'); } catch (e) {} setTimeout(() => { cmPaintReady = true; }, 600); };
   if (window.BC_PAINT) { try { f.srcdoc = bpDecode(window.BC_PAINT); } catch (x) { f.src = CM_PAINT + '#from-cube'; } } else f.src = CM_PAINT + '#from-cube';
@@ -16688,7 +16688,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (fv !== 'ok') return {ty, size: bytes.length, hidden: fv === 'adult' ? '18+' : 'not checked', why: fv === 'adult' ? 'hidden: the Family Guard thinks it may be adult content (18+), so it is not handed to agents' : 'hidden: the Family Guard could not check it, so it is not handed to agents'};
     }
     if (/^image\//.test(ty)) {
-      const url = URL.createObjectURL(new Blob([bytes], {type: ty}));
+      const url = URL.createObjectURL(new Blob([bytes], {type: ty})); /* blob-ok: an agent's look: drawn into a canvas off-screen, never shown as an address */
       try {
         const im = new Image(); await new Promise((ok, no) => { im.onload = ok; im.onerror = no; im.src = url; });
         const w0 = im.naturalWidth || 512, h0 = im.naturalHeight || 512, m = Math.max(w0, h0), k = m < 256 ? 256 / m : Math.min(1, 640 / m), W = Math.max(1, Math.round(w0 * k)), H = Math.max(1, Math.round(h0 * k));   // (at most 640 across; tiny pixel art made bigger, kept sharp)
