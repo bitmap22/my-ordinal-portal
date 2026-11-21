@@ -11,7 +11,9 @@
      with a warning, until a person chooses to play it; and with "reduce motion" turned on, every moving picture shows still.
    Words written in an inscription, and what players type in chat, are checked for rude words too.
    The picture checker is NSFWJS (MIT licence, by Infinite Red) with its MobileNetV2 model, run in a background worker so games
-   stay smooth. The word checker is AllProfanity (MIT licence, by Ayush Jadaun). Both live in this folder, with their licences.
+   stay smooth. (21 Nov 2026) It works on the device's main processor (TensorFlow.js's WebAssembly engine, Apache 2.0), not on
+   its graphics chip: on a phone, checking a busy block's pictures on the graphics chip took the time the game needed to draw.
+   Where WebAssembly can't start, it falls back to the graphics chip. The word checker is AllProfanity (MIT licence, by Ayush Jadaun). Both live in this folder, with their licences.
    Neither is perfect: NSFWJS is right about 9 times in 10, and it looks at the picture only (not words drawn in it, and not
    violence). Nothing is sent anywhere: every check happens on this computer or phone.
    For AI agents: FamilyGuard.state() says what was checked and hidden. An agent never shows something that was hidden.
@@ -69,17 +71,23 @@
   }
 
   /* ---------- the picture checker: a worker, loaded the first time a picture needs it ---------- */
-  let W = null, dead = '', seq = 0, busy = 0;
+  let W = null, dead = '', seq = 0, busy = 0, engine = '';
   const wait = new Map(), qNow = [], qLater = [];
   function worker() {
     if (W || dead) return W;
     try {
-      const js = [BASE + 'model.min.js', BASE + 'group1-shard1of1.min.js', BASE + 'nsfwjs.min.js'].map(u => JSON.stringify(u)).join(',');
+      const u = n => JSON.stringify(BASE + n), js = ['model.min.js', 'group1-shard1of1.min.js', 'nsfwjs.min.js'].map(u).join(',');
+      // (21 Nov 2026) the main processor, not the graphics chip: TensorFlow.js's WebAssembly engine is loaded beside the checker
+      // (both use the same TensorFlow.js 4.22.0, which shares one engine between them) and chosen before the model loads
       const src = 'importScripts(' + js + ');\n' +
-        'let M = null; const ready = nsfwjs.load("MobileNetV2").then(m => { M = m; }, e => { postMessage({dead: String(e && e.message || e)}); });\n' +
+        'let E = "the graphics chip (WebGL)";\n' +
+        'const cpu = async () => { try { importScripts(' + u('tf-core.min.js') + ', ' + u('tf-backend-wasm.min.js') + '); const w = ' + u('tfjs-backend-wasm.wasm') + ', s = ' + u('tfjs-backend-wasm-simd.wasm') + ';\n' +
+        '  tf.wasm.setWasmPaths({"tfjs-backend-wasm.wasm": w, "tfjs-backend-wasm-simd.wasm": s, "tfjs-backend-wasm-threaded-simd.wasm": s});\n' +
+        '  if (await tf.setBackend("wasm")) E = "the main processor (WebAssembly" + (await tf.env().getAsync("WASM_HAS_SIMD_SUPPORT") ? ", SIMD" : "") + ")"; } catch (e) {} };\n' +
+        'let M = null; const ready = cpu().then(() => nsfwjs.load("MobileNetV2")).then(m => { M = m; postMessage({engine: E}); }, e => { postMessage({dead: String(e && e.message || e)}); });\n' +
         'onmessage = async e => { const {id, data} = e.data; try { await ready; if (!M) throw Error("no checker"); const p = await M.classify(data); postMessage({id, p: p.map(q => [q.className, q.probability])}); } catch (x) { postMessage({id, err: String(x && x.message || x)}); } };';
       W = new Worker(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})));
-      W.onmessage = e => { const m = e.data || {}; if (m.dead) return die(m.dead); const f = wait.get(m.id); if (!f) return; wait.delete(m.id); busy--; m.err ? f.no(new Error(m.err)) : f.ok(m.p); pump(); };
+      W.onmessage = e => { const m = e.data || {}; if (m.dead) return die(m.dead); if (m.engine) { engine = m.engine; return; } const f = wait.get(m.id); if (!f) return; wait.delete(m.id); busy--; m.err ? f.no(new Error(m.err)) : f.ok(m.p); pump(); };
       W.onerror = () => die('the picture checker did not start');
     } catch (e) { die('the picture checker did not start'); }
     return W;
@@ -92,15 +100,23 @@
       try { w.postMessage({id, data: j.data}); } catch (e) { wait.delete(id); busy--; j.no(e); }
     }
   }
-  function classify(data, soon) { return new Promise((ok, no) => { if (dead) return no(new Error(dead)); (soon ? qNow : qLater).push({data, ok, no}); pump(); }); }
+  function classify(data, soon, key) { return new Promise((ok, no) => { if (dead) return no(new Error(dead)); (soon ? qNow : qLater).push({data, ok, no, key}); pump(); }); }
+  // (21 Nov 2026) already being checked? Then nothing more is needed. soon: someone is looking at it now, so it goes to the front
+  // of the queue (a busy block queues hundreds of pictures; the ones in front of you are checked first)
+  function hurry(key, soon) {
+    if (key == null || !keyGet(key)) return false;
+    if (soon && !knownOf(key)) { const k = typeof key === 'object' ? key : String(key), i = qLater.findIndex(j => j.key === k); if (i >= 0) { qNow.push(qLater.splice(i, 1)[0]); pump(); } }
+    return true;
+  }
 
   /* ---------- a picture, made ready for the checker (224 x 224, as the checker looks at it) ---------- */
+  let sc224 = null;   // (one drawing surface, used again for every picture: a busy block has hundreds)
   function sample(src) {
     try {
       if (!src) return null; if (typeof ImageData !== 'undefined' && src instanceof ImageData) return src;
       const w = src.naturalWidth || src.videoWidth || src.displayWidth || src.width, h = src.naturalHeight || src.videoHeight || src.displayHeight || src.height; if (!w || !h) return null;   // (displayWidth: a frame split out of a moving picture)
-      const c = document.createElement('canvas'); c.width = c.height = 224; const x = c.getContext('2d', {willReadFrequently: true});
-      x.fillStyle = '#000'; x.fillRect(0, 0, 224, 224); x.drawImage(src, 0, 0, 224, 224);
+      if (!sc224) { const c = document.createElement('canvas'); c.width = c.height = 224; sc224 = c.getContext('2d', {willReadFrequently: true}); }
+      const x = sc224; x.fillStyle = '#000'; x.fillRect(0, 0, 224, 224); x.drawImage(src, 0, 0, 224, 224);
       return x.getImageData(0, 0, 224, 224);
     } catch (e) { return null; }   // (a picture this page may not read: it stays unchecked)
   }
@@ -154,7 +170,7 @@
         } else samples = [sample(src)];
         samples = samples.filter(Boolean); if (!samples.length) throw Error('nothing to look at');
         let worst = {v: 'ok', score: 0};
-        for (const s of samples) { const r = verdictOf(await classify(s, o.soon)); if (r.score > worst.score) worst = r; if (r.v === 'adult') { worst = r; break; } }
+        for (const s of samples) { const r = verdictOf(await classify(s, o.soon, key == null ? null : typeof key === 'object' ? key : String(key))); if (r.score > worst.score) worst = r; if (r.v === 'adult') { worst = r; break; } }
         if (meta) metaSet(key, meta);
         stats.checked++; if (worst.v === 'adult') stats.adult++; note(key, worst.v, o.label, worst.score); tell();
         return worst.v;
@@ -250,17 +266,21 @@
     if (n >= 64) { x.fillStyle = '#e8d6c2'; x.font = '700 ' + Math.round(n * .1) + 'px system-ui,-apple-system,"Segoe UI",sans-serif'; x.fillText('HIDDEN', n / 2, n * .74); }
     return c;
   }
-  function coarse(src, n) {   // the picture, so blurred that nothing can be made out (its colours only)
-    const c = document.createElement('canvas'); c.width = c.height = n; const x = c.getContext('2d'), k = 4;
-    const t = document.createElement('canvas'); t.width = t.height = k; const tx = t.getContext('2d'); tx.imageSmoothingEnabled = true; tx.drawImage(src, 0, 0, k, k);
-    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(t, 0, 0, n, n); return c;
+  let c4 = null;
+  // the picture, so blurred that nothing can be made out (its colours only). into: a canvas of the caller's to draw it on (a 3D
+  // world that sends it straight to its graphics, and so needs no new canvas for each picture); else a new one
+  function coarse(src, n, into) {
+    const c = into || document.createElement('canvas'); if (c.width !== n) c.width = n; if (c.height !== n) c.height = n; const x = c.getContext('2d');
+    if (!c4) { const t = document.createElement('canvas'); t.width = t.height = 4; c4 = t.getContext('2d'); c4.imageSmoothingEnabled = true; }
+    c4.clearRect(0, 0, 4, 4); c4.drawImage(src, 0, 0, 4, 4);
+    x.clearRect(0, 0, n, n); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(c4.canvas, 0, 0, n, n); return c;
   }
 
   /* ---------- the switch, and what agents can read ---------- */
   function setStrict(on) { strict = !!on; try { on ? localStorage.setItem(SKEY, '1') : localStorage.removeItem(SKEY); } catch (e) {} tell(); return strict; }
   function state() {
-    return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
+    return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checksOn: engine || (W && !dead ? 'starting' : 'not started yet'), checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
       recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.1.1'};
+  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.0'};
 })();
