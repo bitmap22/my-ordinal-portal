@@ -3176,7 +3176,20 @@ function feedTx(t) {
   if (!rec) return;
   if (t.vsize > rec.v) { rec.v = t.vsize; feedRow('rec', `${chip('#ffd36b')}<b>new biggest</b> in ${which()}: ${vb(t.vsize)} · ${rateWords(r)}`, null, t.id); }
   if (r > rec.r) { rec.r = r; feedRow('rec', `${chip('#ff5a6a')}<b>new top fee rate</b> in ${which()}: ${rateWords(r)} · ${doge(t.fee)}`, null, t.id); }
-  if (t.value >= 1e14) feedRow('rec', `${chip('#f0c75e')}<b>big move</b>: outputs total <b>${btc(t.value)}</b> · ${rateWords(r)}`, null, t.id);
+  if (t.value >= 1e14) bigMove(t, r);
+}
+// (21 Nov 2026) big moves that come in a burst share one line, so they don't push everything else down: "4 big moves in 9 s"
+// with the total and the biggest, which a click opens (seen while playing: a dozen in a few seconds filled the whole feed)
+let BIGM = null;
+function bigMove(t, r) {
+  const now = Date.now();
+  if (BIGM && BIGM.el.isConnected && now - BIGM.at < 15000) {
+    BIGM.n++; BIGM.sum += t.value; BIGM.at = now; if (t.value > BIGM.max) { BIGM.max = t.value; BIGM.id = t.id; }
+    BIGM.el.innerHTML = `<span class="tm">${clock24()}</span>${chip('#f0c75e')}<b>${fmt(BIGM.n)} big moves</b> in ${Math.max(1, Math.round((now - BIGM.t0) / 1000))} s: outputs total <b>${btc(BIGM.sum)}</b> · the biggest <b>${btc(BIGM.max)}</b>`;
+    BIGM.el.dataset.tx = BIGM.id; const id = BIGM.id; BIGM.el.onclick = () => findTx(id); if ($fl.firstChild !== BIGM.el) $fl.prepend(BIGM.el); return;
+  }
+  feedRow('rec', `${chip('#f0c75e')}<b>big move</b>: outputs total <b>${btc(t.value)}</b> · ${rateWords(r)}`, null, t.id);
+  BIGM = {el: $fl.firstChild, n: 1, t0: now, at: now, sum: t.value, max: t.value, id: t.id};
 }
 
 /* ---------- mined blocks (browse back) ---------- */
@@ -3905,7 +3918,7 @@ const ICON = {
   mute: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor" stroke="none"/><path d="M13 8l4 4M17 8l-4 4"/></svg>'};
 $tp.innerHTML = ICON.play; $ts.innerHTML = ICON.cam; $tu.innerHTML = ICON.mute; $tc.innerHTML = ICON.code;
 document.getElementById('pt').innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7.5" cy="6.5" r="2.6"/><path d="M2.8 16.5c.5-3 2.4-4.6 4.7-4.6s4.2 1.6 4.7 4.6"/><circle cx="14" cy="7.2" r="2.1"/><path d="M13.2 11.9c2.1-.3 3.7 1.1 4.1 3.9"/></svg>';
-document.getElementById('th').innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 9.2L10 3.5l7 5.7"/><path d="M5 8v8.5h10V8"/><path d="M8.5 16.5v-4.5h3v4.5"/></svg>';
+document.getElementById('th').innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M5.5 17V3h9v14"/><path d="M3 17h14"/><circle cx="12" cy="10.5" r=".95" fill="currentColor" stroke="none"/></svg>';   // (21 Nov 2026: a door, not a house: people read a house as the home page)
 if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('coarse');
 function placeTools() {
   const b = rectOf($fb);
@@ -4558,7 +4571,7 @@ vec3 c=vC*(.2*sky+1.02*dif)+vC*vec3(.95,.72,.55)*.24*fil+vec3(1.,.62,.3)*rim*.12
 if(uCmT.w>.5&&uRm.x>1.5){vec2 q=cmQ(vP);int z=cmZ(q);if(z>=0)c=cmLit(vC,n,vP,vd,z,q,uSp)+vC*vE*1.8;}
 c*=1.35*mix(.35,1.,vF);if(uRm.x>.5)c=mix(c,vec3(.022,.013,.01),1.-exp(-length(vP-uE)*(uRm.x>1.5?.012:.034)));c=c*(1.+c/6.)/(1.+c);o=vec4(pow(clamp(c,0.,1.),vec3(.4545)),clamp(vE*(uRm.x>1.5?.42:.75),0.,1.));}`);
 // glowing specks: snow, glints on the water, fireflies, dust, flames and embers, sparks and ash, plasma wisps
-const dustP = prog(V + `layout(location=0) in vec4 aA;layout(location=1) in vec4 aB;uniform mat4 uVP;uniform float uNow,uW,uH;uniform int uT;uniform vec4 uRm;uniform vec2 uCm;out vec3 vC;out float vA;
+const dustP = prog(V + `layout(location=0) in vec4 aA;layout(location=1) in vec4 aB;uniform mat4 uVP;uniform float uNow,uW,uH;uniform int uT;uniform vec4 uRm,uWl;uniform vec2 uCm;out vec3 vC;out float vA;
 void main(){float t=uNow,sz=aA.w,a=1.;vec3 p,c=vec3(1.);
 if(uT==0){p=vec3(aA.x+sin(t*.6+aA.z*6.)*.5,11.-mod(t*(.45+aB.x*.5)+aA.z*11.,11.),aA.y+cos(t*.5+aA.z*5.)*.5);c=vec3(.95,.98,1.);a=.8;}
 else if(uT==1){p=vec3(aA.x,.05,aA.y);a=pow(max(0.,sin(t*(1.1+aB.x*2.)+aA.z*40.)),14.)*1.4;c=vec3(.8,.95,1.);}
@@ -4569,7 +4582,7 @@ else if(uT==4){float lf=fract(t*(.25+aB.x*.35)+aA.z);bool fl=aB.w<.45;p=vec3(aA.
 else if(uT==5){if(aB.w<.55){float lf=fract(t*(.4+aB.x*.5)+aA.z);p=vec3(aA.x+sin(aA.z*30.)*lf*1.5,lf*(2.-lf)*4.,aA.y+cos(aA.z*30.)*lf*1.5);c=vec3(1.,.5,.1);a=1.-lf;sz*=.7;}
  else{p=vec3(aA.x+sin(t*.4+aA.z*6.)*.8,9.-mod(t*(.3+aB.x*.3)+aA.z*9.,9.),aA.y+cos(t*.3+aA.z*5.)*.8);c=vec3(.3,.28,.27);a=.55;sz*=.8;}}
 else{float an=aA.z*6.2832+t*(.15+.25*aB.x)*(aB.y>.5?1.:-1.),r=6.6+aB.z*8.4;p=vec3(cos(an)*r,.4+aB.w*6.+sin(t*.8+aA.z*12.)*.6,sin(an)*r);c=mix(vec3(.3,.9,1.),vec3(1.,.3,.9),aB.y);a=.75+.25*sin(t*3.+aA.z*20.);}
-if(uRm.x>.5){if(uRm.y>.5)p=vec3(p.z,p.y,-p.x);p.z+=uRm.z;p.z+=floor((uRm.w-p.z)/32.+.5)*32.;a*=uW*smoothstep(3.7,3.,abs(p.x))*smoothstep(16.,12.5,abs(p.z-uRm.w));if(p.z>uCm.x&&p.z<uCm.y)a=0.;}
+if(uRm.x>.5){if(uRm.y>.5)p=vec3(p.z,p.y,-p.x);p.z+=uRm.z;p.z+=floor((uRm.w-p.z)/32.+.5)*32.;a*=uW*smoothstep(3.7,3.,abs(p.x))*smoothstep(16.,12.5,abs(p.z-uRm.w));if(p.z>uCm.x&&p.z<uCm.y)a=0.;float dw=min(min(abs(p.z-uWl.x),abs(p.z-uWl.y)),min(abs(p.z-uWl.z),abs(p.z-uWl.w)));if(abs(p.x)>.9&&p.y>.5&&p.y<3.8)a*=mix(.12,1.,smoothstep(.4,2.4,dw));}
 else a*=uW*smoothstep(17.,13.5,length(p.xz));vC=c;vA=a;gl_Position=uVP*vec4(p,1.);gl_PointSize=clamp(sz*uH*1.3/gl_Position.w,1.,56.);}`,
   V + `in vec3 vC;in float vA;uniform float uG;uniform highp int uT;out vec4 o;void main(){vec2 q=gl_PointCoord*2.-1.;float d=dot(q,q);if(d>1.)discard;float f=exp(-d*3.2);
 if(uT==1){vec2 a=abs(q);f=exp(-d*16.)+max(0.,1.-a.x*9.)*max(0.,1.-a.y)+max(0.,1.-a.y*9.)*max(0.,1.-a.x);}
@@ -4646,7 +4659,7 @@ function lifeDust(VP, tn, LW, H) {
   let set = false;
   LW.forEach((w, k) => {
     if (w < 0.01) return;
-    if (!set) { gl.useProgram(dustP.p); gl.uniformMatrix4fv(dustP.u.uVP, false, VP); gl.uniform1f(dustP.u.uNow, tn); gl.uniform1f(dustP.u.uH, H); gl.uniform4fv(dustP.u.uRm, LROOM); gl.uniform2fv(dustP.u.uCm, LCM); set = true; }
+    if (!set) { gl.useProgram(dustP.p); gl.uniformMatrix4fv(dustP.u.uVP, false, VP); gl.uniform1f(dustP.u.uNow, tn); gl.uniform1f(dustP.u.uH, H); gl.uniform4fv(dustP.u.uRm, LROOM); if (dustP.u.uWl) gl.uniform4fv(dustP.u.uWl, LWALL); gl.uniform2fv(dustP.u.uCm, LCM); set = true; }   // (21 Nov 2026: the hall's end walls, so the specks fade in front of the signs beside the doors)
     gl.uniform1f(dustP.u.uW, w); gl.uniform1i(dustP.u.uT, k); gl.uniform1f(dustP.u.uG, [0.15, 0.6, 0.9, 0.05, 0.8, 0.7, 0.9][k]);
     gl.bindVertexArray(LDUST[k].vao); gl.drawArrays(gl.POINTS, 0, LDUST[k].n);
   });
@@ -9332,7 +9345,7 @@ $pt.onclick = () => { location.href = /github\.io$|(^|\.)ordportal\.com$/.test(l
 if (BC_COMMON) { document.body.classList.add('bc-common'); (async () => { for (let i = 0; i < 300 && !(tipH >= 0); i++) await new Promise(r => setTimeout(r, 100)); if (!room) roomEnter(COMMON); })(); }   // (the common-room download opens straight in it)
 
 /* ================= THE i BUTTON: the buttons, the keys, and how things work =================
-   (14 Nov 2026) the i button, as in Agent Blockhall: on a computer, next to the house (top left), a list of the buttons and keys for where you
+   (14 Nov 2026) the i button, as in Agent Blockhall: on a computer, next to the door (top left), a list of the buttons and keys for where you
    are now (the cube, a hall, the common room), and how the main things work. Esc, the button again, or a click outside
    the list closes it. An agent reads the same list with the kit's controls(). */
 const ciCss = document.createElement('style');
@@ -9379,7 +9392,7 @@ function ciData(tab) {
   const w = ciWhere(), inR = w !== 'cube', S = [], crewOn = !!(crew && crew.on);
   if ((tab || 'keys') === 'keys') {
     if (!inR) {
-      S.push({t: 'buttons', rows: [['house (top left)', 'walk into the block', 'th'], ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'],
+      S.push({t: 'buttons', rows: [['door (top left)', 'walk into the block', 'th'], ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'],
         ['the big block number', 'click it, type a block number (or a transaction ID), then [Enter]'], ['the blocks along the top', 'click one to go to it (its arrow shows older ones)'],
         ['BLOCK WEATHER 1D 1W 1M 3M', 'how busy Dogecoin has been: each bar\'s height is the transactions a block, its colour the middle fee; click a bar to open a block from it'],
         ['‹   ›', 'the block before / the block after'], ['LIVE', 'the block being made right now'], ['FEES', 'switch the colours between fees and ordinals'], ['eye', 'x-ray: see inside the cube', 'xr'],
@@ -9389,7 +9402,7 @@ function ciData(tab) {
       S.push({t: 'keys', rows: [['[←] [→]', 'the block before / the block after'], ['[↑] [↓]', 'step through the parcels of the kind you picked'],
         ['[O]', 'open the layers'], ['[Esc]', 'close the parcel\'s card']].concat(crewOn ? [['[Enter]', 'crew chat']] : [])});
     } else {
-      S.push({t: 'buttons', rows: [['house (top left)', 'back out to the cube', 'th'], ['people', 'play together: find a crew', 'pt'],
+      S.push({t: 'buttons', rows: [['door (top left)', 'back out to the cube', 'th'], ['people', 'play together: find a crew', 'pt'],
         ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'], ['← BACK (top)', 'back where you came from', 'gb'],
         ['tablet', 'search and fast travel', 'tsr'], ['camera (top right)', 'save a picture', 'ts'], ['sound', 'sound on or off', 'tu'], ['shield', 'Family mode: pictures from inscriptions stay hidden until you choose (what may be adult is always kept behind an 18+ warning)', 'tf']]});
       S.push({t: 'moving', rows: [['click the room', 'look around with the mouse ([Esc] gives the mouse back)'], ['[W] [A] [S] [D] or arrows', 'walk'], ['[Shift]', 'run']].concat(w === 'common' ? [['walk', 'stand up from a seat']] : [])});
@@ -10443,6 +10456,9 @@ window.AgentKit = window.AgentKit || (() => {
     for (const [name, f] of L) { const a = document.createElement('a'); a.textContent = name; const ext = /^https?:/.test(f);
       a.href = ext ? f : site ? site + f : test && !HAS.includes(f) ? '../' + f : f; a.target = ext ? '_blank' : '_top'; if (ext) a.rel = 'noopener noreferrer'; if (!ext && f === here) a.setAttribute('aria-current', 'page'); p.appendChild(a); } }
   const host = LOBBY ? document.querySelector('#start nav.menu[aria-label="Play"]') : null;   // (the crew page: a line in its own Play menu)
+  // (21 Nov 2026) on a phone the i button is hidden, so its list of buttons, keys and how to is the first line of this menu
+  if (typeof ciShow === 'function') { const hb = document.createElement('button'); hb.type = 'button'; hb.className = 'howto'; hb.textContent = 'How to play: buttons and keys'; hb.onclick = () => { set(false); ciShow(true); }; p.insertBefore(hb, p.firstChild);
+    const hs = document.createElement('style'); hs.textContent = '#tmp .howto{font:inherit;color:#ffcf7a;background:none;border:1px solid #6b5432;padding:6px 8px;border-radius:7px;text-align:left;cursor:pointer;margin:2px 0 4px}@media (pointer:fine) and (min-width:601px){#tmp .howto{display:none}}'; document.head.appendChild(hs); }
   if (LOBBY) { if (!host) return; b.className = 'mi'; b.id = 'tm'; b.innerHTML = 'Ord Portal &#9662;'; b.style.cssText = ''; }
   const bar = PAINT ? document.getElementById('top') : null; if (PAINT) { if (!bar) return; b.className = 'tb q'; }
   const set = on => { p.hidden = !on; b.setAttribute('aria-expanded', on ? 'true' : 'false'); if (on && document.pointerLockElement) document.exitPointerLock();

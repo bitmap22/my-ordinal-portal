@@ -3357,7 +3357,20 @@ function feedTx(t) {
   if (!rec) return;
   if (t.vsize > rec.v) { rec.v = t.vsize; feedRow('rec', `${chip('#ffd36b')}<b>new biggest</b> in ${which()}: ${vb(t.vsize)} · ${rateWords(r)}`, null, t.id); }
   if (r > rec.r) { rec.r = r; feedRow('rec', `${chip('#ff5a6a')}<b>new top fee rate</b> in ${which()}: ${rateWords(r)} · ${fmt(t.fee)} sats`, null, t.id); }
-  if (t.value >= 1e8) feedRow('rec', `${chip('#ffb04a')}<b>big move</b>: outputs total <b>${btc(t.value)}</b> · ${rateWords(r)}`, null, t.id);
+  if (t.value >= 1e8) bigMove(t, r);
+}
+// (21 Nov 2026) big moves that come in a burst share one line, so they don't push everything else down: "4 big moves in 9 s"
+// with the total and the biggest, which a click opens (seen while playing: a dozen in a few seconds filled the whole feed)
+let BIGM = null;
+function bigMove(t, r) {
+  const now = Date.now();
+  if (BIGM && BIGM.el.isConnected && now - BIGM.at < 15000) {
+    BIGM.n++; BIGM.sum += t.value; BIGM.at = now; if (t.value > BIGM.max) { BIGM.max = t.value; BIGM.id = t.id; }
+    BIGM.el.innerHTML = `<span class="tm">${clock24()}</span>${chip('#ffb04a')}<b>${fmt(BIGM.n)} big moves</b> in ${Math.max(1, Math.round((now - BIGM.t0) / 1000))} s: outputs total <b>${btc(BIGM.sum)}</b> · the biggest <b>${btc(BIGM.max)}</b>`;
+    BIGM.el.dataset.tx = BIGM.id; const id = BIGM.id; BIGM.el.onclick = () => findTx(id); if ($fl.firstChild !== BIGM.el) $fl.prepend(BIGM.el); return;
+  }
+  feedRow('rec', `${chip('#ffb04a')}<b>big move</b>: outputs total <b>${btc(t.value)}</b> · ${rateWords(r)}`, null, t.id);
+  BIGM = {el: $fl.firstChild, n: 1, t0: now, at: now, sum: t.value, max: t.value, id: t.id};
 }
 
 /* ---------- mined blocks (browse back) ---------- */
@@ -3763,7 +3776,7 @@ function cardLinkOf(t) {
   return {inscription: ins || undefined, block: h != null ? h : undefined, link: id ? page + '#find=' + id : undefined,
     provenanceCheck: ins ? 'provenance-check.html?id=' + ins : undefined, watch: ins ? 'watch.html?watch=inscription&value=' + ins : undefined,
     blockManifest: h != null ? 'block-manifest.html?block=' + h : undefined,
-    recursionMap: ins ? 'recursion-map.html?id=' + ins : undefined,
+    recursionMap: ins && (!((t.gal ? t.ct : t.ins && t.ins[0] && t.ins[0].ct) || '') || /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i.test((t.gal ? t.ct : t.ins && t.ins[0] && t.ins[0].ct) || '')) ? 'recursion-map.html?id=' + ins : undefined,   // (21 Nov 2026: only for a file that can load things: not for plain text, like a .bitmap)
     codeRead: ins && /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i.test((t.gal ? t.ct : t.ins && t.ins[0] && t.ins[0].ct) || '') ? 'code-read.html?id=' + ins : undefined,   // (Code Read: what its code asks for, read without running it)
     runeProof: !t.live && t.id && /^[0-9a-f]{64}$/.test(t.id) && t.sc != null && (t.sc >> TF.etch) & 1 ? 'rune-proof.html?rune=' + t.id : t.mint && /^\d+:\d+$/.test(t.mint) ? 'rune-proof.html?rune=' + t.mint : undefined,   // (Rune Proof: the rune it etches, or the rune it mints)
     collectionCheck: t.gal && room && room.at && room.at.gal && room.at.gal.pid ? 'collection-check.html?parent=' + room.at.gal.pid : undefined,   // (a gallery piece: its collection, proven on the chain)
@@ -4247,7 +4260,7 @@ const ICON = {
   mute: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor" stroke="none"/><path d="M13 8l4 4M17 8l-4 4"/></svg>'};
 $tp.innerHTML = ICON.play; $ts.innerHTML = ICON.cam; $tu.innerHTML = ICON.mute; $tc.innerHTML = ICON.code;
 document.getElementById('pt').innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7.5" cy="6.5" r="2.6"/><path d="M2.8 16.5c.5-3 2.4-4.6 4.7-4.6s4.2 1.6 4.7 4.6"/><circle cx="14" cy="7.2" r="2.1"/><path d="M13.2 11.9c2.1-.3 3.7 1.1 4.1 3.9"/></svg>';
-document.getElementById('th').innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 9.2L10 3.5l7 5.7"/><path d="M5 8v8.5h10V8"/><path d="M8.5 16.5v-4.5h3v4.5"/></svg>';
+document.getElementById('th').innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M5.5 17V3h9v14"/><path d="M3 17h14"/><circle cx="12" cy="10.5" r=".95" fill="currentColor" stroke="none"/></svg>';   // (21 Nov 2026: a door, not a house: people read a house as the home page)
 if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('coarse');
 function placeTools() {
   const b = rectOf($fb);
@@ -8536,9 +8549,10 @@ function vwRender() {
     else {   // (SAFETY: only what cannot run code is shown here; see insKind)
       const K = insKindOf(it.id);
       if (K === undefined) { $vwc.innerHTML = '<div class="wait">CHECKING WHAT IT IS\u2026</div>'; insKind(it.id, insBases('https://ordinals.com')).then(() => { if (vw && vw.items[vw.i] === it) vwRender(); }); }
-      else { $vwc.appendChild(insSafeEl(K, it.id) || insClosedEl(K, it.id)); if (K.kind === 'closed') what += ' \u00b7 not opened here'; }
+      else { $vwc.appendChild(insSafeEl(K, it.id) || insClosedEl(K, it.id)); if (K.kind === 'closed') { what += ' \u00b7 not opened here'; vw.closedLinks = 1; } }
     }
     $vwo.href = 'https://ordinals.com/inscription/' + it.id; $vwv.href = VIEWER + '#' + it.id; $vwo.style.display = $vwv.style.display = '';
+    if (vw.closedLinks) { vw.closedLinks = 0; $vwo.style.display = 'none'; }   // (21 Nov 2026: its "not opened here" panel already has OPEN ON ORDINALS.COM: one button for it, not two)
     if (it.num == null && !it._asked && rrNow()) { it._asked = 1; RR.ins(it.id).then(o => { it.num = o.number; if (!it.type) it.type = o.content_type; if (vw && vw.items[vw.i] === it) vwRender(); }, () => {}); }
   } else if (it.k === 'stamp') {
     const ty = it.type || 'application/octet-stream';
@@ -15499,7 +15513,7 @@ $gub.onclick = e => { e.stopPropagation(); const L = guMine(), pn = performance.
   if (gu.arm > pn && gu.armG === q.g) { gu.arm = 0; guGiveUp(q.g, q.side); } else { gu.arm = pn + 6000; gu.armG = q.g; } guDraw(); $gub.blur(); };
 
 /* ================= THE i BUTTON: the buttons, the keys, and how things work =================
-   On a computer, next to the house (top left): it opens a list of the buttons and keys for where you are now (the cube, a
+   On a computer, next to the door (top left): it opens a list of the buttons and keys for where you are now (the cube, a
    block's room, the common room, a gallery, the bitmap garden, a club), and how the main things work: the wallet (read only),
    getting into the bitmap garden and the clubs (not what is inside them), the trade floor, and the block halls. Esc, the
    button again, or a click outside the list closes it. An agent reads the same list with the kit's controls(). */
@@ -15546,7 +15560,7 @@ function ciData(tab) {
   const w = ciWhere(), inR = w !== 'cube', S = [], crewOn = typeof crew !== 'undefined' && crew && crew.on;
   if ((tab || 'keys') === 'keys') {
     if (!inR) {
-      S.push({t: 'buttons', rows: [['house (top left)', 'walk into the block', 'th'], ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'],
+      S.push({t: 'buttons', rows: [['door (top left)', 'walk into the block', 'th'], ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'],
         ['the big block number', 'click it, type a block number (or a transaction ID), then [Enter]'], ['the blocks along the top', 'click one to go to it (its arrow shows older ones)'],
         ['FEE WEATHER 1D 1W 1M 3M', 'the middle fee of recent blocks, over a day, a week, a month or 3 months'], ['‹   ›', 'the block before / the block after'],
         ['LIVE', 'the block being made right now'], ['FEES', 'switch the colours between fees and ordinals'], ['eye', 'x-ray: see inside the cube', 'xr'],
@@ -15556,7 +15570,7 @@ function ciData(tab) {
       S.push({t: 'keys', rows: [['[←] [→]', 'the block before / the block after'], ['[↑] [↓]', 'step through the parcels of the kind you picked'],
         ['[O]', 'open the layers'], ['[Esc]', 'close the parcel\'s card']].concat(crewOn ? [['[Enter]', 'crew chat']] : [])});
     } else {
-      S.push({t: 'buttons', rows: [['house (top left)', 'back out to the cube', 'th'], ['people', 'play together: find a crew, connect your wallet (read only)', 'pt'],
+      S.push({t: 'buttons', rows: [['door (top left)', 'back out to the cube', 'th'], ['people', 'play together: find a crew, connect your wallet (read only)', 'pt'],
         ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'], ['camera (top right)', 'save a picture', 'ts'], ['sound', 'sound on or off', 'tu'], ['shield', 'Family mode: pictures from inscriptions stay hidden until you choose (what may be adult is always kept behind an 18+ warning)', 'tf']]
         .concat(w === 'garden' || w === 'club' ? [['GIVE UP (bottom right)', 'shows while you are in a game: click it twice to give up (the other side wins)']] : [])});
       S.push({t: 'moving', rows: [['click the room', 'look around with the mouse ([Esc] gives the mouse back)'], ['[W] [A] [S] [D] or arrows', 'walk'], ['[Shift]', 'run']].concat(w === 'common' || w === 'garden' || w === 'club' ? [['walk', 'stand up from a seat']] : [])});
@@ -17398,6 +17412,9 @@ window.AgentKit = window.AgentKit || (() => {
     for (const [name, f] of L) { const a = document.createElement('a'); a.textContent = name; const ext = /^https?:/.test(f);
       a.href = ext ? f : site ? site + f : test && !HAS.includes(f) ? '../' + f : f; a.target = ext ? '_blank' : '_top'; if (ext) a.rel = 'noopener noreferrer'; if (!ext && f === here) a.setAttribute('aria-current', 'page'); p.appendChild(a); } }
   const host = LOBBY ? document.querySelector('#start nav.menu[aria-label="Play"]') : null;   // (the crew page: a line in its own Play menu)
+  // (21 Nov 2026) on a phone the i button is hidden, so its list of buttons, keys and how to is the first line of this menu
+  if (typeof ciShow === 'function') { const hb = document.createElement('button'); hb.type = 'button'; hb.className = 'howto'; hb.textContent = 'How to play: buttons and keys'; hb.onclick = () => { set(false); ciShow(true); }; p.insertBefore(hb, p.firstChild);
+    const hs = document.createElement('style'); hs.textContent = '#tmp .howto{font:inherit;color:#ffcf7a;background:none;border:1px solid #6b5432;padding:6px 8px;border-radius:7px;text-align:left;cursor:pointer;margin:2px 0 4px}@media (pointer:fine) and (min-width:601px){#tmp .howto{display:none}}'; document.head.appendChild(hs); }
   if (LOBBY) { if (!host) return; b.className = 'mi'; b.id = 'tm'; b.innerHTML = 'Ord Portal &#9662;'; b.style.cssText = ''; }
   const bar = PAINT ? document.getElementById('top') : null; if (PAINT) { if (!bar) return; b.className = 'tb q'; }
   const set = on => { p.hidden = !on; b.setAttribute('aria-expanded', on ? 'true' : 'false'); if (on && document.pointerLockElement) document.exitPointerLock();
