@@ -199,6 +199,7 @@ body.halv #h{text-shadow:0 0 22px rgba(177,76,255,.75),0 0 4px rgba(255,209,102,
 #fwc{display:none;width:100%;height:34px;cursor:pointer;border-bottom:1px solid rgba(247,147,26,.25)}#fw.cn #fwc{display:block}#fw.cn #fwb{display:none}
 .fwr{margin-left:6px;padding:1px 6px;border-radius:8px;border:1px solid rgba(247,147,26,.25);background:rgba(18,11,5,.5);color:#a08b72;font:inherit;letter-spacing:1px;cursor:pointer}.fwr.on{color:#ffb04a;border-color:rgba(247,147,26,.7);background:rgba(247,147,26,.12)}
 @media (pointer:coarse){.fwr{padding:4px 9px}}
+@media (pointer:coarse),(max-width:640px){.fwr{position:relative}.fwr::after{content:'';position:absolute;inset:-9px -3px}}   /* (21 Nov 2026) the 1D 1W 1M 3M buttons stay small to look at, but each takes a finger-sized tap (about 32 by 32) */
 body #top,body #feed{margin-top:calc(env(safe-area-inset-top) + var(--fwh,0px))}
 @media (max-width:640px){body #fb{margin-top:calc(env(safe-area-inset-top) + var(--fwh,0px))}}
 @media (min-width:1500px) and (min-height:820px){#fwl{font-size:11.5px}#fwb,#fwc{height:42px}}
@@ -238,6 +239,8 @@ body.cmp #st,body.cmp #ot,body.cmp #mn{cursor:pointer}}}
 @media (max-width:640px){#kh{display:flex;flex-wrap:wrap;align-items:center;row-gap:5px;white-space:normal}}
 /* short phones: the parcel-type chips sit in one row you can slide sideways, so the cube keeps its room */
 @media (max-width:640px){#kl{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}#kl::-webkit-scrollbar{display:none}.kd{flex:none}}
+#kn{flex:none;white-space:nowrap}   /* (21 Nov 2026) "none in this block" on one line, never one word a line */
+@media (max-width:640px){body:not(.pf3) #kl{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}}   /* (the row slides sideways: its right edge fades, so a chip there reads as more to come, not cut off) */
 /* narrow phones (320 px): the bottom buttons squeeze up so they all fit */
 @media (max-width:440px){#nav{gap:4px}#lv{padding:0 10px;letter-spacing:1px;gap:6px}#ln{min-width:0;padding:0 10px;letter-spacing:1px}}
 @media (max-width:340px){#nav{gap:3px}#nav button{min-width:40px}#pv,#nx,#xr,#op{width:40px}#lv{padding:0 8px}#ln{padding:0 8px;letter-spacing:.5px}}
@@ -3250,20 +3253,20 @@ function feedBlock(b, isNew) {
   const x = b.extras || {};
   feedRow('blk', `${chip('#f7931a')}<b>Block ${fmt(b.height)}</b> ${isNew ? 'just found' : 'found'}` + (x.pool && x.pool.name ? ` by <b>${esc(x.pool.name)}</b>` : '') +
     `<br>${fmt(b.tx_count)} transactions` + (x.totalFees != null ? ` · fees ${sats(x.totalFees)}` : '') + (x.reward != null ? ` · miner got ${sats(x.reward)}` : '') +
-    (x.medianFee != null ? ` · median ${r1(x.medianFee)} sat/vB` : ''), clock24(b.timestamp));
+    (x.medianFee != null ? ` · median ${r1(x.medianFee)} sat/vB` : ''), isNew ? clock24() : clock24(b.timestamp));   // (21 Nov 2026: a block just found is told at the time it came in, so the feed stays in order: a block's own time can be minutes off)
 }
 async function feedOrdinals(b) {
   try {
     const s = await (await fetchT(ORDPOOL + '/api/v1/block/' + b.id + '/summary', null, 60000)).json(), n = KINDS.map(() => 0);
     for (const x of s) { let f; try { f = BigInt(x.flags); } catch (e) { continue; } for (let i = 0; i < KINDS.length; i++) if (KINDS[i].bit != null && (f >> KINDS[i].bit) & 1n) { n[i]++; break; } }
     const parts = []; for (let i = KINDS.length - 1; i >= 0; i--) if (n[i]) parts.push(`${chip(KINDS[i].css)}${fmt(n[i])} ${KINDS[i].name === 'runes' ? '<span title="ordpool.space counts every runestone: the runes and Alkanes shelves together">runestones (runes and Alkanes)</span>' : KINDS[i].name}`);
-    feedRow('ord', `<b>Block ${fmt(b.height)}</b> ordinals <span style="opacity:.6">(ordpool.space)</span><br>` + (parts.length ? parts.join(' &nbsp;') : 'none'), clock24(b.timestamp));
+    feedRow('ord', `<b>Block ${fmt(b.height)}</b> ordinals <span style="opacity:.6">(ordpool.space)</span><br>` + (parts.length ? parts.join(' &nbsp;') : 'none'), clock24());   // (told when it came in: the feed stays in order)
   } catch (e) {}
   try {
     const ids = await ordInscriptions(b.height);
     if (ids.length) feedRow('ord', `${chip(KINDS[INSC].css)}inscriptions made in block ${fmt(b.height)}:<br>` +
       ids.slice(0, 3).map(id => `<a href="https://ordinals.com/inscription/${id}" target="_blank" rel="noopener">${id.slice(0, 8)}…i${id.split('i').pop()}</a>`).join(' · ') +
-      (ids.length > 3 ? ` + ${fmt(ids.length - 3)} more` : '') + ' <span style="opacity:.6">(ordinals.com)</span>', clock24(b.timestamp));
+      (ids.length > 3 ? ` + ${fmt(ids.length - 3)} more` : '') + ' <span style="opacity:.6">(ordinals.com)</span>', clock24());   // (told when it came in: the feed stays in order)
   } catch (e) {}
 }
 function feedStart(txs) {   // a fresh block list: note its biggest and top-paying transaction, then watch for new records
