@@ -17,7 +17,7 @@
   const MANIFEST = PORTAL + 'doge-block-manifest.html', PROV = PORTAL + 'doge-provenance-check.html', WATCH = PORTAL + 'doge-watch.html';
   const WHAT = ['block', 'inscription', 'address', 'kind'];
   const ADDR = /^[DA9][1-9A-HJ-NP-Za-km-z]{25,34}$/;
-  const fmt = n => n == null ? '–' : Number(n).toLocaleString('en-GB');
+  const fmt = n => n == null || !isFinite(Number(n)) ? '–' : Number(n).toLocaleString('en-GB');   // (a number a site didn't give: a dash, never NaN)
   const doge = k => (k / 1e8).toLocaleString('en-GB', {maximumFractionDigits: 8});
   const iso = s => s ? new Date(s * 1000).toISOString().replace('.000', '') : null;
   const nowIso = () => new Date().toISOString().replace(/\.\d{3}/, '');
@@ -84,8 +84,8 @@
       // a block replaced at the top (two miners found one at once): say so, and carry on from the new top
       if (s.hash && tip >= s.tip) { const B0 = await blockFacts(io, s.tip); if (B0.hash && B0.hash !== s.hash) { E('Block ' + fmt(s.tip) + ' was replaced by another miner’s block', {facts: {height: s.tip, was: s.hash, now: B0.hash}, checked: {hash: B0.checked}, links: blockLinks(s.tip)}); if (tip === s.tip) return {state: {tip, hash: B0.hash}, events: ev}; } }
       if (!(tip > s.tip)) return {state: s, events: ev};
-      const heights = []; for (let h = s.tip + 1; h <= tip; h++) heights.push(h);
-      const told = heights.slice(-MAX_NEW), skipped = heights.length - told.length;
+      const first = s.tip + 1, from = Math.max(first, tip - MAX_NEW + 1), told = []; for (let h = from; h <= tip; h++) told.push(h);   // (only the newest few are fetched, however far back the token says it was)
+      const skipped = from - first;
       let lastHash = s.hash;
       for (const h of told) {
         const B = await blockFacts(io, h); lastHash = B.hash;
@@ -164,7 +164,10 @@
   const b64e = t => typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(t))) : Buffer.from(t, 'utf8').toString('base64');
   const b64d = t => typeof atob === 'function' ? decodeURIComponent(escape(atob(t))) : Buffer.from(t, 'base64').toString('utf8');
   const pack = (w, s) => b64e(JSON.stringify({v: 1, w, s})).replace(/=+$/, '');
-  function unpack(t) { try { const o = JSON.parse(b64d(String(t))); if (o && o.v === 1 && o.w && WHAT.includes(o.w.what)) return o; } catch (e) {} throw new Error('that since token could not be read: start the watch again without it'); }
+  // a token comes back from the agent, and could be made up: everything in it is checked before it is used
+  const okState = (w, st) => !!st && typeof st === 'object' && !Array.isArray(st) && JSON.stringify(st).length < 20000 && (w.what === 'block' || w.what === 'kind' ? Number.isSafeInteger(st.tip) && st.tip >= 0 && st.tip < 1e8 && (st.hash == null || /^[0-9a-f]{64}$/.test(st.hash)) : true);
+  const okWatch = w => !!w && typeof w === 'object' && WHAT.includes(w.what) && Object.values(w).every(v => v == null || typeof v === 'boolean' || (typeof v === 'number' && isFinite(v)) || (typeof v === 'string' && v.length <= 120 && !/[\u0000-\u001f<>]/.test(v)));
+  function unpack(t) { try { if (String(t).length > 30000) throw 0; const o = JSON.parse(b64d(String(t))); if (o && o.v === 1 && okWatch(o.w) && okState(o.w, o.s)) return o; } catch (e) {} throw new Error('that since token could not be read: start the watch again without it'); }
 
   return {VERSION, WHAT, normalise, describe, start, standing, poll, pack, unpack, links: {GAME, MANIFEST, PROV, WATCH}};
 });

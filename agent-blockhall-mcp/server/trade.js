@@ -97,7 +97,7 @@
     return out;
   }
   function fromRecursion(M, codeLoadsOutside) {
-    if (!M) return [reason('what it loads', 'unknown', 'What it loads could not be mapped this time.')];
+    if (!M || M.mapped === false || M.allOnChain === null) return [reason('what it loads', 'unknown', 'What it loads could not be mapped this time.')];
     const C = M.counts || {}, out = [];
     if (C.missing) out.push(reason('what it loads', 'care', fmt(C.missing) + ' of the inscriptions it loads could not be found: it may not work fully.', {from: 'Recursion Map'}));
     // (the Recursion Map sees every address written in its code; Code Read says whether its code loads or asks from one)

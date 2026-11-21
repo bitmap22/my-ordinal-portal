@@ -157,9 +157,10 @@
   function read(link) {
     let u; try { u = new URL(link, PORTAL); } catch (e) { return null; }
     const p = u.searchParams; if (!p.get('cited') || !p.get('fp')) return null;
+    if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?(\.\d{1,3})?Z$/.test(p.get('cited')) || !/^[0-9a-zA-Z_-]{4,200}$/.test(p.get('fp'))) return null;   // (a made-up date or fingerprint: not a citation)
     const page = u.pathname.split('/').pop(), tool = Object.keys(TOOLS).find(k => TOOLS[k].page === page); if (!tool) return null;
     let facts = null; try { facts = JSON.parse(unb64(p.get('f') || '')); } catch (e) {}
-    const subject = {}; for (const [k, v] of p) if (!['cited', 'fp', 'src', 'f'].includes(k)) subject[k] = v;
+    const subject = {}; for (const [k, v] of p) if (!['cited', 'fp', 'src', 'f'].includes(k) && /^[a-z]{1,12}$/i.test(k) && v.length <= 300 && Object.keys(subject).length < 8) subject[k] = v;
     return {tool, check: TOOLS[tool].name, subject, at: p.get('cited'), fingerprint: p.get('fp'), sources: (p.get('src') || '').split(',').filter(Boolean), facts, raw: {cited: p.get('cited'), fp: p.get('fp'), src: p.get('src') || '', f: p.get('f') || ''}};
   }
   const sameSubject = (a, b) => canon(Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, String(v)]))) === canon(Object.fromEntries(Object.entries(b || {}).map(([k, v]) => [k, String(v)])));

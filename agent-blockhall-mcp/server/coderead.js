@@ -35,9 +35,9 @@
       [/\bwindow\.ethereum\b|eth_requestAccounts|eth_sendTransaction|eth_signTypedData|personal_sign\b/, 'an Ethereum wallet'],
       [/\b(signPsbts?|signMessage|sendBitcoin|pushPsbt|signTransaction|requestAccounts|sendInscription)\s*\(/, 'a wallet command (sign, send or ask for accounts)']]},
     {key: 'outside', name: 'Loads from outside the chain', says: 'it loads or asks things from outside the chain (they can change or stop working one day)', rules: [
-      [/<script\b[^>]*\bsrc\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a script from outside the chain'],
-      [/<(img|iframe|audio|video|source|embed|object|track)\b[^>]*\b(src|data)\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a picture, sound, video or frame from outside the chain'],
-      [/<link\b[^>]*\bhref\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a style sheet or font from outside the chain'],
+      [/<script\b[^>]{0,600}\bsrc\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a script from outside the chain'],
+      [/<(img|iframe|audio|video|source|embed|object|track)\b[^>]{0,600}\b(src|data)\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a picture, sound, video or frame from outside the chain'],
+      [/<link\b[^>]{0,600}\bhref\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a style sheet or font from outside the chain'],
       [/\bfetch\s*\(\s*[`"']\s*(https?:)?\/\/[^`"'\s]+/, 'a fetch to outside the chain'],
       [/\bimport\s*\(?\s*[`"']\s*(https?:)?\/\/[^`"'\s]+/, 'code imported from outside the chain'],
       [/\.open\s*\(\s*[`"'][A-Z]+[`"']\s*,\s*[`"']\s*(https?:)?\/\/[^`"'\s]+/, 'a request (XMLHttpRequest) to outside the chain'],
@@ -47,7 +47,7 @@
       [/\bnew\s+WebSocket\s*\(/, 'a WebSocket (a live line to a server)'],
       [/\bnew\s+EventSource\s*\(/, 'an EventSource (a live feed from a server)'],
       [/\bmethod\s*:\s*["'](POST|PUT|PATCH)["']/i, 'a fetch that sends data (POST or PUT)'],
-      [/<form\b[^>]*\baction\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a form sent to outside the chain'],
+      [/<form\b[^>]{0,600}\baction\s*=\s*["']?\s*(https?:)?\/\/[^"'\s>]+/i, 'a form sent to outside the chain'],
       [/\bRTCPeerConnection\b/, 'a peer-to-peer connection (WebRTC)']]},
     {key: 'tracks', name: 'Tracks you', says: 'it has known tracking or analytics code', rules: [
       [new RegExp('(' + ANALYTICS.map(esc).join('|') + ')', 'i'), 'a known analytics or tracking service'],
@@ -75,7 +75,7 @@
 
   // one file: every finding, with its line and a short piece of the code
   function scan(text, file) {
-    const lines = String(text).split('\n'), out = [];
+    const lines = String(text).slice(0, 600000).split('\n'), out = [];   // (the first 600,000 characters of a file are read)
     for (const K of KINDS) {
       const seen = new Set();
       for (const [re, what] of K.rules) {
@@ -143,7 +143,7 @@
         const lines = t.split('\n');
         for (const u of RM.scan(t).outside) {
           if (out.findings.some(x => x.kind === 'outside' && x.file === f.id && x.code.untrusted.includes(u))) continue;
-          const i = lines.findIndex(L => L.includes(u) && !new RegExp('<a\\b[^>]*href\\s*=\\s*["\']?' + u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(L)); if (i < 0) continue;
+          const i = lines.findIndex(L => L.includes(u) && !new RegExp('<a\\b[^>]{0,600}href\\s*=\\s*["\']?' + u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(L)); if (i < 0) continue;
           const at = lines[i].indexOf(u);
           out.findings.push({kind: 'outside', what: 'an address it may load from (named in code that fetches)', file: f.id, line: i + 1, code: {untrusted: lines[i].slice(Math.max(0, at - 40), at + u.length + 30).trim()}});
         }

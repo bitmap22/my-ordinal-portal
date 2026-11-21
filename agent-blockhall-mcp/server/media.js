@@ -42,7 +42,7 @@
 
   // unpacking zlib data (PNG pictures, PNG colour profiles and text): the browser's own, or Node's
   async function inflate(u) {
-    if (typeof require === 'function') { try { const z = require('zlib'); return new Uint8Array(z.inflateSync(u)); } catch (e) { if (!/Cannot find module/.test(String(e))) throw e; } }
+    if (typeof require === 'function') { try { const z = require('zlib'); return new Uint8Array(z.inflateSync(u, {maxOutputLength: 64e6})); } catch (e) { if (!/Cannot find module/.test(String(e))) throw e; } }
     if (typeof DecompressionStream === 'function') {
       const ds = new DecompressionStream('deflate'), w = ds.writable.getWriter(); w.write(u); w.close();
       return new Uint8Array(await new Response(ds.readable).arrayBuffer());

@@ -56,8 +56,8 @@
       [/\b(you\s+(have\s+)?(won|been\s+(selected|chosen))|congratulations[!,.]?\s+you)\b/i, 'says you have won'],
       [/\b(double|2x|triple|3x)\s+your\s+(btc|bitcoin|crypto|coins?|sats|money|doge)\b|\bsend\s+[\d.]+\s*(btc|bitcoin|doge|sats)[\s\S]{0,80}\b(get|receive)\b[\s\S]{0,40}\b(back|double|2x)\b/i, 'promises to multiply your coins'],
       [/\b(connect|validate|verify|sync|synchroni[sz]e|rectify|restore|unlock|migrate)\s+(your\s+)?wallet\b[\s\S]{0,600}<(input|form)\b/i, 'a "fix your wallet" form'],
-      [/<form\b[^>]*\baction\s*=\s*["']?\s*(https?:)?\/\//i, 'a form that sends what you type to another site'],
-      [/<input\b[^>]*\btype\s*=\s*["']?password/i, 'a password box'],
+      [/<form\b[^>]{0,600}\baction\s*=\s*["']?\s*(https?:)?\/\//i, 'a form that sends what you type to another site'],
+      [/<input\b[^>]{0,600}\btype\s*=\s*["']?password/i, 'a password box'],
       [/\b(bit\.ly|tinyurl\.com|t\.co|goo\.gl|is\.gd|cutt\.ly|rebrand\.ly|shorturl\.at|rb\.gy|tiny\.cc)\/[A-Za-z0-9]+/i, 'a hidden-address short link']],
     miner: [
       [/\b(coin-?hive|cryptonight|coinimp|crypto-?loot|webminepool|minero\.cc|jsecoin|deepminer|cryptoloot|webmine\.pro|monerominer|xmrig|nicehash|minergate)\b|stratum\+(tcp|ssl):\/\//i, 'a known coin-mining tool'],
@@ -72,7 +72,7 @@
     hate: [],
     // outside loads Code Read doesn't look for: an SVG's own pictures and patterns, and CSS backgrounds and fonts from the web
     code: [
-      [/<(image|use|feImage|pattern)\b[^>]*\b(xlink:)?href\s*=\s*["']?\s*(https?:)?\/\//i, 'a drawing (SVG) that loads from outside the chain'],
+      [/<(image|use|feImage|pattern)\b[^>]{0,600}\b(xlink:)?href\s*=\s*["']?\s*(https?:)?\/\//i, 'a drawing (SVG) that loads from outside the chain'],
       [/\burl\(\s*["']?\s*(https?:)?\/\/[^)]+\)/i, 'a style that loads from outside the chain'],
       [/@import\s+(url\()?\s*["']?\s*(https?:)?\/\//i, 'a style sheet from outside the chain']]};
   // hate words and slogans: kept encoded so the list isn't shown as plain words in the page
@@ -85,19 +85,29 @@
     [/(^|[^\w])\+(?!44\s?7)\d{1,3}[\s-]\d{2,4}[\s-]\d{3,4}[\s-]\d{3,4}(?!\d)/, 'a phone number'],
     [/\b\d{1,5}\s+([A-Z][a-z]+\s){1,3}(Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Close|Way|Crescent|Boulevard|Blvd|Court|Ct|Terrace|Gardens|Grove)\b\.?/, 'a street address'],
     [/\b(GIR ?0AA|[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]? ?\d[ABD-HJLNP-UW-Z]{2})\b/, 'a UK postcode'],
-    [/\b[A-Za-z0-9._%+-]{2,}@(?!(example|test|domain|email|sentry|w3)\.)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.(com|net|org|co\.uk|uk|io|me|de|fr|jp|cn|ru|xyz|info|app|dev|ai)\b/, 'an email address']];
+    [/\b[A-Za-z0-9._%+-]{2,64}@(?!(example|test|domain|email|sentry|w3)\.)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.(com|net|org|co\.uk|uk|io|me|de|fr|jp|cn|ru|xyz|info|app|dev|ai)\b/, 'an email address']];
 
   // ----- reading -----
   const cut = (s, i, n) => s.slice(Math.max(0, i - 30), i + Math.min(n, 90) + 20).replace(/\s+/g, ' ').trim();
-  function visible(html) {   // the words a person would see (scripts, styles and tags taken out)
-    return String(html).replace(/<!--[\s\S]*?-->/g, ' ').replace(/<(script|style|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]+>/g, ' ')
+  function visible(html) {   // the words a person would see (scripts, styles, comments and tags taken out), read in one pass so no text can make it slow
+    const s = String(html), low = s.toLowerCase(); let o = '', i = 0;
+    for (;;) {
+      const lt = s.indexOf('<', i); if (lt < 0) { o += s.slice(i); break; }
+      o += s.slice(i, lt);
+      if (low.startsWith('<!--', lt)) { const e = s.indexOf('-->', lt + 4); o += ' '; if (e < 0) break; i = e + 3; continue; }
+      const b = /^<(script|style|noscript|template)\b/.exec(low.slice(lt, lt + 12));
+      if (b) { const e = low.indexOf('</' + b[1], lt + 1); o += ' '; if (e < 0) break; const gt = s.indexOf('>', e); if (gt < 0) break; i = gt + 1; continue; }
+      const gt = s.indexOf('>', lt + 1); if (gt < 0) { o += s.slice(lt); break; }   // (a < with no > after it: kept as text)
+      o += ' '; i = gt + 1;
+    }
+    return o
       .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/[ \t]+/g, ' ');
   }
   // text hidden from people but there for machines: HTML comments, hidden elements, tiny or invisible text, alt and title words
   function hiddenBits(html) {
-    const out = [], s = String(html);
-    for (const m of s.matchAll(/<!--([\s\S]*?)-->/g)) out.push(m[1]);
-    for (const m of s.matchAll(/<(\w+)\b[^>]*\b(hidden|aria-hidden\s*=\s*["']?true|style\s*=\s*["'][^"']*(display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(px|pt|em|rem)?\b|opacity\s*:\s*0(\.0+)?\s*[;"']|color\s*:\s*transparent|left\s*:\s*-\d{3,}px|clip\s*:\s*rect\(0))[^>]*>([\s\S]{1,2000}?)<\/\1>/gi)) out.push(m[6] || '');
+    const out = [], s = String(html).slice(0, 300000);
+    for (let i = 0; out.length < 200;) { const a = s.indexOf('<!--', i); if (a < 0) break; const e = s.indexOf('-->', a + 4); if (e < 0) break; out.push(s.slice(a + 4, Math.min(e, a + 20004))); i = e + 3; }   // (comments, read in one pass)
+    for (const m of s.matchAll(/<(\w+)\b[^>]{0,600}\b(hidden|aria-hidden\s*=\s*["']?true|style\s*=\s*["'][^"']{0,600}(display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(px|pt|em|rem)?\b|opacity\s*:\s*0(\.0+)?\s*[;"']|color\s*:\s*transparent|left\s*:\s*-\d{3,}px|clip\s*:\s*rect\(0))[^>]{0,600}>([\s\S]{1,2000}?)<\/\1>/gi)) out.push(m[6] || '');
     for (const m of s.matchAll(/\b(alt|title|aria-label|content|data-[\w-]+)\s*=\s*["']([^"']{20,1000})["']/gi)) out.push(m[2]);
     return out.join('\n');
   }
@@ -115,7 +125,7 @@
   /* read(contentType, text, file): what it finds in one inscription's words or code.
      file: its inscription id (or a name). Gives [{kind, what, file, line, sample: {untrusted}, hidden?}] */
   function read(contentType, text, file) {
-    const ty = String(contentType || '').split(';')[0].trim().toLowerCase(), s = String(text || ''), out = [];
+    const ty = String(contentType || '').split(';')[0].trim().toLowerCase(), s = String(text || '').slice(0, 300000), out = [];   // (the first 300,000 characters are read)
     if (!s || !TEXTY.test(ty) && !/^\s*[<{[]|^[\x09\x0a\x0d\x20-\x7e -￿]{20,}$/.test(s.slice(0, 200))) return out;
     if (/json/.test(ty) && /^\s*\{\s*"p"\s*:\s*"(brc-20|brc20|drc-20|tap|sns|orc-20|src-20|bitmap)"/i.test(s) && s.length < 600) return out;   // (a token or name line: nothing to read)
     const isHtml = /html|svg|xml/.test(ty) || /^\s*<(!doctype|html|svg|body|div|script)/i.test(s), code = CODE.test(ty) || isHtml;
@@ -134,7 +144,7 @@
     // what it shows of personal details and hate words is masked, so the scan never spreads them further
     const HRE = new RegExp(RULES.hate[0][0].source, 'gi');
     for (const f of out) {
-      if (f.kind === 'personal') f.sample = {untrusted: f.sample.untrusted.replace(/\d/g, '•').replace(/[A-Za-z0-9._%+-]{2,}@/g, '•••@').replace(/\b([A-Z][a-z]+)(\s+(Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Close|Way|Crescent|Boulevard|Blvd|Court|Ct|Terrace|Gardens|Grove)\b)/g, '•••$2').replace(/\b([A-Z]{1,2})\d[A-Z\d]? ?\d[A-Z]{2}\b/g, '$1•• •••'), masked: true};
+      if (f.kind === 'personal') f.sample = {untrusted: f.sample.untrusted.replace(/\d/g, '•').replace(/[A-Za-z0-9._%+-]{2,64}@/g, '•••@').replace(/\b([A-Z][a-z]+)(\s+(Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Close|Way|Crescent|Boulevard|Blvd|Court|Ct|Terrace|Gardens|Grove)\b)/g, '•••$2').replace(/\b([A-Z]{1,2})\d[A-Z\d]? ?\d[A-Z]{2}\b/g, '$1•• •••'), masked: true};
       if (f.kind === 'hate') f.sample = {untrusted: f.sample.untrusted.replace(HRE, (m, a, w) => a + w[0] + '•'.repeat(Math.max(2, w.length - 1))), masked: true};
     }
     // the same thing found twice on one line is one finding
