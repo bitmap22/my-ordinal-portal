@@ -50,6 +50,8 @@
         .topnav { display: flex; gap: 22px; margin-left: auto; font: 500 15px var(--head); }
         .topnav a { color: var(--muted); text-decoration: none; padding: 6px 0; }
         .topnav a:hover { color: var(--text); }
+        .brand { white-space: nowrap; }
+        .menu-btn { display: none; }
 
         /* the front door: the corridor (a canvas of real blocks) behind, the words in its nearest frame */
         .hero { position: relative; min-height: max(640px, calc(100svh - 60px)); display: grid; grid-template-columns: minmax(0, 1fr); align-items: end; justify-items: center; overflow: hidden;
@@ -224,8 +226,17 @@
         @media (max-width: 640px) {
             body { font-size: 16px; }
             .wrap { padding: 0 18px; }
-            .topnav { gap: 14px; font-size: 14px; }
-            .topnav .wide { display: none; }
+            /* (21 Nov 2026) phones: Ord Portal on the left, a round menu button on the right (as in the games); it opens all four links */
+            .menu-btn { display: flex; align-items: center; justify-content: center; margin-left: auto; width: 44px; height: 44px; padding: 0; border-radius: 22px;
+                border: 1px solid rgba(243, 165, 48, .35); background: rgba(18, 11, 5, .55); color: var(--amber); cursor: pointer; }
+            .menu-btn:focus-visible { outline: 2px solid var(--amber-hot); outline-offset: 2px; }
+            .topbar.open .menu-btn { background: var(--amber); color: #140c05; }
+            .topnav { display: none; position: absolute; left: 0; right: 0; top: 60px; flex-direction: column; gap: 0; margin: 0; padding: 6px 0 10px;
+                background: rgba(10, 15, 28, .97); border-bottom: 1px solid rgba(243, 165, 48, .25); font-size: 17px; }
+            .topbar.open .topnav { display: flex; }
+            .topnav a { padding: 13px 18px; color: var(--text); border-top: 1px solid rgba(35, 48, 74, .7); }
+            .topnav a:first-child { border-top: 0; }
+            .topnav .wide { display: block; }
             .hero { min-height: 0; padding-top: clamp(300px, 46svh, 400px); }   /* the corridor above, the words below it: no sign under the title */
             .hero-in { padding-bottom: 40px; }
             .hero .subtitle { font-size: 16px; }
@@ -278,7 +289,8 @@
     <header class="topbar">
         <div class="wrap">
             <a class="brand" href="./"><img src="https://ordportal.com/brand/icon-portal-48.png" alt="" width="26" height="26">Ord Portal</a>
-            <nav class="topnav" aria-label="On this page">
+            <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="topnav"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h12M4 10h12M4 14h12"/></svg></button>
+            <nav class="topnav" id="topnav" aria-label="On this page">
                 <a href="#agent-blockhall">Agent Blockhall</a>
                 <a href="#tools">Tools</a>
                 <a href="#legacy" class="wide">Legacy</a>
@@ -1762,6 +1774,19 @@ window.AgentKit = window.AgentKit || (() => {
             show(j.size, new Date(t).toISOString());
         })
         .catch(function (e) { fail(String(e)); });
+})();
+</script>
+<script>
+/* (21 Nov 2026) the phone menu: the round button opens and closes it; a link, Escape or a tap outside closes it */
+(function () {
+    var bar = document.querySelector('.topbar'), btn = bar && bar.querySelector('.menu-btn'), nav = bar && bar.querySelector('.topnav');
+    if (!btn || !nav) return;
+    function set(open) { bar.classList.toggle('open', open); btn.setAttribute('aria-expanded', open ? 'true' : 'false'); btn.setAttribute('aria-label', open ? 'Close the menu' : 'Menu'); }
+    btn.addEventListener('click', function () { set(!bar.classList.contains('open')); });
+    nav.addEventListener('click', function (e) { if (e.target.closest('a')) set(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && bar.classList.contains('open')) { set(false); btn.focus(); } });
+    document.addEventListener('click', function (e) { if (bar.classList.contains('open') && !bar.contains(e.target)) set(false); });
+    window.addEventListener('resize', function () { if (window.innerWidth > 640) set(false); });
 })();
 </script>
 </body>
