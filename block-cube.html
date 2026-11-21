@@ -7880,6 +7880,8 @@ async function cmHead(id) {   // where an inscription's content can be had, and 
 const cmYT = s => { s = (s || '').trim(); const m = s.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/); return m ? m[1] : /^[A-Za-z0-9_-]{11}$/.test(s) ? s : null; };
 const cmIns = s => { s = (s || '').trim().toLowerCase(); const m = s.match(/([0-9a-f]{64}i\d+)/); return m ? m[1] : null; };
 function cmShare(ev) { if (crew.on) toPage({type: 'event', ev: Object.assign({list: 'cm'}, ev)}); }
+// (21 Nov 2026) in a crew, each player may change the big screen or the music once every 10 seconds (the host passes on nothing faster)
+const CMW = {}; function cmWait(k, note) { if (!crew.on) return false; const s = 10 - (Date.now() - (CMW[k] || 0)) / 1000; if (s > 0) { note.textContent = 'your crew shares this: wait ' + Math.ceil(s) + ' s'; return true; } CMW[k] = Date.now(); return false; }
 function cmGot(ev, id) {   // from your crew (or from before you joined): id is who sent it
   if (!ev || ev.list !== 'cm') return;
   if (ev.k === 'screen' && ev.m === 'live') { cm.media = {k: 'live'}; cmScreen(); }
@@ -7920,13 +7922,13 @@ function cmAsk(what) {
   const btn = (t, f, main) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; if (main) b.className = 'go'; b.onclick = f; row.appendChild(b); return b; };
   const close = () => $cmd.classList.remove('on');
   if (scr) {
-    btn('PLAY', () => { const y = cmYT(inp.value); if (!y) { note.textContent = 'that is not a YouTube link'; return; } cm.media = {k: 'yt', v: y, t0: Date.now()}; cmScreen(); cmShare({k: 'screen', m: 'yt', v: y, t0: cm.media.t0}); close(); }, true);
-    btn('LIVE BLOCKS', () => { cm.media = {k: 'live'}; cmScreen(); cmShare({k: 'screen', m: 'live', t0: Date.now()}); close(); });
+    btn('PLAY', () => { const y = cmYT(inp.value); if (!y) { note.textContent = 'that is not a YouTube link'; return; } if (cmWait('screen', note)) return; cm.media = {k: 'yt', v: y, t0: Date.now()}; cmScreen(); cmShare({k: 'screen', m: 'yt', v: y, t0: cm.media.t0}); close(); }, true);
+    btn('LIVE BLOCKS', () => { if (cmWait('screen', note)) return; cm.media = {k: 'live'}; cmScreen(); cmShare({k: 'screen', m: 'live', t0: Date.now()}); close(); });
     if (location.protocol === 'file:') note.textContent = 'YouTube only plays when the cube is opened from the portal online'; else if (!/github\.io$|(^|\.)ordportal\.com$|^localhost$|^127\./.test(location.hostname)) note.textContent = 'YouTube may not play here';
   } else {
     tunes.style.flexWrap = 'wrap';
-    CM_TUNES.forEach((T, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = T.n; if (cm.music.k === 'tune' && cm.music.v === i) b.className = 'on'; b.onclick = () => { cm.music = {k: 'tune', v: i, t0: Date.now()}; cmMusic(); cmShare({k: 'music', m: 'tune', v: i, t0: cm.music.t0}); close(); }; tunes.appendChild(b); });
-    btn('STOP', () => { cm.music = {k: 'off'}; cmMusic(); cmShare({k: 'music', m: 'off', t0: Date.now()}); close(); });
+    CM_TUNES.forEach((T, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = T.n; if (cm.music.k === 'tune' && cm.music.v === i) b.className = 'on'; b.onclick = () => { if (cmWait('music', note)) return; cm.music = {k: 'tune', v: i, t0: Date.now()}; cmMusic(); cmShare({k: 'music', m: 'tune', v: i, t0: cm.music.t0}); close(); }; tunes.appendChild(b); });
+    btn('STOP', () => { if (cmWait('music', note)) return; cm.music = {k: 'off'}; cmMusic(); cmShare({k: 'music', m: 'off', t0: Date.now()}); close(); });
   }
   btn('CLOSE', close);
   inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') row.querySelector('.go').click(); else if (e.key === 'Escape') close(); });
