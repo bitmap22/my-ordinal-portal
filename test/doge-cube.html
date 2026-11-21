@@ -199,6 +199,7 @@ body.halv #h{text-shadow:0 0 22px rgba(177,76,255,.75),0 0 4px rgba(255,209,102,
 #fwc{display:none;width:100%;height:34px;cursor:pointer;border-bottom:1px solid rgba(227,179,65,.25)}#fw.cn #fwc{display:block}#fw.cn #fwb{display:none}
 .fwr{margin-left:6px;padding:1px 6px;border-radius:8px;border:1px solid rgba(227,179,65,.25);background:rgba(18,11,5,.5);color:#a08b72;font:inherit;letter-spacing:1px;cursor:pointer}.fwr.on{color:#f0c75e;border-color:rgba(227,179,65,.7);background:rgba(227,179,65,.12)}
 @media (pointer:coarse){.fwr{padding:4px 9px}}
+@media (pointer:coarse),(max-width:640px){.fwr{position:relative}.fwr::after{content:'';position:absolute;inset:-9px -3px}}   /* (21 Nov 2026) the 1D 1W 1M 3M buttons stay small to look at, but each takes a finger-sized tap (about 32 by 32) */
 body #top,body #feed{margin-top:calc(env(safe-area-inset-top) + var(--fwh,0px))}
 @media (max-width:640px){body #fb{margin-top:calc(env(safe-area-inset-top) + var(--fwh,0px))}}
 @media (min-width:1500px) and (min-height:820px){#fwl{font-size:11.5px}#fwb,#fwc{height:42px}}
@@ -233,6 +234,8 @@ body #tools{display:grid;grid-template-columns:repeat(2,auto);gap:6px;left:auto;
 @media (max-width:640px){#kh{display:flex;flex-wrap:wrap;align-items:center;row-gap:5px;white-space:normal}}
 /* short phones: the parcel-type chips sit in one row you can slide sideways, so the cube keeps its room */
 @media (max-width:640px){#kl{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}#kl::-webkit-scrollbar{display:none}.kd{flex:none}}
+#kn{flex:none;white-space:nowrap}   /* (21 Nov 2026) "none in this block" on one line, never one word a line */
+@media (max-width:640px){body:not(.pf3) #kl{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}}   /* (the row slides sideways: its right edge fades, so a chip there reads as more to come, not cut off) */
 /* narrow phones (320 px): the bottom buttons squeeze up so they all fit */
 @media (max-width:440px){#nav{gap:4px}#lv{padding:0 10px;letter-spacing:1px;gap:6px}#ln{min-width:0;padding:0 10px;letter-spacing:1px}}
 @media (max-width:340px){#nav{gap:3px}#nav button{min-width:40px}#pv,#nx,#xr,#op{width:40px}#lv{padding:0 8px}#ln{padding:0 8px;letter-spacing:.5px}}
@@ -3094,7 +3097,7 @@ const which = () => liveIdx === 0 ? 'the next block' : 'block +' + liveIdx;
 function feedBlock(b, isNew) {
   const x = BFEE.get(b.height);
   feedRow('blk', `${chip(GOLD)}<b>Block ${fmt(b.height)}</b> ${isNew ? 'just found' : 'found'}` +
-    `<br>${fmt(b.tx_count)} transactions · ${kb(b.size)}` + (x ? ` · fees ${doge(x.total)} · middle ${rateWords(x.med)}` : ''), clock24(b.timestamp));
+    `<br>${fmt(b.tx_count)} transactions · ${kb(b.size)}` + (x ? ` · fees ${doge(x.total)} · middle ${rateWords(x.med)}` : ''), isNew ? clock24() : clock24(b.timestamp));   // (21 Nov 2026: a block just found is told at the time it came in, so the feed stays in order: a block's own time can be minutes off)
 }
 // a block just found: how many inscriptions it made, and of what kinds (the explorer's listing of it: 2 units)
 const dcSeenH = new Set();
@@ -3109,7 +3112,7 @@ async function feedOrdinals(b) {
     for (const x of j.txs || []) if (x.inscription) { const k = (String(x.inscription.contentType || '').split('/')[0] || 'other').replace(/^application$/, 'data'); c[k] = (c[k] || 0) + 1; }
     const parts = Object.entries(c).sort((p, q) => q[1] - p[1]).map(([k, v]) => fmt(v) + ' ' + k), dm = j.dogemap;
     feedRow('ord', `${chip(KINDS[INSC].css)}<b>Block ${fmt(b.height)}</b> · ${fmt(n)} inscription${n === 1 ? '' : 's'}` + (parts.length ? ` <span style="opacity:.7">(${parts.join(', ')}${(j.total || 0) > 100 ? ' in its first 100 transactions' : ''})</span>` : '') +
-      (dm ? `<br>${chip(kcss('dogemaps'))}${fmt(b.height)}.dogemap is claimed` : '') + ` <span style="opacity:.6">(thedoginalsexplorer.com)</span>`, clock24(b.timestamp));
+      (dm ? `<br>${chip(kcss('dogemaps'))}${fmt(b.height)}.dogemap is claimed` : '') + ` <span style="opacity:.6">(thedoginalsexplorer.com)</span>`, clock24());   // (told when it came in: the feed stays in order)
   } catch (e) {}
 }
 function feedStart(txs) {   // a fresh block list: note its biggest and top-paying transaction, then watch for new records
@@ -7833,7 +7836,7 @@ async function heldInfo(t) {
   if (tx && tx.outputs) {   // the transaction itself
     const cb = !!tx.coinbase, ins = tx.inputs || [], outs = tx.outputs || [], rows = [['— all of it', 'fetched as you picked it up']];
     if (!cb) rows.push(['paid in', doge(tx.total_in_satoshis != null ? tx.total_in_satoshis : ins.reduce((a, i) => a + (i.satoshis || 0), 0))]);
-    rows.push(['size', fmt(tx.size) + ' bytes · version ' + tx.version + (tx.locktime ? ' · locktime ' + fmt(tx.locktime) : '')]);
+    rows.push(['version', tx.version + (tx.locktime ? ' · locktime ' + fmt(tx.locktime) : '')]);   // (21 Nov 2026: its size is already on the card: said once)
     ins.slice(0, 4).forEach((i, k) => rows.push(['in ' + (k + 1), cb ? 'new coins' : doge(i.satoshis || 0) + ' · ' + (shortA(i.address) || 'bare key or script')]));
     if (ins.length > 4 || tx.inputs_truncated) rows.push(['', '+ ' + (tx.inputs_truncated ? 'more' : fmt(ins.length - 4) + ' more') + ' in']);
     outs.slice(0, 4).forEach((o, k) => rows.push(['out ' + (k + 1), doge(o.satoshis || 0) + ' · ' + (o.type === 'nulldata' ? 'OP_RETURN data' : shortA(o.address) || typeName(o.type))]));
@@ -7845,7 +7848,7 @@ async function heldInfo(t) {
   } else try {   // the explorer has no copy (block 0's coinbase is one): BlockCypher's
     raw = await rawTxRead(t); const b = raw && raw.basics;
     if (b) {
-      const rows = [['— all of it', 'from BlockCypher, as you picked it up'], ['size', fmt(b.size) + ' bytes · version ' + b.ver + (b.lock ? ' · locktime ' + fmt(b.lock) : '')]];
+      const rows = [['— all of it', 'from BlockCypher, as you picked it up'], ['version', b.ver + (b.lock ? ' · locktime ' + fmt(b.lock) : '')]];
       b.ins.forEach((i, k) => rows.push(['in ' + (k + 1), i.cb ? 'new coins' : doge(i.v) + ' · ' + (shortA(i.a) || 'bare key or script')]));
       if (b.nin > b.ins.length) rows.push(['', '+ ' + fmt(b.nin - b.ins.length) + ' more in']);
       b.outs.forEach((o, k) => rows.push(['out ' + (k + 1), doge(o.v) + ' · ' + (o.ty === 'null-data' ? 'OP_RETURN data' : shortA(o.a) || o.ty || 'other')]));
