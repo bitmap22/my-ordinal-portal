@@ -1,4 +1,4 @@
-/* Source Health, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Source Health, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Which of the free public data sites the portal's tools read are answering, how fast, and whether their answers are up to
    date, so a person or an AI agent knows how far to trust an answer and which site to ask. Each site is asked one small thing
    (most: the newest block's height, which says both whether it answers and whether it has kept up with the chain):

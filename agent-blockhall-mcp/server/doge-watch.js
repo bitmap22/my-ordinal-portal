@@ -13,7 +13,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const VERSION = '1.0.0';
-  const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/', GAME = PORTAL + 'doge-cube.html';
+  const PORTAL = 'https://ordportal.com/', GAME = PORTAL + 'doge-cube.html';
   const MANIFEST = PORTAL + 'doge-block-manifest.html', PROV = PORTAL + 'doge-provenance-check.html', WATCH = PORTAL + 'doge-watch.html';
   const WHAT = ['block', 'inscription', 'address', 'kind'];
   const ADDR = /^[DA9][1-9A-HJ-NP-Za-km-z]{25,34}$/;

@@ -1,6 +1,6 @@
 /* Agent Blockhall's Provenance Check, by bitmap22. Always free.
    Proves where a Bitcoin inscription came from, in the same steps as Agent Blockhall's "follow it back"
-   (https://bitmap22.github.io/my-ordinal-portal/block-cube.html): it reads the inscription out of its own transaction's bytes
+   (https://ordportal.com/block-cube.html): it reads the inscription out of its own transaction's bytes
    (its file type, size, parents and delegate, matched with ordinals.com), takes a fingerprint (SHA-256) of the content stored
    on the chain and matches it with the file ordinals.com shows, checks the block it was made in with a second site, and
    follows every move from where it sits now back to where it was made: each step must spend the one before it.

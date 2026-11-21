@@ -1,5 +1,5 @@
 /* Doge Collection Check, by bitmap22. Always free. The Dogecoin twin of Agent Blockhall's Collection Check (collection.js), for Doge Cube:
-   https://bitmap22.github.io/my-ordinal-portal/doge-cube.html
+   https://ordportal.com/doge-cube.html
    A Bitcoin collection can be proven by its parent: ord makes a child only when its transaction names the parent and spends it.
    Doginals have no parents: the Doginals way of writing a file has no field to name one. So a Dogecoin collection's pieces are
    the ones an explorer lists for it, and that can't be proven on the chain: each piece is "listed, not proven by a parent". The

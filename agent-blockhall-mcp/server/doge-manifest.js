@@ -1,5 +1,5 @@
 /* Doge Cube's Block Manifest, by bitmap22. Always free. The Dogecoin twin of Agent Blockhall's Block Manifest (manifest.js).
-   Reads a whole Dogecoin block the way Doge Cube's halls do (https://bitmap22.github.io/my-ordinal-portal/doge-cube.html): every
+   Reads a whole Dogecoin block the way Doge Cube's halls do (https://ordportal.com/doge-cube.html): every
    transaction, sorted into the same kinds as Doge Cube's parcel types (inscriptions and their file types, dogemaps, names, DRC-20,
    TAP, dunes, and how each transaction pays), with its fee and size, and checked against the chain itself:
    - the block's hash is worked out from its own header (its six fields) and asked of a second site;

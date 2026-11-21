@@ -1,4 +1,4 @@
-/* Collection Check, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Collection Check, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Proves which pieces of a Bitcoin collection are the real children of its parent inscription, from the chain itself.
    Under ord's rules a child is made by a transaction that names the parent inside the child (its "parent" field) and spends
    the parent in the same transaction. So, for each child that ord lists:

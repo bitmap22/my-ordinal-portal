@@ -1,4 +1,4 @@
-/* Recursion Map, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Recursion Map, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Maps everything a Bitcoin inscription loads from the chain, and what those load in turn, and checks that each still loads:
    - its code is read (HTML, JavaScript, CSS, SVG, JSON, text) for the paths it loads by (/content/<id>, ord's /r/ endpoints such
      as /r/blockheight or /r/children/<id>, the old /-/content/ path), for inscription IDs written in it (code often builds the

@@ -1,4 +1,4 @@
-/* Citable checks, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Citable checks, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Every check the portal's tools make gets a link that carries what it found: when it was checked, which sites it asked, its
    main facts, and a fingerprint (SHA-256) of its core, the part that comes from the chain itself (a block's hash and every
    transaction ID, an inscription's file and where it was made, a collection's members, the inscriptions a piece loads).
@@ -14,8 +14,8 @@
   else root.Cite = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.0.0';
-  const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
+  const VERSION = '1.1.0';
+  const PORTAL = 'https://ordportal.com/';
 
   /* ---------- SHA-256 (of text, as UTF-8), so a fingerprint is ready at once, in a page or in Node ---------- */
   const K = new Uint32Array([0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -175,12 +175,14 @@
       if ((b == null) && a != null) notReadNow.push({what: k, then: a}); else changed.push({what: k, then: a === undefined ? null : a, now: b === undefined ? null : b});
     }
     const coreSame = then.fingerprint === now.fingerprint, same = coreSame && !changed.length && !notReadNow.length;
-    const list = changed.map(c => c.what + ' was ' + short(c.then) + ', now ' + short(c.now)).join('; ');
-    const core = 'the fingerprint of ' + TOOLS[now.tool].coreName, cited = '(' + when(then.at) + ')';
-    const words = (same ? 'The same as when it was cited ' + cited + ': ' + core + ' matches, and so does every fact'
-      : coreSame ? 'Since it was cited ' + cited + ', ' + core + ' still matches' + (list ? ', but ' + list : '')
-      : 'Changed since it was cited ' + cited + ': ' + core + ' is different' + (list ? '. ' + list : ''))
-      + (notReadNow.length ? '. Not read this time (a site did not answer): ' + notReadNow.map(c => c.what).join(', ') : '') + '.';
+    // (21 Nov 2026, 1.1.0) a link can be written by anyone, so what it carries is told as what the link says, never as what the
+    // portal found then: only the check made now is the portal's own
+    const list = changed.map(c => c.what + ': the link says ' + short(c.then) + ', now ' + short(c.now)).join('; ');
+    const core = 'the fingerprint of ' + TOOLS[now.tool].coreName, cited = '(the link says it was checked ' + when(then.at) + ')';
+    const words = (same ? 'The same as the link says ' + cited + ': ' + core + ' matches it, and so does every fact'
+      : coreSame ? 'Checked again now ' + cited + ': ' + core + ' matches the link' + (list ? ', but ' + list : '')
+      : 'Not as the link says ' + cited + ': ' + core + ' is different now' + (list ? '. ' + list : ''))
+      + (notReadNow.length ? '. Not read this time (a site did not answer): ' + notReadNow.map(c => c.what).join(', ') : '') + '. Anyone can write a link: only what was found now is the portal\u2019s own check.';
     return {same, coreSame, answer: same ? 'same' : coreSame && !changed.length ? 'same core, some facts not read now' : 'changed', citedAt: then.at, checkedAgainAt: now.at, fingerprintThen: then.fingerprint, fingerprintNow: now.fingerprint, changed, notReadNow, words};
   }
 

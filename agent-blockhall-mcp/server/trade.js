@@ -1,4 +1,4 @@
-/* Authenticity Check (once called Trade Check), by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Authenticity Check (once called Trade Check), by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Is an inscription what it is said to be? One answer, GO, STOP or NOT SURE,
    with every reason in plain words and a link to check it again later. It reads nothing itself: it runs the portal's own
    checks and judges what they found.
@@ -12,10 +12,13 @@
    The answer:
    - STOP: something is proven not to be as said (its file or bytes differ from the chain, it is held by another address, it is
      not a child of the collection named).
-   - NOT SURE: a check could not be made, or something needs care (its code asks a wallet for things, it loads things from
-     outside the chain, a piece it loads is missing, it names no parent so a collection can't be proven).
-   - GO: every check was made and agrees, and nothing needs care.
-   GO means it is what it is said to be. It is never advice on what it is worth.
+   - NOT SURE: a check could not be made, or something needs care (no collection was given to check it against, its code asks a
+     wallet for things, it loads things from outside the chain, a piece it loads is missing, it names no parent so a collection
+     can't be proven).
+   - GO: every check was made and agrees, the collection given is proven, and nothing needs care. Its words list exactly what
+     was checked. It is never advice on what it is worth.
+   (21 Nov 2026, 1.1.0: anyone can make a parent, so the parent an inscription names proves nothing on its own: with no collection
+   given, the answer is NOT SURE at best.)
    The host gives the checks as functions (io): provenance(id), parent(id, parentId), code(id), recursion(id) for Bitcoin, and
    dogeProvenance(id) for Dogecoin, each returning that tool's own answer. The same file is for the portal's Authenticity Check page
    and the free Agent Blockhall MCP tool. No other packages.
@@ -25,9 +28,9 @@
   else root.TradeCheck = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.0.0';
-  const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/';
-  const MEANING = 'GO means it is what it is said to be: every check was made and agrees, and nothing needs care. It is never advice on what it is worth.';
+  const VERSION = '1.1.0';
+  const PORTAL = 'https://ordportal.com/';
+  const MEANING = 'GO means each thing its words list was checked and agrees (where it came from, who holds it if an address was given, the collection given, and for code what it asks for and loads), and nothing needs care: no more than that. With no collection given the answer is NOT SURE at best, because anyone can make a parent. GO is never advice on what it is worth.';
   const fmt = n => typeof n === 'number' ? n.toLocaleString('en-GB') : String(n);
   const short = s => { s = String(s || ''); return s.length > 24 ? s.slice(0, 10) + '…' + s.slice(-8) : s; };
   const isId = s => /^[0-9a-f]{64}i\d+$/.test(String(s || ''));
@@ -113,7 +116,7 @@
     const verdict = stop.length ? 'STOP' : care.length ? 'NOT SURE' : 'GO';
     const words = verdict === 'STOP' ? 'STOP: ' + stop[0].says.replace(/^Proven wrong: /, '') + (stop.length > 1 ? ' (and ' + (stop.length - 1) + ' more)' : '')
       : verdict === 'NOT SURE' ? 'NOT SURE: ' + care.length + ' thing' + (care.length === 1 ? '' : 's') + ' could not be proven or need' + (care.length === 1 ? 's' : '') + ' care: ' + care.map(r => r.about).filter((v, i, a) => a.indexOf(v) === i).join(', ') + '.'
-      : 'GO: it is what it is said to be. Every check was made and agrees, and nothing needs care.';
+      : 'GO: checked and agrees: ' + reasons.filter(r => r.mark === 'ok').map(r => r.about).filter((v, i, a) => a.indexOf(v) === i).join(', ') + '. Nothing found needs care. Not advice on what it is worth.';
     return {verdict, words};
   }
 
@@ -132,8 +135,10 @@
     ran.provenance = {verdict: P.verdict, cite: P.cite && P.cite.link || null};
     reasons.push(...fromProvenance(P, chain), ...fromSeller(P, seller));
     // 2. its collection
+    const NONE = 'No collection was given, so it isn’t checked against one. Anyone can make a parent: give the collection it is sold as (its parent inscription, or a name the portal knows) to check it.';
     if (chain === 'doge') {
       if (claimed) reasons.push(reason('its collection', 'care', 'Doginals have no parents, so no collection can be proven on the chain: check the collection’s own list.'));
+      else reasons.push(reason('its collection', 'care', NONE));
     } else {
       const named = I.parents || [];
       let pid = claimed;
@@ -143,8 +148,10 @@
         const p = pid || named[0]; say('step', 'collection');
         let O = null; try { O = await io.parent(id, p); } catch (e) { O = null; }
         ran.collection = O ? {answer: O.answer, verdict: O.verdict, cite: O.cite && O.cite.link || null} : null;
-        reasons.push(...fromParent(O, p, !!pid, named));
-      } else reasons.push(reason('its collection', 'info', 'It names no parent, so it belongs to no collection by the chain.'));
+        const R = fromParent(O, p, !!pid, named);
+        if (!pid) { for (const r of R) if (r.mark === 'ok') { r.mark = 'info'; r.says = r.says.replace(/^Proven a real member of the collection of /, 'Proven a real child of ') + ' That only shows its parent: no collection was given to check it against.'; } reasons.push(reason('its collection', 'care', NONE)); }
+        reasons.push(...R);
+      } else { reasons.push(reason('its collection', 'info', 'It names no parent, so it belongs to no collection by the chain.')); if (!claimed) reasons.push(reason('its collection', 'care', NONE)); }
     }
     // 3. its code, and what it loads (Bitcoin; code only)
     const type = I.contentType || '';
