@@ -226,7 +226,7 @@
             .wrap { padding: 0 18px; }
             .topnav { gap: 14px; font-size: 14px; }
             .topnav .wide { display: none; }
-            .hero { min-height: max(720px, calc(100svh - 60px)); }
+            .hero { min-height: 0; padding-top: clamp(300px, 46svh, 400px); }   /* the corridor above, the words below it: no sign under the title */
             .hero-in { padding-bottom: 40px; }
             .hero .subtitle { font-size: 16px; }
             .hero-actions .btn { width: 100%; max-width: 320px; }
@@ -1220,7 +1220,7 @@ window.AgentKit = window.AgentKit || (() => {
     var tip = -1;             // the newest block known
     var cam = -1, goal = -1, live = true, spacing = "even";
     var flashAt = 0, born = performance.now(), last = performance.now();
-    var W = 0, H = 0, dpr = 1, rects = [], hover = -1, pinned = -1, seen = false, raf = 0, ptr = null;
+    var W = 0, H = 0, FREE = 0, dpr = 1, rects = [], hover = -1, pinned = -1, seen = false, raf = 0, ptr = null, card = hero.querySelector(".hero-in .card");
     try { if (localStorage.getItem("ab-corridor-spacing") === "time") spacing = "time"; } catch (e) {}
     var fmt = function (n) { return Number(n).toLocaleString("en-GB"); };
     var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -1239,6 +1239,7 @@ window.AgentKit = window.AgentKit || (() => {
 
     function size() {
         dpr = Math.min(2, window.devicePixelRatio || 1); W = hero.clientWidth; H = hero.clientHeight;
+        FREE = card ? Math.max(0, card.getBoundingClientRect().top - hero.getBoundingClientRect().top) : H;   // (the room above the words)
         cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); x.setTransform(dpr, 0, 0, dpr, 0, 0);
         kick();
     }
@@ -1267,8 +1268,9 @@ window.AgentKit = window.AgentKit || (() => {
             for (var q = Math.round(cam) + 2, qEnd = Math.round(cam) - (spacing === "time" ? 64 : 20); q > qEnd; q -= 14) need(q);
         }
         x.clearRect(0, 0, W, H);
-        var narrow = W < H * 0.8, vx = W / 2 + (still ? 0 : Math.sin(now / 7000) * W * 0.004), vy = H * (narrow ? 0.25 : 0.43);
-        var HW = W * (narrow ? 0.47 : 0.46), HH = H * (narrow ? 0.30 : 0.47);
+        var narrow = W < H * 0.8, room = narrow && FREE > 220 ? FREE : 0;   // (narrow screens: the corridor stands in the room above the words)
+        var vx = W / 2 + (still ? 0 : Math.sin(now / 7000) * W * 0.004), vy = room ? room * 0.5 : H * (narrow ? 0.25 : 0.43);
+        var HW = W * (narrow ? 0.47 : 0.46), HH = room ? room * 0.45 : H * (narrow ? 0.30 : 0.47);
         var intro = still ? 1 : Math.min(1, (now - born) / 1600);
         var g = x.createRadialGradient(vx, vy, 0, vx, vy, Math.max(W, H) * 0.32);
         g.addColorStop(0, "rgba(255, 200, 120, .20)"); g.addColorStop(1, "rgba(255, 200, 120, 0)");
@@ -1537,6 +1539,7 @@ window.AgentKit = window.AgentKit || (() => {
     if ("IntersectionObserver" in window) new IntersectionObserver(function (E) { seen = E[0].isIntersecting; if (seen) kick(); }).observe(hero); else seen = true;
     document.addEventListener("visibilitychange", function () { if (!document.hidden) { newest(); kick(); } });
     window.addEventListener("resize", size);
+    if ("ResizeObserver" in window && card) new ResizeObserver(function () { size(); }).observe(card);   // (the words grow when the blocks arrive)
     setSpacing(spacing);
     size(); newest();
     setInterval(function () { if (!document.hidden) { newest(); if (strip) publish(); } }, 60000);
