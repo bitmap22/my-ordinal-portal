@@ -23,8 +23,9 @@ async function main() {
       const b = list[i]; let split = null, err = null;
       for (let tries = 0; tries < 3 && !split; tries++) {
         try {
-          const raw = await BD.rawBlockOf(b.height, b.id);
-          let sum = null; try { sum = await BD.summaryOf(b.id); } catch (e) { if (tries < 2) throw e; console.log('  ' + b.height + ': no fee list (' + e.message + ')'); }
+          // the bytes and the fee list at the same time (the last try keeps the bytes even without the fee list)
+          const [raw, sum] = await Promise.all([BD.rawBlockOf(b.height, b.id),
+            BD.summaryOf(b.id).catch(e => { if (tries < 2) throw e; console.log('  ' + b.height + ': no fee list (' + e.message + ')'); return null; })]);
           split = BD.spaceOfBlock(BD.BM.scanBlock(raw.bytes, b.height), raw.bytes, b.id, sum, b.height);
           if (!split.sats && tries < 2) { split = null; throw new Error('its fees were not counted'); }   // (try again; the last try keeps its bytes anyway)
         } catch (e) { err = e; await BD.sleep(15000); }
