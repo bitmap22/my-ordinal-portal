@@ -316,7 +316,7 @@ body.ph:not(.room) .phfl.phfr,body.pl:not(.room) .phfl.phfr{-webkit-mask-image:l
 #vwc{position:absolute;top:32px;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center}
 #vwc img{width:100%;height:100%;object-fit:contain}#vwc img.px{image-rendering:pixelated}
 #vwc iframe{width:100%;height:100%;border:0;background:#000}
-#vwc canvas.cmbig{display:block;max-width:100%;max-height:100%;width:auto;height:auto}#vw.cmbig #vwm,#vw.cmbig #vwp,#vw.cmbig #vwx,#vw.cmbig #vwl,#vw.cmbig #vwo{display:none!important}
+
 #vwc pre{margin:0;width:100%;height:100%;box-sizing:border-box;overflow:auto;padding:18px 22px 22px;color:#e9dccb;font:500 13px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
 #vwc .inf{width:min(560px,90%);max-height:100%;overflow:auto;padding:18px 0 20px;font:600 13px ui-monospace,Menlo,Consolas,monospace;color:#d8c6ad}
 #vwc .inf h3{margin:0 0 14px;text-align:center;font-size:15px;letter-spacing:.16em;color:#f0c75e}
@@ -7075,40 +7075,6 @@ function cmCard(name, kind) {
   return cv;
 }
 // the big screen when nothing is playing: the chain, live — the next block waiting, the last ones mined, how long since
-function cmBoardTall(c, W, H) {
-  const mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`, ago = s => s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
-  const cube = (x, y, s, fill, edge) => { c.fillStyle = fill; c.fillRect(x, y, s, s); c.strokeStyle = edge; c.lineWidth = 3; c.strokeRect(x + 1.5, y + 1.5, s - 3, s - 3); };
-  c.fillStyle = '#05060c'; c.fillRect(0, 0, W, H);
-  c.strokeStyle = 'rgba(76,201,240,.08)'; c.lineWidth = 1; for (let x = 0; x < W; x += 32) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); } for (let y = 0; y < H; y += 32) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
-  const tip = tipH >= 0 ? tipH : pastBlocks[0] ? pastBlocks[0].height : -1;
-  c.textBaseline = 'middle'; c.textAlign = 'left';
-  c.fillStyle = '#4cc9f0'; c.font = mono(800, 26); c.fillText('LIVE FROM THE BLOCKCHAIN', 20, 40);
-  c.fillStyle = '#f0c75e'; c.fillText(tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING…', 20, 78);
-  c.font = mono(700, 18); c.fillStyle = '#9fe8ff'; c.fillText('WAITING TO BE MINED', 20, 124);
-  (futBlocks || []).slice(0, 3).forEach((b, i) => {
-    const y = 142 + i * 96; cube(20, y, 80, '#2a1606', '#e3b341');
-    c.fillStyle = '#ffd36b'; c.font = mono(800, 20); c.textAlign = 'center'; c.fillText(i ? '+' + (i + 1) : 'NEXT', 60, y + 40); c.textAlign = 'left';
-    c.fillStyle = '#f7efe3'; c.font = mono(700, 21); c.fillText('~' + rtS(b.medianFee || 0) + ' Ð/kB', 116, y + 18);
-    c.fillStyle = '#cdbca3'; c.font = mono(600, 16); c.fillText(fmt(b.nTx || 0) + ' transactions · ' + kb(b.blockSize || 0), 116, y + 44);
-    if (b.feeRange && b.feeRange.length) c.fillText(rtS(b.feeRange[0]) + ' – ' + rtS(b.feeRange[b.feeRange.length - 1]) + ' Ð/kB', 116, y + 68);
-  });
-  if (!futBlocks || !futBlocks.length) { c.fillStyle = '#7a6853'; c.font = mono(600, 16); c.fillText("the explorer's live view", 20, 160); c.fillText("isn't reachable here", 20, 184); }
-  c.font = mono(700, 18); c.fillStyle = '#ffd36b'; c.fillText('JUST MINED', 20, 446);
-  pastBlocks.slice(0, 4).forEach((b, i) => {
-    const y = 464 + i * 76, q = BFEE.get(b.height); cube(20, y, 64, '#120d06', '#ffc94a');
-    c.fillStyle = '#ffd36b'; c.font = mono(800, 13); c.textAlign = 'center'; c.fillText(fmt(b.height), 52, y + 32); c.textAlign = 'left';
-    c.fillStyle = '#f7efe3'; c.font = mono(700, 19); c.fillText(fmt(b.tx_count || 0) + ' tx · ' + ago(Date.now() / 1000 - b.timestamp) + ' ago', 100, y + 18);
-    c.fillStyle = '#cdbca3'; c.font = mono(600, 16); c.fillText(kb(b.size || 0) + (q && q.med ? ' · ~' + rtS(q.med) + ' Ð/kB' : ''), 100, y + 44);
-  });
-  if (tip >= 0) {
-    const y = 776;
-    c.fillStyle = 'rgba(255,201,74,.1)'; c.fillRect(20, y, W - 40, 84); c.strokeStyle = '#ffc94a'; c.lineWidth = 2; c.strokeRect(20, y, W - 40, 84);
-    c.fillStyle = '#ffd36b'; c.font = mono(800, 19); c.fillText('10,000 DOGE EVERY BLOCK', 34, y + 22);
-    c.font = mono(700, 17); c.fillText('THE SAME SINCE BLOCK 600,000', 34, y + 46);
-    if (pastBlocks[0]) c.fillText('LAST BLOCK ' + ago(Date.now() / 1000 - pastBlocks[0].timestamp) + ' AGO', 34, y + 68);
-  }
-  if (H > 1100) cmBoardBottom(c, 20, 876, W - 40, true);
-}
 /* what the bottom of the big screen says. Nothing here is a promise: each line is counted from blocks the cube has read.
    - the wait: blocks come at random, about one a minute, so the time to the next is the same however long it has been;
      measured: the average gap over the last 144 blocks, and from it the time by which nine in ten have come
@@ -7407,7 +7373,7 @@ function cmRayQ(ray, q) {
 function cmAct(sx, sy) {
   const H = cmHere(); if (!H) return null;
   const p = room.p, ray = rmRay(sx, sy), C = H.C;
-  if (p.sit) return cmScrAct(H, ray) || {a: 'stand', label: cm.pint ? 'sip your pint · move to stand up' : 'stand up'};
+  if (p.sit) return {a: 'stand', label: cm.pint ? 'sip your pint · move to stand up' : 'stand up'};
   if (cm.pour) return null;
   if (ray) {
     let best = null, bt = 1e9;
@@ -7425,15 +7391,10 @@ function cmAct(sx, sy) {
   for (const s of CM_SEATS) { const e = Math.hypot(H.x - s[0], H.d - s[1]); if (e < (s[8] || 1.25) && e < sd && Math.abs((p.y || 0) - s[2]) < .5) { sd = e; seat = s; } }
   if (seat) return {a: 'seat', s: seat, label: 'sit down'};
   if (!H.lv && H.step >= 1 && H.step <= 3 && !(p.pitch > .35)) return {a: 'sit', label: 'sit on the step'};
-  const B = cmScrAct(H, ray); if (B) return B;
   if (cm.pint) return {a: 'sip', label: 'sip your pint'};
   return null;
 }
-// the big screen, looked at from the hall, the Forum or the balcony (not through the walls from the other rooms)
-function cmScrAct(H, ray) {
-  const C = H.C; if (!ray || !C.scr || H.x < -16 || H.x > 16 || (H.d < 15.5 && Math.abs(H.x) > 3.8)) return null;
-  const t = cmRayQ(ray, C.scr); return t > 0 && t < 50 ? {a: 'board', ray: true, label: 'see the big screen up close'} : null;
-}
+// (21 Nov 2026, asked for) the big screen has no tap to see it up close: people walk up to it in the common room
 function cmDo(A) {
   if (!A || !room) return;
   const p = room.p;
@@ -7448,7 +7409,6 @@ function cmDo(A) {
   if (A.a === 'pour') { cm.pour = {t0: performance.now() + 1100}; cmBt[0] = now(); setTimeout(() => { if (cm.pour) cmNoise(1.6, 900, .05); }, 1100); setTimeout(() => { cm.pour = null; cm.pint = {fill: 1, sipT: 0}; crew.last = ''; }, 2900); return; }
   if (A.a === 'screen') { if (cm.sc) cmUse(true); else cmAsk('screen'); return; }
   if (A.a === 'music') { cmAsk('music'); return; }
-  if (A.a === 'board') { cmBigOpen(); return; }
   if (A.a === 'play') { cmSelect(A.L); return; }
   if (A.a === 'shutter') { shutOpen(); return; }
 }
@@ -7934,24 +7894,6 @@ function vwClose() {
   vw = null; $vw.classList.remove('on', 'live', 'cmbig'); $vwa.classList.remove('on'); $vwc.innerHTML = ''; vwFree();   // (emptying it stops any sound or video)
 }
 document.getElementById('cvw').onclick = () => vwOpen();
-function cmBigOpen() {
-  if (vw) return;
-  if (document.pointerLockElement) document.exitPointerLock();
-  rmLetGo();
-  vw = {t: null, big: true, items: [], i: 0, live: false};
-  $vwk.textContent = 'THE BIG SCREEN · LIVE FROM THE BLOCKCHAIN';
-  $vw.classList.add('on', 'cmbig'); $vw.classList.remove('live'); $vwa.classList.remove('on');
-  $vwc.innerHTML = '<canvas class="cmbig"></canvas>'; $vwn.textContent = 'keeps itself up to date · Esc or CLOSE to go back'; $vwo.style.display = 'none';
-  cmBigDraw(); vw.tm = setInterval(cmBigDraw, 1000);
-}
-function cmBigDraw() {
-  if (!vw || !vw.big) return;
-  const cv = $vwc.querySelector('canvas.cmbig'); if (!cv) return;
-  const tall = $vwc.clientWidth < $vwc.clientHeight * 1.1, k = tall ? Math.min(3, devicePixelRatio || 1) : 1, W = tall ? 440 : 1024, H = tall ? 1288 : 576;   // (a phone held upright: laid out tall, drawn sharp)
-  if (cv.width !== W * k || cv.height !== H * k) { cv.width = W * k; cv.height = H * k; }
-  const c = cv.getContext('2d'); c.setTransform(k, 0, 0, k, 0, 0);
-  if (tall) cmBoardTall(c, W, H); else c.drawImage(cmBoard(), 0, 0);
-}
 document.getElementById('vwq').onclick = () => vwClose();
 $vw.addEventListener('pointerdown', e => { if (e.target === $vw) vwClose(); });
 
@@ -9435,7 +9377,7 @@ function ciData(tab) {
   S.push({t: 'muting', rows: [['all the sound', 'the sound button (top right) turns the game\'s sound on or off', 'tu'],
     ['one person', 'press the mic next to their name in the crew list on the play together page: their voice and their chat, for you only'],
     ['your own mic', 'it is off until you turn it on. In a crew, the Microphone button on the play together page turns it on or off (with push to talk, hold it while you talk)']]});
-  S.push({t: 'the common room', rows: [['the Forum', 'the big screen, live from the blockchain: [E] to see it up close; sit on the steps'],
+  S.push({t: 'the common room', rows: [['the Forum', 'the big screen, live from the blockchain: walk up to it to read it; sit on the steps'],
     ['the Mempool bar', 'pour a pint at the tap ([E]), then sip it'], ['the Fireside Lounge', 'the music box: [E] to choose the music, for your crew too'],
     ['SHOW IN COMMON ROOM ([C])', 'puts the parcel you hold on show in the Forum, for your crew too'],
     ['the warehouse', 'its shutter stays shut']]});
@@ -9972,7 +9914,6 @@ window.AgentKit = window.AgentKit || (() => {
   }
   async function bigSeen() {
     if (typeof vw === 'undefined' || !vw) return null;
-    if (vw.big) return {what: 'the big screen, up close (live from the blockchain)', why: 'bigScreen() reads it in words'};
     const it = vw.items[vw.i], o = {what: text($('vwn')) || 'still reading the transaction', mode: vw.live ? 'LIVE VIEW: it runs' : 'SAFE VIEW: nothing runs'};
     if (!it) return o;
     if (it.k === 'info') { o.words = text($('vwc')).slice(0, 1500); return o; }
@@ -10358,8 +10299,8 @@ window.AgentKit = window.AgentKit || (() => {
       run: () => ({ok: true, plaques: [{where: "block 0's hall, on a small stand " + CRED.gen.where, says: CRED.gen.says}, {where: 'the hall with block ' + fmtN(DG0_H) + ', on a small stand ' + CRED.dg.where, says: CRED.dg.says, firstDoginal: {inscription: CRED_DG_ID, number: 0, block: DG0_H}, link: CRED_URL, note: 'a person clicks it, or presses E, for the link: the Doginals code is apezord\'s own work, so read it on GitHub'}]})},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block". Gives back {in, ready, building, x, y, z, facing, pitch, sitting, roomX, roomD, area} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"in":{},"ready":{},"building":{},"x":{},"y":{},"z":{},"facing":{},"pitch":{},"sitting":{},"roomX":{},"roomD":{},"area":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
       run: async ({to}) => { const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
-    {name: 'bigScreen', ro: true, does: 'Read the Forum\'s big screen (live from the blockchain), and open it up close if you are in the common room. Gives back {waiting[{which, txs, sizeKB, medianFeeDogePerKB, feeRangeDogePerKB[]}], justMined[{height, minedAt, txs, sizeKB, pool}], reward, usualWait, feeToGetIn, keepsScoreOfItself, blockWeather} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"waiting":{"type":"array","items":{"type":"object","properties":{"which":{},"txs":{},"sizeKB":{},"medianFeeDogePerKB":{},"feeRangeDogePerKB":{"type":"array"}}}},"justMined":{"type":"array","items":{"type":"object","properties":{"height":{},"minedAt":{},"txs":{},"sizeKB":{},"pool":{}}}},"reward":{},"usualWait":{},"feeToGetIn":{},"keepsScoreOfItself":{},"blockWeather":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'also open it up close on screen'}],
-      run: ({open}) => { if (!inCommon()) return {ok: false, error: 'the big screen is in the common room: go there to read it'}; if (open) cmBigOpen(); return bigScreen(); }},
+    {name: 'bigScreen', ro: true, does: 'Read the Forum\'s big screen (live from the blockchain) in words, from anywhere in the common room (people walk up to it to see it). Gives back {waiting[{which, txs, sizeKB, medianFeeDogePerKB, feeRangeDogePerKB[]}], justMined[{height, minedAt, txs, sizeKB, pool}], reward, usualWait, feeToGetIn, keepsScoreOfItself, blockWeather} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"waiting":{"type":"array","items":{"type":"object","properties":{"which":{},"txs":{},"sizeKB":{},"medianFeeDogePerKB":{},"feeRangeDogePerKB":{"type":"array"}}}},"justMined":{"type":"array","items":{"type":"object","properties":{"height":{},"minedAt":{},"txs":{},"sizeKB":{},"pool":{}}}},"reward":{},"usualWait":{},"feeToGetIn":{},"keepsScoreOfItself":{},"blockWeather":{},"ok":{"type":"boolean"},"error":{"type":"string"}}},
+      run: () => { if (!inCommon()) return {ok: false, error: 'the big screen is in the common room: go there to read it'}; return bigScreen(); }},
     {name: 'sit', does: ('Sit down in the common room: "sofa", "armchair", "bar stool", "garden bench", "balcony", "forum step", or a seat number 0-' + (CM_SEATS.length - 1 || 39) + '.') + " Gives back {in, ready, building, x, y, z, facing, pitch, sitting, roomX, roomD, area, inFront} (or {ok: false, error} if it could not).", out: {"type":"object","properties":{"in":{},"ready":{},"building":{},"x":{},"y":{},"z":{},"facing":{},"pitch":{},"sitting":{},"roomX":{},"roomD":{},"area":{},"inFront":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'seat', does: 'which seat', req: true}],
       run: async ({seat}) => {
         if (!inCommon()) return {ok: false, error: 'you are not in the common room: travel({to: "common room"}) first'};
