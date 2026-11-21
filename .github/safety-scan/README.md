@@ -1,6 +1,6 @@
 # Safety Scan
 
-Each inscription of the last 144 Bitcoin blocks and the last 144 Dogecoin blocks (about a day of Bitcoin, about 2.4 hours of Dogecoin), looked at and read **without running it**. Made by GitHub on its own, about every hour, for people and AI agents.
+Each inscription of the last 144 Bitcoin blocks and the last 144 Dogecoin blocks (about a day of Bitcoin, about 2.4 hours of Dogecoin), looked at and read **without running it** (a kind of file it can't read, like a font or a PDF, is counted as not looked at; a block gets at most 6 minutes, and what it doesn't reach in that time is counted as not looked at too). Made by GitHub on its own, about every hour, for people and AI agents.
 
 | Symbol | Colour | Kind | What it means |
 |---|---|---|---|
