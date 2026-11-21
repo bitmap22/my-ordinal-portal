@@ -100,7 +100,14 @@
       try { w.postMessage({id, data: j.data}); } catch (e) { wait.delete(id); busy--; j.no(e); }
     }
   }
-  function classify(data, soon) { return new Promise((ok, no) => { if (dead) return no(new Error(dead)); (soon ? qNow : qLater).push({data, ok, no}); pump(); }); }
+  function classify(data, soon, key) { return new Promise((ok, no) => { if (dead) return no(new Error(dead)); (soon ? qNow : qLater).push({data, ok, no, key}); pump(); }); }
+  // (21 Nov 2026) already being checked? Then nothing more is needed. soon: someone is looking at it now, so it goes to the front
+  // of the queue (a busy block queues hundreds of pictures; the ones in front of you are checked first)
+  function hurry(key, soon) {
+    if (key == null || !keyGet(key)) return false;
+    if (soon && !knownOf(key)) { const k = typeof key === 'object' ? key : String(key), i = qLater.findIndex(j => j.key === k); if (i >= 0) { qNow.push(qLater.splice(i, 1)[0]); pump(); } }
+    return true;
+  }
 
   /* ---------- a picture, made ready for the checker (224 x 224, as the checker looks at it) ---------- */
   let sc224 = null;   // (one drawing surface, used again for every picture: a busy block has hundreds)
@@ -163,7 +170,7 @@
         } else samples = [sample(src)];
         samples = samples.filter(Boolean); if (!samples.length) throw Error('nothing to look at');
         let worst = {v: 'ok', score: 0};
-        for (const s of samples) { const r = verdictOf(await classify(s, o.soon)); if (r.score > worst.score) worst = r; if (r.v === 'adult') { worst = r; break; } }
+        for (const s of samples) { const r = verdictOf(await classify(s, o.soon, key == null ? null : typeof key === 'object' ? key : String(key))); if (r.score > worst.score) worst = r; if (r.v === 'adult') { worst = r; break; } }
         if (meta) metaSet(key, meta);
         stats.checked++; if (worst.v === 'adult') stats.adult++; note(key, worst.v, o.label, worst.score); tell();
         return worst.v;
@@ -275,5 +282,5 @@
     return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checksOn: engine || (W && !dead ? 'starting' : 'not started yet'), checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
       recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.0'};
+  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.0'};
 })();

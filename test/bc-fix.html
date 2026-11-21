@@ -12,7 +12,7 @@
 <meta charset="utf-8">
 <script>/* the Family Guard (vendor/family): checks pictures, films and words from inscriptions before they are shown clearly */
 (function () { var h = /(^|\.)github\.io$|(^|\.)ordportal\.com$/.test(location.hostname), b = (h ? (/\/test\//.test(location.pathname) ? '../' : '') : 'https://ordportal.com/') + 'vendor/family/';
-  document.write('<script src="family-fix.js?v=1"><\/script><script src="' + b + 'words.min.js"><\/script>'); })();</script>
+  document.write('<script src="family-fix.js?v=2"><\/script><script src="' + b + 'words.min.js"><\/script>'); })();</script>
 <meta http-equiv="origin-trial" content="AoKI6gF5Vb3urEbD8CIMEduhceUv28Yg46LWDFh9VXbTvD2M2+HH1DpcSul6Qb14hagcBn7tpsyBkQjospK3uQUAAABSeyJvcmlnaW4iOiJodHRwczovL2JpdG1hcDIyLmdpdGh1Yi5pbzo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxODA2MzY0ODAwfQ==">
 <meta http-equiv="origin-trial" content="AtYmAgRCHYC3MkqPhTPfowWMNQRQZ1m22gC2sZ+WS4J8AasTXNDqqm4D6ChXs/Wg6ZgSAJTQ3cK3BVt70ZWcDAcAAABNeyJvcmlnaW4iOiJodHRwczovL29yZHBvcnRhbC5jb206NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTgwNjM2NDgwMH0="><!-- Chrome WebMCP origin trial for bitmap22.github.io (lets Chrome hand this page's agent tools to AI agents), registered 14 Nov 2026, ends 30 Mar 2027 -->
 <script>/* the start guard: when the cube cannot start (the page did not finish arriving, the browser could not start its 3D graphics,
@@ -1743,10 +1743,12 @@ async function scanBlock(B) {
 // on a second sheet (see the near sheet, with the rooms). 4096 x 4096 where the device allows, 2048 on small phones.
 /* ---------- the Family Guard: pictures from inscriptions are checked before they are shown clearly (vendor/family/family.js) ---------- */
 // a picture on a box: 'ok' to show it sharp, 'adult' for the 18+ tile, else null (blurred: being checked, not checkable, or Family mode)
-function fgTile(t, img) {
+// soon: it is in front of you (the near sheet): checked before the rest of the block (21 Nov 2026). A picture already being
+// checked is not read again (that saves a busy block hundreds of read-backs).
+function fgTile(t, img, soon) {
   const G = window.FamilyGuard; if (!G || !t.art) return null;
   const v = G.known(t.art);
-  if (!v) { G.check(G.sample(img), t.art, {label: 'a picture in a box'}); return null; }
+  if (!v) { if (!(G.hurry && G.hurry(t.art, soon))) G.check(G.sample(img), t.art, {label: 'a picture in a box', soon: !!soon}); return null; }
   return v === 'adult' ? 'adult' : v === 'ok' && !G.strict() ? 'ok' : null;
 }
 function fgWhen(t, f) { const G = window.FamilyGuard; if (G && t.art) G.check(null, t.art).then(v => f(v)); }
@@ -5528,7 +5530,7 @@ async function nearTick(tn) {
         if (!img) { near.slot.delete(t); near.free.push(sl); continue; }
         const [c2, cx] = artCanvas(256), w = img.naturalWidth || img.width || 256, h = img.naturalHeight || img.height || 256, sc = Math.min(256 / w, 256 / h);
         cx.fillStyle = '#0b0805'; cx.fillRect(0, 0, 256, 256); cx.imageSmoothingEnabled = sc < 2.5; cx.imageSmoothingQuality = 'high';
-        cx.drawImage(img, (256 - w * sc) / 2, (256 - h * sc) / 2, w * sc, h * sc); const fv = fgTile(t, img); if (img.close) img.close();
+        cx.drawImage(img, (256 - w * sc) / 2, (256 - h * sc) / 2, w * sc, h * sc); const fv = fgTile(t, img, true); if (img.close) img.close();
         cvs = fgPaint(fv, c2, 256); sm = fv === 'ok' && Math.min(w, h) > 96;
         if (!fv) fgWhen(t, () => nearRedo(t));
       } else cvs = paintWord(t.word, 256);
