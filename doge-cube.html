@@ -613,8 +613,11 @@ const SRC = {
     async tip(b) { const n = +(await (await dfetch(b + '/r/blockheight', {cache: 'no-store'}, 12000)).text()); if (!(n >= 0)) throw new Error('bad tip'); return n; },
     async block(b, h) {
       const first = await dj(b + '/v1/block/' + h + '?limit=100', 30000);
-      let list = (first.txs || []).slice();
-      for (let p = 2; list.length < first.total && p <= 600; p++) { const pg = await dj(b + '/v1/block/' + h + '?page=' + p + '&limit=100', 30000); if (!pg.txs || !pg.txs.length) break; list = list.concat(pg.txs); }
+      // (21 Nov 2026) the other pages three at a time, put back in order (each still waits its turn within the explorer's allowance)
+      const pages = Math.min(600, Math.ceil((first.total || 0) / 100)), got = [first.txs || []]; let next = 2, gap = false;
+      const one = async () => { while (!gap && next <= pages) { const p = next++, pg = await dj(b + '/v1/block/' + h + '?page=' + p + '&limit=100', 30000); if (!pg.txs || !pg.txs.length) { gap = true; return; } got[p - 1] = pg.txs; } };
+      await Promise.all([one(), one(), one()]);
+      let list = []; for (let i = 0; i < pages && got[i]; i++) list = list.concat(got[i]);
       if (!first.total || list.length !== first.total) throw new Error('short block');
       const txs = list.map((x, i) => ({id: x.txid, fee: -1, vsize: 0, value: x.output_satoshis || 0, rate: -1, idx: i, nin: x.inputs, nout: x.outputs, dxi: x.inscription || null, cbx: !!x.coinbase}));
       for (const t of txs) if (!txiApply(t)) { t.vsize = estSize(t); t.est = true; }
@@ -766,8 +769,10 @@ let burst = 6;   // (in a walk-in room bursts stay at 4 ms, so walking never jol
 // appeared, and the screen stood still for up to half a second. Now, once 10 ms have gone by since the screen last drew, the
 // next burst waits for the next frame to be drawn first. (In a hidden tab, where no frames come, it carries on as before.)
 let lastDraw = performance.now(); (function drawn() { lastDraw = performance.now(); requestAnimationFrame(drawn); })();
-const yieldNow = () => new Promise(r => { const t = performance.now(), go = () => { const c = new MessageChannel(); c.port1.onmessage = () => { burst = room ? 4 : Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); };
-  if (!document.hidden && t - lastDraw > 10) requestAnimationFrame(go); else go(); });
+// (After waiting for a frame the next burst is a steady 8 ms: the wait itself says nothing about a slow device, and letting it
+// grow the burst made some bursts 100 ms long.)
+const yieldNow = () => new Promise(r => { const t = performance.now(), go = f => { const c = new MessageChannel(); c.port1.onmessage = () => { burst = room ? 4 : f ? 8 : Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); };
+  if (!document.hidden && t - lastDraw > 10) requestAnimationFrame(() => go(true)); else go(false); });
 // pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
 // If a block has many very big transactions, near-cube boxes can't stack inside (e.g. nine 59,000 vB boxes, 24 units a
 // side: only four fit across, so a third layer pokes out of the top). Then it is packed again with those big boxes
@@ -3560,8 +3565,14 @@ function setHK() {
   if (k !== hk) { hk = k; rebuild(); }
 }
 // counts come from the parcels in the cube right now, so the row always matches what is on screen
+// (21 Nov 2026) On a big block, working out every parcel's kinds again when its tags arrive took up to 55 ms in one go, a
+// visible jolt. When many need it, they are now worked out a burst at a time first (the row keeps its old counts meanwhile).
+let kindsJob = 0;
+const kindsStale = t => !(t._t && t._k != null && t._ko === t.op && t._ks === t.sc && t._ki === t.insc);
 function drawKinds() {
   if (now() < sealUntil) return;   // keep the row steady while a found block lifts away
+  if (shown.length > 2000) { let st = 0; for (const t of shown) if (kindsStale(t) && ++st > 300) break;
+    if (st > 300) { const my = ++kindsJob, list = shown; (async () => { let t0 = performance.now(); for (const t of list) { if (kindsStale(t)) tmask(t); if (performance.now() - t0 > burst) { await yieldNow(); if (my !== kindsJob || list !== shown) return; t0 = performance.now(); } } if (my === kindsJob) drawKinds(); })(); return; } }
   const n = new Array(TYPES.length).fill(0), g = [0, 0, 0];
   for (const t of shown) { const [lo, hi] = tmask(t); if (lo) for (let i = 0; i < 30; i++) if ((lo >> i) & 1) n[i]++; if (hi) for (let i = 30; i < TYPES.length; i++) if ((hi >> (i - 30)) & 1) n[i]++; }
   for (const c of kChips) { const v = n[c.i], on = TYPES[c.i].g === tabG; c.el.style.display = on ? '' : 'none'; c.el.classList.toggle('zero', !v); if (on) c.n.textContent = fmt(v); if (v) g[TYPES[c.i].g]++; }
