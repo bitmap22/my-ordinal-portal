@@ -66,24 +66,28 @@
       list: [], listSite: null, listDone: false, second: null, secondSite: null, secondDone: false,
       txs: new Map(), trail: {moves: [], at: null, reached: false, lost: false, error: null, linkBad: 0}, extraFound: []};
     // the children, as ord lists them (with their numbers and blocks), a hundred a page
+    const t0 = Date.now(), had = new Set();   // (a site that keeps saying "more" with nothing new, or a list that takes over 3 minutes, is stopped)
     for (let p = 0; ; p++) {
       const x = await io.ordJson('/r/children/' + pid + '/inscriptions' + (p ? '/' + p : ''));
       run.listSite = run.listSite || x.site;
-      for (const c of (x.j && x.j.children) || []) if (isInsId(c.id || '')) run.list.push({id: c.id, number: c.number, block: c.height, time: iso(c.timestamp)});
+      let fresh = 0;
+      for (const c of (x.j && x.j.children) || []) if (isInsId(c.id || '') && !had.has(c.id)) { had.add(c.id); fresh++; run.list.push({id: c.id, number: c.number, block: c.height, time: iso(c.timestamp)}); }
       say('list', run.list.length);
       if (!x.j || !x.j.more) break;
+      if (!fresh) throw new Error(run.listSite + ' kept saying there were more children, with no new ones: the list could not be trusted');
       if (p > 2000) throw new Error('more than 200,000 children: too many to check here');
+      if (Date.now() - t0 > 180000) throw new Error('listing the children took over 3 minutes: try again later');
     }
     run.listDone = true;
     // the same list, on a second ord site
     try {
-      const S = new Set();
+      const S = new Set(), t1 = Date.now();
       for (let p = 0; ; p++) {
         const x = await io.ord2Json('/r/children/' + pid + (p ? '/' + p : ''));
         run.secondSite = run.secondSite || x.site;
-        for (const id of (x.j && x.j.ids) || []) S.add(id);
+        const before = S.size; for (const id of (x.j && x.j.ids) || []) S.add(id);
         say('second', S.size);
-        if (!x.j || !x.j.more || p > 2000) break;
+        if (!x.j || !x.j.more || p > 2000 || S.size === before || Date.now() - t1 > 180000) break;
       }
       run.second = S; run.secondDone = true;
     } catch (e) { run.secondError = String(e && e.message || e); say('second', false); }

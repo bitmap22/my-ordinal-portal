@@ -139,11 +139,11 @@
     if (built) parts.push('its code builds /content/ paths in ' + fmt(built) + ' place' + (built === 1 ? '' : 's') + ' (what those load is picked when it runs)');
     if (endpoints.length) parts.push(fmt(endpoints.length) + ' /r/ endpoint' + (endpoints.length === 1 ? '' : 's') + (epNo.length ? ' (' + epNo.map(e => e.endpoint).join(', ') + ' not answered)' : endpoints.some(e => e.answers === null) ? ', some not asked' : ', all answered'));
     parts.push(outside.length ? fmt(new Set(outside.map(o => o.url)).size) + ' address' + (outside.length === 1 ? '' : 'es') + ' outside the chain written in its code' : 'nothing outside the chain');
-    const onChain = !outside.length && !missing.length;
+    const onChain = !outside.length && !missing.length, rootErr = root && root.error;
     return {
       check: 'Agent Blockhall Recursion Map ' + VERSION,
-      verdict: parts.filter(Boolean).join('; '),
-      allOnChain: onChain, allOnChainNote: onChain ? 'everything it names is on the chain' : outside.length ? 'its code names addresses outside the chain: they may be links, or things it loads; if they load, they can stop working one day' : 'something it uses could not be found',
+      verdict: rootErr ? 'it could not be mapped: ' + rootErr : parts.filter(Boolean).join('; '), mapped: !rootErr,
+      allOnChain: rootErr ? null : onChain, allOnChainNote: onChain ? 'everything it names is on the chain' : outside.length ? 'its code names addresses outside the chain: they may be links, or things it loads; if they load, they can stop working one day' : 'something it uses could not be found',
       root: root ? {id: root.id, number: root.number, block: root.block, time: root.time, contentType: root.contentType, bytes: root.bytes, delegate: root.delegate, read: root.read} : {id: rootId},
       counts: {inscriptions: others.length, loadsByPath: byHow('loads'), namedInCode: byHow('named'), children: byHow('child'), delegates: byHow('delegate'), levels, missing: missing.length,
         notOnSecondSite: notOn2.length, endpoints: endpoints.length, contentPathsBuilt: all.reduce((s, n) => s + (n.endpoints.content || 0), 0), outside: new Set(outside.map(o => o.url)).size, totalBytes: bytes, notMapped: lim.cut},

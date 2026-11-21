@@ -106,6 +106,7 @@
     if (!c || !KINDS[c.kind]) throw new Error('kind must be one of: ' + Object.keys(KINDS).join(', '));
     const insLike = t => /^-?\d+$/.test(String(t)) ? '#' + t : String(t).toLowerCase();
     const subject = /^(ins\.|coll\.)/.test(c.kind) ? insLike(c.subject) : /^block\./.test(c.kind) ? num(c.subject) : /^rune\./.test(c.kind) ? runeLike(c.subject) : String(c.subject);
+    if (String(subject).length > 120 || /[\/?\\&%]|\.\./.test(String(subject)) || /^(addr|tx)\./.test(c.kind) && !/^[a-zA-Z0-9]{14,100}$/.test(String(subject))) throw new Error('that subject is not one this check can look up');   // (it is put into the sites' addresses: only plain ones)
     let value = c.value; if (/^(block\.(inscriptions|transactions|fees)|ins\.(block|size|number|sat)|coll\.count|addr\.balance|rune\.(block|divisibility|number))$/.test(c.kind)) value = num(value);
     if (/^rune\.(cap|mints|premine|amount|supply)$/.test(c.kind)) value = digits(value);   // (kept as written: a cap can be bigger than a JavaScript number holds)
     if (c.kind === 'rune.turbo') value = value === true || /^(true|yes|1)$/i.test(String(value));

@@ -21,8 +21,8 @@
   'use strict';
   const VERSION = '1.0.0';
   const INCREMENTAL = 1;      // sat/vB a replacement adds for its own size (1: what every node still accepts; Bitcoin Core 29.1 and later ask 0.1)
-  const r1 = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');
-  const fmt = n => n == null ? '–' : Number(n).toLocaleString('en-GB');
+  const r1 = v => !isFinite(v) ? '?' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');   // (a fee rate a site didn't give: ?, never NaN)
+  const fmt = n => n == null || !isFinite(Number(n)) ? '–' : Number(n).toLocaleString('en-GB');   // (a number a site didn't give: a dash, never NaN)
   const up = v => Math.ceil(v * 100 - 1e-9) / 100;
   const whole = fr => fr.every(v => Math.abs(v - Math.round(v)) < 1e-9);
 
