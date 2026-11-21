@@ -53,14 +53,70 @@
     return worst;
   }
   const grey32 = (x, src) => { x.fillStyle = '#000'; x.fillRect(0, 0, 32, 32); x.drawImage(src, 0, 0, 32, 32); const d = x.getImageData(0, 0, 32, 32).data, g = new Uint8Array(1024); for (let k = 0; k < 1024; k++) g[k] = Math.round(.2126 * d[k * 4] + .7152 * d[k * 4 + 1] + .0722 * d[k * 4 + 2]); return g; };
-  // a moving picture's frames: four spread through it for the checker, and up to 400 small grey ones for flashing
+  // (21 Nov 2026) a GIF's frames, read here when the browser has no ImageDecoder (Safari, Firefox): each frame is drawn in turn, as a
+  // browser plays it, so the checker sees frames from all through it and the flash check sees every frame. Up to 1,000 frames.
+  function lzw(d, mcs, npix) {
+    const out = new Uint8Array(npix); if (mcs < 2 || mcs > 8) return out;
+    const clear = 1 << mcs, eoi = clear + 1, pre = new Int16Array(4096), suf = new Uint8Array(4096), stack = new Uint8Array(4097);
+    for (let i = 0; i < clear; i++) { pre[i] = -1; suf[i] = i; }
+    let size = mcs + 1, mask = (1 << size) - 1, avail = clear + 2, old = -1, first = 0, bits = 0, cur = 0, pos = 0, o = 0;
+    while (o < npix) {
+      while (bits < size) { if (pos >= d.length) return out; cur |= d[pos++] << bits; bits += 8; }
+      let code = cur & mask; cur >>>= size; bits -= size;
+      if (code === clear) { size = mcs + 1; mask = (1 << size) - 1; avail = clear + 2; old = -1; continue; }
+      if (code === eoi) break;
+      if (old === -1) { if (code >= clear) break; out[o++] = suf[code]; old = first = code; continue; }
+      const inCode = code; let sp = 0;
+      if (code >= avail) { stack[sp++] = first; code = old; }
+      while (code > eoi) { if (sp >= 4096) return out; stack[sp++] = suf[code]; code = pre[code]; }
+      first = suf[code]; stack[sp++] = first;
+      if (avail < 4096) { pre[avail] = old; suf[avail] = first; avail++; if (avail === (1 << size) && size < 12) { size++; mask = (1 << size) - 1; } }
+      old = inCode;
+      while (sp && o < npix) out[o++] = stack[--sp];
+    }
+    return out;
+  }
+  async function gifFrames(b, picks) {
+    if (b.length < 13 || b[0] !== 0x47 || b[1] !== 0x49 || b[2] !== 0x46) return null;
+    let p = 6; const u = () => b[p++], u16 = () => { const v = b[p] | b[p + 1] << 8; p += 2; return v; };
+    const W = u16(), H = u16(), f = u(); p += 2; if (!W || !H || W * H > 4e6) return null;
+    const table = n => { const t = b.subarray(p, p + 3 * n); p += 3 * n; return t; }, gct = f & 0x80 ? table(2 << (f & 7)) : null, start = p;
+    // first, how many frames (picks are spread through them)
+    let n = 0; while (p < b.length) { const c = u(); if (c === 0x3B) break; if (c === 0x21) { p++; while (p < b.length) { const k = u(); if (!k) break; p += k; } continue; } if (c !== 0x2C) break; p += 8; const g = u(); if (g & 0x80) p += 3 * (2 << (g & 7)); p++; while (p < b.length) { const k = u(); if (!k) break; p += k; } n++; }
+    if (n < 2) return {n};
+    const want = new Set(picks(n)), px = new Uint8ClampedArray(W * H * 4), cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d', {willReadFrequently: true});
+    const small = [], times = [], big = []; let t = 0, i = 0, gce = {disp: 0, tr: -1, delay: 0}, still = null; p = start;
+    const grey = () => { const g = new Uint8Array(1024); for (let gy = 0; gy < 32; gy++) for (let gx = 0; gx < 32; gx++) { const o = (Math.floor((gy + .5) * H / 32) * W + Math.floor((gx + .5) * W / 32)) * 4, a = px[o + 3] / 255; g[gy * 32 + gx] = Math.round((.2126 * px[o] + .7152 * px[o + 1] + .0722 * px[o + 2]) * a); } return g; };
+    while (p < b.length && i < 1000) {
+      const c = u(); if (c === 0x3B) break;
+      if (c === 0x21) { const lab = u(); if (lab === 0xF9 && b[p] >= 4) { p++; const g = u(); gce = {disp: (g >> 2) & 7, delay: b[p] | b[p + 1] << 8, tr: g & 1 ? b[p + 2] : -1}; p += 3; } while (p < b.length) { const k = u(); if (!k) break; p += k; } continue; }
+      if (c !== 0x2C) break;
+      const x0 = u16(), y0 = u16(), w = u16(), h = u16(), g = u(), tab = g & 0x80 ? table(2 << (g & 7)) : gct, inter = g & 0x40, mcs = u();
+      let len = 0; for (let q = p; q < b.length;) { const k = b[q]; q += 1 + k; if (!k) break; len += k; }
+      const data = new Uint8Array(len); for (let k0 = 0; p < b.length;) { const k = u(); if (!k) break; data.set(b.subarray(p, p + k), k0); k0 += k; p += k; }
+      if (!w || !h || w * h > 4e6) break;
+      const idx = lzw(data, mcs, w * h), keep = gce.disp === 3 ? px.slice() : null;
+      const rows = []; if (inter) { for (const [s0, st] of [[0, 8], [4, 8], [2, 4], [1, 2]]) for (let y = s0; y < h; y += st) rows.push(y); }
+      for (let r = 0; r < h; r++) { const y = (inter ? rows[r] : r) + y0; if (y >= H) continue; for (let xx = 0; xx < w; xx++) { const x = x0 + xx; if (x >= W) continue; const ci = idx[r * w + xx]; if (ci === gce.tr || !tab || ci * 3 + 2 >= tab.length) continue; const o = (y * W + x) * 4; px[o] = tab[ci * 3]; px[o + 1] = tab[ci * 3 + 1]; px[o + 2] = tab[ci * 3 + 2]; px[o + 3] = 255; } }
+      small.push(grey()); times.push(t); const ms = gce.delay * 10; t += ms <= 10 ? 100 : ms;
+      if (want.has(i) || !i) { cx.putImageData(new ImageData(px, W, H), 0, 0); if (want.has(i)) big.push(sample(cv)); if (!i) try { const k = Math.min(1, 2048 / Math.max(W, H)), c0 = document.createElement('canvas'); c0.width = Math.max(1, Math.round(W * k)); c0.height = Math.max(1, Math.round(H * k)); c0.getContext('2d').drawImage(cv, 0, 0, c0.width, c0.height); still = c0.toDataURL('image/png'); } catch (e) {} }
+      if (gce.disp === 2) { for (let y = y0; y < Math.min(H, y0 + h); y++) px.fill(0, (y * W + x0) * 4, (y * W + Math.min(W, x0 + w)) * 4); } else if (keep) px.set(keep);
+      gce = {disp: 0, tr: -1, delay: 0}; i++;
+      if (!(i % 40)) await new Promise(r => setTimeout(r));
+    }
+    for (let k = 0, L = small.length, T = t; k < L && times[times.length - 1] - T < 1000; k++) { small.push(small[k]); times.push(T + times[k]); }   // (it loops: the join counts too)
+    return {n, big: big.filter(Boolean), flash: flashes(small, times, 32, 32), still};
+  }
+  // twelve frames spread through a moving picture, for the checker
+  const spread = n => [...new Set(Array.from({length: Math.min(n, 12)}, (_, k) => Math.round(k * (n - 1) / Math.max(1, Math.min(n, 12) - 1))))];
+  // a moving picture's frames: twelve spread through it for the checker, and up to 1,000 small grey ones for flashing
   async function animFrames(bytes, type) {
     const ty = String(type || '').toLowerCase(); if (!/^image\/(gif|webp|png|apng|avif)/.test(ty)) return null;
-    if (typeof ImageDecoder === 'undefined') return /gif|webp|apng/.test(ty) ? {n: 0, firstOnly: true} : null;
+    if (typeof ImageDecoder === 'undefined') { if (/gif/.test(ty)) { try { const G = await gifFrames(bytes, spread); if (G) return G; } catch (e) {} } return /gif|webp|apng/.test(ty) ? {n: 0, firstOnly: true} : null; }
     let dec; try { dec = new ImageDecoder({data: bytes, type: ty === 'image/apng' ? 'image/png' : ty}); await dec.tracks.ready; } catch (e) { return null; }
     try {
       const tr = dec.tracks.selectedTrack, n = tr ? tr.frameCount : 1; if (!(n > 1)) return {n: 1};
-      const N = Math.min(n, 400), pick = [...new Set([0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1])];
+      const N = Math.min(n, 1000), pick = spread(n);
       const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d', {willReadFrequently: true});
       const small = [], times = [], big = []; let t = 0, still = null;
       for (let i = 0; i < N; i++) { if (i && !(i % 40)) await new Promise(r => setTimeout(r)); const {image} = await dec.decode({frameIndex: i}); small.push(grey32(x, image)); if (!i) try { const w = image.displayWidth, h = image.displayHeight, k = Math.min(1, 2048 / Math.max(w, h)), c0 = document.createElement('canvas'); c0.width = Math.max(1, Math.round(w * k)); c0.height = Math.max(1, Math.round(h * k)); const x0 = c0.getContext('2d', WIDE); x0.imageSmoothingEnabled = k < 1; x0.drawImage(image, 0, 0, c0.width, c0.height); still = c0.toDataURL('image/png'); } catch (e) {} /* (its first frame, kept to show it still) */ times.push(t); const ms = (image.duration || 0) / 1000; t += ms <= 10 ? 100 : ms; if (pick.includes(i)) big.push(sample(image)); image.close(); }
@@ -126,20 +182,20 @@
     const url = URL.createObjectURL(blob), im = new Image(); im.src = url;
     try { await im.decode(); return im; } finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
   }
-  async function filmSamples(bytes, type) {   // three moments of a film: a quarter, half and three quarters in
+  async function filmSamples(bytes, type) {   // eight moments of a film, spread through it
     const url = URL.createObjectURL(new Blob([bytes], {type: type || 'video/mp4'})), v = document.createElement('video');
     v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url; const out = [];
     try {
       await new Promise((ok, no) => { v.onloadeddata = ok; v.onerror = () => no(new Error('the film could not be read')); setTimeout(() => no(new Error('the film took too long')), 15000); });
       const d = isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
-      for (const f of d ? [.25, .5, .75] : [0]) {
+      for (const f of d ? [.06, .19, .31, .44, .56, .69, .81, .94] : [0]) {
         if (d) await new Promise(ok => { v.onseeked = ok; v.currentTime = d * f; setTimeout(ok, 4000); });
         const s = sample(v); if (s) out.push(s);
       }
-      if (d) {   // flashing: its first 5 seconds, 30 frames a second (fine enough not to keep landing on the same colour)
-        const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d', {willReadFrequently: true}), fr = [], tm = [];
-        for (let t = 0; t < Math.min(5, d); t += 1 / 30) { await new Promise(ok => { v.onseeked = ok; v.currentTime = t; setTimeout(ok, 1500); }); try { fr.push(grey32(x, v)); tm.push(t * 1000); } catch (e) { break; } }
-        out.flash = flashes(fr, tm, 32, 32);
+      if (d) {   // flashing: 2-second windows spread all through it (up to 5, from the start), 20 frames a second each
+        const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d', {willReadFrequently: true}), at = d <= 2 ? [0] : [...new Set(Array.from({length: Math.min(5, Math.ceil(d / 2))}, (_, k) => Math.max(0, Math.min(d - 2, k * (d - 2) / Math.max(1, Math.min(5, Math.ceil(d / 2)) - 1)))))]; let worst = 0;
+        for (const s0 of at) { const fr = [], tm = []; for (let t = s0; t < Math.min(d, s0 + 2); t += 1 / 20) { await new Promise(ok => { v.onseeked = ok; v.currentTime = t; setTimeout(ok, 1500); }); try { fr.push(grey32(x, v)); tm.push(t * 1000); } catch (e) { break; } } worst = Math.max(worst, flashes(fr, tm, 32, 32)); }
+        out.flash = worst;
       }
     } finally { URL.revokeObjectURL(url); v.removeAttribute('src'); }
     return out;
@@ -162,6 +218,7 @@
         if (src && src.bytes) {
           if (/^video\//.test(src.type || '')) { samples = src.bytes.length <= 40e6 ? await filmSamples(src.bytes, src.type) : []; meta = {anim: true, frames: 'film', flash: samples.flash || 0}; }
           else {
+            if (/svg/.test(src.type || '')) { const tx = new TextDecoder().decode(src.bytes.subarray(0, 400000)); if (/<(animate|animateTransform|animateMotion|set)\b|@keyframes|animation(-name)?\s*:|<script/i.test(tx)) meta = {anim: true, frames: 'svg', flash: 0, why: 'svg'}; }
             const A = await animFrames(src.bytes, src.type);
             if (A && A.n > 1) meta = {anim: true, frames: A.big && A.big.length ? 'all' : 'first', flash: A.flash || 0, still: A.still || null};
             if (A && A.n > 1 && A.big && A.big.length) samples = A.big;
@@ -235,19 +292,19 @@
       if (v === 'adult') { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b class="fg-18">18+</b><b>Hidden: this may be adult content</b>Anyone can inscribe anything, and our checker thinks this ' + kind + ' may not be family friendly. Only show it if you are 18 or over.', 'Show it (I am 18 or over)'); }
       if (v === 'unchecked') { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b>Not checked</b>This ' + kind + ' could not be checked just now, so it is hidden.', 'Show it'); }
       if (strict) { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b>Family mode</b>Pictures from inscriptions stay hidden until you choose.', 'Show it'); }
-      clear(); still(el, key, kind);
+      clear(); still(el, key, kind, o);
     });
     return el;
   }
 
   // a moving picture or film that may flash (or any moving picture, with "reduce motion" on): shown still until a person plays it
   const played = new Set();
-  function still(el, key, kind) {
+  function still(el, key, kind, o) {
     const M = metaOf(key); if (!M || !el || !M.anim) return;
-    const flash = M.flash > 3, calm = reduceMotion(); if (!flash && !calm) return;
+    const flash = M.flash > 3, calm = reduceMotion(), svg = M.why === 'svg', ask = !!(o && o.still); if (!flash && !calm && !svg && !ask) return;   // (o.still: someone else's, as on a crewmate's stand: moving pictures wait for a tap)
     const k = key != null ? (typeof key === 'object' ? key : String(key)) : null; if (k != null && played.has(k)) return;
     const n = document.createElement('div'); n.className = 'fg-note ' + (el.tagName === 'VIDEO' ? 'fg-below' : 'fg-over') + (flash ? '' : ' fg-small'); n.setAttribute('role', 'note');
-    n.innerHTML = flash ? '<b>⚡ May flash</b>This ' + kind + ' flashes ' + M.flash + ' times a second, which can set off seizures in some people. It is shown still.' : '<b>Still picture</b>Reduce motion is on, so this moving ' + kind + ' is shown still.';
+    n.innerHTML = flash ? '<b>⚡ May flash</b>This ' + kind + ' flashes ' + M.flash + ' times a second, which can set off seizures in some people. It is shown still.' : calm ? '<b>Still picture</b>Reduce motion is on, so this moving ' + kind + ' is shown still.' : svg ? '<b>Still picture</b>This ' + kind + ' moves by itself (it can change after it was checked), so it is shown still.' : '<b>Still picture</b>This moving ' + kind + ' is shown still until you play it.';
     const b = document.createElement('button'); b.type = 'button'; b.textContent = flash ? 'Play it anyway' : 'Play it'; n.appendChild(b);
     const go = e => { if (e) { e.preventDefault(); e.stopPropagation(); if (!e.isTrusted) return; } if (k != null) played.add(k); n.remove(); if (el._fgOrig) { el.src = el._fgOrig; el._fgOrig = null; } };
     b.onclick = go;
@@ -283,5 +340,5 @@
     return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checksOn: engine || (W && !dead ? 'starting' : 'not started yet'), checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
       recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.2'};
+  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.3.0'};
 })();
