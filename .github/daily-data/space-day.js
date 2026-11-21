@@ -1,7 +1,7 @@
 /* Agent Blockhall's Blockspace Share: one day's fill-in, by bitmap22. Always free.
    For days from before Daily Data counted bytes: it reads every Bitcoin block of one UTC day from its own bytes (the same
-   reader as Daily Data, build-day.js) and saves only that day's bytes by kind (space/days/<day>.json, and space/index.json).
-   It asks for nothing else, so it is light on the free sites. Run by GitHub (the Blockspace Share fill-in workflow).
+   reader as Daily Data, build-day.js) and each block's fee list, and saves only that day's bytes and fees by kind
+   (space/days/<day>.json, and space/index.json). It asks for nothing else, so it is light on the free sites. Run by GitHub (the Blockspace Share fill-in workflow).
    Usage: node space-day.js YYYY-MM-DD <data folder>
    © 2026 bitmap22. All rights reserved. */
 'use strict';
@@ -22,8 +22,12 @@ async function main() {
       const i = next++; if (i >= list.length) return;
       const b = list[i]; let split = null, err = null;
       for (let tries = 0; tries < 3 && !split; tries++) {
-        try { const raw = await BD.rawBlockOf(b.height, b.id); split = BD.spaceOfBlock(BD.BM.scanBlock(raw.bytes, b.height), raw.bytes, b.id); }
-        catch (e) { err = e; await BD.sleep(15000); }
+        try {
+          const raw = await BD.rawBlockOf(b.height, b.id);
+          let sum = null; try { sum = await BD.summaryOf(b.id); } catch (e) { if (tries < 2) throw e; console.log('  ' + b.height + ': no fee list (' + e.message + ')'); }
+          split = BD.spaceOfBlock(BD.BM.scanBlock(raw.bytes, b.height), raw.bytes, b.id, sum, b.height);
+          if (!split.sats && tries < 2) { split = null; throw new Error('its fees were not counted'); }   // (try again; the last try keeps its bytes anyway)
+        } catch (e) { err = e; await BD.sleep(15000); }
       }
       if (!split) console.log('  ' + b.height + ': not read (' + (err && err.message) + ')');
       blocks[i] = {height: b.height, split};
@@ -33,6 +37,8 @@ async function main() {
   const rec = BD.SP.dayRecord(day, blocks);
   BD.SP.writeDay(out, rec);
   const pct = k => rec.size ? (100 * rec.bytes[k] / rec.size).toFixed(1) + '%' : '-';
+  const fpct = k => rec.fees ? (100 * rec.sats[k] / rec.fees).toFixed(1) + '%' : '-';
   console.log('Saved ' + day + ': ' + rec.read + ' of ' + rec.blocks + ' blocks, ' + rec.size + ' bytes. ' + BD.SP.NAMES.map(k => k + ' ' + pct(k)).join(', '));
+  console.log('  fees: ' + rec.feesRead + ' of ' + rec.read + ' blocks, ' + rec.fees + ' sats. ' + BD.SP.NAMES.map(k => k + ' ' + fpct(k)).join(', '));
 }
 main().catch(e => { console.error(e); process.exit(1); });
