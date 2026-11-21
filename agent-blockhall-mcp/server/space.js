@@ -1,7 +1,7 @@
 /* Blockspace Share, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    How Bitcoin's blockspace splits between the kinds of use, as a share of the bytes, by day, week or month.
    - Every transaction is counted once, under the first of these kinds it is (in the halls a transaction can be several kinds
-     at once): runes, BRC-20, Alkanes, Stamps & Counterparty, other tokens, inscriptions, messages, coinbase, consolidations,
+     at once): Alkanes, runes, BRC-20, Stamps & Counterparty, other tokens, inscriptions, messages, coinbase, consolidations,
      batch payouts, payments.
    - Its bytes are its size as the block holds it (its witness data included). The block's own header and transaction count
      are "block header". So the kinds add up to the block's exact size: every byte is counted once.
@@ -26,9 +26,9 @@
 
   // [kind, what it holds, the hall kinds (Block Manifest kinds) that put a transaction here]: the first one that fits wins
   const KINDS = [
+    ['Alkanes', 'Alkanes token transactions (they ride inside a rune message, so they come before runes)', ['Alkanes']],
     ['runes', 'rune etchings, mints and moves', ['runes', 'runes etched', 'runes minted', 'runes moved']],
     ['BRC-20', 'BRC-20 token inscriptions', ['BRC-20']],
-    ['Alkanes', 'Alkanes token transactions', ['Alkanes']],
     ['Stamps & Counterparty', 'Stamps, SRC-20 and Counterparty', ['Stamps', 'SRC-20', 'Counterparty']],
     ['other tokens', 'TAP, DMT, NAT, BRC-420, CRC-20, Atomicals, CAT-21 and Labitbu', ['TAP', 'DMT mints', 'NAT', 'BRC-420', 'CRC-20 · LEAF', 'Atomicals', 'CAT-21', 'Labitbu']],
     ['inscriptions', 'ordinal inscriptions that are not tokens: pictures, text, HTML, bitmaps and every other file', ['inscriptions', 'bitmaps', 'images', 'text', 'HTML', 'JSON', 'audio / video', '3D models', 'other files', 'delegates', 'children', 'cursed']],
