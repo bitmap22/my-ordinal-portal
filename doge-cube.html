@@ -1582,7 +1582,7 @@ const artCv = document.createElement('canvas'); artCv.width = artCv.height = 128
 const artCx = artCv.getContext('2d');
 // raster images decode off the main thread; SVG goes through an <img>
 async function decodeArt(a) {
-  const blob = new Blob([a.bytes], {type: a.ct});
+  const blob = new Blob([a.bytes], {type: a.ct}); /* blob-ok: decoded off-screen into the cube's picture sheet, its address dropped at once */
   if (!/svg/.test(a.ct) && window.createImageBitmap) return createImageBitmap(blob);
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
@@ -2103,7 +2103,7 @@ async function mdlTex(M, ti, lin) {
   if (im.bufferView != null) { const v = M.j.bufferViews[im.bufferView], B = v && M.bin[v.buffer || 0]; if (B) b = B.subarray(v.byteOffset || 0, (v.byteOffset || 0) + v.byteLength); }
   else if (typeof im.uri === 'string') { const m = /^data:([^;,]*)[^,]*;base64,(.*)$/.exec(im.uri); if (m) { ty = m[1] || ty; const s = atob(m[2]); b = new Uint8Array(s.length); for (let k = 0; k < s.length; k++) b[k] = s.charCodeAt(k); } }
   if (!b || !window.createImageBitmap) return null;
-  try { return await createImageBitmap(new Blob([b], {type: ty}), {premultiplyAlpha: 'none', colorSpaceConversion: lin ? 'none' : 'default'}); } catch (e) { return null; }
+  try { return await createImageBitmap(new Blob([b], {type: ty}), /* blob-ok: made into a bitmap, no address at all */ {premultiplyAlpha: 'none', colorSpaceConversion: lin ? 'none' : 'default'}); } catch (e) { return null; }
 }
 // the picture: PNG bytes, S pixels square (null when the model cannot be drawn). One model at a time.
 function mdlPng(bytes, S = 256, o) { const p = mdl.busy.then(() => mdlDraw(bytes, S, o)).catch(() => null); mdl.busy = p.then(() => {}, () => {}); return p; }
@@ -7574,7 +7574,7 @@ function cmScreen() {
   if (!here || m.k === 'live') { if (cm.sc) { cm.sc.remove(); cm.sc = null; } cm.scKey = ''; return; }
   const key = m.k + m.v + m.t0; if (cm.sc && cm.scKey === key) return; cm.scKey = key;
   if (cm.sc) cm.sc.remove();
-  const f = cm.sc = document.createElement('iframe'); f.className = 'cmov'; f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); f.style.width = '1280px'; f.style.height = '720px'; f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture'); f.title = 'The big screen';
+  const f = cm.sc = document.createElement('iframe'); /* frame-ok: YouTube's own player, on its own site */ f.className = 'cmov'; f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); f.style.width = '1280px'; f.style.height = '720px'; f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture'); f.title = 'The big screen';
   document.body.appendChild(f);
   if (m.k === 'yt') { const off = Math.max(0, Math.floor((Date.now() - m.t0) / 1000)); f.src = 'https://www.youtube-nocookie.com/embed/' + m.v + '?autoplay=1&playsinline=1&rel=0&modestbranding=1&start=' + off; return; }
   cmHead(m.v).then(([u, c]) => {
@@ -8034,7 +8034,7 @@ function pvSafe(t, ids, k, id, base, row) {   // the card's preview of one inscr
   else $cp.append(insSafeEl(K, id, 'pa') || insClosedEl(K, id));
   if (row) $cp.append(row);
 }
-function vwFrame(attrs) { const f = document.createElement('iframe'); for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
+function vwFrame(attrs) { const f = document.createElement('iframe'); /* frame-ok: not used; it sets the sandbox it is given */ for (const k in attrs) f.setAttribute(k, attrs[k]); return f; }
 function vwRender() {
   if (!vw) return;
   const it = vw.items[vw.i], n = vw.items.length;
@@ -9961,7 +9961,7 @@ window.AgentKit = window.AgentKit || (() => {
       if (fv !== 'ok') return {ty, size: bytes.length, hidden: fv === 'adult' ? '18+' : 'not checked', why: fv === 'adult' ? 'hidden: the Family Guard thinks it may be adult content (18+), so it is not handed to agents' : 'hidden: the Family Guard could not check it, so it is not handed to agents'};
     }
     if (/^image\//.test(ty)) {
-      const url = URL.createObjectURL(new Blob([bytes], {type: ty}));
+      const url = URL.createObjectURL(new Blob([bytes], {type: ty})); /* blob-ok: an agent's look: drawn into a canvas off-screen, never shown as an address */
       try {
         const im = new Image(); await new Promise((ok, no) => { im.onload = ok; im.onerror = no; im.src = url; });
         const w0 = im.naturalWidth || 512, h0 = im.naturalHeight || 512, m = Math.max(w0, h0), k = m < 256 ? 256 / m : Math.min(1, 640 / m), W = Math.max(1, Math.round(w0 * k)), H = Math.max(1, Math.round(h0 * k));   // (at most 640 across; tiny pixel art made bigger, kept sharp)
