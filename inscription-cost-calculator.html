@@ -954,19 +954,19 @@ window.AgentKit = window.AgentKit || (() => {
   // where the box sits: the first spot from the top where it covers no words, buttons or pictures on screen (the game's own
   // frames on this page included); if none is free, the spot where it covers least. Looked at again when it opens or closes,
   // when the window changes size, and every few seconds (only moved if its spot is no longer clear, and never while typing).
-  function obstacles(doc, ox, oy, TW, TH, out, soft, depth) {   // words, buttons and pictures (out), and panels and boxes (soft)
+  function obstacles(doc, ox, oy, TW, TH, out, soft, depth, ctl) {   // words, buttons and pictures (out), panels and boxes (soft), and the buttons alone (ctl)
     const win = doc.defaultView, VA = TW * TH; if (!win || !doc.body) return;
     for (const el of doc.body.querySelectorAll('*')) {
       const tag = el.tagName.toUpperCase();
       if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'CANVAS' || el.hasAttribute('data-agentbox') || el.closest('[data-agentbox]')) continue;
-      if (tag === 'IFRAME') { if (depth < 1) try { const r = el.getBoundingClientRect(), d = el.contentDocument; if (d && r.width > 0 && r.height > 0) obstacles(d, ox + r.left, oy + r.top, TW, TH, out, soft, depth + 1); } catch (e) {} continue; }
+      if (tag === 'IFRAME') { if (depth < 1) try { const r = el.getBoundingClientRect(), d = el.contentDocument; if (d && r.width > 0 && r.height > 0) obstacles(d, ox + r.left, oy + r.top, TW, TH, out, soft, depth + 1, ctl); } catch (e) {} continue; }
       let mark = /^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|IMG|VIDEO|SVG|LABEL)$/.test(tag) || el.getAttribute('role') === 'button';
       if (!mark) for (const n of el.childNodes) if (n.nodeType === 3 && n.nodeValue.trim()) { mark = true; break; }
       if (!mark && !soft) continue;
       const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1 || r.width * r.height > .35 * VA || (!mark && r.width * r.height < 1500)) continue;
       const x0 = r.left + ox, y0 = r.top + oy; if (x0 >= TW || y0 >= TH || x0 + r.width <= 0 || y0 + r.height <= 0) continue;
       const cs = win.getComputedStyle(el); if (cs.visibility === 'hidden' || +cs.opacity < .05) continue;
-      if (mark) { out.push([x0 - 4, y0 - 4, x0 + r.width + 4, y0 + r.height + 4]); continue; }
+      if (mark) { const q = [x0 - 4, y0 - 4, x0 + r.width + 4, y0 + r.height + 4]; out.push(q); if (ctl && (tag !== 'LABEL' && tag !== 'IMG' && tag !== 'VIDEO' && tag !== 'SVG' && (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(tag) || el.getAttribute('role') === 'button' || el.hasAttribute('data-keepclear')))) ctl.push(q); continue; }
       const bg = /rgba?\(([^)]+)\)/.exec(cs.backgroundColor), a = bg ? (bg[1].split(',')[3] === undefined ? 1 : +bg[1].split(',')[3]) : 0;
       if (a > .15 || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0) soft.push([x0, y0, x0 + r.width, y0 + r.height]);
     }
@@ -982,13 +982,16 @@ window.AgentKit = window.AgentKit || (() => {
       if (inside && edge && !area(H, cx, cy)) return true;
       if (d.activeElement && r.contains(d.activeElement)) return false;
     }
-    const H = [], S = []; obstacles(d, 0, 0, TW, TH, H, S, 0);
+    const H = [], S = [], C = []; obstacles(d, 0, 0, TW, TH, H, S, 0, C);
     // the best spot, always along an edge (the middle of the screen stays clear for the game): covers no words or buttons if it can,
     // then as little of any panel as it can, then the right side before the left, then the top and bottom edges, then higher up
     // ((14 Nov 2026) the box keeps to a corner: bottom right first, then top right, bottom left, top left: the first that covers no words or buttons,
     //  else the one that covers least: so it is found in the same place on every page)
-    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8);
-    for (const [x, y, k] of [[R0, B0, 0], [R0, 8, 1], [8, B0, 2], [8, 8, 3]]) { const hd = area(H, x, y), q = hd * 1e9 + k * 1e6 + area(S, x, y); if (!best || q < best.q) best = {x, y, q, hard: hd}; }
+    // ((21 Nov 2026) when every corner covers something, it may slide along the left or right edge, and it covers a button (home,
+    //  i, the menu...) only if there is no other way: a button under it can't be pressed)
+    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8), spots = [[R0, B0, 0], [R0, 8, 1], [8, B0, 2], [8, 8, 3]];
+    for (let y = 48, k = 4; y < B0; y += 40) spots.push([R0, y, k++], [8, y, k++]);
+    for (const [x, y, k] of spots) { const hd = area(H, x, y), q = area(C, x, y) * 1e12 + hd * 1e9 + k * 1e6 + area(S, x, y); if (!best || q < best.q) best = {x, y, q, hard: hd}; }
     if (!best) best = {x: Math.max(0, R0), y: 8, hard: 1};
     r.style.left = best.x + 'px'; r.style.top = best.y + 'px';
     return !best.hard;
