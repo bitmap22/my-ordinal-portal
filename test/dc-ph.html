@@ -260,7 +260,7 @@ body.pl:not(.room) #kl{gap:5px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:
 body.pl:not(.room) #nav{gap:4px}
 body.pl:not(.room) #fs{flex-wrap:wrap;row-gap:3px}body.pl:not(.room) #fs .fl2{flex:0 0 100%;margin:0 0 1px}
 /* fold 1: the fee weather is slimmer (its words sit on its bars) and the block cards a little smaller */
-body.pf1:not(.room) #fwl span{position:absolute;left:4px;bottom:2px;right:auto;z-index:1;max-width:calc(100% - 8px);flex:none;min-height:0;margin:0;padding:0 4px;font-size:9px;line-height:15px;letter-spacing:.3px;color:#f6ead8;white-space:nowrap;text-shadow:0 0 3px #000,0 0 6px #000;background:rgba(12,8,4,.6);border-radius:3px;pointer-events:none}
+body.ph.pf1:not(.room) #fwl span{position:absolute;left:4px;bottom:2px;right:auto;z-index:1;max-width:calc(100% - 8px);flex:none;min-height:0;margin:0;padding:0 4px;font-size:9px;line-height:15px;letter-spacing:.3px;color:#f6ead8;white-space:normal;text-shadow:0 0 3px #000,0 0 6px #000;background:rgba(12,8,4,.6);border-radius:3px;pointer-events:none}
 body.pf1:not(.room) #fwb,body.pf1:not(.room) #fwc{height:19px}
 body.pf1:not(.room) .bk{height:58px;font-size:8.8px;line-height:1.14}body.pf1:not(.room) .bk .sd{height:58px}body.pf1:not(.room) .bk .tx{padding-top:2px}body.pf1:not(.room) .bk .h{font-size:9.5px}body.pf1:not(.room) .sa{height:58px}
 /* the parcel-type tabs on one line: their heading moves into what is read aloud, only when it would push the tabs onto two lines */
@@ -2884,12 +2884,14 @@ const REWARD_SAY = {100000: ['REWARD HALVED', 'RANDOM: UP TO 1,000,000 → UP TO
   500000: ['REWARD HALVED', '31,250 → 15,625 DOGE'], 600000: ['THE LAST CHANGE', '15,625 → 10,000 DOGE, FOR GOOD']};
 function drawStrip() {
   drawFW();
+  // (21 Nov 2026) on a phone: as many cards as fit the room PH gives the strip, so NEXT always comes first
+  const phW = window.PH && PH.mode && PH.stripW, bk0 = phW && document.querySelector('#strip .bk'), phTw = bk0 ? bk0.offsetWidth + (parseFloat(getComputedStyle(bk0).marginRight) || 0) : 88;
   $fut.innerHTML = ''; $past.innerHTML = '';
   const tw = matchMedia('(min-width:1500px) and (min-height:820px)').matches ? 103 : 85;
   let res = 8;
   if (innerWidth > 640) { const a = rectOf($tools), b = rectOf($fb); res = Math.max(16, innerWidth - Math.min(a ? a[0] : innerWidth, b ? b[0] : innerWidth) + 12); }
   else { const t = rectOf(document.getElementById('th')); if (t) res = Math.max(res, t[2] + 6); }   // (on a phone the strip keeps clear of the house button: an iPhone 14 is 390 wide)
-  const fitN = Math.max(2, Math.floor((innerWidth - 2 * res - 34 - 2 * (tw * 0.42)) / tw));
+  const fitN = phW ? Math.max(1, Math.floor((phW - 14) / phTw)) : Math.max(2, Math.floor((innerWidth - 2 * res - 34 - 2 * (tw * 0.42)) / tw));
   const nf = Math.min(futBlocks.length, 4, Math.max(1, Math.round(fitN * 4 / 9)));
   for (let k = nf - 1; k >= 0; k--) {
     const m = futBlocks[k], full = m.blockVSize / BLOCK_VB, over = full > 1.02;   // the last one holds everything else waiting
@@ -3593,7 +3595,7 @@ function phUpright(f) {
   for (let i = 1; i <= 3; i++) B.classList.toggle('pf' + i, f >= i);
   const th = phBox(phEl('th')), tm = phBox(phEl('tm'));
   const side = Math.max(th ? th.right + 6 : 8 + I.l, tm ? W - tm.left + 6 : 8 + I.r);
-  const S = phEl('strip'); phSet(S, 'left', '50%'); phSet(S, 'transform', 'translateX(-50%)'); phStrip(W - 2 * side);
+  const S = phEl('strip'); phSet(S, 'left', '50%'); phSet(S, 'transform', 'translateX(-50%)'); PH.stripW = W - 2 * side; phStrip(PH.stripW);
   const sb = phBox(S); let y = Math.max(sb ? sb.bottom : 0, th ? th.bottom : 0, tm ? tm.bottom : 0) + 4;
   const fw = phEl('fw');
   if (fw && fw.classList.contains('on')) { phSet(fw, 'left', (8 + I.l) + 'px'); phSet(fw, 'width', (W - 16 - I.l - I.r) + 'px'); phSet(fw, 'top', Math.round(y) + 'px'); phSet(fw, 'margin-top', '0px'); const r = phBox(fw); if (r) y = r.bottom + 6; }
@@ -3623,7 +3625,7 @@ function phSideways(f) {
   if (K) { phSet(K, 'left', x0 + 'px'); phSet(K, 'right', 'auto'); phSet(K, 'width', C + 'px'); phSet(K, 'max-width', C + 'px'); phSet(K, 'bottom', Math.round(H - floor) + 'px'); phSet(K, 'margin', '0px'); phKh(); }
   // right: the block cards at the top (beside the menu button), the fee weather, FEED; the round buttons at the bottom
   let rt = X1; for (const b of [th, tm]) if (b && b.right > X0 && b.top < 60) rt = Math.min(rt, b.left - 6);
-  const S = phEl('strip'); phSet(S, 'transform', 'none'); phStrip(rt - X0); const sw = phBox(S) ? S.getBoundingClientRect().width : 0;
+  const S = phEl('strip'); phSet(S, 'transform', 'none'); PH.stripW = rt - X0; phStrip(PH.stripW); const sw = phBox(S) ? S.getBoundingClientRect().width : 0;
   phSet(S, 'left', Math.round(X0 + Math.max(0, (rt - X0 - sw) / 2)) + 'px');
   const sb = phBox(S); let ry = Math.max(sb ? sb.bottom : 0, I.t) + 4;
   const fw = phEl('fw');
@@ -3640,7 +3642,7 @@ function phLayout() {
   const B = document.body, W = innerWidth, H = innerHeight;
   const mode = B.classList.contains('room') || B.classList.contains('tiny') ? '' : W <= 640 && W <= H ? 'ph' : H <= 500 && W > H ? 'pl' : W <= 640 ? 'ph' : '';
   if (mode !== PH.mode) { phClear(); B.classList.remove('ph', 'pl', 'pf1', 'pf2', 'pf3', 'pfo', 'khs'); PH.mode = mode; PH.fold = 0; if (mode) B.classList.add(mode); }
-  if (!mode) { PH.free = null; try { placeFW(); toolsFit(); } catch (e) {} return; }
+  if (!mode) { PH.free = null; PH.stripW = 0; if (PH.stripDrawn) { PH.stripDrawn = 0; try { drawStrip(); } catch (e) {} } try { placeFW(); toolsFit(); } catch (e) {} return; }
   B.classList.remove('tl1', 'cmp', 'cmpo');
   const st = phEl('st'), ot = phEl('ot'), mn = phEl('mn');
   B.classList.toggle('pfm', !!((ot && ot.textContent.trim()) || (mn && mn.textContent.trim())));
@@ -3654,6 +3656,7 @@ function phLayout() {
   if (mode === 'ph') { const bw = phTools(r.top, r.bot, r.I), L = bw ? 10 + r.I.l + bw + 10 : 14 + r.I.l, R = bw ? 10 + r.I.r + bw + 10 : 14 + r.I.r; PH.free = [L, r.top + 4, W - R, r.bot - 4]; }
   else PH.free = r.free;
   phFades();
+  if (PH.stripW !== PH.stripDrawn) { PH.stripDrawn = PH.stripW; try { drawStrip(); } catch (e) {} }   // (the strip's room changed: its cards are counted again)
 }
 // a row that slides sideways shows a soft edge where there is more to see
 function phFades() {
