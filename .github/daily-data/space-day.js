@@ -14,16 +14,22 @@ async function main() {
   if (t1 > Date.now() / 1000) throw new Error(day + ' has not finished yet (UTC)');
   const list = await BD.blocksOfDay(t0, t1);
   console.log('Blockspace Share for ' + day + ': ' + list.length + ' blocks' + (list.length ? ', ' + list[0].height + ' to ' + list[list.length - 1].height : ''));
-  const blocks = [];
-  for (const b of list) {
-    let split = null, err = null;
-    for (let tries = 0; tries < 3 && !split; tries++) {
-      try { const raw = await BD.rawBlockOf(b.height, b.id); split = BD.spaceOfBlock(BD.BM.scanBlock(raw.bytes, b.height), raw.bytes, b.id); }
-      catch (e) { err = e; await BD.sleep(15000); }
+  // three blocks at a time (each site is still asked at its gentle pace), kept in block order
+  const blocks = new Array(list.length);
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const i = next++; if (i >= list.length) return;
+      const b = list[i]; let split = null, err = null;
+      for (let tries = 0; tries < 3 && !split; tries++) {
+        try { const raw = await BD.rawBlockOf(b.height, b.id); split = BD.spaceOfBlock(BD.BM.scanBlock(raw.bytes, b.height), raw.bytes, b.id); }
+        catch (e) { err = e; await BD.sleep(15000); }
+      }
+      if (!split) console.log('  ' + b.height + ': not read (' + (err && err.message) + ')');
+      blocks[i] = {height: b.height, split};
     }
-    if (!split) console.log('  ' + b.height + ': not read (' + (err && err.message) + ')');
-    blocks.push({height: b.height, split});
   }
+  await Promise.all([worker(), worker(), worker()]);
   const rec = BD.SP.dayRecord(day, blocks);
   BD.SP.writeDay(out, rec);
   const pct = k => rec.size ? (100 * rec.bytes[k] / rec.size).toFixed(1) + '%' : '-';
