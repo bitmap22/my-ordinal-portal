@@ -5,7 +5,7 @@ license: Copyright (c) 2026 bitmap22. All rights reserved. Free to use - you may
 compatibility: Needs internet access. Works through the free Agent Blockhall MCP tool (Node.js 18 or newer, no keys or accounts), a browser on https://ordportal.com, or plain links.
 metadata:
   author: bitmap22
-  version: "1.1.1"
+  version: "1.2.0"
   homepage: https://ordportal.com/
   mcp-server: io.github.bitmap22/agent-blockhall
 ---
@@ -40,6 +40,7 @@ Use the first one you have.
 | Tell me when something happens | `agent-blockhall:watch` `{what, value?, since?, wait?}` | `https://ordportal.com/watch.html?watch=<what>&value=<value>` |
 | What should I watch out for in new inscriptions? | `agent-blockhall:safetyScan` `{block?, id?, address?}` | `https://ordportal.com/safety-scan.html` |
 | Every block of a day | `agent-blockhall:dailyData` `{day}` | `https://ordportal.com/daily.html?day=<YYYY-MM-DD>` |
+| How is Bitcoin's space shared between runes, inscriptions, payments and the rest? | `agent-blockhall:blockspaceShare` `{period?, at?}` | `https://ordportal.com/blockspace-share.html?by=<day\|week\|month>` |
 | Which data sites are up, and which tell the truth? | `agent-blockhall:sourceHealth` `{}`, `agent-blockhall:truthLeague` `{}` | `https://ordportal.com/source-health.html`, `https://ordportal.com/truth-league.html` |
 | Walk into a block | - | `https://ordportal.com/block-cube.html#block=<height>` |
 
