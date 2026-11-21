@@ -3,7 +3,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <script>/* the Family Guard (vendor/family): checks pictures, films and words from inscriptions before they are shown clearly */
 (function () { var h = /(^|\.)github\.io$|(^|\.)ordportal\.com$/.test(location.hostname), b = (h ? (/\/test\//.test(location.pathname) ? '../' : '') : 'https://ordportal.com/') + 'vendor/family/';
-  document.write('<script src="' + b + 'family.js?v=1.3.0"><\/script><script src="' + b + 'words.min.js"><\/script><script src="' + b + 'words-plus.js?v=1"><\/script>'); })();</script>
+  document.write('<script src="' + b + 'family.js?v=1.3.1"><\/script><script src="' + b + 'words.min.js"><\/script><script src="' + b + 'words-plus.js?v=1"><\/script>'); })();</script>
 <meta http-equiv="origin-trial" content="AoKI6gF5Vb3urEbD8CIMEduhceUv28Yg46LWDFh9VXbTvD2M2+HH1DpcSul6Qb14hagcBn7tpsyBkQjospK3uQUAAABSeyJvcmlnaW4iOiJodHRwczovL2JpdG1hcDIyLmdpdGh1Yi5pbzo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxODA2MzY0ODAwfQ==">
 <meta http-equiv="origin-trial" content="AtYmAgRCHYC3MkqPhTPfowWMNQRQZ1m22gC2sZ+WS4J8AasTXNDqqm4D6ChXs/Wg6ZgSAJTQ3cK3BVt70ZWcDAcAAABNeyJvcmlnaW4iOiJodHRwczovL29yZHBvcnRhbC5jb206NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTgwNjM2NDgwMH0="><!-- Chrome WebMCP origin trial for bitmap22.github.io (lets Chrome hand this page's agent tools to AI agents), registered 14 Nov 2026, ends 30 Mar 2027 -->
 <meta name="ai-agents" content="For AI agents: this game has a kit for you. In the page, call await window.agent.help(), then agent.see(). Where the browser has WebMCP, the same commands are tools named crew_* (and doge_* for the game). You play by the same rules as a player (walking speed, walls, the same buttons), the people here see you marked as an AI agent, and you can never wipe or delete anything. The person at your screen can talk to you in a small box: agent.messages() and agent.talk().">
@@ -76,6 +76,9 @@ label{display:block;font:600 13px/1 var(--cond);letter-spacing:.14em;text-transf
 .ch span{position:absolute;left:0;right:0;bottom:4px;font:700 11px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;color:var(--m-text);text-shadow:0 1px 3px #000}
 .ch.on{border-color:rgb(var(--gl));box-shadow:0 0 0 1px rgb(var(--gl)),0 0 14px rgba(var(--gl),.45)}
 .ch:not(.ready) img{opacity:0}
+.ch:not(.ready)::before{content:'';position:absolute;inset:10% 18% 18%;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 80'%3E%3Cg fill='none' stroke='rgba(255,255,255,.28)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='30' cy='17' r='8'/%3E%3Cpath d='M18 64V38q0-9 12-9t12 9v26M24 64v-14M36 64v-14'/%3E%3C/g%3E%3C/svg%3E") center/contain no-repeat;animation:chwait 1.6s ease-in-out infinite alternate}   /* (21 Nov 2026) an outline while the runner's picture is drawn */
+@keyframes chwait{from{opacity:.45}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.ch:not(.ready)::before{animation:none}}
 .pick{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
 .pick .sw{display:inline-flex;gap:5px}
 .pick button{width:26px;height:26px;padding:0;border-radius:50%;border:2px solid transparent}
@@ -1532,19 +1535,19 @@ window.AgentKit = window.AgentKit || (() => {
   // where the box sits: the first spot from the top where it covers no words, buttons or pictures on screen (the game's own
   // frames on this page included); if none is free, the spot where it covers least. Looked at again when it opens or closes,
   // when the window changes size, and every few seconds (only moved if its spot is no longer clear, and never while typing).
-  function obstacles(doc, ox, oy, TW, TH, out, soft, depth) {   // words, buttons and pictures (out), and panels and boxes (soft)
+  function obstacles(doc, ox, oy, TW, TH, out, soft, depth, ctl) {   // words, buttons and pictures (out), panels and boxes (soft), and the buttons alone (ctl)
     const win = doc.defaultView, VA = TW * TH; if (!win || !doc.body) return;
     for (const el of doc.body.querySelectorAll('*')) {
       const tag = el.tagName.toUpperCase();
       if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'CANVAS' || el.hasAttribute('data-agentbox') || el.closest('[data-agentbox]')) continue;
-      if (tag === 'IFRAME') { if (depth < 1) try { const r = el.getBoundingClientRect(), d = el.contentDocument; if (d && r.width > 0 && r.height > 0) obstacles(d, ox + r.left, oy + r.top, TW, TH, out, soft, depth + 1); } catch (e) {} continue; }
+      if (tag === 'IFRAME') { if (depth < 1) try { const r = el.getBoundingClientRect(), d = el.contentDocument; if (d && r.width > 0 && r.height > 0) obstacles(d, ox + r.left, oy + r.top, TW, TH, out, soft, depth + 1, ctl); } catch (e) {} continue; }
       let mark = /^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|IMG|VIDEO|SVG|LABEL)$/.test(tag) || el.getAttribute('role') === 'button';
       if (!mark) for (const n of el.childNodes) if (n.nodeType === 3 && n.nodeValue.trim()) { mark = true; break; }
       if (!mark && !soft) continue;
       const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1 || r.width * r.height > .35 * VA || (!mark && r.width * r.height < 1500)) continue;
       const x0 = r.left + ox, y0 = r.top + oy; if (x0 >= TW || y0 >= TH || x0 + r.width <= 0 || y0 + r.height <= 0) continue;
       const cs = win.getComputedStyle(el); if (cs.visibility === 'hidden' || +cs.opacity < .05) continue;
-      if (mark) { out.push([x0 - 4, y0 - 4, x0 + r.width + 4, y0 + r.height + 4]); continue; }
+      if (mark) { const q = [x0 - 4, y0 - 4, x0 + r.width + 4, y0 + r.height + 4]; out.push(q); if (ctl && (tag !== 'LABEL' && tag !== 'IMG' && tag !== 'VIDEO' && tag !== 'SVG' && (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(tag) || el.getAttribute('role') === 'button' || el.hasAttribute('data-keepclear')))) ctl.push(q); continue; }
       const bg = /rgba?\(([^)]+)\)/.exec(cs.backgroundColor), a = bg ? (bg[1].split(',')[3] === undefined ? 1 : +bg[1].split(',')[3]) : 0;
       if (a > .15 || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0) soft.push([x0, y0, x0 + r.width, y0 + r.height]);
     }
@@ -1560,13 +1563,16 @@ window.AgentKit = window.AgentKit || (() => {
       if (inside && edge && !area(H, cx, cy)) return true;
       if (d.activeElement && r.contains(d.activeElement)) return false;
     }
-    const H = [], S = []; obstacles(d, 0, 0, TW, TH, H, S, 0);
+    const H = [], S = [], C = []; obstacles(d, 0, 0, TW, TH, H, S, 0, C);
     // the best spot, always along an edge (the middle of the screen stays clear for the game): covers no words or buttons if it can,
     // then as little of any panel as it can, then the right side before the left, then the top and bottom edges, then higher up
     // ((14 Nov 2026) the box keeps to a corner: bottom right first, then top right, bottom left, top left: the first that covers no words or buttons,
     //  else the one that covers least: so it is found in the same place on every page)
-    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8);
-    for (const [x, y, k] of [[R0, B0, 0], [R0, 8, 1], [8, B0, 2], [8, 8, 3]]) { const hd = area(H, x, y), q = hd * 1e9 + k * 1e6 + area(S, x, y); if (!best || q < best.q) best = {x, y, q, hard: hd}; }
+    // ((21 Nov 2026) when every corner covers something, it may slide along the left or right edge, and it covers a button (home,
+    //  i, the menu...) only if there is no other way: a button under it can't be pressed)
+    let best = null; const R0 = Math.round(TW - bw - 8), B0 = Math.round(TH - bh - 8), spots = [[R0, B0, 0], [R0, 8, 1], [8, B0, 2], [8, 8, 3]];
+    for (let y = 48, k = 4; y < B0; y += 40) spots.push([R0, y, k++], [8, y, k++]);
+    for (const [x, y, k] of spots) { const hd = area(H, x, y), q = area(C, x, y) * 1e12 + hd * 1e9 + k * 1e6 + area(S, x, y); if (!best || q < best.q) best = {x, y, q, hard: hd}; }
     if (!best) best = {x: Math.max(0, R0), y: 8, hard: 1};
     r.style.left = best.x + 'px'; r.style.top = best.y + 'px';
     return !best.hard;
