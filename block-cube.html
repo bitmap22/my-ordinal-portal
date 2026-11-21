@@ -252,6 +252,7 @@ body.ph:not(.room) #fs i,body.pl:not(.room) #fs i{flex:1 1 0;min-width:0;padding
 body.ph:not(.room) #st,body.ph:not(.room) #ot,body.ph:not(.room) #mn,body.pl:not(.room) #st,body.pl:not(.room) #ot,body.pl:not(.room) #mn{white-space:normal;overflow:visible;text-overflow:clip}
 body.ph:not(.room) #st,body.ph:not(.room) #ot,body.ph:not(.room) #mn{max-width:calc(100vw - 28px)}
 body.ph:not(.room) #sep,body.pl:not(.room) #sep{margin:0 6px}
+body.ph:not(.room) #strip,body.pl:not(.room) #strip{cursor:grab;overscroll-behavior-x:contain}body.ph:not(.room) #strip.phdrag,body.pl:not(.room) #strip.phdrag{cursor:grabbing}
 body.ph:not(.room) #fwl span,body.pl:not(.room) #fwl span{white-space:normal;overflow:visible;text-overflow:clip}
 /* (21 Nov 2026, asked for) the round buttons beside the cube and FEED at half size (22 px), each still with a finger-sized
    place to tap (44 px) around it; the block number about half size (16 px: smaller, an iPhone zooms in when you tap it to type) */
@@ -271,8 +272,7 @@ body.pl:not(.room) #kh{font-size:9px;letter-spacing:.6px;margin-bottom:5px;displ
 body.pl:not(.room) #kl{gap:5px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}body.pl:not(.room) #kl::-webkit-scrollbar{display:none}body.pl:not(.room) .kd{flex:none;height:26px;padding:0 9px 0 6px;gap:5px;font-size:9px}body.pl:not(.room) .kd svg{width:14px;height:14px}
 body.pl:not(.room) #nav{gap:4px}
 body.pl:not(.room) #fs{flex-wrap:wrap;row-gap:3px}body.pl:not(.room) #fs .fl2{flex:0 0 100%;margin:0 0 1px}
-/* fold 1: the fee weather is slimmer (its words sit on its bars) and the block cards a little smaller */
-body.ph.pf1:not(.room) #fwl span{position:absolute;left:4px;bottom:2px;right:auto;z-index:1;max-width:calc(100% - 8px);flex:none;min-height:0;margin:0;padding:0 4px;font-size:9px;line-height:15px;letter-spacing:.3px;color:#f6ead8;white-space:normal;text-shadow:0 0 3px #000,0 0 6px #000;background:rgba(12,8,4,.6);border-radius:3px;pointer-events:none}
+/* fold 1: the fee weather's bars are slimmer and the block cards a little smaller */
 body.pf1:not(.room) #fwb,body.pf1:not(.room) #fwc{height:19px}
 body.pf1:not(.room) .bk{height:58px;font-size:8.8px;line-height:1.14}body.pf1:not(.room) .bk .sd{height:58px}body.pf1:not(.room) .bk .tx{padding-top:2px}body.pf1:not(.room) .bk .h{font-size:9.5px}body.pf1:not(.room) .sa{height:58px}
 /* the parcel-type tabs on one line: their heading moves into what is read aloud, only when it would push the tabs onto two lines */
@@ -3070,6 +3070,7 @@ function drawStrip() {
   drawFW();
   // (21 Nov 2026) on a phone: as many cards as fit the room PH gives the strip, so NEXT always comes first
   const phW = window.PH && PH.mode && PH.stripW, bk0 = phW && document.querySelector('#strip .bk'), phTw = bk0 ? bk0.offsetWidth + (parseFloat(getComputedStyle(bk0).marginRight) || 0) : 88;
+  const sl0 = phW ? $strip.scrollLeft : 0; if (phW) pastTop = null;   // (on a phone: drag the strip across for older blocks, no arrows)
   $fut.innerHTML = ''; $past.innerHTML = '';
   const tw = matchMedia('(min-width:1500px) and (min-height:820px)').matches ? 103 : 85;
   let res = 8;
@@ -3086,11 +3087,11 @@ function drawStrip() {
       over ? 'everything else waiting in the mempool' : (k === 0 ? 'the next block, being built now' : 'upcoming block +' + k) + ' (projected by mempool.space)',
       over ? null : () => goLiveIdx(k)));
   }
-  const np = Math.max(1, Math.min(5, fitN - nf)), top0 = pastBlocks.length ? pastBlocks[0].height : tipH;
+  const top0 = pastBlocks.length ? pastBlocks[0].height : tipH, np = phW ? Math.max(1, Math.min(PH.stripN || 12, top0 + 1)) : Math.max(1, Math.min(5, fitN - nf));
   if (top0 < 0) return;
   if (pastTop != null && pastTop >= top0) pastTop = null;
   const top = Math.max(Math.min(np - 1, top0), pastTop != null ? pastTop : top0);
-  if (pastTop != null) $past.appendChild(stripArrow('&lsaquo;', 'newer blocks', () => { pastTop = top + np >= top0 ? null : top + np; drawStrip(); }));
+  if (pastTop != null && !phW) $past.appendChild(stripArrow('&lsaquo;', 'newer blocks', () => { pastTop = top + np >= top0 ? null : top + np; drawStrip(); }));
   for (let i = 0; i < np && top - i >= 0; i++) {
     const h = top - i, b = blockAt(h);
     if (!b) { wantOlder(h); $past.appendChild(tile(mode === 'block' && want === h ? 'sel' : '', 1, isHalving(h) ? TILE_HALVING : TILE_MINED, `<div class="h">${fmt(h)}</div>loading…`, 'block ' + fmt(h), () => go(h))); continue; }
@@ -3100,7 +3101,8 @@ function drawStrip() {
     $past.appendChild(tile((mode === 'block' && want === b.height ? 'sel' : '') + (b.height === newH ? ' new' : '') + (isHalving(b.height) ? ' hv' : ''), b.weight / 4e6, isHalving(b.height) ? TILE_HALVING : TILE_MINED, lines,
       'block ' + fmt(b.height) + ' · ' + ago(b.timestamp) + (x.pool && x.pool.name ? ' · mined by ' + x.pool.name : ''), () => go(b.height)));
   }
-  if (top - np + 1 > 0) $past.appendChild(stripArrow('&rsaquo;', 'older blocks', () => { pastTop = Math.max(np - 1, top - np); drawStrip(); }));
+  if (top - np + 1 > 0 && !phW) $past.appendChild(stripArrow('&rsaquo;', 'older blocks', () => { pastTop = Math.max(np - 1, top - np); drawStrip(); }));
+  if (phW && sl0) $strip.scrollLeft = sl0;
 }
 /* ---------- fee weather: the middle fee of each of the last 144 blocks (about a day), as a band under the strip ---------- */
 const FW_N = 144, $fw = document.createElement('div');
@@ -3899,7 +3901,7 @@ setTimeout(toolsFit, 0);
    - sideways: two columns of the same width, the block's details and parcel types on the left, the block cards, fee weather and
      round buttons on the right; the cube between them, and the buttons under it.
    Where the cube would still be too small (a small phone, or bigger text), parts fold one step at a time. Nothing is taken away,
-   and a folded part opens with a tap: 1. the fee weather is slimmer and the block cards a little smaller; 2. the block's other
+   and a folded part opens with a tap: 1. the fee weather's bars are slimmer and the block cards a little smaller; 2. the block's other
    lines fold under its first line ("more"); 3. the parcel-type tabs and the parcel types share one row that slides sideways. */
 var PH = {mode: '', fold: 0, free: null, set: new Map(), q: 0};
 const phEl = id => document.getElementById(id);
@@ -3915,14 +3917,13 @@ function phSoon() { if (!PH.q) PH.q = setTimeout(() => { PH.q = 0; phLayout(); }
 // the block cards: as many whole ones as fit in w (never one cut in half at the edge)
 function phStrip(w) {
   const S = phEl('strip'); if (!S) return;
-  phSet(S, 'max-width', 'none');
-  const sr = S.getBoundingClientRect(); let best = 0;
+  const sr = S.getBoundingClientRect(); let best = 0;   // (measured where the cards stand, so where you have dragged it to is kept)
   for (const e of S.querySelectorAll('.bk, .sa')) {   // (a card or an arrow at the end: never the dashed line on its own)
     const r = e.getBoundingClientRect(); if (!r.width) continue;
     const end = r.right - sr.left + S.scrollLeft + (parseFloat(getComputedStyle(e).marginRight) || 0);
     if (end <= w && end > best) best = end;
   }
-  phSet(S, 'max-width', Math.max(60, Math.round(best + 2)) + 'px');
+  phSet(S, 'max-width', Math.max(60, Math.round(best - 2)) + 'px');   // (its 2 px padding either side: the edge falls in the gap before the next card)
 }
 // the parcel-type heading moves into what is read aloud only when the tabs would otherwise need two lines
 function phKh() {
@@ -4018,6 +4019,14 @@ function phFades() {
   }
 }
 ['kl', 'kinds', 'strip'].forEach(id => { const e = phEl(id); if (e) e.addEventListener('scroll', phFades, {passive: true}); });
+// the block cards: drag them across for older blocks (asked for, instead of an arrow button). Near the end, 12 more join.
+{ const S = phEl('strip'); PH.stripN = 12;
+  if (S) S.addEventListener('scroll', () => { if (PH.mode && S.scrollLeft + S.clientWidth > S.scrollWidth - 140 && PH.stripN < 1000 && !PH.more) { PH.more = setTimeout(() => { PH.more = 0; PH.stripN += 12; try { drawStrip(); } catch (e) {} }, 120); } }, {passive: true});
+  let d = null;   // (a mouse: hold and drag; a finger slides it by itself)
+  if (S) S.addEventListener('pointerdown', e => { if (!PH.mode || e.pointerType !== 'mouse' || e.button !== 0) return; d = {x: e.clientX, s: S.scrollLeft, moved: false}; });
+  addEventListener('pointermove', e => { if (!d) return; const dx = e.clientX - d.x; if (!d.moved && Math.abs(dx) > 5) { d.moved = true; S.classList.add('phdrag'); } if (d.moved) S.scrollLeft = d.s - dx; });
+  addEventListener('pointerup', () => { if (d && d.moved) { const stop = ev => { ev.stopPropagation(); ev.preventDefault(); }; S.addEventListener('click', stop, {capture: true, once: true}); setTimeout(() => S.removeEventListener('click', stop, true), 60); } if (S) S.classList.remove('phdrag'); d = null; });
+}
 // a tap on the block's lines opens the folded ones (and folds them again)
 ['st', 'ot', 'mn'].forEach(id => { const e = phEl(id); if (e) e.addEventListener('click', () => { const B = document.body; if (B.classList.contains('pf2') && B.classList.contains('pfm')) { B.classList.toggle('pfo'); phSoon(); } }); });
 { const kh = phEl('kh'); if (kh) { kh.setAttribute('role', 'group'); kh.setAttribute('aria-label', 'parcel types'); const t = [...kh.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()); if (t) { const s = document.createElement('span'); s.className = 'khl'; s.textContent = t.textContent; t.replaceWith(s); } } }
