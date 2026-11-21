@@ -1155,7 +1155,7 @@ window.AgentKit = window.AgentKit || (() => {
   const cmds = [
     {name: 'see', ro: true, untrusted: true, does: 'Everything on the portal now, by section: each game and tool, its note and its buttons, and what is open in the viewer. Gives back text.', run: () => see()},
     {name: 'state', ro: true, untrusted: true, does: 'The same as data. frontDoor is the front page\'s corridor: Bitcoin blocks as door frames, the nearest one the block it is at (the newest, unless it has been moved back in time), each with its height, transactions, pool, when it was mined and walkIn (block-cube.html#block=N walks straight into its hall); corridor() gives it in full, and corridorGo moves it through time. Gives back {page, frontDoor{from, blocks[{height, transactions, pool, minedAt, walkIn}]}, about, counts[], filter, search, viewer{open}, storage{repo, megabytes, of, percent, read, from}, cards[{n, title, kind, section, note, page, shown, buttons[{does, page}]}]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"page":{},"about":{},"counts":{"type":"array"},"filter":{},"search":{},"viewer":{"type":"object","properties":{"open":{}}},"storage":{"type":"object","properties":{"repo":{},"megabytes":{},"of":{},"percent":{},"read":{},"from":{}}},"cards":{"type":"array","items":{"type":"object","properties":{"n":{},"title":{},"kind":{},"section":{},"note":{},"page":{},"shown":{},"buttons":{"type":"array","items":{"type":"object","properties":{"does":{},"page":{}}}}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: () => state()},
-    {name: 'corridor', ro: true, does: 'The front page\'s corridor now: the block it is at (at), whether it follows the newest block (live), the newest block (newest), how the frames are spaced (spacing: even, one step a block, or time, where the gap between two frames is the time between their blocks), and each block in view, nearest first: height, transactions, pool, minedAt, afterPrevious (seconds after the block before it, as the blocks\' own clocks say: miners\' clocks can differ), milestone (a halving, inscription #0\'s block, Blockout Day and the like), bitmap and walkIn. Gives back {from, live, at, newest, spacing, blocks[]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"from":{},"live":{"type":"boolean"},"at":{"type":"integer"},"newest":{"type":"integer"},"spacing":{},"blocks":{"type":"array","items":{"type":"object","properties":{"height":{"type":"integer"},"transactions":{},"pool":{},"minedAt":{},"afterPrevious":{},"milestone":{},"bitmap":{},"walkIn":{}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}},
+    {name: 'corridor', ro: true, does: 'The front page\'s corridor now: the block it is at (at), whether it follows the newest block (live), the newest block (newest), how the frames are spaced (spacing: even, one step a block, or time, where the gap between two frames is the time between their blocks), and each block in view, nearest first: height, transactions, pool, minedAt, afterPrevious (seconds after the block before it, as the blocks\' own clocks say: miners\' clocks can differ), milestone (a halving, inscription #0\'s block, Blockout Day and the like), bitmap, walkIn, and safety: what GitHub\'s Safety Scan marked in it (about every hour, the last 144 blocks; {scanned, inscriptions, marks{kind: how many}, see}, or {scanned: false, why}, or null when older than the scan keeps; every mark is a \"may be\"). Gives back {from, live, at, newest, spacing, safetyScan, blocks[]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"from":{},"live":{"type":"boolean"},"at":{"type":"integer"},"newest":{"type":"integer"},"spacing":{},"blocks":{"type":"array","items":{"type":"object","properties":{"height":{"type":"integer"},"transactions":{},"pool":{},"minedAt":{},"afterPrevious":{},"milestone":{},"bitmap":{},"walkIn":{}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}},
       run: () => window.__corridor ? window.__corridor.state() : {ok: false, error: 'the corridor is not on this page'}},
     {name: 'corridorGo', does: 'Move the corridor through time, as a visitor does with Older, Newer and Go to: to a block number, a bitmap (840000.bitmap), newest, or older or newer (one block). Walking deeper into the corridor goes back in time. The page\'s Walk in button then walks into that block. Gives back the corridor as corridor() does, once that block has been read (or {ok: false, error} if it could not).', args: [{name: 'to', does: 'a block number, a bitmap like 840000.bitmap, newest, older or newer', req: true}],
       run: async ({to}) => {
@@ -1220,9 +1220,30 @@ window.AgentKit = window.AgentKit || (() => {
     var tip = -1;             // the newest block known
     var cam = -1, goal = -1, live = true, spacing = "even";
     var flashAt = 0, born = performance.now(), last = performance.now();
-    var W = 0, H = 0, FREE = 0, dpr = 1, rects = [], hover = -1, pinned = -1, seen = false, raf = 0, ptr = null, card = hero.querySelector(".hero-in .card");
+    var W = 0, H = 0, FREE = 0, dpr = 1, rects = [], hover = -1, hoverChip = -1, pinned = -1, seen = false, raf = 0, ptr = null, card = hero.querySelector(".hero-in .card");
     try { if (localStorage.getItem("ab-corridor-spacing") === "time") spacing = "time"; } catch (e) {}
     var fmt = function (n) { return Number(n).toLocaleString("en-GB"); };
+    /* (21 Nov 2026) Safety lights: GitHub's Safety Scan (about every hour, the last 144 blocks, nothing run) marks what to watch out
+       for. A frame whose block has marks carries their symbols under its sign; clicking them opens that block's Safety Scan. Only
+       symbols are shown here, never what was marked. */
+    var SCAN_SRC = ["https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/safety-scan/btc/index.json", "https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@safety-scan/btc/index.json"];
+    var SCAN_KINDS = [["adult", "\uD83D\uDD1E", "may be adult"], ["flash", "\u26A1", "may flash"], ["scam", "\uD83C\uDFA3", "may be a scam"], ["agent", "\uD83E\uDD16", "agent trap"],
+        ["code", "\u26A0\uFE0F", "risky code"], ["miner", "\u26CF\uFE0F", "miner or phone-killer"], ["hate", "\uD83D\uDEAB", "hate words"], ["personal", "\uD83D\uDCC7", "personal details"]];
+    var scan = null, scanBy = new Map(), chips = [];
+    function scanRead(k) {
+        k = k || 0; if (k >= SCAN_SRC.length) return;
+        fetch(SCAN_SRC[k] + "?t=" + Math.floor(Date.now() / 300000)).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+            if (!j || !Array.isArray(j.blocks) || !(j.tip > 0)) throw 0;
+            scan = j; scanBy = new Map(j.blocks.map(function (b) { return [b.height, b]; })); publish(); kick();
+        }).catch(function () { scanRead(k + 1); });
+    }
+    function safetyOf(h) {   // {scanned, inscriptions, marks[[key, symbol, name, n]], see} or {scanned: false, why}, or null when the scan says nothing of it
+        if (!scan) return null;
+        var b = scanBy.get(h), see = "safety-scan.html?block=" + h;
+        if (b) { var t = b.tally || {}; return {scanned: true, inscriptions: b.inscriptions || 0, marks: SCAN_KINDS.filter(function (K) { return t[K[0]] > 0; }).map(function (K) { return [K[0], K[1], K[2], t[K[0]]]; }), see: see}; }
+        if (h > scan.tip) return {scanned: false, why: "not scanned yet: GitHub's Safety Scan runs about every hour"};
+        return null;
+    }
     var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     function day(t) { var d = new Date(t * 1000); return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()] + " " + d.getUTCFullYear(); }
     function ago(t) {
@@ -1275,7 +1296,7 @@ window.AgentKit = window.AgentKit || (() => {
         var g = x.createRadialGradient(vx, vy, 0, vx, vy, Math.max(W, H) * 0.32);
         g.addColorStop(0, "rgba(255, 200, 120, .20)"); g.addColorStop(1, "rgba(255, 200, 120, 0)");
         x.fillStyle = g; x.fillRect(0, 0, W, H);
-        rects = [];
+        rects = []; chips = [];
         if (cam < 0) return;
         var shelfCol = ["rgba(99, 210, 214, ", "rgba(224, 98, 154, ", "rgba(238, 242, 248, "];
         var F = frames();
@@ -1284,7 +1305,8 @@ window.AgentKit = window.AgentKit || (() => {
         for (var i0 = 0; i0 < F.length; i0++) {
             var z0 = F[i0].z, B0 = byH.get(F[i0].h); if (!B0 || z0 < Z0 * 0.9) continue;
             var s0 = 1 / z0, t0 = vy - HH * s0, lw0 = Math.max(1, 11 * s0 * Math.min(1, (room || H) / 760)), fs0 = Math.min(30, HH * 0.075 * s0); if (fs0 < 7.5) continue;
-            var py0 = Math.max(t0 + lw0 / 2 + fs0 * 1.05, fs0 * 1.4), top0 = py0 - fs0 * 0.8, bot0 = py0 + fs0 * (MILESTONES[B0.h] ? 2.0 : 0.8);
+            var S0 = safetyOf(B0.h), lamps0 = S0 && S0.marks && S0.marks.length;
+            var py0 = Math.max(t0 + lw0 / 2 + fs0 * 1.05, fs0 * 1.4), top0 = py0 - fs0 * 0.8, bot0 = py0 + fs0 * ((MILESTONES[B0.h] ? 2.0 : 0.8) + (lamps0 ? 1.3 : 0));
             if (taken.some(function (R) { return top0 < R[1] + 2 && bot0 > R[0] - 2; })) continue;
             taken.push([top0, bot0]); signed[F[i0].h] = 1;
         }
@@ -1343,6 +1365,16 @@ window.AgentKit = window.AgentKit || (() => {
                         var pw = x.measureText(M[0]).width, qy = py + fs * 0.78 + ps * 1.25;
                         x.fillStyle = "rgba(243, 165, 48, " + (0.9 * fog).toFixed(3) + ")"; x.fillRect(px - pw / 2 - ps * 0.7, qy - ps * 0.8, pw + ps * 1.4, ps * 1.6);
                         x.fillStyle = "rgba(10, 15, 28, " + fog.toFixed(3) + ")"; x.fillText(M[0], px, qy + ps * 0.04);
+                    }
+                    var S = safetyOf(B.h);
+                    if (S && S.marks && S.marks.length && fs >= 9) {   // its safety lights: each mark's symbol and how many
+                        var cs = fs * 0.6, cy = py + fs * (M ? 2.0 : 0.78) + cs * 1.15, txt = S.marks.map(function (k) { return k[1] + " " + k[3]; }).join("   ");
+                        x.font = "600 " + cs.toFixed(1) + "px ui-monospace, \"Segoe UI Emoji\", \"Apple Color Emoji\", \"Noto Color Emoji\", sans-serif";
+                        var cw = x.measureText(txt).width + cs * 1.6, ch = cs * 1.7, cl = px - cw / 2, ct = cy - ch / 2, hotc = hoverChip === B.h;
+                        x.fillStyle = "rgba(10, 15, 28, " + (0.88 * fog).toFixed(3) + ")"; x.fillRect(cl, ct, cw, ch);
+                        x.strokeStyle = hotc ? "rgba(255, 214, 140, " + fog.toFixed(3) + ")" : "rgba(224, 98, 154, " + (0.85 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.8, cs * 0.08); x.strokeRect(cl, ct, cw, ch);
+                        x.globalAlpha = Math.min(1, fog * 1.05); x.fillStyle = "#eef2f8"; x.fillText(txt, px, cy + cs * 0.06); x.globalAlpha = 1;
+                        chips.push({h: B.h, l: cl, t: ct, r: cl + cw, b: ct + ch});
                     }
                 }
             }
@@ -1416,7 +1448,11 @@ window.AgentKit = window.AgentKit || (() => {
         var head = "Block " + fmt(h) + (h === tip ? ", the newest" : "") + (M ? ": " + M[1] : "");
         var body = fmt(B.tx) + " transactions (a box on its walls for every 250), mined " + ago(B.t) + (B.pool ? " by " + B.pool : "") + ". Its bitmap is " + h + ".bitmap.";
         if (gap != null) body += gap >= 0 ? " Mined " + span(gap) + " after block " + fmt(h - 1) + "." : " Its clock says " + span(gap) + " before block " + fmt(h - 1) + " (miners' clocks can differ).";
-        return {head: head, body: body};
+        var S = safetyOf(h), safe = null;
+        if (S && S.scanned) safe = S.marks.length ? "Safety Scan: " + S.marks.map(function (k) { return k[2] + " (" + k[3] + ")"; }).join(", ") + " (of its " + fmt(S.inscriptions) + " inscriptions; every mark is a \"may be\")."
+            : "Safety Scan: nothing marked in its " + fmt(S.inscriptions) + " inscription" + (S.inscriptions === 1 ? "" : "s") + ".";
+        else if (S) safe = "Safety Scan: " + S.why + ".";
+        return {head: head, body: body, safe: safe, scan: S && S.scanned ? S.see : null};
     }
     function place(px, py) {
         var w = say.offsetWidth || 260, hgt = say.offsetHeight || 60;
@@ -1430,7 +1466,7 @@ window.AgentKit = window.AgentKit || (() => {
         if (!L) { say.classList.remove("on"); return; }
         say.innerHTML = "<b></b><br><span></span>";
         say.querySelector("b").textContent = L.head;
-        say.querySelector("span").textContent = L.body + " Click to walk into its hall.";
+        say.querySelector("span").textContent = L.body + (L.safe ? " " + L.safe : "") + " Click to walk into its hall.";
         place(px, py); say.classList.add("on");
     }
     function showCard(h, px, py) {
@@ -1438,9 +1474,10 @@ window.AgentKit = window.AgentKit || (() => {
         if (!say) return;
         var L = h >= 0 && lines(h);
         if (!L) { say.classList.remove("on", "pinned"); say.setAttribute("aria-hidden", "true"); if (strip) strip.querySelectorAll(".chip.on").forEach(function (c) { c.classList.remove("on"); }); kick(); return; }
-        say.innerHTML = "<b></b><br><span></span><div class=\"say-acts\"><a class=\"btn main\"></a><button type=\"button\" class=\"btn\">Close</button></div>";
+        say.innerHTML = "<b></b><br><span></span><div class=\"say-acts\"><a class=\"btn main\"></a>" + (L.scan ? "<a class=\"btn scan\">Safety Scan</a>" : "") + "<button type=\"button\" class=\"btn\">Close</button></div>";
         say.querySelector("b").textContent = L.head;
-        say.querySelector("span").textContent = L.body;
+        say.querySelector("span").textContent = L.body + (L.safe ? " " + L.safe : "");
+        if (L.scan) say.querySelector("a.scan").href = L.scan;
         var a = say.querySelector("a"); a.href = "block-cube.html#block=" + h; a.textContent = "Walk in";
         say.querySelector("button").onclick = function () { showCard(-1); };
         say.classList.add("on", "pinned"); say.setAttribute("aria-hidden", "false");
@@ -1469,16 +1506,23 @@ window.AgentKit = window.AgentKit || (() => {
             if (!drag.moved && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(e.clientY - drag.y)) { drag.moved = true; try { cv.setPointerCapture(e.pointerId); } catch (er) {} showCard(-1); }
             if (drag.moved) { var to = Math.max(0, Math.min(tip, Math.round(drag.from + dx / (drag.type === "touch" ? 28 : 36)))); if (to !== goal) { live = to === tip; goal = to; need(goal - 1); publish(); } kick(); return; }
         }
-        if (e.pointerType !== "touch") { tell(at(ptr[0], ptr[1]), ptr[0], ptr[1]); kick(); }
+        if (e.pointerType !== "touch") {
+            var c = chipAt(ptr[0], ptr[1]);
+            if (c >= 0 && pinned < 0) { hoverChip = c; hover = -1; cv.classList.add("on-frame"); var Lc = lines(c); say.innerHTML = "<b></b><br><span></span>"; say.querySelector("b").textContent = "Block " + fmt(c) + ": its Safety Scan"; say.querySelector("span").textContent = (Lc && Lc.safe || "") + " Click to open it."; place(ptr[0], ptr[1]); say.classList.add("on"); kick(); return; }
+            hoverChip = -1; tell(at(ptr[0], ptr[1]), ptr[0], ptr[1]); kick();
+        }
     });
+    function chipAt(px, py) { for (var i = chips.length - 1; i >= 0; i--) { var C = chips[i]; if (px >= C.l - 4 && px <= C.r + 4 && py >= C.t - 4 && py <= C.b + 4) return C.h; } return -1; }
     cv.addEventListener("pointerup", function (e) {
         var d = drag; drag = null; if (!d || d.moved) return;
-        var r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, h = at(px, py);
+        var r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, h = at(px, py), c = chipAt(px, py);
+        if (c >= 0 && e.pointerType !== "touch") { location.href = "safety-scan.html?block=" + c; return; }
+        if (c >= 0) h = c;
         if (e.pointerType === "touch") { if (h >= 0 && h === pinned) walk(h); else showCard(h, px, py); }
         else if (h >= 0) walk(h);
     });
     cv.addEventListener("pointercancel", function () { drag = null; });
-    cv.addEventListener("pointerleave", function () { if (!drag) { tell(-1); kick(); } });
+    cv.addEventListener("pointerleave", function () { if (!drag) { hoverChip = -1; tell(-1); kick(); } });
     cv.addEventListener("wheel", function (e) {   // sideways scrolling only (or Shift + wheel): up and down still scrolls the page
         var dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
         if (!dx) return;
@@ -1518,7 +1562,8 @@ window.AgentKit = window.AgentKit || (() => {
             strip.textContent = "";
             shown.forEach(function (B) {
                 var b = document.createElement("button"); b.type = "button"; b.className = "chip" + (B.h === pinned ? " on" : "");
-                var n = document.createElement("b"); n.textContent = fmt(B.h); b.append(n, document.createTextNode(fmt(B.tx) + " tx, " + ago(B.t)));
+                var S = safetyOf(B.h), lamps = S && S.marks && S.marks.length ? " " + S.marks.map(function (k) { return k[1]; }).join("") : "";
+                var n = document.createElement("b"); n.textContent = fmt(B.h) + lamps; b.append(n, document.createTextNode(fmt(B.tx) + " tx, " + ago(B.t)));
                 b.addEventListener("click", function () { var R = rects.find(function (q) { return q.h === B.h; }); showCard(B.h, R ? (R.l + R.r) / 2 : null, R ? R.t + 10 : null); });
                 strip.append(b);
             });
@@ -1529,7 +1574,9 @@ window.AgentKit = window.AgentKit || (() => {
         }
         window.__frontDoor = {from: "mempool.space's blocks", live: live, at: g, newest: tip, spacing: spacing,
             blocks: shown.map(function (B) { var P = byH.get(B.h - 1); return {height: B.h, transactions: B.tx, pool: B.pool || null, minedAt: new Date(B.t * 1000).toISOString(),
-                afterPrevious: P ? B.t - P.t : null, milestone: MILESTONES[B.h] ? MILESTONES[B.h][1] : null, bitmap: B.h + ".bitmap", walkIn: "block-cube.html#block=" + B.h}; })};
+                afterPrevious: P ? B.t - P.t : null, milestone: MILESTONES[B.h] ? MILESTONES[B.h][1] : null, bitmap: B.h + ".bitmap", walkIn: "block-cube.html#block=" + B.h,
+                safety: (function (S) { return !S ? null : S.scanned ? {scanned: true, inscriptions: S.inscriptions, marks: Object.fromEntries(S.marks.map(function (k) { return [k[0], k[3]]; })), see: S.see} : {scanned: false, why: S.why}; })(safetyOf(B.h))}; }),
+            safetyScan: scan ? {updated: scan.updated, upTo: scan.tip, keeps: scan.window, from: "GitHub's Safety Scan (safety-scan.html), about every hour; every mark is a \"may be\""} : null};
     }
     window.__corridor = {
         go: function (to) { return go(to); }, step: step, spacing: setSpacing,
@@ -1541,8 +1588,9 @@ window.AgentKit = window.AgentKit || (() => {
     window.addEventListener("resize", size);
     if ("ResizeObserver" in window && card) new ResizeObserver(function () { size(); }).observe(card);   // (the words grow when the blocks arrive)
     setSpacing(spacing);
-    size(); newest();
+    size(); newest(); scanRead();
     setInterval(function () { if (!document.hidden) { newest(); if (strip) publish(); } }, 60000);
+    setInterval(function () { if (!document.hidden) scanRead(); }, 600000);
 })();
 </script>
 <!-- visitor counter: start -->
