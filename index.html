@@ -1155,7 +1155,7 @@ window.AgentKit = window.AgentKit || (() => {
   const cmds = [
     {name: 'see', ro: true, untrusted: true, does: 'Everything on the portal now, by section: each game and tool, its note and its buttons, and what is open in the viewer. Gives back text.', run: () => see()},
     {name: 'state', ro: true, untrusted: true, does: 'The same as data. frontDoor is the front page\'s corridor: Bitcoin blocks as door frames, the nearest one the block it is at (the newest, unless it has been moved back in time), each with its height, transactions, pool, when it was mined and walkIn (block-cube.html#block=N walks straight into its hall); corridor() gives it in full, and corridorGo moves it through time. Gives back {page, frontDoor{from, blocks[{height, transactions, pool, minedAt, walkIn}]}, about, counts[], filter, search, viewer{open}, storage{repo, megabytes, of, percent, read, from}, cards[{n, title, kind, section, note, page, shown, buttons[{does, page}]}]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"page":{},"about":{},"counts":{"type":"array"},"filter":{},"search":{},"viewer":{"type":"object","properties":{"open":{}}},"storage":{"type":"object","properties":{"repo":{},"megabytes":{},"of":{},"percent":{},"read":{},"from":{}}},"cards":{"type":"array","items":{"type":"object","properties":{"n":{},"title":{},"kind":{},"section":{},"note":{},"page":{},"shown":{},"buttons":{"type":"array","items":{"type":"object","properties":{"does":{},"page":{}}}}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: () => state()},
-    {name: 'corridor', ro: true, does: 'The front page\'s corridor now: the block it is at (at), whether it follows the newest block (live), the newest block (newest), how the frames are spaced (spacing: even, one step a block, or time, where the gap between two frames is the time between their blocks), and each block in view, nearest first: height, transactions, pool, minedAt, afterPrevious (seconds after the block before it, as the blocks\' own clocks say: miners\' clocks can differ), milestone (a halving, inscription #0\'s block, Blockout Day and the like), bitmap, walkIn, and safety: what GitHub\'s Safety Scan marked in it (about every hour, the last 144 blocks; {scanned, inscriptions, marks{kind: how many}, see}, or {scanned: false, why}, or null when older than the scan keeps; every mark is a \"may be\"). Gives back {from, live, at, newest, spacing, safetyScan, blocks[]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"from":{},"live":{"type":"boolean"},"at":{"type":"integer"},"newest":{"type":"integer"},"spacing":{},"blocks":{"type":"array","items":{"type":"object","properties":{"height":{"type":"integer"},"transactions":{},"pool":{},"minedAt":{},"afterPrevious":{},"milestone":{},"bitmap":{},"walkIn":{}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}},
+    {name: 'corridor', ro: true, does: 'The front page\'s corridor now: the block it is at (at), whether it follows the newest block (live), the newest block (newest), how the frames are spaced (spacing: even, one step a block, or time, where the gap between two frames is the time between their blocks), and each block in view, nearest first: height, transactions, pool, minedAt, afterPrevious (seconds after the block before it, as the blocks\' own clocks say: miners\' clocks can differ), milestone (a halving, inscription #0\'s block, Blockout Day and the like), bitmap, walkIn, shelves (how many of its transactions go on each kind of shelf in its hall, in the halls\' order: kept for the last 144 blocks, sorted by GitHub about every half hour; null when not sorted), and safety: what GitHub\'s Safety Scan marked in it (about every hour, the last 144 blocks; {scanned, inscriptions, marks{kind: how many}, see}, or {scanned: false, why}, or null when older than the scan keeps; every mark is a \"may be\"). Gives back {from, live, at, newest, spacing, next, shelvesData, safetyScan, blocks[]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"from":{},"live":{"type":"boolean"},"at":{"type":"integer"},"newest":{"type":"integer"},"spacing":{},"blocks":{"type":"array","items":{"type":"object","properties":{"height":{"type":"integer"},"transactions":{},"pool":{},"minedAt":{},"afterPrevious":{},"milestone":{},"bitmap":{},"walkIn":{}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}},
       run: () => window.__corridor ? window.__corridor.state() : {ok: false, error: 'the corridor is not on this page'}},
     {name: 'corridorGo', does: 'Move the corridor through time, as a visitor does with Older, Newer and Go to: to a block number, a bitmap (840000.bitmap), newest, or older or newer (one block). Walking deeper into the corridor goes back in time. The page\'s Walk in button then walks into that block. Gives back the corridor as corridor() does, once that block has been read (or {ok: false, error} if it could not).', args: [{name: 'to', does: 'a block number, a bitmap like 840000.bitmap, newest, older or newer', req: true}],
       run: async ({to}) => {
@@ -1236,6 +1236,37 @@ window.AgentKit = window.AgentKit || (() => {
     var SCAN_KINDS = [["adult", "\uD83D\uDD1E", "may be adult"], ["flash", "\u26A1", "may flash"], ["scam", "\uD83C\uDFA3", "may be a scam"], ["agent", "\uD83E\uDD16", "agent trap"],
         ["code", "\u26A0\uFE0F", "risky code"], ["miner", "\u26CF\uFE0F", "miner or phone-killer"], ["hate", "\uD83D\uDEAB", "hate words"], ["personal", "\uD83D\uDCC7", "personal details"]];
     var scan = null, scanBy = new Map(), chips = [];
+    /* (21 Nov 2026) Shelves that show what is inside: GitHub reads each of the newest blocks the Block Manifest way about every half
+       hour (the last 144 blocks) and counts its transactions by the kind of shelf they go on in its hall, in the halls' own order and
+       colours. A frame's boxes take those colours (a box for every 250 transactions, at least one for each kind it has). A block not
+       sorted (older, or not read yet) keeps plain boxes. */
+    var SHELF_SRC = ["https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/shelves/btc/shelves.json", "https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@shelves/btc/shelves.json"];
+    var SHELVES = [["BRC-20", "#4aa8ff"], ["TAP", "#36f1ff"], ["CRC-20 \u00b7 LEAF", "#7cff6b"], ["BRC-420", "#ff4ff0"], ["SRC-20", "#2fe0c0"], ["Stamps", "#d9d9d9"], ["Counterparty", "#b08cff"],
+        ["CAT-21", "#ff6fb1"], ["Atomicals", "#9be15d"], ["Labitbu", "#ffe066"], ["OpenTimestamps", "#e8c9a0"], ["Alkanes", "#ff7a45"], ["bitmaps", "#ff3b5c"], ["runes", "#c86bff"],
+        ["inscriptions", "#ffa53a"], ["regular", "#7d8cab"]];
+    var shelfData = null, shelfBy = new Map(), boxCache = new Map();
+    var rgb = function (hex) { var n = parseInt(hex.slice(1), 16); return "rgba(" + (n >> 16) + ", " + (n >> 8 & 255) + ", " + (n & 255) + ", "; };
+    function shelfRead(k) {
+        k = k || 0; if (k >= SHELF_SRC.length) return;
+        fetch(SHELF_SRC[k] + "?t=" + Math.floor(Date.now() / 300000)).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+            if (!j || !Array.isArray(j.blocks)) throw 0;
+            shelfData = j; shelfBy = new Map(j.blocks.filter(function (b) { return b && b.shelves; }).map(function (b) { return [b.height, b]; })); boxCache.clear(); publish(); kick();
+        }).catch(function () { shelfRead(k + 1); });
+    }
+    function boxesOf(h, nb) {   // each box's colour, in the halls' order: a box for every 250, at least one for each kind (the biggest kinds first if too few boxes)
+        var S = shelfBy.get(h); if (!S) return null;
+        var key = h + ":" + nb; if (boxCache.has(key)) return boxCache.get(key);
+        var e = SHELVES.map(function (k, i) { return {i: i, col: k[1], n: S.shelves[k[0]] || 0}; }).filter(function (x) { return x.n > 0; }), tot = e.reduce(function (a, x) { return a + x.n; }, 0);
+        if (!e.length) return null;
+        if (e.length >= nb) { e = e.slice().sort(function (a, b) { return b.n - a.n; }).slice(0, nb); e.forEach(function (x) { x.b = 1; }); }
+        else {
+            var spare = nb - e.length; e.forEach(function (x) { x.b = 1; x.want = spare * x.n / tot; x.b += Math.floor(x.want); });
+            var left = nb - e.reduce(function (a, x) { return a + x.b; }, 0);
+            e.slice().sort(function (a, b) { return (b.want - Math.floor(b.want)) - (a.want - Math.floor(a.want)); }).slice(0, left).forEach(function (x) { x.b++; });
+        }
+        var out = []; e.sort(function (a, b) { return a.i - b.i; }).forEach(function (x) { for (var q = 0; q < x.b; q++) out.push(rgb(x.col)); });
+        boxCache.set(key, out); return out;
+    }
     function scanRead(k) {
         k = k || 0; if (k >= SCAN_SRC.length) return;
         fetch(SCAN_SRC[k] + "?t=" + Math.floor(Date.now() / 300000)).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
@@ -1335,11 +1366,11 @@ window.AgentKit = window.AgentKit || (() => {
             if (next && h === tip + 1) { ghost(h, z, s, s2, zn, l, t, r, b, lw, fog, vx, vy, HW, HH, now); continue; }
             // its shelves' boxes: one for every 250 of this block's real transactions, along both walls (as its hall's shelves are)
             if (B && s > 0.08) {
-                var nb = Math.max(1, Math.min(48, Math.round(B.tx / 250))), per = Math.ceil(nb / 8), dz = zn - z;
+                var nb = Math.max(1, Math.min(48, Math.round(B.tx / 250))), per = Math.ceil(nb / 8), dz = zn - z, cols = boxesOf(h, nb);
                 for (var q = 0; q < nb; q++) {
                     var side = q % 2 ? 1 : -1, row = Math.floor(q / 2) % 4, slot = Math.floor(q / 8), f0 = 0.08 + slot * (0.84 / Math.max(1, per)), f1 = f0 + Math.min(0.16, 0.7 / Math.max(1, per));
                     var za = z + f0 * dz, zb = z + f1 * dz, wx = HW * 0.97 * side, y1 = HH * (-0.55 + row * 0.27), y0 = y1 - HH * 0.11;
-                    x.fillStyle = shelfCol[(row + 1) % 3] + (0.13 * fog).toFixed(3) + ")";
+                    x.fillStyle = cols ? cols[q] + (0.26 * fog).toFixed(3) + ")" : "rgba(125, 140, 171, " + (0.11 * fog).toFixed(3) + ")";   // (not sorted: plain)
                     x.beginPath(); x.moveTo(vx + wx / za, vy + y0 / za); x.lineTo(vx + wx / zb, vy + y0 / zb); x.lineTo(vx + wx / zb, vy + y1 / zb); x.lineTo(vx + wx / za, vy + y1 / za); x.closePath(); x.fill();
                 }
             }
@@ -1512,7 +1543,10 @@ window.AgentKit = window.AgentKit || (() => {
         var B = byH.get(h); if (!B) return null;
         var M = MILESTONES[h], P = byH.get(h - 1), gap = P ? B.t - P.t : null;
         var head = "Block " + fmt(h) + (h === tip ? ", the newest" : "") + (M ? ": " + M[1] : "");
-        var body = fmt(B.tx) + " transactions (a box on its walls for every 250), mined " + ago(B.t) + (B.pool ? " by " + B.pool : "") + ". Its bitmap is " + h + ".bitmap.";
+        var SH = shelfBy.get(h), shelfWords = SH ? " Its shelves, as its hall sorts them: " + SHELVES.filter(function (k) { return SH.shelves[k[0]] > 0; }).map(function (k) { return [k[0], SH.shelves[k[0]]]; })
+            .sort(function (a, b) { return b[1] - a[1]; }).slice(0, 6).map(function (k) { return (k[0] === "regular" ? "regular payments" : k[0]) + " " + fmt(k[1]); }).join(", ") + " (a box for every 250 transactions, coloured as its shelves, at least one for each kind)."
+            : shelfData && h >= shelfData.newestKnown - shelfData.keeps + 1 ? " Its shelves are not sorted yet: GitHub sorts the newest blocks about every half hour." : "";
+        var body = fmt(B.tx) + " transactions" + (SH ? "" : " (a box on its walls for every 250)") + ", mined " + ago(B.t) + (B.pool ? " by " + B.pool : "") + ". Its bitmap is " + h + ".bitmap." + shelfWords;
         if (gap != null) body += gap >= 0 ? " Mined " + span(gap) + " after block " + fmt(h - 1) + "." : " Its clock says " + span(gap) + " before block " + fmt(h - 1) + " (miners' clocks can differ).";
         var S = safetyOf(h), safe = null;
         if (S && S.scanned) safe = S.marks.length ? "Safety Scan: " + S.marks.map(function (k) { return k[2] + " (" + k[3] + ")"; }).join(", ") + " (of its " + fmt(S.inscriptions) + " inscriptions; every mark is a \"may be\")."
@@ -1647,7 +1681,10 @@ window.AgentKit = window.AgentKit || (() => {
         window.__frontDoor = {from: "mempool.space's blocks", live: live, at: g, newest: tip, spacing: spacing,
             blocks: shown.map(function (B) { var P = byH.get(B.h - 1); return {height: B.h, transactions: B.tx, pool: B.pool || null, minedAt: new Date(B.t * 1000).toISOString(),
                 afterPrevious: P ? B.t - P.t : null, milestone: MILESTONES[B.h] ? MILESTONES[B.h][1] : null, bitmap: B.h + ".bitmap", walkIn: "block-cube.html#block=" + B.h,
+                shelves: shelfBy.get(B.h) ? shelfBy.get(B.h).shelves : null,
                 safety: (function (S) { return !S ? null : S.scanned ? {scanned: true, inscriptions: S.inscriptions, marks: Object.fromEntries(S.marks.map(function (k) { return [k[0], k[3]]; })), see: S.see} : {scanned: false, why: S.why}; })(safetyOf(B.h))}; }),
+            shelvesData: shelfData ? {made: shelfData.made, upTo: shelfData.upTo, read: shelfData.read, keeps: shelfData.keeps, order: SHELVES.map(function (k) { return k[0]; }),
+                from: "GitHub reads the newest blocks the Block Manifest way about every half hour; each transaction goes on one shelf, the first of its kinds in the halls' order"} : null,
             next: live && next ? {height: tip + 1, transactions: next.tx, vbytes: next.vsize, full: Math.round(Math.min(1, next.vsize / 1e6) * 100) / 100, feeFrom: next.lo, feeTo: next.hi, feeMiddle: next.median, feeUnit: "sat/vB",
                 blocksBehind: next.behind, orMore: next.many, from: "mempool.space's view of the blocks waiting, now", watch: "watch.html?watch=block"} : null,
             safetyScan: scan ? {updated: scan.updated, upTo: scan.tip, keeps: scan.window, from: "GitHub's Safety Scan (safety-scan.html), about every hour; every mark is a \"may be\""} : null};
@@ -1662,10 +1699,10 @@ window.AgentKit = window.AgentKit || (() => {
     window.addEventListener("resize", size);
     if ("ResizeObserver" in window && card) new ResizeObserver(function () { size(); }).observe(card);   // (the words grow when the blocks arrive)
     setSpacing(spacing);
-    size(); newest(); scanRead();
+    size(); newest(); scanRead(); shelfRead();
     setInterval(function () { if (!document.hidden) { newest(); if (strip) publish(); } }, 60000);
     setInterval(function () { if (!document.hidden && live) waiting(); }, 20000);
-    setInterval(function () { if (!document.hidden) scanRead(); }, 600000);
+    setInterval(function () { if (!document.hidden) { scanRead(); shelfRead(); } }, 600000);
 })();
 </script>
 <!-- visitor counter: start -->
