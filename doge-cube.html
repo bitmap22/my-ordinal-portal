@@ -13,7 +13,7 @@
 <meta charset="utf-8">
 <script>/* the Family Guard (vendor/family): checks pictures, films and words from inscriptions before they are shown clearly */
 (function () { var h = /(^|\.)github\.io$|(^|\.)ordportal\.com$/.test(location.hostname), b = (h ? (/\/test\//.test(location.pathname) ? '../' : '') : 'https://ordportal.com/') + 'vendor/family/';
-  document.write('<script src="' + b + 'family.js?v=1.3.1"><\/script><script src="' + b + 'words.min.js"><\/script><script src="' + b + 'words-plus.js?v=1"><\/script>'); })();</script>
+  document.write('<script src="' + b + 'family.js?v=1.3.1"><\/script><script src="' + b + 'words.min.js"><\/script><script src="' + b + 'words-plus.js?v=2"><\/script>'); })();</script>
 <meta http-equiv="origin-trial" content="AoKI6gF5Vb3urEbD8CIMEduhceUv28Yg46LWDFh9VXbTvD2M2+HH1DpcSul6Qb14hagcBn7tpsyBkQjospK3uQUAAABSeyJvcmlnaW4iOiJodHRwczovL2JpdG1hcDIyLmdpdGh1Yi5pbzo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxODA2MzY0ODAwfQ==">
 <meta http-equiv="origin-trial" content="AtYmAgRCHYC3MkqPhTPfowWMNQRQZ1m22gC2sZ+WS4J8AasTXNDqqm4D6ChXs/Wg6ZgSAJTQ3cK3BVt70ZWcDAcAAABNeyJvcmlnaW4iOiJodHRwczovL29yZHBvcnRhbC5jb206NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTgwNjM2NDgwMH0="><!-- Chrome WebMCP origin trial for bitmap22.github.io (lets Chrome hand this page's agent tools to AI agents), registered 14 Nov 2026, ends 30 Mar 2027 -->
 <script>/* the start guard: when the cube cannot start (the page did not finish arriving, the browser could not start its 3D graphics,
@@ -8289,9 +8289,13 @@ async function srFind(q) {
   if (srAddrRe.test(q.trim())) return srAddress(q.trim(), live);
   if (/\.dogemap$/.test(L)) return srMsg('a dogemap is a block number, like 300.dogemap (or a parcel: 12.300.dogemap)');
   if ((m = q.trim().toLowerCase().match(/^[a-z0-9-]{1,63}\.[a-z0-9-]{1,63}$/))) return srName(m[0], live);
-  srMsg('looking for a collection called ' + srEsc(q.trim()) + '…');   // a collection, by its name (the explorer's list)
+  // (21 Nov 2026) only a short, name-like text is asked about as a collection: anything longer (pasted words, a sentence, a
+  // secret pasted by mistake) never leaves the browser, as in Agent Blockhall
+  const cq = q.trim().replace(/\s+/g, ' ');
+  if (!(cq.length <= 40 && cq.split(' ').length <= 4 && /^[\p{L}\p{N}][\p{L}\p{N} '\u2019&!._-]*$/u.test(cq))) return srMsg('not sure what that is. Try a block (5000000), a dogemap (300.dogemap), a parcel (12.300.dogemap), an inscription (#1000 or its ID), a transaction ID, an address, a name (dogecoin.doge) or a collection\u2019s name (up to 4 words).');
+  srMsg('looking for a collection called ' + srEsc(cq) + '…');   // a collection, by its name (the explorer's list)
   try {
-    const j = await djP(DX + '/v1/collections?q=' + encodeURIComponent(q.trim()) + '&limit=8', 15000), L = (j && j.collections) || [];
+    const j = await djP(DX + '/v1/collections?q=' + encodeURIComponent(cq) + '&limit=8', 15000), L = (j && j.collections) || [];
     if (!live()) return;
     if (L.length) return srShow([{hd: 'COLLECTIONS (' + fmt(j.total != null ? j.total : L.length) + ') · NO GALLERY: DOGINALS HAVE NO PARENTS, SO A COLLECTION CAN\'T BE PROVEN ON THE CHAIN'}].concat(L.map(c => ({t: c.name, s: fmt(c.supply || 0) + ' pieces on the explorer\'s list · check each one is real', btn: 'CHECK', go: async () => { window.open('doge-collection-check.html?collection=' + encodeURIComponent(c.slug), '_blank', 'noopener'); return null; }}))));   // (15 Nov 2026: a collection gets a gallery only when the chain proves it, so the explorer's lists get none)
   } catch (e) {}
