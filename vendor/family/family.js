@@ -186,7 +186,8 @@
   let wordsP = null;
   function loadWords() {
     if (window.FamilyWords) return Promise.resolve(window.FamilyWords);
-    return wordsP || (wordsP = new Promise(ok => { const s = document.createElement('script'); s.src = BASE + 'words.min.js'; s.onload = () => ok(window.FamilyWords || null); s.onerror = () => ok(null); document.head.appendChild(s); }));
+    const add = src => new Promise(ok => { const s = document.createElement('script'); s.src = BASE + src; s.onload = () => ok(true); s.onerror = () => ok(false); document.head.appendChild(s); });
+    return wordsP || (wordsP = add('words.min.js').then(() => window.FamilyWords ? add('words-plus.js?v=1') : null).then(() => window.FamilyWords || null));   // (the list, then the layer that makes it harder to get round)
   }
   const rude = s => !!(window.FamilyWords && window.FamilyWords.has(String(s || '')));
   const tidy = s => window.FamilyWords ? window.FamilyWords.clean(String(s == null ? '' : s)) : String(s == null ? '' : s);
@@ -282,5 +283,5 @@
     return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checksOn: engine || (W && !dead ? 'starting' : 'not started yet'), checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
       recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.1'};
+  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.2.2'};
 })();
