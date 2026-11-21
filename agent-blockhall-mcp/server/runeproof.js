@@ -1,4 +1,4 @@
-/* Rune Proof, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Rune Proof, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Give it a rune: its name (DOG•GO•TO•THE•MOON), its ID (840000:3), its number, or the ID of the transaction that etched it.
    It reads the etching transaction's own bytes and decodes its runestone with ord's own rules (ord is the runes protocol's
    reference, and its rules are copied here from its code: crates/ordinals in github.com/ordinals/ord, read 15 Nov 2026).

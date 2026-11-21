@@ -1,4 +1,4 @@
-/* Second Opinion, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Second Opinion, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Checks a claim about Bitcoin against several sources, and says where they agree, where they don't, and why. It knows set kinds
    of claim, written in plain words (or as {kind, subject, value}):
    - a block's inscriptions, transactions, hash, fees or miner      ("block 840000 has 3,000 inscriptions", "block 840000 was mined by ViaBTC")

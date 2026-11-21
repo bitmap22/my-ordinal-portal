@@ -1,6 +1,6 @@
 /* Agent Blockhall's Watch, by bitmap22. Always free.
    Keeps an eye on Bitcoin and says the moment something happens, each alert checked like the rest of Agent Blockhall
-   (https://bitmap22.github.io/my-ordinal-portal/block-cube.html): the next block (with what is in it), a fee level, an inscription
+   (https://ordportal.com/block-cube.html): the next block (with what is in it), a fee level, an inscription
    moving, an address sending or getting a transaction, and a kind of transaction turning up in a new block.
    Every alert links on: to Agent Blockhall, the Block Manifest and the Provenance Check.
    The same file runs in the free Agent Blockhall MCP tool and on the portal's Watch page. It only reads and works things out:
@@ -12,7 +12,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const VERSION = '1.0.0';
-  const PORTAL = 'https://bitmap22.github.io/my-ordinal-portal/', GAME = PORTAL + 'block-cube.html';
+  const PORTAL = 'https://ordportal.com/', GAME = PORTAL + 'block-cube.html';
   const MANIFEST = PORTAL + 'block-manifest.html', PROV = PORTAL + 'provenance-check.html', WATCH = PORTAL + 'watch.html';
   const WHAT = ['block', 'fee', 'inscription', 'address', 'kind'];
   const ADDR = /^(bc1[02-9ac-hj-np-z]{11,87}|BC1[02-9AC-HJ-NP-Z]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;

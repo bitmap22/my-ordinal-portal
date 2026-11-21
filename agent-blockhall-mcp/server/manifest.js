@@ -1,5 +1,5 @@
 /* Agent Blockhall's Block Manifest, by bitmap22. Always free.
-   Reads a whole Bitcoin block the way Agent Blockhall's halls do (https://bitmap22.github.io/my-ordinal-portal/block-cube.html):
+   Reads a whole Bitcoin block the way Agent Blockhall's halls do (https://ordportal.com/block-cube.html):
    every transaction, sorted into the same kinds as the hall's shelves (inscriptions and their file types, bitmaps, BRC-20,
    runes, Alkanes, Stamps, CAT-21 and more), with its fee and size, and checked: its id and size worked out from the block's
    own bytes against a second site's list, its kinds read twice (this reader and ordpool.space's tags), and its inscriptions

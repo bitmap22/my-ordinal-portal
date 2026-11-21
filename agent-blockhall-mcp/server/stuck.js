@@ -1,4 +1,4 @@
-/* Stuck Transaction Doctor, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Stuck Transaction Doctor, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Give it a Bitcoin transaction's ID. It says whether it is stuck and why (its fee against the blocks waiting to be mined, a
    parent that pays too little, dropped by nodes, an inscription's reveal waiting for its commit), and the fee that would get it
    in: by replacing it (replace-by-fee) or by spending one of its outputs in a child that pays for both (CPFP), worked out for

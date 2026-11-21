@@ -1,4 +1,4 @@
-/* Truth League, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Truth League, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Which of the free public data sites the portal's tools read tell the truth. Every few hours each site is asked a few facts
    whose answers can be worked out from the chain's own bytes, and each answer is marked right or wrong against those bytes:
    never against another site.

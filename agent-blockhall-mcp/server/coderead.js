@@ -1,4 +1,4 @@
-/* Code Read, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* Code Read, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    Reads an inscription's code (HTML, JavaScript, SVG, CSS) without running it, and the code it loads from other inscriptions,
    and says in plain words what it finds: whether it asks a wallet to connect, sign or send; loads or asks things from outside
    the chain; could send data out; tracks you; hides what it does (code that writes or runs other code); or asks your browser

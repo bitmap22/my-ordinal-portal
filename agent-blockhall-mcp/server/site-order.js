@@ -1,4 +1,4 @@
-/* The Truth League's order, by bitmap22. Always free. Part of Agent Blockhall: https://bitmap22.github.io/my-ordinal-portal/block-cube.html
+/* The Truth League's order, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    For the portal's tools and both halls: ask the data sites that tell the truth and keep up first. A site with a wrong answer in
    the Truth League's last 7 days (an answer that differs from a block proved from its own bytes), or 2 or more blocks behind, or
    with a file copy that did not match, at Source Health's last hourly check, is asked last. No site is ever dropped: it is only
