@@ -7,6 +7,7 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const BM = require(path.join(__dirname, '..', '..', 'agent-blockhall-mcp', 'server', 'manifest.js'));
+const SP = require(path.join(__dirname, '..', '..', 'agent-blockhall-mcp', 'server', 'space.js'));   // (Blockspace Share: each block's bytes by kind)
 const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/daily-' + VERSION;
 const PORTAL = 'https://ordportal.com/', RAW = 'https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/';
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (' + 'https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE' + '). Bitcoin’s own data is public.';
@@ -50,13 +51,21 @@ async function ordFetch(p, ms, list) {
 }
 
 /* ---------- one block, read the Block Manifest way ---------- */
-async function readBlock(h, hash) {
-  const rawBlock = async () => {
+async function rawBlockOf(h, hash) {
     try { const {r, site} = await mpFetch('/api/block/' + hash + '/raw', 120000); return {bytes: new Uint8Array(await r.arrayBuffer()), site}; } catch (e) {}
     const {r, site} = await ordFetch('/r/block/' + h, 120000); let t = (await r.text()).trim(); if (t[0] === '"') t = t.slice(1, -1);
     if (!/^[0-9a-f]{160}/i.test(t)) throw new Error('no site gave the block’s bytes');
     const u = new Uint8Array(t.length >> 1); for (let i = 0; i < u.length; i++) u[i] = parseInt(t.substr(i * 2, 2), 16); return {bytes: u, site};
-  };
+}
+// Blockspace Share: the block's bytes by kind, from this reader's own reading only (so every day is read the same way), and only
+// if the bytes are that block (their header's hash is its hash)
+function spaceOfBlock(scan, bytes, hash) {
+  if (scan.hash !== hash) throw new Error('the bytes are not block ' + hash);
+  const own = BM.buildManifest({height: null, scan, hash, summary: [], tags: null, ordIds: null});
+  return SP.splitBlock(own.items, scan.txs.map(t => t.size), bytes.length);
+}
+async function readBlock(h, hash) {
+  const rawBlock = () => rawBlockOf(h, hash);
   const ids = async () => { const S = new Set(); for (let p = 0; p < 400; p++) { const {r} = await ordFetch('/inscriptions/block/' + h + (p ? '/' + p : ''), 30000, [ORD_LIST]); const html = await r.text(); for (const m of html.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)) S.add(m[1]); if (!html.includes('/inscriptions/block/' + h + '/' + (p + 1))) break; } return [...S]; };
   const [raw, sum, tags, second, list] = await Promise.allSettled([rawBlock(),
     mpFetch('/api/v1/block/' + hash + '/summary', 120000).then(async x => ({list: BM.readSummary(await x.r.text()), site: x.site})),
@@ -66,10 +75,13 @@ async function readBlock(h, hash) {
   if (sum.status !== 'fulfilled') throw new Error('its transaction list could not be had: ' + (sum.reason && sum.reason.message));
   const scan = BM.scanBlock(raw.value.bytes, h);
   let runesHtml = null; if (scan.txs.some(t => t.rune && t.rune.etched)) try { runesHtml = await (await ordFetch('/block/' + h, 45000, [ORD_LIST])).r.text(); } catch (e) {}
-  return BM.buildManifest({height: h, time: null, scan, rawSite: raw.value.site, hash, hashSite: 'https://mempool.space',
+  let space = null; try { space = spaceOfBlock(scan, raw.value.bytes, hash); } catch (e) { console.log('  ' + h + ': blockspace not counted (' + e.message + ')'); }
+  const M = BM.buildManifest({height: h, time: null, scan, rawSite: raw.value.site, hash, hashSite: 'https://mempool.space',
     secondHash: second.status === 'fulfilled' ? second.value.hash : null, secondSite: second.status === 'fulfilled' ? second.value.site : null,
     summary: sum.value.list, summarySite: sum.value.site, tags: tags.status === 'fulfilled' ? tags.value : null, tagSite: 'https://ordpool.space',
     ordIds: list.status === 'fulfilled' ? list.value : null, ordSite: ORD_LIST, runesHtml});
+  Object.defineProperty(M, 'space', {value: space, enumerable: false});   // (kept out of the Block Manifest's own output)
+  return M;
 }
 
 /* ---------- the blocks of one UTC day (by the time written in each block) ---------- */
@@ -99,11 +111,13 @@ async function main() {
   console.log(list.length + ' blocks: ' + (list.length ? list[0].height + ' to ' + list[list.length - 1].height : 'none'));
   const blocks = [], T = {transactions: 0, totalFees: 0, counts: {}, pools: {}, checked: {hashFromItsBytes: 0, secondSiteAgrees: 0, secondSiteAsked: 0, ids: [0, 0], sizes: [0, 0], kinds: [0, 0], inscriptions: [0, 0], inscriptionsListed: 0, runesEtched: [0, 0], differences: 0, notRead: 0,
     secondSiteNotAsked: 0, kindsNotChecked: 0, inscriptionsNotChecked: 0, runesEtchedNotChecked: 0}};
+  const spaceBlocks = [];
   for (const b of list) {
     let M = null, err = null;
     for (let tries = 0; tries < 3 && !M; tries++) { try { M = await readBlock(b.height, b.id); } catch (e) { err = e; await sleep(15000); } }
     const pool = b.extras && b.extras.pool ? b.extras.pool.name : null;
-    if (!M) { console.log('  ' + b.height + ': not read (' + (err && err.message) + ')'); T.checked.notRead++; blocks.push({height: b.height, hash: b.id, time: new Date(b.timestamp * 1000).toISOString().replace('.000', ''), minedBy: pool, notRead: String(err && err.message || err)}); continue; }
+    if (!M) { console.log('  ' + b.height + ': not read (' + (err && err.message) + ')'); T.checked.notRead++; spaceBlocks.push({height: b.height, split: null}); blocks.push({height: b.height, hash: b.id, time: new Date(b.timestamp * 1000).toISOString().replace('.000', ''), minedBy: pool, notRead: String(err && err.message || err)}); continue; }
+    spaceBlocks.push({height: b.height, split: M.space || null});
     const C = M.checked;
     const rec = {height: b.height, bitmap: b.height + '.bitmap', hash: b.id, time: new Date(b.timestamp * 1000).toISOString().replace('.000', ''), minedBy: pool || M.block.minedBy,
       transactions: M.block.transactions, totalFees: M.block.totalFees, counts: M.counts,
@@ -164,8 +178,11 @@ async function main() {
   index.updated = file.made; index.licence = LICENCE;
   index.links = {page: PORTAL + 'daily.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', agentBlockhall: PORTAL + 'block-cube.html', dogeTwin: RAW.replace('daily-data', 'doge-daily-data') + 'index.json'};
   fs.writeFileSync(ip, JSON.stringify(index, null, 1));
+  // Blockspace Share: the day's bytes by kind (space/days/<day>.json and space/index.json)
+  const sp = SP.dayRecord(day, spaceBlocks); SP.writeDay(out, sp);
+  console.log('Blockspace Share: ' + sp.read + ' of ' + sp.blocks + ' blocks counted, ' + sp.size + ' bytes');
   console.log('Wrote ' + day + ': ' + blocks.length + ' blocks, ' + T.transactions + ' transactions, ids ' + T.checked.ids.join('/') + ', kinds ' + (T.checked.kinds || ['not checked']).join('/') + ', inscriptions ' + (T.checked.inscriptions || ['not checked']).join('/') + ', not read ' + T.checked.notRead);
   console.log('Notes: ' + notes.join(' | '));
 }
 if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });
-module.exports = {readBlock, mpJson, sleep, BM};   // (the corridor's shelves read their blocks the same way: .github/shelves/build-shelves.js)
+module.exports = {readBlock, mpJson, sleep, BM, SP, blocksOfDay, rawBlockOf, spaceOfBlock};   // (the corridor's shelves read their blocks the same way: .github/shelves/build-shelves.js)
