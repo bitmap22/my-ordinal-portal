@@ -7,7 +7,7 @@
      are "block header". So the kinds add up to the block's exact size: every byte is counted once.
    - The kinds come from the Block Manifest's reader (manifest.js, in this folder) reading each block's own bytes, and from
      nothing else, so every day is read the same way.
-   - The fees each kind paid, in sats: each transaction's fee from mempool.space's list for the block, kept only if the
+   - The fees each kind paid, in sats: each transaction's fee from mempool.space's list for the block (or a copy's), kept only if the
      block's fees add up to what its coinbase pays out (read from the block's own bytes) less the new coins.
    - Made each night by GitHub with Daily Data, and saved on the daily-data branch of the portal's repository (space/), from
      1 October 2026. Bitcoin only: Dogecoin's free sites can't give every transaction's bytes, so its kinds would be missing.
@@ -18,7 +18,7 @@
   else root.BlockspaceShare = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
   const PORTAL = 'https://ordportal.com/';
   const DATA_URLS = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/space/index.json',
     'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@daily-data/space/index.json'];   // (the second is a copy that can be some hours old)
@@ -69,7 +69,10 @@
     const m = new Map(); for (const x of list || []) if (x && x.txid) m.set(x.txid, x.fee);
     const fees = new Array(txids.length); let sum = 0;
     for (let i = 0; i < txids.length; i++) {
-      const f = i === 0 ? 0 : m.get(txids[i]);   // (the coinbase pays no fee)
+      let f = i === 0 ? 0 : m.get(txids[i]);   // (the coinbase pays no fee)
+      // (one copy, mempool.ninja, sends some fees with a rounding slip, as 838.9999999999999 for 839: put right only when it is
+      // that close to a whole number of sats; the coinbase check below must still match to the sat)
+      if (typeof f === 'number' && f > 0 && !Number.isInteger(f) && Math.abs(f - Math.round(f)) < 1e-3) f = Math.round(f);
       if (!(Number.isInteger(f) && f >= 0)) throw new Error('the fee list has no fee for transaction ' + i);
       fees[i] = f; sum += f;
     }
@@ -166,7 +169,7 @@
       return o;
     });
     const index = {data: 'Agent Blockhall Blockspace Share ' + VERSION, licence: LICENCE, updated: new Date().toISOString().replace(/\.\d{3}/, ''),
-      what: 'How Bitcoin\'s blockspace splits between the kinds of use, day by day: for each UTC day, the bytes (size), the number of transactions and the fees paid in sats (sats) of each kind, read from every block\'s own bytes by the Block Manifest\'s reader. ' + ORDER + ' "block header" is each block\'s header and transaction count, so the kinds add up to the bytes read (size). notRead lists any block that could not be read: its bytes are not in the day. Fees: each transaction\'s fee from mempool.space\'s list, kept for a block only if they add up to what its coinbase pays out (read from its own bytes) less the new coins; fees is the day\'s total, feesRead the blocks whose fees are in it, feesNotRead the read blocks whose fees are not. Bitcoin only.',
+      what: 'How Bitcoin\'s blockspace splits between the kinds of use, day by day: for each UTC day, the bytes (size), the number of transactions and the fees paid in sats (sats) of each kind, read from every block\'s own bytes by the Block Manifest\'s reader. ' + ORDER + ' "block header" is each block\'s header and transaction count, so the kinds add up to the bytes read (size). notRead lists any block that could not be read: its bytes are not in the day. Fees: each transaction\'s fee from mempool.space\'s list (or a copy\'s), kept for a block only if they add up to what its coinbase pays out (read from its own bytes) less the new coins; fees is the day\'s total, feesRead the blocks whose fees are in it, feesNotRead the read blocks whose fees are not. Bitcoin only.',
       kinds: NAMES.map(k => ({kind: k, what: WHAT[k]})), firstDay: FIRST_DAY, days,
       links: {page: PORTAL + 'blockspace-share.html', dailyData: PORTAL + 'daily.html', blockManifest: PORTAL + 'block-manifest.html?block=<height>', agentBlockhall: PORTAL + 'block-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (blockspaceShare)', dayFile: RAW + 'space/days/<day>.json'}};
     fs.writeFileSync(path.join(outDir, 'space', 'index.json'), JSON.stringify(index));
