@@ -1,0 +1,23 @@
+name: t-space test (temporary)
+on:
+  push:
+    branches: [t-space]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fill-in way, one day
+        run: |
+          mkdir -p /tmp/a && node .github/daily-data/space-day.js 2026-11-19 /tmp/a
+          node -e "const I=require('/tmp/a/space/index.json'); const d=I.days[0]; const s=Object.values(d.bytes).reduce((a,b)=>a+b,0); console.log('sum of kinds', s, 'size', d.size, s===d.size?'ADDS UP':'DOES NOT ADD UP'); console.log(JSON.stringify(d.txs))"
+      - name: Nightly way, the same day
+        run: |
+          mkdir -p /tmp/b && node .github/daily-data/build-day.js 2026-11-19 /tmp/b | tail -4
+          node -e "const a=require('/tmp/a/space/days/2026-11-19.json'), b=require('/tmp/b/space/days/2026-11-19.json'); console.log('same as fill-in:', JSON.stringify(a.bytes)===JSON.stringify(b.bytes) && a.size===b.size, a.size, b.size); const D=require('/tmp/b/days/2026-11-19.json'); console.log('daily file still has', D.blocks.length, 'blocks; first block keys:', Object.keys(D.blocks[0]).join(','))"
