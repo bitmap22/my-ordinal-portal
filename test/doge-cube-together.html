@@ -151,6 +151,8 @@ button.mic:hover{background:rgba(255,255,255,.08);color:#cfd6d2}
 .mycode .code{display:inline-block;white-space:nowrap;margin-left:6px;font:600 21px/1 var(--cond);letter-spacing:.14em;color:var(--m-hi)}
 .mini{padding:6px 10px 5px;font-size:13px}
 .pnote,#note2{min-height:18px;margin:8px 0;font-size:13px;color:var(--m-dim)}
+label.fshow{display:flex;gap:10px;align-items:flex-start;margin:16px 0 0;font:400 13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;text-transform:none;color:var(--m-dim);cursor:pointer}
+label.fshow input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--m-hi)}
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .check{display:flex;align-items:center;gap:9px;margin:12px 0 0;cursor:pointer;color:var(--m-text)}
 .check input{width:auto;margin:0;accent-color:var(--m-hi)}
@@ -1031,7 +1033,7 @@ function logLine(who, text) { const p = document.createElement('p'); if (who) { 
 function openSay() { if (!net.on || !$('lobby').hidden) return; $('say').hidden = false; $('msg').focus(); }
 const agentSaying = () => { if (window.__agentSay) return true; try { return !!window.top.__agentSay; } catch (e) { return false; } };   // (inside the Ord Portal, the agent kit marks the portal's window while it sends)
 function say(t) { t = tidyChat(String(t || '').trim().slice(0, 200)); if (!t || !net.on) return; if (agentSaying()) { let T = window; try { T = window.top; T.document; } catch (e) { T = window; } const g = T.__agentChatGap || (T.__agentChatGap = {at: 0}); if (Date.now() - g.at < 5000) return; g.at = Date.now(); }   // (an agent: one message every 5 seconds)
-  { const q = UI.sayB || (UI.sayB = { v: 3, at: Date.now() }); q.v = Math.min(3, q.v + (Date.now() - q.at) / 1000); q.at = Date.now(); if (q.v < 1) { logLine('', 'Slow down: one message a second'); return; } q.v--; }   // (the same limit the host keeps: so nothing you say is lost)
+  { const q = UI.sayB || (UI.sayB = { v: 3, at: Date.now() }); q.v = Math.min(3, q.v + (Date.now() - q.at) / 1000); q.at = Date.now(); if (q.v < 1) { if (Date.now() - (q.told || 0) > 3000) { q.told = Date.now(); logLine('', 'Slow down: one message a second'); } return; } q.v--; }   // (the same limit the host keeps: so nothing you say is lost)
   const ai = agentSaying() ? 1 : 0, nm = myName() + tagOf(ME) + (ai ? ' · AI' : ''); share({ t: 'chat', text: t, ai }); chatLine(ME, nm, t); logLine(nm, t); toGame({ type: 'say', id: ME, name: myName(), text: t }); }
 function sayIt() { const t = $('msg').value.trim(); $('msg').value = ''; $('say').hidden = true; try { frame.contentWindow.focus(); } catch (e) {} say(t); }
 $('send').onclick = sayIt; $('chat').onclick = () => $('say').hidden ? openSay() : sayIt();
@@ -1143,7 +1145,8 @@ const FR = new Map();   // a friend's key -> the newest card from them
 const isFriend = k => friends.some(f => f.pk === k);
 const saveFriends = () => jset('friends', friends.map(f => ({ pk: f.pk, name: f.name, added: f.added })));
 const online = i => !!i && i.where.s !== 'off' && now() - i.created < 150;
-function where() { if (net.on) return { s: net.mode, code: net.mode === 'crew' && net.open ? net.code : '', rid: net.mode === 'crew' && !net.open ? '' : net.rid, n: net.host ? liveCount() : Math.max(net.players.size, 1), max: MAX, open: net.open ? 1 : 0 }; return { s: soloOn ? 'solo' : 'lobby' }; }
+function where() { if (net.on) return { s: net.mode, code: net.mode === 'crew' && net.open ? net.code : '', rid: net.rid,   // (sealed for friends only; a private crew's code stays private: its scrambled id only lets a friend see you're in their crew)
+    n: net.host ? liveCount() : Math.max(net.players.size, 1), max: MAX, open: net.open ? 1 : 0 }; return { s: soloOn ? 'solo' : 'lobby' }; }
 // (21 Nov 2026) your friend card. A friend adds you by your code, so the card carries your name and code, and it only goes up once you
 // use friends (opened the Friends panel, or have a friend). Being seen online is your choice, off unless you turn it on; and where you
 // are is sealed for each friend, so only your friends can read it. While you're hidden the card isn't sent again and again (that would
@@ -1331,7 +1334,7 @@ function friendsPanel() {
 }
 const ago = t => { const s = Math.max(0, now() - t); if (s < 3600) return Math.max(1, Math.round(s / 60)) + ' min ago'; if (s < 86400) return Math.round(s / 3600) + ' h ago'; return Math.round(s / 86400) + (s < 172800 ? ' day ago' : ' days ago'); };
 function fstatus(i) { if (!i) return 'Not seen yet'; if (!online(i)) return 'Last seen ' + ago(i.created);
-  const w = i.where; if (net.on && w.rid && w.rid === net.rid) return 'In your crew'; if (w.s === 'crew') return 'In crew ' + w.code + ' · ' + w.n + ' of ' + w.max; if (w.s === 'sea') return 'In the open hall · ' + w.n + ' of ' + w.max; if (w.s === 'solo') return 'Exploring alone'; if (w.s === 'on') return 'Online'; return 'On the start screen'; }
+  const w = i.where; if (net.on && w.rid && w.rid === net.rid) return 'In your crew'; if (w.s === 'crew') return (w.code ? 'In crew ' + w.code : 'In a private crew') + ' · ' + w.n + ' of ' + w.max; if (w.s === 'sea') return 'In the open hall · ' + w.n + ' of ' + w.max; if (w.s === 'solo') return 'Exploring alone'; if (w.s === 'on') return 'Online'; return 'On the start screen'; }
 function drawFriends() {
   const on = friends.filter(f => online(FR.get(f.pk))).length;
   $('fon').textContent = on ? String(on) : ''; $('fon2').textContent = on ? String(on) : '';
@@ -1343,7 +1346,7 @@ function drawFriends() {
     const i = FR.get(f.pk), live = online(i), li = el('li', { class: live ? 'on' : null });
     li.append(el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'who' }, el('span', { class: 'nm', text: f.name || 'Runner' }), el('span', { class: 'st', text: fstatus(i) })));
     const w = live ? i.where : null;
-    if (w && (w.s === 'crew' || w.s === 'sea') && (w.rid || w.code) && !(net.on && w.rid && w.rid === net.rid)) { const b = el('button', { text: w.n >= w.max ? 'Full' : 'Join' }); b.disabled = w.n >= w.max; b.onclick = () => joinFriend(w); li.append(b); }
+    if (w && (w.s === 'sea' ? w.rid : w.s === 'crew' && w.code) && !(net.on && w.rid && w.rid === net.rid)) { const b = el('button', { text: w.n >= w.max ? 'Full' : 'Join' }); b.disabled = w.n >= w.max; b.onclick = () => joinFriend(w); li.append(b); }
     if (net.on && live && !(w && w.rid && w.rid === net.rid)) { const b = el('button', { text: 'Invite' }); b.onclick = () => { if (inviteFriend(f)) { b.textContent = 'Invited'; b.disabled = true; setTimeout(() => { b.textContent = 'Invite'; b.disabled = false; }, 10000); } }; li.append(b); }
     const x = el('button', { class: 'x', text: '×', 'aria-label': 'Remove ' + (f.name || 'friend') });
     x.onclick = () => { if (x.dataset.sure) { removeFriend(f.pk); return; } x.dataset.sure = '1'; x.textContent = 'Remove?'; x.classList.remove('x'); setTimeout(() => { if (x.isConnected) { delete x.dataset.sure; x.textContent = '×'; x.classList.add('x'); } }, 4000); };
