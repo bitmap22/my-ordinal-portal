@@ -1,0 +1,32 @@
+# One-time clean-up (21 Nov 2026, asked for by bitmap22): deletes the old branches named in .github/branch-cleanup.txt.
+# 819 of them hold work already merged into the site (each can be brought back from its pull request page); the rest are
+# old test and trial branches. It never deletes main or the 8 branches the site's jobs use, even if they were listed.
+# It runs only when started by hand. © 2026 bitmap22. All rights reserved.
+name: Branch clean-up (one time)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Delete the listed branches (never main or the 8 the site's jobs use)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          keep='^(main|publish-agent-blockhall-mcp|safety-scan|daily-data|doge-daily-data|shelves|rare-sats|source-health|truth-league)$'
+          n=0; f=0; k=0
+          while IFS= read -r b; do
+            [ -z "$b" ] && continue
+            if echo "$b" | grep -Eq "$keep"; then echo "kept: $b"; k=$((k+1)); continue; fi
+            if gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/$b" >/dev/null 2>&1; then n=$((n+1)); else f=$((f+1)); echo "not deleted (already gone?): $b"; fi
+          done < .github/branch-cleanup.txt
+          echo "$n deleted, $f not deleted, $k kept"
