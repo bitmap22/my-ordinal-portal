@@ -22,7 +22,8 @@ const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/safety-scan-' + VERSION, PORT
 const CHAIN = process.argv[2], OUT = path.join(process.argv[3] || 'data', CHAIN || 'x');
 if (!/^(btc|doge)$/.test(CHAIN || '')) { console.log('usage: node scan.js btc|doge <folder>'); process.exit(2); }
 const WINDOW = 144;                                                        // blocks kept, on both chains (about a day of Bitcoin; about 2.4 hours of Dogecoin, so it keeps up even when Dogecoin is full)
-const PER_RUN = +process.env.SS_PER_RUN || 144, BUDGET = 48 * 60 * 1000;       // the most blocks one run reads, and its time
+const PER_RUN = +process.env.SS_PER_RUN || 144, BUDGET = 44 * 60 * 1000;       // the most blocks one run reads, and its time
+const BLOCK_MS = 6 * 60 * 1000;   // (21 Nov 2026) the most time one block may take: a block packed with slow films can't hold up the rest (what isn't reached counts as not looked at)
 const LIMIT = 0.5;                                                         // adult: Porn + Hentai + Sexy together 0.5 or more (as Family Guard)
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE).';
 const t0 = Date.now(), log = (...a) => console.log(...a);
@@ -140,7 +141,7 @@ async function checkOne(id, ty, buf, S) {
       if (++k > 3) break;
       try { await checker(); const r = await lookPicture(Buffer.from(m[2], 'base64'), 'image/' + m[1]); for (const f of r.finds) { f.what += ' (inside the code)'; finds.push(f); } } catch (e) {}
     }
-  }
+  } else S.notLooked++;   // (21 Nov 2026: a kind of file it can't read, like a font or a PDF, is counted as not looked at, never passed over quietly)
   return finds;
 }
 const slim = f => { const o = {kind: f.kind, what: f.what}; for (const k of ['line', 'score', 'perSecond', 'hidden', 'codeRead']) if (f[k] != null) o[k] = f[k]; if (f.sample && f.sample.untrusted) o.sample = {untrusted: String(f.sample.untrusted).slice(0, 160)}; if (f.sample && f.sample.masked) o.sample.masked = true; return o; };
@@ -157,7 +158,9 @@ async function btcBlock(h) {
   const time = new Date(new DataView(X.buffer, X.byteOffset).getUint32(68, true) * 1000).toISOString().replace('.000', '');
   const S = stats(), found = [];
   S.inscriptions = scan.txs.reduce((n, r) => n + r.ins.length, 0);
-  for (const b of bodies) {
+  const until = Date.now() + BLOCK_MS;
+  for (const [k, b] of bodies.entries()) {
+    if (Date.now() > until) { S.notLooked += bodies.slice(k).filter(x => x.ty && x.ty !== 'delegate').length; S.timeUp = true; break; }   // (this block's time is up)
     const id = scan.txs[b.n].txid + 'i' + b.index; let buf = Buffer.concat(b.pieces.map(p => Buffer.from(p.buffer, p.byteOffset, p.length)));
     if (b.enc) { try { buf = zlib.brotliDecompressSync(buf, {maxOutputLength: 8e6}); } catch (e) { S.notLooked++; continue; } }
     if (!b.ty || b.ty === 'delegate') continue;
@@ -174,12 +177,14 @@ async function dogeTip() { const j = await dj('/v1/blocks?limit=1'); return j.bl
 async function dogeBlock(h) {
   const B = await dj('/v1/block/' + h + '?limit=100'), list = (B.txs || []).slice();
   for (let pg = 2; list.length < (B.total || 0) && pg <= 400; pg++) { const P = await dj('/v1/block/' + h + '?limit=100&page=' + pg); if (!P.txs || !P.txs.length) break; list.push(...P.txs); }
-  const S = stats(), found = [];
+  const S = stats(), found = [], until = Date.now() + BLOCK_MS;
   for (const t of list) {
     const I = t.inscription; if (!I || !I.id) continue; S.inscriptions++;
     const ty = String(I.contentType || '').split(';')[0].trim().toLowerCase();
-    if (I.delegate || !(PIC.test(ty) || FILM.test(ty) || SR.isText(ty) || SR.isModel(ty) || /^audio\//.test(ty))) continue;
+    if (I.delegate) continue;
+    if (!(PIC.test(ty) || FILM.test(ty) || SR.isText(ty) || SR.isModel(ty) || /^audio\//.test(ty))) { S.notLooked++; continue; }   // (a kind of file it can't read: counted as not looked at)
     if ((I.kinds || []).some(k => /dogemap|drc-?20/i.test(k))) continue;   // (names and token lines: one line of fixed text, nothing to read)
+    if (Date.now() > until) { S.notLooked++; S.timeUp = true; continue; }   // (this block's time is up: the rest are counted, not looked at)
     let buf; try { buf = (await fromAny(DOGE_CONTENT, '/content/' + I.id, 30000, bytesOf)).v; } catch (e) { S.notLooked++; continue; }
     let finds = []; try { finds = await checkOne(I.id, ty, buf, S); } catch (e) { S.notLooked++; }
     if (finds.length) found.push({id: I.id, contentType: ty, bytes: buf.length, kinds: [...new Set(finds.map(f => f.kind))], finds: finds.slice(0, 8).map(slim)});
@@ -218,7 +223,7 @@ async function main() {
   const out = {name: (CHAIN === 'btc' ? '' : 'Doge ') + 'Safety Scan', chain: CHAIN === 'btc' ? 'Bitcoin' : 'Dogecoin', version: VERSION, updated: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), tip,
     window: WINDOW, scanned: keep.length, missing: WINDOW - keep.length, totals, kinds: SR.KINDS,
     blocks: keep, files: 'blocks/<height>.json: what was found in that block, inscription by inscription',
-    about: 'Each inscription of the last ' + WINDOW + ' blocks, looked at and read without running it: pictures, films, SVG drawings and the cover pictures in sound files (may be adult, may flash, too big for phones), 3D models, and words and code (agent traps, scams, miners and phone-killers, hate words, personal details, risky code). Made by GitHub on its own, about every hour. Every finding is a "may be".',
+    about: 'Each inscription of the last ' + WINDOW + ' blocks, looked at and read without running it (a kind of file it can\'t read is counted as not looked at): pictures, films, SVG drawings and the cover pictures in sound files (may be adult, may flash, too big for phones), 3D models, and words and code (agent traps, scams, miners and phone-killers, hate words, personal details, risky code). Made by GitHub on its own, about every hour. Every finding is a "may be".',
     see: PORTAL + (CHAIN === 'btc' ? 'safety-scan.html' : 'doge-safety-scan.html'), licence: LICENCE};
   fs.writeFileSync(ixFile, JSON.stringify(out, null, 1));
   log('done:', done, 'read,', failed, 'not read,', keep.length, 'kept,', Math.round((Date.now() - t0) / 1000) + 's');

@@ -1,8 +1,14 @@
 # The Safety Scan: about every hour, each new Bitcoin and Dogecoin block's inscriptions are looked at and read, without running
 # anything (pictures and films: may be adult, may flash, too big for phones; words and code: agent traps, scams, miners and
 # phone-killers, hate words, personal details, risky code). The last 144 Bitcoin blocks and the last 144 Dogecoin blocks (about
-# a day of Bitcoin, 2.4 hours of Dogecoin) are kept on the safety-scan branch, one JSON file a block. Free: GitHub runs it. It only writes to that branch.
+# a day of Bitcoin, 2.4 hours of Dogecoin) are kept on the safety-scan branch, one JSON file a block. Free: GitHub runs it.
 # The keeper (keeper.yml) also starts it when its last run is over an hour old. © 2026 bitmap22. All rights reserved.
+#
+# (21 Nov 2026) Two jobs, so the scan can never write anywhere:
+#   scan: reads strangers' inscriptions, with read-only rights and no saved key. Each chain has its own time limit, and each block
+#         at most 6 minutes, so the results are always handed on.
+#   save: only copies the scan's JSON files onto the safety-scan branch. It runs no add-ons and nothing the scan made.
+# Every add-on is pinned to one exact version (its commit), and the picture checker's packages to the exact versions in its lock file.
 name: Safety Scan
 
 on:
@@ -14,8 +20,7 @@ on:
         description: 'yes: only scan if the last scan is 50 minutes old or more (the keeper uses this). Leave empty to always scan.'
         required: false
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: safety-scan
@@ -25,6 +30,10 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 110
+    permissions:
+      contents: read
+    outputs:
+      go: ${{ steps.due.outputs.go }}
     steps:
       - name: Is a scan due?
         id: due
@@ -33,11 +42,14 @@ jobs:
         run: |
           last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/safety-scan" --jq .commit.committer.date 2>/dev/null || true)
           age=999999; [ -n "$last" ] && age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) ))
+          if [ -n "$last" ]; then echo "have=true" >> "$GITHUB_OUTPUT"; fi
           if [ "${{ github.event.inputs.ifDue }}" = "yes" ] && [ "$age" -lt 3000 ]; then echo "go=false" >> "$GITHUB_OUTPUT"; echo "The last scan was $((age / 60)) minutes ago: nothing to do."
           else echo "go=true" >> "$GITHUB_OUTPUT"; fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: steps.due.outputs.go == 'true'
-      - uses: actions/setup-node@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: steps.due.outputs.go == 'true'
         with:
           node-version: 20
@@ -48,26 +60,72 @@ jobs:
         run: |
           cd .github/safety-scan && npm ci --no-audit --no-fund
           command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
-      - name: Open the safety-scan branch
+      - name: Get the last scan (to read only)
         if: steps.due.outputs.go == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
-          if git fetch origin safety-scan:safety-scan; then git worktree add data safety-scan; else
-            git worktree add --detach data && cd data && git checkout --orphan safety-scan && git rm -rfq . && cd ..; fi
+          mkdir -p data
+          if git fetch -q --depth=1 origin safety-scan; then git archive FETCH_HEAD | tar -x -C data
+          elif [ "${{ steps.due.outputs.have }}" = "true" ]; then echo "Couldn't read the last scan, so nothing is scanned or saved this time."; exit 1; fi
+          ls data
       - name: Scan Bitcoin
         if: steps.due.outputs.go == 'true'
         continue-on-error: true
+        timeout-minutes: 48
         run: node .github/safety-scan/scan.js btc data
       - name: Scan Dogecoin
         if: steps.due.outputs.go == 'true'
         continue-on-error: true
+        timeout-minutes: 48
         run: node .github/safety-scan/scan.js doge data
-      - name: Save it
-        if: steps.due.outputs.go == 'true'
+      - name: Pack the results
+        if: always() && steps.due.outputs.go == 'true'
         run: |
+          cd data && find btc doge -type f -name '*.json' 2>/dev/null | sort > ../files.txt
+          tar -czf ../scan.tgz -T ../files.txt && echo "$(wc -l < ../files.txt) files packed"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && steps.due.outputs.go == 'true'
+        with:
+          name: safety-scan
+          path: scan.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+  save:
+    needs: scan
+    if: always() && needs.scan.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: safety-scan
+          path: data
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: safety-scan
+          path: in
+      - name: Check the results are only the scan's JSON files
+        run: |
+          mkdir -p new && cd new
+          # (only plain files named btc|doge/index.json or btc|doge/blocks/<number>.json: anything else stops the save)
+          kinds=$(tar -tvzf ../in/scan.tgz | awk '{print substr($1,1,1)}' | sort -u | tr -d '\n')
+          if [ -n "$kinds" ] && [ "$kinds" != "-" ]; then echo "something that isn't a plain file"; exit 1; fi
+          odd=$(tar -tzf ../in/scan.tgz | grep -Ev '^(btc|doge)/(index\.json|blocks/[0-9]{1,9}\.json)$' || true)
+          if [ -n "$odd" ]; then echo "a file the scan doesn't make"; exit 1; fi
+          tar -xzf ../in/scan.tgz --no-same-owner --no-same-permissions
+          find . -type f -name '*.json' -print0 | xargs -0 -r -n 200 jq empty
+          echo "$(find . -type f | wc -l) files checked"
+      - name: Save it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.github/safety-scan/README.md?ref=${GITHUB_SHA}" -H "Accept: application/vnd.github.raw" > data/README.md
           cd data
-          cp ../.github/safety-scan/README.md README.md
+          for c in btc doge; do if [ -f "../new/$c/index.json" ]; then rm -rf "$c"; cp -r "../new/$c" "$c"; fi; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -qm "Safety Scan: $(date -u +'%F %H:%M') UTC" || exit 0
-          for i in 1 2 3; do git push origin safety-scan && exit 0; git pull -q --rebase origin safety-scan || true; done; exit 1
+          for i in 1 2 3; do git push -q origin HEAD:safety-scan && exit 0; git pull -q --rebase origin safety-scan || true; done; exit 1
