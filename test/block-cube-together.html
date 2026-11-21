@@ -522,10 +522,12 @@ const TAG = 'blockcube-crew-v1', MAX = 6, FTAG = 'blockcube-friends-v1';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('blockcube.' + k) || ''; } catch (e) { return ''; } }, set: (k, v) => { try { localStorage.setItem('blockcube.' + k, v); } catch (e) {} } };
 const jget = (k, d) => { try { const v = JSON.parse(store.get(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }, jset = (k, v) => store.set(k, JSON.stringify(v));
-const clean = (s, n = 20) => { s = window.FamilyWords && FamilyWords.plainName ? FamilyWords.plainName(s, n) : String(s == null ? '' : s).replace(/[^\p{L}\p{N} _\-]/gu, '').trim().slice(0, n); if (!window.FamilyWords) return s;   // (names: plain letters, numbers, spaces, - and _ only)
-  if (RESERVED.test(s.replace(/[_\-]/g, ' ').replace(/\s+/g, ' ').trim())) return 'Runner';   // (the portal's own names: nobody else's)
+// (21 Nov 2026) names kept for the portal: a player can't take them, even spelt with look-alike numbers (0rd P0rtal) or run together
+function reservedName(s) { const F = t => String(t || '').toLowerCase().replace(/[\s_\-.]+/g, '').replace(/[01i!|3457@$]/g, c => ({ '0': 'o', '1': 'l', 'i': 'l', '!': 'l', '|': 'l', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', '$': 's' })[c]);
+  const k = F(s), R = reservedName.r || (reservedName.r = { inn: ['ordportal', 'bitmap22', 'bitmapplotz', 'agentblockhall'].map(F), is: ['blockhall', 'dogecube', 'blockcube', 'blockpaint', 'admin', 'moderator', 'official', 'host'].map(F) });
+  return !!k && (R.inn.some(w => k.includes(w)) || R.is.includes(k)); }
+const clean = (s, n = 20) => { s = window.FamilyWords && FamilyWords.plainName ? FamilyWords.plainName(s, n) : String(s == null ? '' : s).replace(/[^\p{L}\p{N} _\-]/gu, '').trim().slice(0, n); if (reservedName(s)) return s ? 'Runner' : s; if (!window.FamilyWords) return s;   // (names: plain letters, numbers, spaces, - and _ only; the portal's own names: nobody else's)
   const sp = s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_.\-]+/g, ' '); if (sp !== s) return FamilyWords.has(sp) ? FamilyWords.clean(sp) : s; return FamilyWords.clean(s); };   // (the Family Guard: rude words in names starred out, even run together like ThisWord99)
-const RESERVED = /^(ord ?portal|bitmap ?22|bitmapplotz|agent ?blockhall|block ?hall|doge ?cube|block ?cube|blockpaint|block ?paint|admin|moderator|official|host)$/i;   // (names kept for the portal: a player can't take them)
 const tidyChat = t => window.FamilyWords ? FamilyWords.clean(String(t == null ? '' : t)) : String(t == null ? '' : t);   // (and in chat)
 const now = () => Math.floor(Date.now() / 1000);
 // a small helper for building the lists
@@ -818,7 +820,7 @@ function check(m) {
   return null;
 }
 const RUNNERS = ['Leo', 'Kofi', 'Ren', 'Marco', 'Sam', 'Mia', 'Zara', 'Yuki', 'Elena', 'Nia'];
-const myName = () => { const n = clean($('name').value); return n && !RESERVED.test(n.replace(/[_\-]/g, ' ').trim()) ? n : RUNNERS[picked[0]] || 'Runner'; };
+const myName = () => { const n = clean($('name').value); return n && !reservedName(n) ? n : RUNNERS[picked[0]] || 'Runner'; };
 // am I an AI agent? (using the agent kit, here or in a game, marks you as one for the whole crew, from the waiting room on)
 const iAmAgent = () => { if (window.__agentOn) return true; for (const id of ['game', 'paint']) { try { const f = document.getElementById(id); if (f && f.contentWindow.__agentOn) return true; } catch (e) {} } return false; };
 const flash = i => { i.classList.remove('bad'); void i.offsetWidth; i.classList.add('bad'); i.focus(); setTimeout(() => i.classList.remove('bad'), 900); };   // (an empty box: it flashes, no words)
@@ -833,7 +835,7 @@ function share(m) { if (net.host) { handle(ME, m); } else send(net.hostLink && n
 function handle(from, m) {
   const p = net.players.get(from) || {}; const meta = { id: from, name: p.name, look: p.look };
   if (m.t === 'state') { const out = { t: 'state', ...meta, s: m.s }; toAll(out, from); if (from !== ME) gameState(out); }
-  else if (m.t === 'event') { if (m.ev && m.ev.list === 'cm' && (m.ev.k === 'screen' || m.ev.k === 'music')) { const c = net.cool || (net.cool = new Map()), t0 = c.get(from) || 0; if (Date.now() - t0 < 10000) return; c.set(from, Date.now()); }   // (the big screen and the music: once every 10 seconds each)
+  else if (m.t === 'event') { if (m.ev && m.ev.list === 'cm' && (m.ev.k === 'screen' || m.ev.k === 'music')) { const c = net.cool || (net.cool = new Map()), ck = from + '|' + m.ev.k, t0 = c.get(ck) || 0; if (Date.now() - t0 < 9000) return; c.set(ck, Date.now()); if (c.size > 200) c.clear(); }   // (the big screen and the music: each player once every 10 seconds (9 here, for slow links); the game says how long to wait)
     const out = { t: 'event', ...meta, ev: m.ev }; keepEvent(out); toAll(out, from); if (from !== ME) toGame({ type: 'event', id: from, ev: m.ev }); }
   else if (m.t === 'pev') { const out = { t: 'pev', id: from, ev: m.ev }; toAll(out, from); if (from !== ME) toPaint({ type: 'event', id: from, ev: m.ev }); }
   else if (m.t === 'chat') { const out = { t: 'chat', ...meta, text: String(m.text || '').slice(0, 200), ai: m.ai ? 1 : 0 }; toAll(out, from); if (from !== ME) chatIn(out); }
@@ -1010,7 +1012,7 @@ function host(mode, code, opt = {}) {
   for (const u of net.unsub.splice(0)) u();   // (listeners left from linking to an earlier host: closed, so they don't pile up on the relays)
   Object.assign(net, { on: true, host: true, mode, code: code || '', rid: opt.rid || (mode === 'crew' ? code : newCode() + newCode()), gen: opt.gen || 0, open: !!opt.open, hostId: ME, started: now(), prev: opt.prev || '', fast: Date.now() + (takeover ? 45000 : 0), nextBeat: 0, hostLink: null, back: false });
   soloOn = false; if (takeover) for (const k of Object.values(net.pks || {})) net.crewKeys.add(k); else net.crewKeys = new Set(); net.line = [ME]; net.pks = { [ME]: pk };
-  net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, sail: net.sail ? 1 : 0 }));
+  net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, fps: friendProof(), sail: net.sail ? 1 : 0 }));
   if (takeover) for (const id of [...net.players.keys()]) if (id !== ME) laterGone(id, 25000);
   net.unsub.push(subscribe([{ kinds: [1312], '#p': [pk], since: now() - 5 }], async ev => {
     let q = {}; try { q = JSON.parse(ev.content) || {}; } catch (e) {}
@@ -1053,7 +1055,7 @@ function hostSide(pc) {
       // hello (again every few seconds until the host answers, in case it went astray)
       const hi = () => send(ch, { t: 'hello', name: myName(), look: picked, pk, fpk, fps: friendProof(), back: net.back || net.regroup ? 1 : 0, sail: net.sail ? 1 : 0, ai: iAmAgent() ? 1 : 0 }); hi();
       const iv = setInterval(() => { if (!net.on || net.hostLink !== L || L.init || ch.readyState !== 'open') clearInterval(iv); else hi(); }, 3000);
-      net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, sail: net.sail ? 1 : 0 }));
+      net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), look: picked, fpk, fps: friendProof(), sail: net.sail ? 1 : 0 }));
       if (net.mode === 'sea' || net.sail) startGame(); else showWait();
       updateHud(); drawCrew(); };
     wire(pc, ch, guestIn, onOpen, () => hostGone(L, 'closed'), why => hostGone(L, why));
@@ -1264,14 +1266,16 @@ function updateHud() {
 
 // ---------------- chat ----------------
 function chatLine(id, name, text) { if (isMuted(id)) return; net.chat.push({ id, name, text }); if (net.chat.length > 60) net.chat.shift(); drawChat(); }
-function chatIn(m) { if (isMuted(m.id)) return; if (typeof m.id === 'string' && /^[0-9a-f]{12}$/.test(m.id)) m = Object.assign({}, m, {name: (clean(m.name) || 'Runner') + ' #' + m.id.slice(0, 4).toUpperCase()}); m = Object.assign({}, m, {text: window.FamilyWords && FamilyWords.chat ? FamilyWords.chat(m.id, m.text) : tidyChat(m.text)});   // (a word split over two short messages is caught too)
-  const name = clean(m.name) || 'Runner', nm = name + (m.ai ? ' · AI' : ''); chatLine(m.id, nm, m.text); logLine(nm, m.text); toGame({ type: 'say', id: m.id, name, text: m.text }); }
+function tagOf(id) { return typeof id === 'string' && /^[0-9a-f]{12}$/.test(id) ? ' #' + id.slice(0, 4).toUpperCase() : ''; }   // (a short tag from the player's own key, after every name)
+function chatIn(m) { if (isMuted(m.id)) return; m = Object.assign({}, m, {text: window.FamilyWords && FamilyWords.chat ? FamilyWords.chat(m.id, m.text) : tidyChat(m.text)});   // (a word split over two short messages is caught too)
+  const name = clean(m.name) || 'Runner', nm = name + tagOf(m.id) + (m.ai ? ' · AI' : ''); chatLine(m.id, nm, m.text); logLine(nm, m.text); toGame({ type: 'say', id: m.id, name, text: m.text }); }
 function logLine(who, text) { const p = document.createElement('p'); if (who) { const b = document.createElement('b'); b.textContent = who; p.append(b); } p.append(document.createTextNode(text)); const L = $('log'); L.append(p); while (L.children.length > 5) L.firstChild.remove(); setTimeout(() => { p.style.opacity = 0; setTimeout(() => p.remove(), 1300); }, 12000);
   if (!who && net.on) { net.chat.push({ id: '', name: '', text }); if (net.chat.length > 60) net.chat.shift(); drawChat(); } }
 function openSay() { if (!net.on || !$('lobby').hidden) return; $('say').hidden = false; $('msg').focus(); }
 const agentSaying = () => { if (window.__agentSay) return true; try { return !!window.top.__agentSay; } catch (e) { return false; } };   // (inside the Ord Portal, the agent kit marks the portal's window while it sends)
 function say(t) { t = tidyChat(String(t || '').trim().slice(0, 200)); if (!t || !net.on) return; if (agentSaying()) { let T = window; try { T = window.top; T.document; } catch (e) { T = window; } const g = T.__agentChatGap || (T.__agentChatGap = {at: 0}); if (Date.now() - g.at < 5000) return; g.at = Date.now(); }   // (an agent: one message every 5 seconds)
-  const ai = agentSaying() ? 1 : 0, nm = myName() + (ai ? ' · AI' : ''); share({ t: 'chat', text: t, ai }); chatLine(ME, nm, t); logLine(nm, t); toGame({ type: 'say', id: ME, name: myName(), text: t }); }
+  { const q = UI.sayB || (UI.sayB = { v: 3, at: Date.now() }); q.v = Math.min(3, q.v + (Date.now() - q.at) / 1000); q.at = Date.now(); if (q.v < 1) { logLine('', 'Slow down: one message a second'); return; } q.v--; }   // (the same limit the host keeps: so nothing you say is lost)
+  const ai = agentSaying() ? 1 : 0, nm = myName() + tagOf(ME) + (ai ? ' · AI' : ''); share({ t: 'chat', text: t, ai }); chatLine(ME, nm, t); logLine(nm, t); toGame({ type: 'say', id: ME, name: myName(), text: t }); }
 function sayIt() { const t = $('msg').value.trim(); $('msg').value = ''; $('say').hidden = true; try { (inPaint ? pframe : frame).contentWindow.focus(); } catch (e) {} say(t); }
 $('send').onclick = sayIt; $('chat').onclick = () => $('say').hidden ? openSay() : sayIt();
 $('msg').addEventListener('keydown', e => { if (e.key === 'Enter') sayIt(); if (e.key === 'Escape') { $('msg').value = ''; sayIt(); } e.stopPropagation(); });
@@ -1383,21 +1387,30 @@ const isFriend = k => friends.some(f => f.pk === k);
 const saveFriends = () => jset('friends', friends.map(f => ({ pk: f.pk, name: f.name, added: f.added })));
 const online = i => !!i && i.where.s !== 'off' && now() - i.created < 150;
 function where() { if (net.on) return { s: net.mode, code: net.mode === 'crew' && net.open ? net.code : '', rid: net.mode === 'crew' && !net.open ? '' : net.rid, n: net.host ? liveCount() : Math.max(net.players.size, 1), max: MAX, open: net.open ? 1 : 0 }; return { s: soloOn ? 'solo' : 'lobby' }; }
-// (21 Nov 2026) showing friends you're online is your choice, off unless you turn it on: your card still goes up (so a friend can add you
-// by your code), but it says you're offline and where you are stays private
+// (21 Nov 2026) your friend card. A friend adds you by your code, so the card carries your name and code, and it only goes up once you
+// use friends (opened the Friends panel, or have a friend). Being seen online is your choice, off unless you turn it on; and where you
+// are is sealed for each friend, so only your friends can read it. While you're hidden the card isn't sent again and again (that would
+// show when you play): only when your name changes, or once a week.
 const showOnline = () => jget('showOnline', false) === true;
-function presence(off) { if (!relaysUp) return; const hide = off || !showOnline(); publish(fsign(30078, [['d', 'blockcube-friend'], ['t', FTAG], ['f', FCODE]], { v: 1, name: myName(), code: FCODE, where: hide ? { s: 'off' } : where(), at: Date.now() })); }
+let cardWas = jget('cardWas', null);
+const friendsForCard = () => friends.slice().sort((a, b) => ((FR.get(b.pk) || {}).created || 0) - ((FR.get(a.pk) || {}).created || 0) || (b.added || 0) - (a.added || 0)).slice(0, 60);   // (the 60 friends seen most lately: the card stays small)
+async function presence(off) { if (!relaysUp) return; const on = !off && showOnline(), nm = myName(), w = cardWas;
+  if (!on && (w ? !w.on && w.name === nm && Date.now() - (w.t || 0) < 7 * 864e5 : !friends.length && !jget('cardWant', false))) return;
+  const c = { v: 2, name: nm, code: FCODE, where: { s: on ? 'on' : 'off' } };
+  if (on) { c.at = Date.now(); const me = where(), wb = {}; for (const f of friendsForCard()) { try { wb[f.pk.slice(0, 16)] = await seal(f.pk, me); } catch (e) {} } c.wb = wb; if (!showOnline() || !relaysUp) return; }
+  publish(fsign(30078, [['d', 'blockcube-friend'], ['t', FTAG], ['f', FCODE]], c)); cardWas = { on, name: nm, t: Date.now() }; jset('cardWas', cardWas); }
 let presT = 0; const presenceSoon = () => { clearTimeout(presT); presT = setTimeout(() => presence(), 1200); };
 setInterval(() => presence(), 60000);
 let frUn = null; const frQuiet = Date.now() + 6000;   // (no "is online" notes for friends already online when the page opens)
 function watchFriends() {
   if (frUn) { frUn(); frUn = null; } if (!friends.length) return;
-  frUn = subscribe([{ kinds: [30078], authors: friends.map(f => f.pk), '#d': ['blockcube-friend'] }], ev => {
+  frUn = subscribe([{ kinds: [30078], authors: friends.map(f => f.pk), '#d': ['blockcube-friend'] }], async ev => {
     let c; try { c = JSON.parse(ev.content); } catch (e) { return; } if (!c || typeof c !== 'object') return;
+    if (c.where && c.where.s === 'on') { const b = c.wb && typeof c.wb === 'object' ? c.wb[fpk.slice(0, 16)] : null, sw = typeof b === 'string' ? await unseal(ev.pubkey, b) : null; c.where = sw && typeof sw === 'object' ? sw : { s: 'on' }; }   // (where they are: sealed for each friend)
     const f = friends.find(x => x.pk === ev.pubkey); if (!f) return;
     const at = Number.isFinite(c.at) ? c.at : 0, prev = FR.get(ev.pubkey); if (prev && (prev.created > ev.created_at || (prev.created === ev.created_at && prev.at >= at))) return;
     const w = c.where && typeof c.where === 'object' ? c.where : {};
-    const info = { created: ev.created_at, at, where: { s: ['lobby', 'solo', 'crew', 'sea', 'off'].includes(w.s) ? w.s : 'off', code: typeof w.code === 'string' ? w.code.slice(0, 6) : '', rid: typeof w.rid === 'string' ? w.rid.slice(0, 16) : '', n: Math.max(1, w.n | 0), max: Math.min(MAX, (w.max | 0) || MAX), open: !!w.open } };
+    const info = { created: ev.created_at, at, where: { s: ['lobby', 'solo', 'crew', 'sea', 'on', 'off'].includes(w.s) ? w.s : 'off', code: typeof w.code === 'string' ? w.code.slice(0, 6) : '', rid: typeof w.rid === 'string' ? w.rid.slice(0, 16) : '', n: Math.max(1, w.n | 0), max: Math.min(MAX, (w.max | 0) || MAX), open: !!w.open } };
     const was = online(prev); FR.set(ev.pubkey, info);
     const nm = clean(c.name); if (nm && nm !== f.name) { f.name = nm; saveFriends(); }
     if (prev && !was && online(info) && Date.now() > frQuiet) { toast(f.name + ' is online', [], 6000); chime('online'); }
@@ -1489,7 +1502,7 @@ function playerRows(ul) {
   for (const id of [...net.players.keys()].sort((a, b) => rank(a) - rank(b))) {
     const p = net.players.get(id), mine = id === ME, host = id === net.hostId, mu = isMuted(id), nm = p.name || 'Runner', st = voice.st[id];
     const li = el('li', { class: [mine && 'me', host && 'host', p.sail && 'on', mu && 'muted'].filter(Boolean).join(' ') || null, data: { id } });
-    li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), el('span', { class: 'tag ktag', text: '#' + id.slice(0, 4).toUpperCase(), title: 'this player\'s tag: two players can share a name, never a tag' }), host ? el('span', { class: 'tag', text: 'Host' }) : null, (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('span', { class: 'tag', text: 'AI', title: 'an AI agent' }) : null),
+    li.append(icon(host ? 'star' : 'rank', 'rk'), el('span', { class: 'who' }, el('span', { class: 'nm', text: nm }), el('span', { class: 'tag ktag', text: tagOf(id).trim(), title: 'a short tag made from this player\'s own key: it helps tell apart two players with the same name' }), host ? el('span', { class: 'tag', text: 'Host' }) : null, (mine ? iAmAgent() : p.ai || (st && st.ai)) ? el('span', { class: 'tag', text: 'AI', title: 'an AI agent' }) : null),
       el('span', { class: 'st where', text: p.lost ? 'Reconnecting…' : !p.sail ? 'Waiting' : inPaintSt(st) ? 'Paint' : st && st.in ? (st.h === -2 ? 'Lobby' : st.h === -4 ? 'Bitmap garden' : st.h === -5 ? 'Club' : st.h === -3 ? 'Gallery' : 'Block ' + st.h.toLocaleString('en-US')) : st && st.h >= 0 ? 'At the cube' : 'In' }));
     // (a crewmate in another block's room: go to them)
     const mst = voice.st[ME]; if (!mine && $('lobby').hidden && p.sail && st && (inPaintSt(st) ? !inPaintSt(mst) : st.in && !(mst && mst.in && !inPaintSt(mst) && mst.h === st.h))) li.append(el('button', { class: 'fr', text: 'Go', onclick: () => { toGame({ type: 'go', id }); closePanel(); } }));
@@ -1543,21 +1556,22 @@ function openPanel(kind) { P.kind = kind; $('panel').hidden = false; $('pbody').
 function closePanel() { P.kind = ''; $('panel').hidden = true; $('pbody').textContent = ''; }
 $('px').onclick = closePanel; $('panel').addEventListener('click', e => { if (e.target === $('panel')) closePanel(); });
 function friendsPanel() {
+  if (!jget('cardWant', false)) { jset('cardWant', true); presence(); }   // (now a friend can add you by your code)
   $('ptitle').textContent = 'Friends';
   const body = $('pbody'), inp = el('input', { id: 'fcode', maxlength: '9', autocomplete: 'off', spellcheck: 'false', placeholder: 'Friend code', style: 'text-transform:uppercase' }), msg = el('p', { class: 'pnote', id: 'fnote', role: 'status' });
   const addB = el('button', { class: 'main', text: 'Add', 'data-person': '' });
   const go = async () => { if (!inp.value.trim()) { msg.textContent = ''; flash(inp); return; } addB.disabled = true; msg.textContent = 'Looking…'; msg.textContent = await addByCode(inp.value); addB.disabled = false; if (/^Added/.test(msg.textContent)) inp.value = ''; };
   addB.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); e.stopPropagation(); });
   const cp = el('button', { class: 'mini', text: 'Copy' }); cp.onclick = () => copyText(showCode(FCODE), cp);
-  const sh = el('input', { type: 'checkbox', id: 'fshow', 'data-person': '' }); sh.checked = showOnline(); sh.onchange = () => { jset('showOnline', !!sh.checked); presence(); };   // (the person's own choice: never an agent's)
-  const shows = el('label', { class: 'pnote fshow', for: 'fshow' }, sh, ' Let my friends see when I\u2019m online, and where (anyone with my friend code can see it)');
+  const sh = el('input', { type: 'checkbox', id: 'fshow', 'data-person': '' }); sh.checked = showOnline(); sh.onchange = e => { if (!e.isTrusted) { sh.checked = showOnline(); return; } jset('showOnline', !!sh.checked); presence(); };   // (the person's own choice: never an agent's)
+  const shows = el('label', { class: 'pnote fshow', for: 'fshow' }, sh, ' Show my friends when I\u2019m online and where I am. (Anyone with your friend code can see that you\u2019re online; only your friends can see where.)');
   body.append(el('div', { class: 'mycode' }, el('span', null, 'Your friend code ', el('b', { class: 'code', text: showCode(FCODE) })), cp),
     el('label', { for: 'fcode', text: 'Add a friend' }), el('div', { class: 'row' }, inp, addB), msg, el('ul', { class: 'plist', id: 'flist' }), shows);
   drawFriends();
 }
 const ago = t => { const s = Math.max(0, now() - t); if (s < 3600) return Math.max(1, Math.round(s / 60)) + ' min ago'; if (s < 86400) return Math.round(s / 3600) + ' h ago'; return Math.round(s / 86400) + (s < 172800 ? ' day ago' : ' days ago'); };
 function fstatus(i) { if (!i) return 'Not seen yet'; if (!online(i)) return 'Last seen ' + ago(i.created);
-  const w = i.where; if (net.on && w.rid && w.rid === net.rid) return 'In your crew'; if (w.s === 'crew') return 'In crew ' + w.code + ' · ' + w.n + ' of ' + w.max; if (w.s === 'sea') return 'In the open hall · ' + w.n + ' of ' + w.max; if (w.s === 'solo') return 'Exploring alone'; return 'On the start screen'; }
+  const w = i.where; if (net.on && w.rid && w.rid === net.rid) return 'In your crew'; if (w.s === 'crew') return 'In crew ' + w.code + ' · ' + w.n + ' of ' + w.max; if (w.s === 'sea') return 'In the open hall · ' + w.n + ' of ' + w.max; if (w.s === 'solo') return 'Exploring alone'; if (w.s === 'on') return 'Online'; return 'On the start screen'; }
 function drawFriends() {
   const on = friends.filter(f => online(FR.get(f.pk))).length;
   $('fon').textContent = on ? String(on) : ''; $('fon2').textContent = on ? String(on) : '';
@@ -1755,10 +1769,9 @@ const walStatus = () => wal.addr ? { connected: true, address: wal.addr, by: wal
 $('name').value = store.get('name'); drawPicker();
 let nameT = 0; $('name').addEventListener('input', () => { store.set('name', $('name').value.trim()); clearTimeout(nameT); nameT = setTimeout(() => presence(), 3000); });
 // a friend key is proven by a signature it makes over the player's session key (a copied key can't make one)
-const friendProof = () => bytesToHex(schnorr.sign(sha256(enc.encode('blockhall-friend|' + pk)), fsk));
-const FOK = new Map();
-function friendOk(spk, f, sig) { const k = spk + f + sig; if (FOK.has(k)) return FOK.get(k); let ok = false; try { ok = schnorr.verify(hexToBytes(sig), sha256(enc.encode('blockhall-friend|' + spk)), hexToBytes(f)); } catch (e) { ok = false; } if (FOK.size > 500) FOK.clear(); FOK.set(k, ok); return ok; }
-const fpkProven = (id, p) => !!(p && p.fpk && p.fps && net.pks[id] && friendOk(net.pks[id], p.fpk, p.fps));
+function friendProof() { return bytesToHex(schnorr.sign(sha256(enc.encode('blockhall-friend|' + pk)), fsk)); }
+function friendOk(spk, f, sig) { const FOK = friendOk.m || (friendOk.m = new Map()), k = spk + f + sig; if (FOK.has(k)) return FOK.get(k); let ok = false; try { ok = schnorr.verify(hexToBytes(sig), sha256(enc.encode('blockhall-friend|' + spk)), hexToBytes(f)); } catch (e) { ok = false; } if (FOK.size > 500) FOK.clear(); FOK.set(k, ok); return ok; }
+function fpkProven(id, p) { return !!(p && p.fpk && p.fps && net.pks[id] && friendOk(net.pks[id], p.fpk, p.fps)); }
 // a private crew's id on the relays: its code scrambled slowly (150,000 rounds of PBKDF2), so the code can't be read from the id
 // or cheaply guessed from it. Only someone who already has the code can work out the id and find the crew.
 const RIDS = new Map();
@@ -1766,7 +1779,8 @@ async function ridOf(code) { code = String(code || '').toUpperCase(); if (RIDS.h
 // proof that an ask to join comes from someone who has the code (tied to their own key, so it can't be copied off the relays)
 const codeProof = (code, k) => bytesToHex(sha256(enc.encode(TAG + '|join|' + code + '|' + k))).slice(0, 32);
 // a note only one friend can read: a key only the two of you can work out (from your friend keys), then AES-GCM
-async function boxKey(theirPk) { const s = NB.dh(fsk, theirPk), t = enc.encode('|' + FTAG + '|box'), u = new Uint8Array(s.length + t.length); u.set(s); u.set(t, s.length); return crypto.subtle.importKey('raw', sha256(u), 'AES-GCM', false, ['encrypt', 'decrypt']); }
+const BOXK = new Map(); function boxKey(theirPk) { if (!BOXK.has(theirPk)) { BOXK.set(theirPk, boxKey1(theirPk)); if (BOXK.size > 300) BOXK.delete(BOXK.keys().next().value); } return BOXK.get(theirPk); }   // (each friend's key worked out once)
+async function boxKey1(theirPk) { const s = NB.dh(fsk, theirPk), t = enc.encode('|' + FTAG + '|box'), u = new Uint8Array(s.length + t.length); u.set(s); u.set(t, s.length); return crypto.subtle.importKey('raw', sha256(u), 'AES-GCM', false, ['encrypt', 'decrypt']); }
 async function seal(theirPk, obj) { const iv = crypto.getRandomValues(new Uint8Array(12)), ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await boxKey(theirPk), enc.encode(JSON.stringify(obj)))); let b = ''; for (const x of ct) b += String.fromCharCode(x); return bytesToHex(iv) + ':' + btoa(b); }
 async function unseal(theirPk, box) { try { const [iv, b] = String(box).split(':'); if (!/^[0-9a-f]{24}$/.test(iv) || !b || b.length > 4000) return null; const ct = Uint8Array.from(atob(b), ch => ch.charCodeAt(0)); return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(iv) }, await boxKey(theirPk), ct))); } catch (e) { return null; } }
 // the host takes someone out of the crew: their link closes, their keys can't ask again, and a private crew gets a new code
