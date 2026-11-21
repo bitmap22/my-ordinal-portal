@@ -158,7 +158,7 @@
     <h2>How it decides</h2>
     <div class="how">
       <div><b>STOP</b>Something is <i>proven not</i> to be as said: its file or its transaction's bytes differ from the chain, it's held by another address than the one given, or it isn't a child of the collection named.</div>
-      <div><b>NOT SURE</b>A check couldn't be made, or something needs care: no collection was given (anyone can make a parent, so the parent it names proves nothing alone), its code asks a wallet for things, it loads things from outside the chain, a piece it loads is missing, two sites differ, or it names no parent, so no collection can be proven.</div>
+      <div><b>NOT SURE</b>A check couldn't be made, or something needs care: no collection was given, or only a link gave it (anyone can make a parent and send a link, so a parent proves nothing on its own), its code asks a wallet for things, it loads things from outside the chain, a piece it loads is missing, two sites differ, or it names no parent, so no collection can be proven.</div>
       <div><b>GO</b>Every check was made and agrees, the collection you gave is proven, and nothing needs care. Its words list exactly what was checked. GO is never advice on what it is worth.</div>
     </div>
     <p class="small">It reads nothing itself: it runs the <a href="provenance-check.html">Provenance Check</a>, the <a href="second-opinion.html">Second Opinion</a>'s parent check, <a href="code-read.html">Code Read</a> and the <a href="recursion-map.html">Recursion Map</a> (for a Doginal, the <a href="doge-provenance-check.html">Doge Provenance Check</a>), and the sites they ask come in the <a href="truth-league.html">Truth League</a>'s order. Doginals have no parents, so no Doginals collection can be proven on the chain, and Dogecoin has no Code Read yet.</p>
@@ -186,8 +186,8 @@
 <script src="agent-blockhall-mcp/server/collection.js"></script>
 <script src="agent-blockhall-mcp/server/opinion.js"></script>
 <script src="agent-blockhall-mcp/server/recursion.js"></script>
-<script src="agent-blockhall-mcp/server/coderead.js"></script>
-<script src="agent-blockhall-mcp/server/trade.js"></script>
+<script src="agent-blockhall-mcp/server/coderead.js?v=1.2.0"></script>
+<script src="agent-blockhall-mcp/server/trade.js?v=1.2.0"></script>
 <script src="agent-blockhall-mcp/server/cite.js"></script>
 <script>
 'use strict';
@@ -296,7 +296,7 @@
     busy = true; byAgent = !!agent; $('go').disabled = true; curStep = null;
     try {
       say((agent ? 'An AI agent asked to check ' : 'Checking ') + q + (opt.seller ? ', said to be held by ' + opt.seller : '') + (opt.collection ? ', said to be in ' + opt.collection : '') + '…'); steps(true);
-      const r = await TC.check({id: q, chain, seller: opt.seller || null, collection: chain === 'doge' ? (opt.collection || null) : (opt.collection || null)}, tio, step);
+      const r = await TC.check({id: q, chain, seller: opt.seller || null, collection: chain === 'doge' ? (opt.collection || null) : (opt.collection || null), collectionFrom: opt.collectionFrom || null}, tio, step);
       if (curStep) { const p = $('st-' + curStep); if (p) { p.className = 'ok'; p.textContent = (STEPS.find(s => s[0] === curStep) || [0, p.textContent])[1] + ' ✓'; } }
       const d = $('st-done'); if (d) { d.className = r.verdict === 'GO' ? 'ok' : 'no'; d.textContent = 'The answer: ' + r.verdict; }
       for (const k of ['collection', 'code', 'loads']) { const li = $('st-' + k); if (li && !li.className) { li.className = ''; li.textContent += ': not needed'; } }
@@ -330,10 +330,14 @@
   /* ---------- buttons ---------- */
   function setChain(c) { chain = c; for (const b of document.querySelectorAll('.pair .chip')) b.classList.toggle('on', b.dataset.chain === chain); $('coll').placeholder = chain === 'doge' ? 'the collection it’s said to be in (Doginals have no parents: it can’t be proven)' : 'the collection it’s said to be in: its parent’s number or ID (if any)'; }
   for (const b of document.querySelectorAll('.pair .chip')) b.addEventListener('click', () => setChain(b.dataset.chain));
-  const run = () => check($('q').value, {seller: $('seller').value.trim(), collection: $('coll').value.trim()}).catch(e => { say(String(e && e.message || e)); for (const li of document.querySelectorAll('#steps li.busy')) li.className = 'no'; });
+  // (21 Nov 2026) where the collection box's words came from: 'link' when a link filled it in, until the person types in it
+  let collFrom = null; $('coll').addEventListener('input', () => { collFrom = null; });
+  const run = () => check($('q').value, {seller: $('seller').value.trim(), collection: $('coll').value.trim(), collectionFrom: $('coll').value.trim() ? collFrom : null}).catch(e => { say(String(e && e.message || e)); for (const li of document.querySelectorAll('#steps li.busy')) li.className = 'no'; });
   $('ask').addEventListener('submit', e => { e.preventDefault(); run(); });
 
-  // when an ID or number is pasted or typed, fill in the holder's address and the parent it names, read from the chain's explorers
+  // when an ID or number is pasted or typed, fill in the holder's address, read from the chain's explorers. (21 Nov 2026) The parent it
+  // names is only shown in the note, never put in the collection box: anyone can make a parent, so checking a piece against its own
+  // parent proves nothing; the person types the collection they were told it is from
   const auto = {seller: '', coll: ''}; let fillFor = '', fillTimer = null;
   const putAuto = (box, v) => { const cur = $(box).value.trim(); if (!cur || cur === auto[box]) { $(box).value = v || ''; auto[box] = v || ''; } };
   async function prefill() {
@@ -347,9 +351,8 @@
         holder = info.status === 'fulfilled' ? info.value.j.address || null : null;
         const ids = par.status === 'fulfilled' ? (par.value.j.ids || []) : []; parent = ids[0] || null; }
       if (fillFor !== key) return;
-      putAuto('seller', holder); if (chain !== 'doge') putAuto('coll', parent);
-      const got = [holder ? 'the address that holds it now' : '', parent ? 'the parent it names' : ''].filter(Boolean);
-      note.textContent = (got.length ? 'Filled in from the chain: ' + got.join(' and ') + '. If you were given a different address or collection, type it over this, so that is what gets checked.' : 'Who holds it could not be read.') + (chain !== 'doge' && !parent ? ' It names no parent.' : '');
+      putAuto('seller', holder);
+      note.textContent = (holder ? 'Filled in from the chain: the address that holds it now. If you were given a different address, type it over this, so that is what gets checked.' : 'Who holds it could not be read.') + (chain === 'doge' ? '' : parent ? ' It names a parent (' + parent.slice(0, 10) + '…' + parent.slice(-6) + '), but anyone can make a parent, so it isn’t put in for you: type the collection you were told it is from, from that collection’s own site.' : ' It names no parent.');
     } catch (e) { if (fillFor === key) { fillFor = ''; note.textContent = 'Could not fill in the other boxes: ' + String(e && e.message || e); } }
   }
   $('q').addEventListener('paste', () => setTimeout(prefill, 50));
@@ -393,7 +396,7 @@
   // a link like trade-check.html?id=<ID>&holder=<address>&collection=<parent> checks it at once
   const qp = new URLSearchParams(location.search);
   setChain(chain);
-  if (qp.get('id')) { $('q').value = qp.get('id'); $('seller').value = qp.get('holder') || qp.get('seller') || ''; $('coll').value = qp.get('collection') || ''; run(); }
+  if (qp.get('id')) { $('q').value = qp.get('id'); $('seller').value = qp.get('holder') || qp.get('seller') || ''; $('coll').value = qp.get('collection') || ''; collFrom = qp.get('collection') ? 'link' : null; run(); }   // (a collection from the link is checked, but can't make it GO: see trade.js 1.2.0)
 })();
 </script>
 </body>

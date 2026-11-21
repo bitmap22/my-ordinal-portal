@@ -16,8 +16,10 @@
   else root.CodeRead = make(root.RecursionMap);
 })(typeof self !== 'undefined' ? self : this, function (RM) {
   'use strict';
-  const VERSION = '1.1.0';   // (1.1.0: follows what it loads the Recursion Map's way: paths, IDs in the code, children, delegates)
-  const CODE = /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/css)/i;
+  const VERSION = '1.2.0';   // (1.1.0: follows what it loads the Recursion Map's way: paths, IDs in the code, children, delegates)
+  // (1.2.0, 21 Nov 2026: an inscription with no file of its own shows its delegate's, so the delegate's code is the one read; a type with
+  // spaces before it, or written as XML, counts as code too)
+  const CODE = /^\s*(text\/html|application\/xhtml\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|image\/svg\+xml|text\/xml|application\/xml|text\/css)/i;
   const MAX_LOADED = 40, MAX_LOOKED = 150, DEPTH = 3;   // (files of code read; inscriptions looked at; levels followed)
   const ANALYTICS = ['google-analytics.com', 'googletagmanager.com', 'doubleclick.net', 'connect.facebook.net', 'facebook.com/tr', 'hotjar.com', 'mixpanel.com', 'segment.io', 'segment.com', 'amplitude.com', 'clarity.ms',
     'plausible.io', 'umami.is', 'goatcounter.com', 'matomo', 'statcounter.com', 'cloudflareinsights.com', 'posthog.com', 'fullstory.com', 'mouseflow.com', 'heap.io', 'quantserve.com', 'scorecardresearch.com'];
@@ -100,12 +102,15 @@
   }
   const isCode = t => CODE.test(String(t || ''));
 
-  async function read(q, io, progress) {
+  async function read(q, io, progress, via) {
     const say = (k, v) => { if (progress) progress(k, v); };
     const id = await RM.resolve(q, io);
     say('reading', id);
     let J; try { J = (await io.ordJson('/r/inscription/' + id)).j; } catch (e) { throw new Error(/404/.test(String(e)) ? 'there is no inscription ' + id : 'ordinals.com did not answer: try again in a moment'); }
     const type = J.content_type || null, out = {id, number: J.number != null ? J.number : null, contentType: type, bytes: J.content_length != null ? J.content_length : null, checked: new Date().toISOString().replace(/\.\d{3}/, ''), files: [], findings: [], sources: []};
+    // (1.2.0) no file of its own: it shows its delegate's, so that is the code that runs (followed up to 3 delegates deep)
+    if (J.delegate && !(J.content_length > 0) && (via || 0) < 3) { const D = await read(J.delegate, io, progress, (via || 0) + 1);
+      return Object.assign(D, {id, number: out.number, delegate: J.delegate, verdict: 'It has no file of its own: it shows its delegate\'s (' + J.delegate + '). ' + D.verdict}); }
     if (!isCode(type)) return Object.assign(out, {isCode: false, verdict: 'Not code: it is ' + (type || 'a file with no type') + ', which can\'t run anything on its own. Nothing to read.', kinds: summary([])});
     const files = [{id, role: 'itself', number: out.number, contentType: type}], texts = new Map();
     const get = async (fid) => { const x = await io.ordText('/content/' + fid); out.sources.push(x.site); return x.t; };

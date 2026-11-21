@@ -19,6 +19,9 @@
      was checked. It is never advice on what it is worth.
    (21 Nov 2026, 1.1.0: anyone can make a parent, so the parent an inscription names proves nothing on its own: with no collection
    given, the answer is NOT SURE at best.)
+   (21 Nov 2026, 1.2.0: a collection that came with a link, not from the person, proves nothing either, since anyone can send a link:
+   NOT SURE at best. And the code check is made whenever the file might run: a file type written oddly ("text/html;", a quoted
+   charset), XHTML, or a file that shows its delegate's, whose code is the one read.)
    The host gives the checks as functions (io): provenance(id), parent(id, parentId), code(id), recursion(id) for Bitcoin, and
    dogeProvenance(id) for Dogecoin, each returning that tool's own answer. The same file is for the portal's Authenticity Check page
    and the free Agent Blockhall MCP tool. No other packages.
@@ -28,13 +31,13 @@
   else root.TradeCheck = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const PORTAL = 'https://ordportal.com/';
   const MEANING = 'GO means each thing its words list was checked and agrees (where it came from, who holds it if an address was given, the collection given, and for code what it asks for and loads), and nothing needs care: no more than that. With no collection given the answer is NOT SURE at best, because anyone can make a parent. GO is never advice on what it is worth.';
   const fmt = n => typeof n === 'number' ? n.toLocaleString('en-GB') : String(n);
   const short = s => { s = String(s || ''); return s.length > 24 ? s.slice(0, 10) + '…' + s.slice(-8) : s; };
   const isId = s => /^[0-9a-f]{64}i\d+$/.test(String(s || ''));
-  const CODE_TYPES = /^(text\/html|image\/svg\+xml|text\/javascript|application\/javascript|application\/x-javascript|text\/css)/i;
+  const CODE_TYPES = /^\s*(text\/html|application\/xhtml\+xml|image\/svg\+xml|text\/javascript|application\/javascript|application\/x-javascript|application\/ecmascript|text\/ecmascript|text\/xml|application\/xml|text\/css)/i;
 
   // the Provenance Check's checks, and what a 'false' means: 'stop' (the chain or its bytes say otherwise) or 'care' (two sites differ)
   const PROVEN = {
@@ -143,6 +146,8 @@
       const named = I.parents || [];
       let pid = claimed;
       if (pid && !isId(pid) && io.resolve) { try { pid = await io.resolve(pid); } catch (e) {} }
+      // (1.2.0) a parent ID that came with a link, not typed by the person: the link's sender may have made that parent
+      if (pid && isId(claimed) && q.collectionFrom === 'link') reasons.push(reason('its collection', 'care', 'The collection to check it against came with the link, not from you. Anyone can make a parent and send a link to check against it: type the collection’s parent from the collection’s own site (or a name the portal knows) to prove it.'));
       if (pid && !named.length) reasons.push(reason('its collection', 'care', 'It names no parent in its own transaction, so it can’t be proven a member of ' + short(pid) + '’s collection by the chain: check the collection’s own list.', {parent: pid}));
       else if (pid || named.length) {
         const p = pid || named[0]; say('step', 'collection');
@@ -154,11 +159,13 @@
       } else { reasons.push(reason('its collection', 'info', 'It names no parent, so it belongs to no collection by the chain.')); if (!claimed) reasons.push(reason('its collection', 'care', NONE)); }
     }
     // 3. its code, and what it loads (Bitcoin; code only)
-    const type = I.contentType || '';
-    if (chain === 'bitcoin' && CODE_TYPES.test(type)) {
+    const type = I.contentType || '', mayRun = CODE_TYPES.test(type) || type === 'not a standard type' || !!I.delegate;   // (1.2.0: an oddly written type, or a delegate's file, is read too)
+    if (chain === 'bitcoin' && mayRun) {
       say('step', 'code'); let R = null; try { R = await io.code(id); } catch (e) {} ran.code = R ? {verdict: R.verdict, cite: R.cite && R.cite.link || null} : null; reasons.push(...fromCode(R));
+      if (!(R && R.isCode === false)) {
       say('step', 'loads'); let M = null; try { M = await io.recursion(id); } catch (e) {} ran.recursion = M ? {allOnChain: M.allOnChain, counts: M.counts, cite: M.cite && M.cite.link || null} : null; reasons.push(...fromRecursion(M, R && R.kinds ? (R.kinds || []).some(k => k.key === 'outside' && (k.found || k.count)) : null));
-    } else if (chain === 'doge' && CODE_TYPES.test(type)) reasons.push(reason('its code', 'care', 'It is code (' + type + '), and Dogecoin has no Code Read yet: what its code asks for was not checked. Never sign anything it asks.'));
+      }
+    } else if (chain === 'doge' && mayRun) reasons.push(reason('its code', 'care', 'It is code (' + type + '), and Dogecoin has no Code Read yet: what its code asks for was not checked. Never sign anything it asks.'));
     const J = judge(reasons);
     const links = chain === 'doge'
       ? {dogeProvenanceCheck: PORTAL + 'doge-provenance-check.html?id=' + id, dogeCube: PORTAL + 'doge-cube.html#find=' + id}
