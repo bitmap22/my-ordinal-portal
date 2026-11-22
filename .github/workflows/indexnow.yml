@@ -1,0 +1,60 @@
+# Tells search engines that use IndexNow (Bing, Yandex, Seznam, Naver and others) the moment a public page of the portal
+# changes, so they read it again soon. Free: no account or secret; the key file in the portal's root proves the site is ours.
+# Google does not use IndexNow: it reads the sitemap (sitemap.xml) through Google Search Console.
+# Runs on GitHub only. © 2026 bitmap22. All rights reserved.
+name: IndexNow
+on:
+  push:
+    branches: [main]
+    paths: ['**.html', 'sitemap.xml', 'llms.txt']
+  workflow_dispatch:
+    inputs:
+      all:
+        description: 'yes: send every page in the sitemap, not only the changed ones'
+        required: false
+        default: 'no'
+permissions:
+  contents: read
+concurrency:
+  group: indexnow
+  cancel-in-progress: false
+jobs:
+  tell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Tell IndexNow which pages changed
+        env:
+          ALL: ${{ github.event.inputs.all }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -e
+          KEY=e247531ac463a7b71c02752392eca770
+          SITE=https://ordportal.com
+          # the public pages: the ones in the sitemap (test copies and private pages are not in it)
+          grep -o '<loc>[^<]*' sitemap.xml | sed 's/<loc>//' > all.txt
+          if [ "$ALL" = "yes" ] || [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then cp all.txt send.txt
+          else
+            git diff --name-only "$BEFORE" HEAD > changed.txt
+            : > send.txt
+            while read -r u; do p=${u#$SITE/}; [ -z "$p" ] && p=index.html; grep -qx "$p" changed.txt && echo "$u" >> send.txt || true; done < all.txt
+            grep -qx 'sitemap.xml' changed.txt && echo "$SITE/sitemap.xml" >> send.txt || true
+            grep -qx 'llms.txt' changed.txt && echo "$SITE/llms.txt" >> send.txt || true
+          fi
+          n=$(wc -l < send.txt); echo "pages to tell: $n"; cat send.txt
+          [ "$n" -gt 0 ] || exit 0
+          # wait until GitHub Pages serves the key file (a new push may still be going live)
+          for i in $(seq 1 30); do [ "$(curl -fsSL "$SITE/$KEY.txt?t=$i" || true)" = "$KEY" ] && break; sleep 10; done
+          python3 - <<PY
+          import json, urllib.request
+          urls = [l.strip() for l in open('send.txt') if l.strip()][:10000]
+          body = json.dumps({'host': 'ordportal.com', 'key': '$KEY', 'keyLocation': '$SITE/$KEY.txt', 'urlList': urls}).encode()
+          req = urllib.request.Request('https://api.indexnow.org/indexnow', data=body, headers={'Content-Type': 'application/json; charset=utf-8'})
+          try:
+              r = urllib.request.urlopen(req, timeout=30); print('IndexNow answered', r.status, '(200 or 202: received)')
+          except urllib.error.HTTPError as e:
+              print('IndexNow answered', e.code, e.read()[:300]); raise SystemExit(1 if e.code not in (200, 202) else 0)
+          PY
