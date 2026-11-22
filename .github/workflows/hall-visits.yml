@@ -1,6 +1,8 @@
 # Hall Visits: once a day, saves yesterday's counts from the Hall Counter (ordportal.com/hall-count) as the catalog on the
-# hall-visits branch (.github/hall-visits/build-visits.js). Days already saved stay as they are. Free: GitHub runs it, and
-# reading the counts needs no key. To run it by hand: Actions > Hall Visits > Run workflow.
+# hall-visits branch (.github/hall-visits/build-visits.js): every day in full for 90 days, then the cream of it, and a best of
+# each month, kept for good. Then it clears Cloudflare's collecting box of days older than 30 days, but only days the catalog
+# has already saved. Free: GitHub runs it. Reading the counts needs no key; the clearing uses the CLOUDFLARE_API_TOKEN secret.
+# To run it by hand: Actions > Hall Visits > Run workflow.
 # © 2026 bitmap22. All rights reserved.
 name: Hall Visits
 
@@ -26,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: The days already saved
         run: |
           if git fetch -q origin hall-visits; then git worktree add -q hv FETCH_HEAD; else mkdir -p hv; fi
@@ -45,3 +47,20 @@ jobs:
           if git diff --cached --quiet; then echo "Nothing new."; exit 0; fi
           git commit -qm "Hall Visits: $(date -u +%FT%H:%MZ)"
           git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:hall-visits
+      - name: Clear Cloudflare's collecting box (days over 30 days old that the catalog has saved)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "No Cloudflare key: nothing cleared."; exit 0; fi
+          git fetch -q origin hall-visits
+          cut=$(date -u -d '30 days ago' +%F)
+          old=$(git ls-tree --name-only FETCH_HEAD days/ | sed -n 's#^days/\([0-9-]*\)\.json$#\1#p' | awk -v c="$cut" '$1 < c' | sed "s/.*/'&'/" | paste -sd, -)
+          if [ -z "$old" ]; then echo "Nothing over 30 days old to clear."; exit 0; fi
+          export CLOUDFLARE_ACCOUNT_ID=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts | jq -r '.result[0].id')
+          cd hall-counter
+          db=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database?name=hall-visits" | jq -r '.result[]? | select(.name == "hall-visits") | .uuid' | head -1)
+          if [ -z "$db" ]; then echo "::warning::The hall-visits database was not found: nothing cleared."; exit 0; fi
+          printf 'name = "hall-counter"\nmain = "worker.js"\ncompatibility_date = "2026-11-01"\n[[d1_databases]]\nbinding = "DB"\ndatabase_name = "hall-visits"\ndatabase_id = "%s"\n' "$db" > wrangler.toml
+          npm i --no-save --silent wrangler@4.166.0
+          npx wrangler d1 execute hall-visits --remote -y --command "DELETE FROM counts WHERE day IN ($old)"
+          echo "Cleared: $old"

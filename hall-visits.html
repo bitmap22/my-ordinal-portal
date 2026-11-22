@@ -81,13 +81,13 @@
 <div class="shell" role="main">
   <h1>Hall Visits</h1>
   <div class="sub">What people and AI agents look at in Agent Blockhall and Doge Cube</div>
-  <p class="lead">Every visit to the halls is counted, with nothing personal kept: which blocks visitors walk into, how long they stay, which kinds of parcel they pick up and how long they hold them. Each number is split into people and AI agents. A day is saved here just after midnight (UTC).</p>
+  <p class="lead">Every visit to the halls is counted, with nothing personal kept: which blocks visitors walk into, how long they stay, which kinds of parcel they pick up and how long they hold them. Each number is split into people and AI agents. A day is saved here just after midnight (UTC). Each day keeps every detail for 90 days, then its cream: the blocks 2 or more visitors walked into, or where a parcel was held a minute or more. Each month's best is kept for good.</p>
 
   <div class="panel">
     <div class="by" role="group" aria-label="Which hall">
       <button type="button" data-hall="btc" aria-pressed="true">Agent Blockhall (Bitcoin)</button><button type="button" data-hall="doge" aria-pressed="false">Doge Cube (Dogecoin)</button>
     </div>
-    <div class="pick" style="margin-top:10px"><label for="day">Day</label> <select id="day"></select></div>
+    <div class="pick" style="margin-top:10px"><label for="day">Day or month</label> <select id="day"></select></div>
     <div id="status" role="status" aria-live="polite">Loading the saved days…</div>
   </div>
 
@@ -123,12 +123,14 @@
     for (const b of BASES) { try { const r = await fetch(b + file + (file === 'index.json' ? '?t=' + Date.now() : ''), {cache: 'no-store'}); if (r.ok) return await r.json(); } catch (e) {} }
     throw new Error('not reachable');
   }
-  async function day(d) { return S.cache[d] || (S.cache[d] = await get('days/' + d + '.json')); }
+  async function day(d) { return S.cache[d] || (S.cache[d] = await get((d.length === 7 ? 'months/' : 'days/') + d + '.json')); }
   const cell = (t, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (t instanceof Node) td.append(t); else td.textContent = t; return td; };
   const sum = o => o ? (o.person || 0) + (o.agent || 0) : 0;
   function show(j) {
-    const H = j[S.hall], P = HALL[S.hall], t = H.totals, cr = H.commonRoom;
-    $('totH').textContent = P.name + ' on ' + new Date(j.day + 'T12:00:00Z').toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
+    const M = !!j.month, H0 = j[S.hall], P = HALL[S.hall], t = H0.totals, cr = H0.commonRoom;
+    const H = M ? {blocks: H0.topBlocks.map(b => ({block: b.block, walks: b.walks, stays: {'120s': b.stayed2min}, holds: {all: b.pickedUp}, looks: {}})), kindsPickedUp: H0.kindsPickedUp} : H0;
+    const long = {}; if (M) for (const [k, v] of Object.entries(H0.kindsHeld1min || {})) long[k] = sum(v); else for (const b of H.blocks) for (const [k, L] of Object.entries(b.looks || {})) long[k] = (long[k] || 0) + sum(L['60s']);
+    $('totH').textContent = M ? P.name + ': the best of ' + new Date(j.month + '-15T12:00:00Z').toLocaleDateString('en-GB', {month: 'long', year: 'numeric', timeZone: 'UTC'}) : P.name + ' on ' + new Date(j.day + 'T12:00:00Z').toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
     const st = [[fmt(t.walks.person), 'times people walked in'], [fmt(t.walks.agent), 'times AI agents walked in'], [fmt(t.blocks), 'different blocks visited'],
       [fmt(t.holds.person), 'parcels picked up by people'], [fmt(t.holds.agent), 'parcels picked up by AI agents'], [fmt(cr ? sum(cr.walks) : 0), 'visits to the common room']];
     $('stats').replaceChildren(...st.map(([n, l]) => { const d = document.createElement('div'); d.className = 'stat'; const b = document.createElement('b'); b.textContent = n; const s = document.createElement('span'); s.textContent = l; d.append(b, s); return d; }));
@@ -137,12 +139,13 @@
       const a = document.createElement('a'); a.href = P.page + '#block=' + b.block; a.textContent = fmt(b.block); a.title = 'Walk into block ' + fmt(b.block);
       const tr = document.createElement('tr'); tr.append(cell(a, 'left'), cell(fmt(b.walks.person), 'num'), cell(fmt(b.walks.agent), 'num'), cell(fmt(sum(b.stays['120s']) ), 'num'), cell(fmt(Object.values(b.holds).reduce((n, v) => n + sum(v), 0)), 'num')); tb.append(tr);
     }
-    $('blocksNote').textContent = H.blocks.length ? (H.blocks.length > 25 ? 'The 25 most visited of ' + fmt(H.blocks.length) + ' blocks. ' : '') + 'Click a block to walk into it.' : 'No blocks were walked into that day.';
+    const nB = M ? t.blocks : H.blocks.length + (H0.blocksDropped || 0);
+    $('blocksNote').textContent = (H.blocks.length ? (nB > 25 ? 'The 25 most visited of ' + fmt(nB) + ' blocks. ' : '') + 'Click a block to walk into it.' : 'No blocks were walked into that ' + (M ? 'month.' : 'day.'))
+      + (H0.blocksDropped ? ' This day is over 90 days old, so only its cream is kept: ' + fmt(H0.blocksDropped) + (H0.blocksDropped === 1 ? ' block' : ' blocks') + ' only one visitor looked at ' + (H0.blocksDropped === 1 ? 'was' : 'were') + ' let go.' : '');
     const kb = $('kinds'); kb.replaceChildren();
-    const long = {}; for (const b of H.blocks) for (const [k, L] of Object.entries(b.looks || {})) long[k] = (long[k] || 0) + sum(L['60s']);
     const K = Object.entries(H.kindsPickedUp).sort((a, b) => sum(b[1]) - sum(a[1]) || a[0].localeCompare(b[0]));
     for (const [k, v] of K) { const tr = document.createElement('tr'); tr.append(cell(k, 'left'), cell(fmt(v.person), 'num'), cell(fmt(v.agent), 'num'), cell(fmt(long[k] || 0), 'num')); kb.append(tr); }
-    $('kindsNote').textContent = K.length ? '' : 'No parcels were picked up that day.';
+    $('kindsNote').textContent = K.length ? '' : 'No parcels were picked up that ' + (M ? 'month.' : 'day.');
     $('out').classList.remove('hidden');
   }
   async function draw() {
@@ -154,17 +157,21 @@
   $('day').onchange = draw;
   (async () => {
     try { S.index = await get('index.json'); } catch (e) { S.index = {days: []}; }
-    const days = (S.index.days || []).map(x => x.day).reverse();
+    const days = (S.index.days || []).map(x => x.day).reverse(), months = (S.index.months || []).slice().reverse();
     if (!days.length) { $('status').textContent = 'Counting started on 22 November 2026. The first day is saved here just after midnight (UTC).'; return; }
-    $('day').replaceChildren(...days.map(d => { const o = document.createElement('option'); o.value = o.textContent = d; return o; }));
+    const grp = (label, list, fmtL) => { const g = document.createElement('optgroup'); g.label = label; for (const d of list) { const o = document.createElement('option'); o.value = d; o.textContent = fmtL(d); g.append(o); } return g; };
+    $('day').replaceChildren(grp('Days', days, d => d), ...(months.length ? [grp('Best of the month', months, m => new Date(m + '-15T12:00:00Z').toLocaleDateString('en-GB', {month: 'long', year: 'numeric', timeZone: 'UTC'}))] : []));
     draw();
   })();
   // the kit for AI agents
   window.agent = {
     help: async () => ({about: 'Hall Visits: anonymous daily totals of what people and AI agents do in Agent Blockhall (btc) and Doge Cube (doge). Each thing is counted once a visit; nothing personal is kept.',
-      commands: {'days()': 'every saved day with its totals', 'day({day, hall})': 'one day (day like 2026-11-23, hall btc or doge; newest day if left out): blocks walked into, time stayed, kinds picked up, time held, each split into person and agent'},
+      commands: {'days()': 'every saved day with its totals', 'day({day, hall})': 'one day (day like 2026-11-23, hall btc or doge; newest day if left out): blocks walked into, time stayed, kinds picked up, time held, each split into person and agent. Days over 90 days old keep only their cream (thinned: true)', 'month({month, hall})': 'the best of a finished month (month like 2026-11): the 100 most visited blocks, kinds picked up and held, totals', 'months()': 'the months saved'},
       data: BASES[0] + 'index.json', note: S.index && S.index.note}),
     days: async () => (S.index || await get('index.json')).days,
+    months: async () => (S.index || await get('index.json')).months || [],
+    month: async (o = {}) => { const ix = S.index || await get('index.json'), ms = ix.months || [], m = o.month || ms[ms.length - 1]; if (!m) return {error: 'No month is finished yet: the first best of the month is saved at the start of December 2026.'};
+      const j = await day(m); return o.hall ? {month: j.month, note: j.note, [o.hall]: j[o.hall]} : j; },
     day: async (o = {}) => { const ix = S.index || await get('index.json'), d = o.day || (ix.days.length ? ix.days[ix.days.length - 1].day : null); if (!d) return {error: 'No day is saved yet: the first is saved just after midnight (UTC) on 23 November 2026.'};
       const j = await day(d); return o.hall ? {day: j.day, note: j.note, [o.hall]: j[o.hall]} : j; }
   };
