@@ -1593,7 +1593,7 @@ function runeWords(R) {
   return {word: {k: 'rune', s: 2, a: '', b: (c >= 32 ? String.fromCodePoint(c) : '¤') + ' ' + (nm || 'new rune')}, lost: w2.s === 5 ? {k: 'rune', s: 5, a: '', b: 'new rune: not made'} : w2, x: '+ new rune', x2, ids, name: nm};
 }
 // what the block's reader found about a rune message, kept on the parcel (for its card, its tile and the agent kit)
-function runeCarry(t, r) { t.rbad = r.rbad || null; t.rtry = r.rtry || null; t.rmv = r.rmv || null; t.rptr = r.rptr == null ? null : r.rptr; t.pre = r.pre || null; t.wNE = r.wNE || null; t.rx2 = r.rx2 || ''; }
+function runeCarry(t, r) { t.bmN = r.bmN == null ? null : r.bmN; t.bmI = r.bmI; t.natOff = !!r.natOff; t.bmReal = false; t.bmNo = null; t.rbad = r.rbad || null; t.rtry = r.rtry || null; t.rmv = r.rmv || null; t.rptr = r.rptr == null ? null : r.rptr; t.pre = r.pre || null; t.wNE = r.wNE || null; t.rx2 = r.rx2 || ''; }
 // a new rune that never came into being: its tile falls back to what else its message does
 function runeLostWord(t) {
   if (!t.word) return;
@@ -1788,12 +1788,12 @@ async function scanBytes(X, h) {
     if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
     if ((r.sc >> TF.cp) & 1 && !((r.sc >> TF.stamps) & 1) && !r.word) r.word = {k: 'cp', a: '', b: ''};
     if ((r.sc >> TF.stamps) & 1 && artN < 2048 && artB < 64e6) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; artB += a.bytes.length; } }
-    if (mso && (r.sc >> TF.stamps) & 1) try { const D = rc4(key, catB(mso.flatMap(pk => pk.length < 2 ? [] : pk.slice(0, -1).map(k => k.subarray(1, k.length - 1))))), L = D[0] << 8 | D[1];   // SRC-20 in multisig outputs (the older way): a 2-byte length, then "stamp:" and its JSON
+    if (mso && (r.sc >> TF.stamps) & 1 && h >= 793068) try { const D = rc4(key, catB(mso.flatMap(pk => pk.length < 2 ? [] : pk.slice(0, -1).map(k => k.subarray(1, k.length - 1))))), L = D[0] << 8 | D[1];   // SRC-20 in multisig outputs (the older way): a 2-byte length, then "stamp:" and its JSON
       if (L > 6 && L <= D.length - 2 && /^stamp:/i.test(L1D.decode(D.subarray(2, 8)))) { const o = JSON.parse(U8D.decode(D.subarray(8, 2 + L)));
         if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.sc &= ~(1 << TF.stamps); const tk = String(o.tick || '').toUpperCase().slice(0, 16), op = String(o.op || '').toLowerCase(); r.tick = tk;
           if (!r.word) r.word = {k: 'src20', a: tk, b: (op + (o.amt != null ? ' ' + String(o.amt).slice(0, 14) : o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')).trim()}; } }
     } catch (e) {}
-    if (wsh) { const W = catB(wsh), L = W[0] << 8 | W[1];   // SRC-20 in P2WSH outputs: a 2-byte length, then "stamp:" and its JSON
+    if (wsh && h >= 865000) { const W = catB(wsh), L = W[0] << 8 | W[1];   // SRC-20 in P2WSH outputs: a 2-byte length, then "stamp:" and its JSON
       if (L > 6 && L <= W.length - 2 && /^stamp:/i.test(L1D.decode(W.subarray(2, 8)))) try {
         const o = JSON.parse(U8D.decode(W.subarray(8, 2 + L)));
         if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; const tk = String(o.tick || '').toUpperCase().slice(0, 16), op = String(o.op || '').toLowerCase(); r.tick = tk;
@@ -1851,8 +1851,8 @@ async function scanBytes(X, h) {
             if (t0 && !/^<|^\{?\s*$/.test(t0)) r.word = {k: 'text', a: t0.slice(0, 140), b: ''};
           }
           if (!enc && bl && bl <= 1000) {
-            const txt = U8D.decode(catB(body)).trim();
-            if (/^\d{1,7}\.bitmap$/.test(txt)) { set(TF.bitmap); if (r.word && !r.wj) r.word = {k: 'bitmap', a: txt.split('.')[0], b: '.bitmap'}; }
+            const raw = U8D.decode(catB(body)), txt = raw.trim(), bm = /^(0|[1-9]\d{0,15})\.bitmap$/.exec(raw);
+            if (bm && !del && +bm[1] <= h) { if (r.bmN == null) { r.bmN = +bm[1]; r.bmI = ei - 1; } }   // (a bitmap claim by bop's rules: exactly "N.bitmap", no compression, no delegate, N no higher than its block. It shows as a bitmap only once bop's index says it is the real, first claim: see bmMark)
             // BRC-420: a mint is only a link to the original (/content/ and its id). The block can't show it was paid for or
             // that a deploy exists, so it is a maybe, and said so
             else if (/^\/content\/[0-9a-f]{64}i\d+$/i.test(txt)) { set(TF.brc420); r.b4 = 'mint'; if (!r.wj) r.word = {k: 'b420', a: 'MINT?', b: 'not checked'}; }
@@ -1862,15 +1862,17 @@ async function scanBytes(X, h) {
                 set(TF.brc420); r.b4 = String(o.op || '').toLowerCase() === 'deploy' ? 'deploy' : 'mint';
                 if (!r.wj) r.word = r.b4 === 'deploy' ? {k: 'b420', a: String(o.name || 'DEPLOY').slice(0, 24), b: 'deploy' + (o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')} : {k: 'b420', a: 'MINT?', b: 'not checked'};
               }
-              else if (pr === 'brc-20' && o.p === 'brc-20') { set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word && !r.wj) r.word = {k: 'brc20', a: r.tick, b: wb}; }
-              else if (pr === 'tap') {
+              else if (pr === 'brc-20' && o.p === 'brc-20' && h >= 779832 && /^(text\/plain|application\/json)(;|$)/.test(ct) && i === 0 && ei === 1 && !pn) {   // (BRC-20's own rules, as its indexer reads them: a plain-text or JSON file, the transaction's first inscription, written the standard way, from block 779,832)
+                set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word && !r.wj) r.word = {k: 'brc20', a: r.tick, b: wb}; }
+              else if (pr === 'tap' && h >= 801993) {   // (TAP's own start block; DMT from 817,705)
                 set(TF.tap);
                 const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));
                 r.tick = String(o.tick || (items[0] && items[0].tick) || '').slice(0, 16);
-                if (/^dmt-/i.test(String(o.op || ''))) set(TF.dmt);
+                if (/^dmt-/i.test(String(o.op || '')) && h >= 817705) set(TF.dmt);
                 if (isNat(r.tick) || items.some(x => x && isNat(x.tick))) r.nat = true;
                 const b2 = items.length ? (String(o.op || '') + (items.length > 1 ? ' ×' + items.length : ' ' + (items[0].amt != null ? items[0].amt : ''))).trim().slice(0, 40) : wb;
-                const dmtB = /^dmt-/i.test(String(o.op || '')) && /^\d{1,8}$/.test(String(o.blk || '')) ? 'block ' + Number(o.blk).toLocaleString('en-US') : '';   // a DMT mint is made from a block: which one
+                if (r.nat && /^dmt-mint$/i.test(String(o.op || '')) && h >= 885588) r.natOff = true;   // (from block 885,588 TAP ignores NAT mints: NAT comes from each block's reward)
+                const dmtB = r.natOff ? 'not counted since 885,588' : h >= 817705 && /^dmt-/i.test(String(o.op || '')) && /^\d{1,8}$/.test(String(o.blk || '')) ? 'block ' + Number(o.blk).toLocaleString('en-US') : '';   // a DMT mint is made from a block: which one
                 if (r.word && !r.wj) r.word = r.nat ? {k: 'nat', a: 'NAT', b: dmtB || b2, dmt: !!dmtB} : {k: 'tap', a: r.tick, b: dmtB || b2, dmt: !!dmtB};
               }
               else if (pr && r.word && !r.wj) r.word = {k: 'json', a: String(o.tick || o.name || o.p).slice(0, 24), b: (pr !== String(o.tick || o.name || o.p).toLowerCase() ? pr + ' ' : '') + wb};
@@ -1931,6 +1933,27 @@ function loadEtch(B) {
     B.etch = {ok: true};
   })();
 }
+// (22 Nov 2026) BITMAPS, no fakes: a parcel shows as a bitmap only if it is the real claim of its block, the first proper
+// "N.bitmap" (bop's rules, as the Bitmap Garden checks them). Below 942,000 bop's on-chain index (OCI) says which inscription that
+// is; from 942,000 a claim made in block N itself is the real one when it is that block's first. A later copy, or a claim that
+// can't be checked, stays a plain text inscription.
+function bmMark(B) {
+  if (!B || !B.txs) return Promise.resolve();
+  if (B.bmP) return B.bmP;
+  return B.bmP = (async () => {
+    const seen = new Set(), todo = [];
+    for (const t of B.txs) { if (t.bmN == null || !t.id) continue; if (seen.has(t.bmN)) { t.bmNo = 'copy'; continue; } seen.add(t.bmN); todo.push(t); }   // (a second claim of N in one block is never the first)
+    const ok = t => { t.bmReal = true; t.sc |= 1 << TF.bitmap; t._k = null; if (!t.word || t.word.k === 'text') t.word = {k: 'bitmap', a: String(t.bmN), b: '.bitmap'}; };
+    const small = [];
+    for (const t of todo) { if (t.bmN < BM.OCI_LIMIT) small.push(t); else if (t.bmN === B.height) ok(t); else t.bmNo = 'unchecked'; }
+    let k = 0; const T0 = Date.now();
+    const work = async () => { while (k < small.length && k < 400 && Date.now() - T0 < 25000) { const t = small[k++]; try { const id = await BM.ociFirst(t.bmN); if (id && id === t.id + 'i' + t.bmI) ok(t); else t.bmNo = id ? 'copy' : 'unchecked'; } catch (e) { t.bmNo = 'unchecked'; } } };
+    await Promise.all([work(), work(), work(), work()]);
+    for (const t of small) if (!t.bmReal && !t.bmNo) t.bmNo = 'unchecked';
+  })();
+}
+// what a bitmap claim is, said plainly (its card and the agent kit)
+const bmSay = t => t.bmReal ? t.bmN + '.bitmap: the real claim of block ' + fmt(t.bmN) + ', its first proper claim (bop’s on-chain index)' : t.bmNo === 'copy' ? 'it says ' + t.bmN + '.bitmap, but it is not the first claim of block ' + fmt(t.bmN) + ', so it is not a bitmap (bop’s on-chain index)' : 'it says ' + t.bmN + '.bitmap: whether it is the first claim of block ' + fmt(t.bmN) + ' could not be checked, so it is not shown as a bitmap';
 async function scanBlock(B) {
   if (!B || B.scan) return;
   overpays(B);   // (from its fees alone: there even if its bytes can't be read)
@@ -1957,7 +1980,7 @@ async function scanBlock(B) {
     const pl = POOLS.find(([re]) => re.test(S.cb || ''));
     B.cb = {words: S.cb || '', pool: B.pool || (pl ? pl[1] : null)};
     B.scan = {ok: true};
-    loadEtch(B).then(() => { if (cur === B && !room) { rebuild(); head(); } });
+    Promise.all([loadEtch(B), bmMark(B)]).then(() => { if (cur === B && !room) { rebuild(); head(); } });
   } catch (e) { B.scan = {failed: true}; }
   if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
   if (B.scan && B.scan.ok) mdlBlock(B).catch(() => {});
@@ -4007,6 +4030,8 @@ function select(t) {
     if (t.ins && t.ins.length) rows.push(['inscription', [...new Set(t.ins.map(e => e.ct))].join(', ') + (t.ins.length > 1 ? ' × ' + t.ins.length : '') + (has(TF.child) ? ' · child of a parent' : '') + (has(TF.cursed) ? ' · cursed' : '')]);
     const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', t.src20 && 'SRC-20', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
+    if (t.bmN != null && (t.bmReal || t.bmNo)) rows.push([t.bmReal ? 'bitmap' : 'not a bitmap', bmSay(t)]);
+    if (t.natOff) rows.push(['NAT', 'a NAT mint: from block 885,588 TAP does not count these (NAT comes from each block’s reward)']);
     if (has(TF.rune)) {
       const ra = [has(TF.etch) && (t.rnUnsure ? 'tries to etch' + (t.rn ? ' ' + t.rn : '') + ' (whether it made the rune is not known right now: ordinals.com did not answer)' : 'etched' + (t.rn ? ' ' + t.rn : '')), has(TF.rmint) && 'minted' + (t.mint ? ' ' + runeNm(t.mint) : ''), has(TF.rmove) && 'moved' + (t.rmv && t.rmv.length ? ' ' + t.rmv.slice(0, 3).map(runeNm).join(', ') + (t.rmv.length > 3 ? ' and ' + (t.rmv.length - 3) + ' more' : '') : '')].filter(Boolean).join(' · ');
       if (ra || !has(TF.alkanes)) rows.push(['rune', ra || runePlain(t), t.rbad ? '#ff5a7a' : undefined]);
@@ -5829,7 +5854,7 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
     const B = cur && cur.height === h && cur.txs ? cur : await viaSources((s, b) => s.block(b, h));
     for (let k = 0; k < 4; k++) {
       await Promise.allSettled([loadTags(B), scanBlock(B)]);
-      if (B.scan && B.scan.ok) await loadEtch(B);
+      if (B.scan && B.scan.ok) await Promise.all([loadEtch(B), bmMark(B)]);
       if (B.scan && B.scan.ok && B.etch && B.etch.ok && (!B.fees || !B.hash || (B.tags && B.tags.ok))) break;
       await new Promise(r => setTimeout(r, 2000 * (k + 1)));
       if (B.scan && B.scan.failed) B.scan = null; if (B.tags && B.tags.failed) B.tags = null; if (B.etch && B.etch.failed) { B.etch = null; B.etchP = null; }
@@ -17012,6 +17037,8 @@ window.AgentKit = window.AgentKit || (() => {
     if (t.rnUnsure && ((t.sc >> TF.etch) & 1)) o.etching = 'an attempt: whether it made its rune is not known right now (ordinals.com, which confirms etchings, did not answer: health() says more)';
     if (o.types.includes('runes') && !o.types.some(k => /^runes (etched|minted|moved)$/.test(k)))   // a runestone that made, minted and moved nothing: what it is, as its card says
       o.runestone = t.rnLost ? 'it tried to make a new rune, which never came into being (ordinals.com): the name it tried for is untrusted.runeTried' : runePlain(t);
+    if (t.bmN != null && (t.bmReal || t.bmNo)) o.bitmap = bmSay(t);
+    if (t.natOff) o.nat = 'a NAT mint that TAP does not count (from block 885,588 NAT comes from each block’s reward)';
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.rune = t.rn; if (t.rnLost) u.runeTried = t.rnLost;
     if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a CRC-20 token's own word: deploy, mint…)
     const lab = t.word ? [t.word.a, t.word.f, t.word.b, t.word.x].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box; a molecule token's formula with them)
