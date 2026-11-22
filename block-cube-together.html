@@ -555,14 +555,14 @@ const newest = f => Promise.race([fetch(f, {cache: 'no-cache'}).then(r => r.ok ?
 const verOf = (f, tag) => { if (!tag) return f; let h = 0; for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0; return f + '?v=' + h.toString(36); };
 let GAMEV = GAME, PAINTV = '';
 newest(GAME).then(tag => { GAMEV = verOf(GAME, tag); if (!frame.getAttribute('src')) frame.src = GAMEV; });
-const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, '*'); else gameQueue.push(msg); };
+const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, location.origin); else gameQueue.push(msg); };
 // ---------------- Block Paint City, through the cube's warehouse shutter ----------------
 // The shutter (and Block Paint's Agent Blockhall door) swap the game here, so the crew stays together. The game you are not in
 // waits hidden and quiet (on a phone it is closed, to save memory). Each crewmate shows in whichever game they are in.
 const pframe = $('paint'), PAINT = 'block-paint.html', PHONE = matchMedia('(pointer: coarse)').matches;
 let paintReady = false, paintQueue = [], inPaint = false, swapping = false;
 const mateG = new Map();   // the game each crewmate was last seen in
-const toPaint = m => { if (!pframe.getAttribute('src')) return; const msg = Object.assign({ app: 'blockpaint-host' }, m); if (paintReady) pframe.contentWindow.postMessage(msg, '*'); else paintQueue.push(msg); };
+const toPaint = m => { if (!pframe.getAttribute('src')) return; const msg = Object.assign({ app: 'blockpaint-host' }, m); if (paintReady) pframe.contentWindow.postMessage(msg, location.origin); else paintQueue.push(msg); };
 const inPaintSt = s => !!(s && s.g === 'paint');
 // what the crew does goes to the game each crewmate is in; who left and who is talking go to both
 const toGame = m => {
@@ -580,8 +580,8 @@ const toGame = m => {
 };
 addEventListener('message', e => {
   if (e.source !== frame.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockcube') return;
-  if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
-  if (m.type === 'hello') { gameReady = true; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, '*'); portraits(); walSend(); for (const [id, a] of walMates) toCube({ type: 'mwal', id, addr: a }); pnLast = ''; pnSend(); if (net.on && net.sail) startGame(); return; }
+  if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, location.origin); return; }   // yes: this page looks after the crew
+  if (m.type === 'hello') { gameReady = true; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, location.origin); portraits(); walSend(); for (const [id, a] of walMates) toCube({ type: 'mwal', id, addr: a }); pnLast = ''; pnSend(); if (net.on && net.sail) startGame(); return; }
   if (m.type === 'portraits') { gotPortraits(m); return; }
   if (m.type === 'mute') { if (typeof m.id === 'string' && m.id !== ME && net.players.has(m.id)) setMute(m.id, !!m.on); return; }   // (clicked the name over their head)
   if (m.type === 'trade') { const on = !!m.on; if (on !== walTrade) { walTrade = on; walShare(); } return; }
@@ -596,8 +596,8 @@ addEventListener('message', e => {
 });
 addEventListener('message', e => {
   if (!pframe.contentWindow || e.source !== pframe.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockpaint') return;
-  if (m.type === 'page?') { pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
-  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, '*'); if (!inPaint && !swapping) pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'leave' }, '*'); if (net.on && net.sail) paintStart(); return; }
+  if (m.type === 'page?') { pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'page' }, location.origin); return; }   // yes: this page looks after the crew
+  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, location.origin); if (!inPaint && !swapping) pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'leave' }, '*'); if (net.on && net.sail) paintStart(); return; }
   if (m.type === 'go' && m.to === 'cube') { swapTo('cube'); return; }   // walked into Block Paint's Agent Blockhall door
   if (m.type === 'chat-open') { openSay(); return; }
   if (!inPaint || !net.on) return;   // (Block Paint, waiting hidden: nothing of it goes to the crew)
@@ -1681,11 +1681,19 @@ function toast(text, actions = [], ms = 8000, key) {
 // An AI agent can prove a wallet of its own the same way (it signs the same message with its own key, a standard Bitcoin
 // signed message, and the page checks it the same way); its holdings are then read from public sites. An agent never touches a
 // wallet a person connected here, nor its switch: only that person does.
-const walMsg = f => 'Agent Blockhall\nRead-only wallet check for player key ' + f + '\nSigning this sends, spends and approves nothing.';
+// (22 Nov 2026) the message names the site, so a copy of this page somewhere else gives itself away; the first words (before 22 Nov) are still
+// accepted from a signature made then, so no one has to connect again and an older page in the crew still checks a new card
+const walMsg = f => 'Agent Blockhall on ordportal.com\nRead-only wallet check for player key ' + f + '\nSigning this sends, spends and approves nothing. Only sign it on ordportal.com.';
+const walMsg0 = f => 'Agent Blockhall\nRead-only wallet check for player key ' + f + '\nSigning this sends, spends and approves nothing.';
+const walOk = (a, f, sig) => { try { return WV.check(a, walMsg(f), sig) || WV.check(a, walMsg0(f), sig); } catch (e) { return false; } };
 const wal = { addr: '', sig: '', share: false, ids: [], at: 0, busy: false, note: '', by: 'person' };
-(() => { const w = jget('wallet', null); if (!w || typeof w.addr !== 'string' || typeof w.sig !== 'string' || !WV.check(w.addr, walMsg(fpk), w.sig)) return;
+(() => { const w = jget('wallet', null); if (!w || typeof w.addr !== 'string' || typeof w.sig !== 'string' || !walOk(w.addr, fpk, w.sig)) return;
   wal.addr = w.addr; wal.sig = w.sig; wal.share = !!w.share; wal.at = +w.at || 0; wal.by = w.by === 'agent' ? 'agent' : 'person'; const ids = jget('walletIds', []); wal.ids = Array.isArray(ids) ? ids.filter(x => typeof x === 'string' && HEX.test(x)) : []; })();
 const uni = () => window.unisat || null;
+// (22 Nov 2026) after each read the page lets go: it asks UniSat to forget this site, so no page here keeps a standing right to
+// ask your wallet anything (UniSat lets any page of a connected site read the wallet, and ask it to sign, until the site is
+// disconnected). The markers use the list read; Read again asks UniSat once more.
+async function walLetGo() { const U = uni(); wal.letGo = Date.now(); if (!U || typeof U.disconnect !== 'function') return; try { await U.disconnect(); } catch (e) {} wal.letGo = Date.now(); }
 const walSave = () => { if (!wal.addr) { store.set('wallet', ''); store.set('walletIds', ''); return; } jset('wallet', { addr: wal.addr, sig: wal.sig, share: wal.share ? 1 : 0, at: wal.at, by: wal.by }); try { jset('walletIds', wal.ids); } catch (e) {} };
 const walShort = a => a.length > 18 ? a.slice(0, 8) + '…' + a.slice(-6) : a;
 const walNote = t => { wal.note = t || ''; walDraw(); };
@@ -1714,13 +1722,15 @@ async function walListPublic(a) {
 async function walRefresh(loud) {
   if (wal.addr && wal.by === 'agent') { if (loud) walNote('Reading the inscriptions…'); const ids = await walListPublic(wal.addr); if (!ids) { if (loud) walNote('Could not read the address just now. The markers use the last list.'); return; } wal.ids = ids; wal.at = Date.now(); walSave(); walNote(''); walSend(); ownSoon(); return; }
   const U = uni(); if (!wal.addr || !U) return;
+  let asked = false;
   try {
-    const acc = await U.getAccounts(); if (!acc || !acc.length) return;   // (not let in on this visit yet: the last list stands)
+    let acc = await U.getAccounts();   // (no pop-up: empty unless this site is still connected in UniSat)
+    if (!acc || !acc.length) { if (!loud) return; walNote('Let this page see your account in UniSat. It only reads, then lets go.'); asked = true; acc = await U.requestAccounts(); if (!acc || !acc.length) { walLetGo(); walNote('Nothing was read.'); return; } }
     if (acc[0] !== wal.addr) { walOff('Your UniSat account changed, so read status is off. Connect again to use the new one.'); return; }
     if (loud) walNote('Reading your inscriptions…');
-    const ids = await walList(); if (!ids) return;
-    wal.ids = ids; wal.at = Date.now(); walSave(); walNote(''); walSend(); ownSoon();
-  } catch (e) { if (loud) walNote('Could not read the wallet just now. The markers use the last list.'); }
+    const ids = await walList(); await walLetGo(); if (!ids) return;
+    wal.ids = ids; wal.at = Date.now(); walSave(); walNote(loud ? 'Read. This page has let go of your wallet again: it keeps no access to it.' : ''); walSend(); ownSoon();
+  } catch (e) { walLetGo(); if (loud) walNote(e && (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) ? 'Cancelled. The markers use the last list.' : 'Could not read the wallet just now. The markers use the last list.'); }
 }
 async function walConnect() {
   if (wal.busy) return; const U = uni();
@@ -1730,12 +1740,12 @@ async function walConnect() {
     const acc = await U.requestAccounts(), a = acc && acc[0]; if (!a) throw new Error('no account');
     walNote('Sign the message in UniSat. It proves the address is yours and sends nothing.');
     const sig = await U.signMessage(walMsg(fpk), 'ecdsa');
-    if (!WV.check(a, walMsg(fpk), sig)) { wal.busy = false; walNote('That signature didn’t match the address, so nothing changed. Use a Bitcoin mainnet account.'); return; }
+    if (!WV.check(a, walMsg(fpk), sig)) { wal.busy = false; walLetGo(); walNote('That signature didn’t match the address, so nothing changed. Use a Bitcoin mainnet account.'); return; }
     wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.by = 'person'; walSave(); wal.busy = false;
     await walRefresh(true); walShare();
-  } catch (e) { wal.busy = false; walNote(e && (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) ? 'Cancelled. Nothing was connected.' : 'Could not connect just now. Try again.'); }
+  } catch (e) { wal.busy = false; walLetGo(); walNote(e && (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) ? 'Cancelled. Nothing was connected.' : 'Could not connect just now. Try again.'); }
 }
-function walOff(why) { wal.addr = wal.sig = ''; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'person'; walSave(); walShare(); walSend(); wal.note = why || ''; walDraw(); }
+function walOff(why) { if (wal.by !== 'agent') walLetGo(); wal.addr = wal.sig = ''; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'person'; walSave(); walShare(); walSend(); wal.note = why || ''; walDraw(); }
 function walSetShare(on) { if (!wal.addr) on = false; wal.share = !!on; walSave(); walShare(); walSend(); walDraw(); }
 // the game: your address, the inscriptions in it, and whether the crew may see
 const walSend = () => toCube({ type: 'wallet', addr: wal.addr, ids: wal.ids, share: wal.share ? 1 : 0 });
@@ -1756,7 +1766,7 @@ function walIn(id, m) {
   if (typeof id !== 'string' || id === ME) return;
   if (!m.sh) { if (walMates.delete(id)) toCube({ type: 'mwal', id, addr: '' }); return; }
   const k = net.pks[id]; if (!k) return;   // (their session key isn't known yet: their next card will do)
-  let ok = false; try { ok = schnorr.verify(hexToBytes(m.ps), sha256(enc.encode('blockhall-wallet|' + k + '|' + m.a)), hexToBytes(m.f)) && WV.check(m.a, walMsg(m.f), m.s); } catch (e) { ok = false; }
+  let ok = false; try { ok = schnorr.verify(hexToBytes(m.ps), sha256(enc.encode('blockhall-wallet|' + k + '|' + m.a)), hexToBytes(m.f)) && walOk(m.a, m.f, m.s); } catch (e) { ok = false; }
   const was = walMates.get(id);
   if (!ok) { if (was) { walMates.delete(id); toCube({ type: 'mwal', id, addr: '' }); } return; }
   if (was !== m.a) { walMates.set(id, m.a); toCube({ type: 'mwal', id, addr: m.a }); }
@@ -1780,7 +1790,7 @@ function walBox(box) {
   if (!box) return; box.textContent = '';
   const st = el('p', { class: 'wst' }), on = !!wal.addr;
   if (on) st.append(el('span', { class: 'ok', text: 'Read status on' }), ' · ', el('b', { text: walShort(wal.addr) }), ' · ' + wal.ids.length.toLocaleString('en-US') + (wal.ids.length === 1 ? ' inscription' : ' inscriptions'), wal.by === 'agent' ? ' · proved by the AI agent playing here' : '');
-  else st.append('Not connected. Connect UniSat to see a marker over every inscription you hold. Read only: nothing is ever sent or spent.');
+  else st.append('Not connected. Connect UniSat to see a marker over every inscription you hold. Read only: nothing is ever sent or spent, and the page lets go of your wallet as soon as it has read it.');
   const btns = el('div', { class: 'btns' });
   if (!on) btns.append(el('button', { class: 'main', 'data-wal': '1', text: wal.busy ? 'Connecting…' : 'Connect UniSat', disabled: wal.busy ? '' : null, onclick: walConnect }));
   else btns.append(el('button', { class: 'mini', 'data-wal': '1', text: 'Read again', onclick: () => walRefresh(true) }), el('button', { class: 'mini', 'data-wal': '1', text: 'Disconnect', onclick: () => walOff('') }));
@@ -1789,14 +1799,14 @@ function walBox(box) {
 }
 function walDraw() { walBox($('wal')); if (P.kind === 'crew') walBox($('cwal')); }
 walDraw();
-if (uni() && uni().on) try { uni().on('accountsChanged', a => { if (wal.addr && (!a || a[0] !== wal.addr)) walOff('Your UniSat account changed, so read status is off. Connect again to use the new one.'); }); } catch (e) {}
+if (uni() && uni().on) try { uni().on('accountsChanged', a => { if (wal.addr && wal.by !== 'agent' && Array.isArray(a) && a.length && a[0] !== wal.addr) walOff('Your UniSat account changed, so read status is off. Connect again to use the new one.'); }); } catch (e) {}
 setTimeout(() => walRefresh(false), 1500);
 setInterval(() => { if (wal.addr && wal.by === 'agent' && Date.now() - wal.at > 600000) walRefresh(false); }, 60000);   // (an agent's holdings: read again every ten minutes)
 // an agent proving its own wallet (the agent kit's walletProve): the same message, the same check
 async function walAgentProve(a, sig) {
   a = String(a || '').trim(); sig = String(sig || '').trim();
   if (wal.addr && wal.by !== 'agent') return { ok: false, error: 'a person\u2019s wallet is connected on this page: only they can change it' };
-  if (!WV.check(a, walMsg(fpk), sig)) return { ok: false, error: 'that signature does not match the address and this page\u2019s message (wallet() gives the exact words; a Bitcoin mainnet address; base64: a BIP-322 simple signature, or a standard signed message)' };
+  if (!walOk(a, fpk, sig)) return { ok: false, error: 'that signature does not match the address and this page\u2019s message (wallet() gives the exact words; a Bitcoin mainnet address; base64: a BIP-322 simple signature, or a standard signed message)' };
   wal.addr = a; wal.sig = sig; wal.ids = []; wal.at = 0; wal.share = false; wal.by = 'agent'; walSave(); walDraw();
   await walRefresh(true); walShare(); return { ok: true };
 }
@@ -2179,7 +2189,7 @@ window.AgentKit = window.AgentKit || (() => {
 
 </script>
 <!-- visitor counter: start -->
-<script data-goatcounter="https://bitmap22portal.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
+<script data-goatcounter="https://bitmap22portal.goatcounter.com/count" async src="https://gc.zgo.at/count.v5.js" crossorigin="anonymous" integrity="sha384-atnOLvQb9t+jTSipvd75X2yginT4PjVbqDdlJAmxMm+wYElFmeR6EmLP5bYeoRVQ"></script>
 <script>
 /* The visitor counter (GoatCounter: no cookies, nothing personal kept) counts visits to this page. A few moments are counted too,
    as events: an AI agent starting the agent kit, walking in (a hall or the common room), and errors (at most 3 a visit, with
