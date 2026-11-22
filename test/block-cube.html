@@ -1145,28 +1145,71 @@ vec4 plasma(vec2 p,float t){float v=sin(p.x*1.25+t)+sin(p.y*1.05-t*1.3)+sin((p.x
 vec3 c=.5+.5*cos(vec3(0.,2.1,4.2)+v*1.15+t*.35);c=mix(c,vec3(.78,.22,1.),.35);float ar=pow(1.-abs(sin(v*5.+t*2.6)),18.);
 c=c*(.55+.35*abs(sin(v*3.14)))+vec3(.95,.85,1.)*ar*1.2;G=.45+ar*.8;return vec4(c,.78);}
 vec3 CPT(int k){if(k<=0)return vec3(.56,.70,.79);if(k==1)return vec3(.18,.44,.56);if(k==2)return vec3(.37,.54,.31);if(k==3)return vec3(.77,.60,.35);if(k==4)return vec3(.71,.33,.17);if(k==5)return vec3(.48,.14,.21);return vec3(.42,.25,.63);}
+vec2 WU;
 float sdB(vec2 q,vec2 b){vec2 d=abs(q)-b;return length(max(d,0.))+min(max(d.x,d.y),0.);}
-float bowl(vec2 q,vec2 c,float r,float w){vec2 a=q-c;return max(abs(length(a)-r)-w,-a.x);}
-float glyph(vec2 q,int g){float d=sdB(q-vec2(-.13,0.),vec2(.04,.3));
-if(g==6){d=min(d,bowl(q,vec2(-.05,.15),.13,.04));d=min(d,bowl(q,vec2(-.05,-.14),.15,.04));d=min(d,sdB(q-vec2(-.09,.26),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.09,.01),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.09,-.26),vec2(.05,.04)));
-d=min(d,sdB(q-vec2(-.1,.34),vec2(.02,.06)));d=min(d,sdB(q-vec2(-.02,.34),vec2(.02,.06)));d=min(d,sdB(q-vec2(-.1,-.34),vec2(.02,.06)));d=min(d,sdB(q-vec2(-.02,-.34),vec2(.02,.06)));}
-else{d=min(d,bowl(q,vec2(-.05,0.),.27,.04));d=min(d,sdB(q-vec2(-.09,.27),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.09,-.27),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.15,0.),vec2(.09,.03)));}
-return d;}
-float paw(vec2 q){float d=length((q-vec2(0.,-.08))/vec2(.17,.13))-1.;d*=.13;d=min(d,length(q-vec2(-.18,.1))-.065);d=min(d,length(q-vec2(-.065,.21))-.065);d=min(d,length(q-vec2(.065,.21))-.065);d=min(d,length(q-vec2(.18,.1))-.065);return d;}
-float patM(int t,vec2 p){
-if(t==1)return step(.5,fract(p.x*.8));
-if(t==2)return mod(floor(p.x*1.4)+floor(p.y*1.4),2.);
-if(t==3){vec2 q=abs(fract(p*.9)-.5);return smoothstep(.035,0.,abs(q.x+q.y-.38));}
-if(t==4){vec2 g=p*vec2(2.,1.2);float cx=floor(g.x);float d=fract(g.y+(mod(cx,2.)<1.?fract(g.x):-fract(g.x))*.9);return step(.5,fract(d*2.));}
-if(t==5)return smoothstep(.42,.5,fract(p.y*1.2+.18*sin(p.x*2.6)))-smoothstep(.72,.8,fract(p.y*1.2+.18*sin(p.x*2.6)));
-if(t>=6){vec2 c=floor(p*.9);vec2 q=fract(p*.9)-.5;if(mod(c.x+c.y,2.)>.5)return 0.;float d=t==8?paw(q):glyph(q*1.15,t);return smoothstep(.012,-.012,d);}
-return 0.;}
-vec4 carpet(int k,vec2 p){vec3 c=CPT(k);float wv=.94+.06*sin(p.x*95.)*sin(p.y*95.),fb=.95+.07*h1(floor(p*40.));int t=int(uPat+.5);
-float st=t==0?.92+.08*smoothstep(.45,.5,abs(fract(p.x*.35)-.5)):1.;float m=patM(t,p);vec3 alt=t>=6?mix(c,vec3(.96,.9,.78),.55):c*.72;return vec4(mix(c,alt,m)*wv*fb*st,.92);}
+float sdRB(vec2 q,vec2 b,float r){return sdB(q,b-r)-r;}
+float bowl(vec2 q,vec2 c,vec2 r,float w){vec2 a=(q-c)/r;float d=(length(a)-1.)*min(r.x,r.y);return max(abs(d)-w,c.x-q.x);}
+float glyph(vec2 q,int g){float w=.034,d=sdRB(q-vec2(-.1,0.),vec2(w,.27),.01);
+ if(g==6){d=min(d,bowl(q,vec2(-.02,.125),vec2(.105,.12),w));d=min(d,bowl(q,vec2(-.02,-.13),vec2(.125,.14),w));
+  d=min(d,sdRB(q-vec2(-.065,.235),vec2(.05,w),.01));d=min(d,sdRB(q-vec2(-.065,.005),vec2(.05,w),.01));d=min(d,sdRB(q-vec2(-.065,-.235),vec2(.05,w),.01));
+  for(int i=0;i<2;i++){float x=i==0?-.085:-.015;d=min(d,sdRB(q-vec2(x,.3),vec2(.017,.065),.008));d=min(d,sdRB(q-vec2(x,-.3),vec2(.017,.065),.008));}}
+ else{d=min(d,bowl(q,vec2(-.04,0.),vec2(.2,.235),w));d=min(d,sdRB(q-vec2(-.07,.235),vec2(.035,w),.01));d=min(d,sdRB(q-vec2(-.07,-.235),vec2(.035,w),.01));d=min(d,sdRB(q-vec2(-.13,0.),vec2(.085,.026),.01));}
+ return d;}
+float paw(vec2 q){float d=length((q-vec2(0.,-.06))/vec2(.15,.12))-1.;d*=.12;
+ d=min(d,length((q-vec2(-.15,.09))/vec2(.055,.07))*.06-.06);d=min(d,length((q-vec2(-.055,.18))/vec2(.055,.072))*.06-.06);
+ d=min(d,length((q-vec2(.055,.18))/vec2(.055,.072))*.06-.06);d=min(d,length((q-vec2(.15,.09))/vec2(.055,.07))*.06-.06);return d;}
+mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+float fill(float d){float aa=max(fwidth(d),1e-4);return 1.-smoothstep(-aa,aa,d);}
+float line(float d,float w){return fill(abs(d)-w);}
+// the field: u in metres along the floor; F the fee colour; gives the colour
+vec3 field(int t,vec2 u,vec3 F,vec3 dk,vec3 lt,vec3 cr,vec3 gd){
+ vec3 c=F;
+ if(t==1){float y=fract(u.y/.9)*.9;   // regimental stripes, across the runner
+  c=mix(c,dk,fill(abs(y-.45)-.11));c=mix(c,cr,fill(abs(y-.29)-.012));c=mix(c,cr,fill(abs(y-.61)-.012));c=mix(c,gd,fill(abs(y-.06)-.025));}
+ else if(t==2){vec2 g=fract(u/.6)*.6;   // tartan: bands both ways, woven in a twill
+  float b1=fill(abs(g.x-.3)-.09),b2=fill(abs(g.y-.3)-.09),l1=fill(abs(g.x-.08)-.012),l2=fill(abs(g.y-.08)-.012);
+  float tw=step(.5,fract((u.x+u.y)*36.));c=mix(F*.86,F*1.02,tw*.6);c=mix(c,dk*(tw>.5?1.05:.9),(b1+b2)*.55);c=mix(c,dk*.7,b1*b2*.6);
+  c=mix(c,cr*(tw>.5?1.:.86),max(l1*(1.-b2*.5),l2*(1.-b1*.5))*.9);}
+ else if(t==3){vec2 s=vec2(.36,.54),g=u/s,id=floor(g),f=fract(g)-.5;float dm=abs(f.x)+abs(f.y);   // argyle
+  float alt=mod(id.x+id.y,2.);c=mix(F*.92,alt>.5?dk:mix(F,lt,.45),fill(dm-.47));
+  vec2 h=fract(u/s+.5)-.5;float cx=min(abs(h.x*s.x*1.5-h.y*s.y),abs(h.x*s.x*1.5+h.y*s.y));float dash=step(.5,fract((u.y)/.06));
+  c=mix(c,cr,line(cx,.006)*dash);c=mix(c,gd,fill(length(f*s)-.025));}
+ else if(t==4){vec2 g=u/vec2(.09,.09);float col=floor(g.x/2.);vec2 q=vec2(fract(g.x/2.)*2.,g.y+(mod(col,2.)<1.?g.x:-g.x));   // herringbone
+  float pl=floor(q.y/4.),fy=fract(q.y/4.)*4.;float j=min(min(fract(q.x),1.-fract(q.x)),min(fy,4.-fy));
+  float tone=.88+.14*h1(vec2(col,pl));c=F*tone*(mod(col,2.)<1.?1.:.9);c=mix(c*.55,c,smoothstep(.0,.08,j));}
+ else if(t==5){vec2 s=vec2(.5,.25);vec2 g=u/s;float row=floor(g.y);vec2 q=vec2(g.x+(mod(row,2.)<1.?0.:.5),g.y);   // seigaiha waves
+  vec3 cc=F;for(int k=1;k>=0;k--){vec2 o=vec2(floor(q.x)+.5,floor(q.y)+float(k));vec2 d=(q-o)*s;float r=length(d);
+   if(r<.25){float ring=fract(r/.25*4.);cc=mix(mix(F,lt,step(.5,fract(r/.25*2.))),cr,1.-smoothstep(0.,.18,min(ring,1.-ring)));}}
+  c=cc;}
+ else if(t>=6&&t<=7){vec2 s=vec2(.7,.7),g=u/s,id=floor(g),f=(fract(g)-.5)*s;   // medallions
+  c=mix(F,F*.9,line(f.x+f.y,.004)+line(f.x-f.y,.004));   // a fine trellis
+  vec2 h=(fract(g+.5)-.5)*s;c=mix(c,gd,fill(abs(h.x)+abs(h.y)-.05));c=mix(c,cr,line(abs(h.x)+abs(h.y)-.05,.006));
+  float r=length(f);c=mix(c,dk,fill(r-.23));c=mix(c,cr,line(r-.23,.009));c=mix(c,gd,line(r-.2,.004));
+  c=mix(c,mix(gd,cr,.35),fill(glyph(f/.62,t)*.62));}
+ else if(t==8){vec2 s=vec2(.9,.5),g=u/s,id=floor(g);vec2 f=(fract(g)-.5)*s;   // a trail of paw prints, left then right
+  float side=mod(id.y,2.)<1.?-1.:1.;vec2 q=rot(side*.22)*(f-vec2(side*.17,0.));c=mix(c,dk,fill(paw(q/.9)*.9));c=mix(c,cr,line(paw(q/.9)*.9,.005)*.6);}
+ return c;}
+vec4 carpet(int k,vec2 p){
+ vec3 F=CPT(k),dk=F*.5,lt=mix(F,vec3(.95,.9,.8),.42),cr=vec3(.9,.85,.73),gd=mix(F,vec3(.86,.66,.3),.55);int t=int(uPat+.5);
+ bool rm=uRm>.5;vec2 u=rm?WU:WU*.42;float ax=abs(WU.x);
+ vec3 c=field(t,u,F,dk,lt,cr,gd);
+ if(rm){   // a runner: the field, then a border with a twisted rope of diamonds, then the bare edge under the shelves
+  float b0=2.3,b1=3.15,gb=b0-.16;
+  if(ax>gb&&ax<b0)c=mix(F*.8,lt,step(.5,fract(u.y/.08))*.35);   // a guard band of little bars
+  if(ax>b0&&ax<b1){float y=fract(u.y/.4)-.5,x=(ax-b0)-(b1-b0)*.5,dm=abs(x)*1.25+abs(y)*.4;c=dk;   // the border: a chain of diamonds with a jewel in each
+   c=mix(c,gd,fill(dm-.17));c=mix(c,dk*1.3,fill(dm-.12));c=mix(c,lt,fill(dm-.07));c=mix(c,cr,line(dm-.17,.006));c=mix(c,F,fill(length(vec2(x,y*.4))-.022));
+   float hy=fract(u.y/.4)-.0;c=mix(c,cr,fill(length(vec2(abs(x)-.22,(fract(u.y/.4+.5)-.5)*.4))-.018));}
+  c=mix(c,cr,line(ax-gb,.008)+line(ax-b0,.012)+line(ax-b0-.05,.005)+line(ax-b1,.012)+line(ax-b1+.05,.005));
+  if(ax>b1+.012)c=dk*.55;
+  c*=1.-.22*smoothstep(2.9,3.6,ax);}   // (a little shade where the carpet runs under the shelves)
+ float fw=fwidth(u.x)*140.,tuft=h1(floor(u*140.)),fine=mix(tuft,.5,clamp(fw,0.,1.));   // the pile: fine tufts close up, smooth far off
+ float row=mix(.5+.5*sin(u.y*700.),.5,clamp(fwidth(u.y)*110.,0.,1.));
+ c*=.9+.12*fine+.04*row;c*=.93+.1*ns(u*.8);   // (and a soft mottle in the pile, as real wool has)
+ return vec4(c,.94);}
 vec4 mat(int k,vec2 p,float t){if(uCalm>.5)return carpet(k,p);if(k<=0)return ice(p,t);if(k==1)return water(p,t);if(k==2)return grass(p,t);if(k==3)return desert(p,t);if(k==4)return fire(p,t);if(k==5)return lava(p,t);return plasma(p,t);}
 void main(){vec2 p=vU/${SF}*4.*(uRm>.5?2.5:1.);float t=uNow,r=length(vU)/${SF},fade=uRm>.5?1.:exp(-r*r*.75)*(1.-smoothstep(1.15,1.85,r));
 float hh=clamp(uHeat,0.,6.);int k=int(floor(hh));float b=k<6?smoothstep(.3,.7,fract(hh)):0.;
-G=0.;vec4 a=mat(k,p,t);float ga=G;if(b>.001){G=0.;vec4 d=mat(k+1,p,t);a=mix(a,d,b);ga=mix(ga,G,b);}
+G=0.;WU=vU;vec4 a=mat(k,p,t);float ga=G;if(b>.001){G=0.;vec4 d=mat(k+1,p,t);a=mix(a,d,b);ga=mix(ga,G,b);}
 if(uRm>.5){float fd=length(vU-uFO);a.rgb=mix(a.rgb,vec3(.022,.013,.01),1.-exp(-fd*.034));ga*=exp(-fd*.03);}
 if(uPass<.5)o=vec4(a.rgb,a.a*fade);else o=vec4(0.,0.,0.,clamp(ga*fade,0.,1.)*.55);}`);
 // glow (bloom) passes
@@ -4341,19 +4384,21 @@ $fs.innerHTML = '<span class="fl2">FEE sat/vB</span>' + [['<1', 0.5], ['1', 1], 
 // (22 Nov 2026) settings (where the camera was): the calm carpet floor. The floor becomes a still woven carpet whose colour
 // still shows how much the block paid (the same bands as the moving floors), with no animation, so it is calmer and lighter on
 // the device. Kept in this browser only.
-const SET = {calm: false, pat: 0, sky: 0, neon: 0, wood: 0};
+const SET = {calm: false, pat: 0, sky: 0, neon: 0, wood: 0, deco: true, specks: true};
 const SKIES = ['moving lights', 'still stars', 'dusk', 'plain dark'];
 // the neon round the doors and along the shelves, and the shelves' wood: the hall's own first (block 0 keeps its gold)
 const NEONS = [['orange (the hall\'s own)', '#ff8a1e'], ['ice blue', '#4cc9f0'], ['pink', '#ff4fa3'], ['green', '#3ddc84'], ['purple', '#b06bff'], ['red', '#ff4646'], ['white', '#f2efe6'], ['gold', '#e3b341']];
 const WOODS = [['walnut (the hall\'s own)', '#3b2313', '#1e120a'], ['oak', '#6b4a2b', '#3c2817'], ['birch', '#a8875c', '#6b543a'], ['ebony', '#1a120c', '#0d0906'], ['cherry', '#5a2a1c', '#2e150e'], ['grey ash', '#4a4540', '#28241f']];   // (the moving lights' and the dusk's colours show the fees too)
 const PATS = ['plain', 'stripes', 'checks', 'diamonds', 'herringbone', 'waves', '₿ symbols', 'Ð symbols', 'paw prints'];   // (all drawn here, by this page's own code)
-try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; const n = +localStorage.getItem('blockhall.carpet'); if (n >= 0 && n < PATS.length) SET.pat = n; const k = +localStorage.getItem('blockhall.sky'); if (k >= 0 && k < SKIES.length) SET.sky = k;
+try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; SET.deco = localStorage.getItem('blockhall.deco') !== '0'; SET.specks = localStorage.getItem('blockhall.specks') !== '0'; const n = +localStorage.getItem('blockhall.carpet'); if (n >= 0 && n < PATS.length) SET.pat = n; const k = +localStorage.getItem('blockhall.sky'); if (k >= 0 && k < SKIES.length) SET.sky = k;
   const ne = +localStorage.getItem('blockhall.neon'), wo = +localStorage.getItem('blockhall.wood'); if (ne >= 0 && ne < NEONS.length) SET.neon = ne; if (wo >= 0 && wo < WOODS.length) SET.wood = wo; } catch (e) {}
 const CARPETS = [['ice', '#8fb3c9'], ['water', '#2f6f8f'], ['grass', '#5f8a4e'], ['desert', '#c49a5a'], ['fire', '#b5532b'], ['lava storm', '#7a2335'], ['plasma', '#6a3fa0']];
 const $tset = document.createElement('div'); $tset.id = 'tset'; $tset.hidden = true; $tset.setAttribute('role', 'dialog'); $tset.setAttribute('aria-label', 'Settings'); document.body.appendChild($tset);
 function setDraw() {
   $tset.innerHTML = '<b>SETTINGS</b><label class="srow"><input type="checkbox" id="setCalm"> <span>Calm carpet floor</span></label>'
-    + '<p>The floor becomes a still, bare carpet, with no moving water, fire or plasma and nothing standing on it: calmer, and lighter on your device. Pick its pattern; its colour still shows how much the block paid:</p>'
+    + '<label class="srow"><input type="checkbox" id="setDeco"> <span>Things on the floor (trees, snowmen, animals)</span></label>'
+    + '<label class="srow"><input type="checkbox" id="setSpecks"> <span>Falling snow, sparks and embers</span></label>'
+    + '<p>Turn any of these off for a calmer hall that is lighter on your device. The carpet is still, with no moving water, fire or plasma. Pick its pattern; its colour still shows how much the block paid:</p>'
     + '<div class="pats" role="group" aria-label="Carpet pattern">' + PATS.map((n, i) => '<button type="button" data-pat="' + i + '" aria-pressed="' + (SET.pat === i) + '">' + n + '</button>').join('') + '</div>'
     + '<div class="cpts">' + CARPETS.map(([n, c], i) => '<span><i style="background:' + c + '"></i>' + n.replace('lava storm', 'lava') + '</span>').join('') + '</div>'
     + '<b class="b2">SKY</b><div class="pats" role="group" aria-label="Sky">' + SKIES.map((n, i) => '<button type="button" data-sky="' + i + '" aria-pressed="' + (SET.sky === i) + '">' + n + '</button>').join('') + '</div>'
@@ -4362,9 +4407,12 @@ function setDraw() {
     + '<p class="sm">The moving lights and the dusk glow are the colour of the block\'s fees too. Only the moving lights move.</p>'
     + '<p class="sm">1 sat/vB and under is ice; then 1-2 water, 2-5 grass, 5-20 desert, 20-100 fire, 100-500 lava, 500 and up plasma.</p>';
   const c = $tset.querySelector('#setCalm'); c.checked = SET.calm;
-  c.onchange = () => { SET.calm = c.checked; try { localStorage.setItem('blockhall.calm', SET.calm ? '1' : '0'); } catch (e) {} };
-  for (const b of $tset.querySelectorAll('[data-pat]')) b.onclick = () => { SET.pat = +b.dataset.pat; SET.calm = true; c.checked = true;   // (picking a pattern lays the carpet)
-    try { localStorage.setItem('blockhall.carpet', String(SET.pat)); localStorage.setItem('blockhall.calm', '1'); } catch (e) {}
+  const dc = $tset.querySelector('#setDeco'), sp = $tset.querySelector('#setSpecks'); dc.checked = SET.deco; sp.checked = SET.specks;
+  const keep = () => { try { localStorage.setItem('blockhall.calm', SET.calm ? '1' : '0'); localStorage.setItem('blockhall.deco', SET.deco ? '1' : '0'); localStorage.setItem('blockhall.specks', SET.specks ? '1' : '0'); } catch (e) {} };
+  c.onchange = () => { SET.calm = c.checked; if (SET.calm) { SET.deco = SET.specks = false; dc.checked = sp.checked = false; } keep(); };   // (laying the carpet clears the floor too: each can be turned back on)
+  dc.onchange = () => { SET.deco = dc.checked; keep(); }; sp.onchange = () => { SET.specks = sp.checked; keep(); };
+  for (const b of $tset.querySelectorAll('[data-pat]')) b.onclick = () => { SET.pat = +b.dataset.pat; if (!SET.calm) { SET.calm = true; c.checked = true; SET.deco = SET.specks = false; dc.checked = sp.checked = false; }   // (picking a pattern lays the carpet)
+    try { localStorage.setItem('blockhall.carpet', String(SET.pat)); } catch (e) {} keep();
     for (const x of $tset.querySelectorAll('[data-pat]')) x.setAttribute('aria-pressed', String(x === b)); };
   for (const [key, list, store] of [['neon', NEONS, 'blockhall.neon'], ['wood', WOODS, 'blockhall.wood']])
     for (const b of $tset.querySelectorAll('[data-' + key + ']')) b.onclick = () => { SET[key] = +b.dataset[key]; try { localStorage.setItem(store, String(SET[key])); } catch (e) {}
@@ -5073,7 +5121,7 @@ let cmBtT = 0; const cmBt = [-1e6, 0, 0, 0];   // for the robots: when a pint wa
 let cmEv = -1e6;   // when the newest block was mined (the Chain Keeper presses a new block into the chain)
 // solid things: under = true draws only what lives below the water (drawn before the water surface)
 function lifeDraw(VP, eye, tn, LW, under) {
-  if (SET.calm) return;   // (22 Nov 2026: the calm carpet is bare: no snowmen, trees, penguins, fish or the like on it)
+  if (!SET.deco) return;   // (22 Nov 2026: settings can clear the floor of snowmen, trees, penguins, fish and the like)
   let set = false;
   LW.forEach((w, k) => {
     if (w < 0.01) return;
@@ -5098,7 +5146,7 @@ function lifeShadows(VP, eye, tn, LW) {
   });
 }
 function lifeDust(VP, tn, LW, H) {
-  if (SET.calm) return;   // (22 Nov 2026: the calm carpet has no snow, sparks or embers over it)
+  if (!SET.specks) return;   // (22 Nov 2026: settings can stop the falling snow, sparks and embers)
   let set = false;
   LW.forEach((w, k) => {
     if (w < 0.01) return;
@@ -15677,13 +15725,13 @@ function ciData(tab) {
         ['FEE WEATHER 1D 1W 1M 3M', 'the middle fee of recent blocks, over a day, a week, a month or 3 months'], ['‹   ›', 'the block before / the block after'],
         ['LIVE', 'the block being made right now'], ['FEES', 'switch the colours between fees and ordinals'], ['eye', 'x-ray: see inside the cube', 'xr'],
         ['layers', 'open the cube\'s layers', 'op'], ['FEED', 'show or hide the live feed'], ['PARCEL TYPES (bottom left)', 'hover a kind to light up just those parcels, click to keep it lit; its tabs switch between inscriptions, tokens and transactions'], ['play (top right)', 'flip back through the blocks', 'tp'],
-        ['settings (wheel)', 'your hall: a calm carpet floor (still, lighter on your device, its colour still showing the fees) and its pattern, the sky, the neon and the shelf wood', 'ts'], ['sound', 'sound on or off', 'tu'], ['code', 'download', 'tc'], ['tablet', 'search and fast travel', 'tsr'], ['shield', 'Family mode: pictures from inscriptions stay hidden until you choose (what may be adult is always kept behind an 18+ warning)', 'tf']]});
+        ['settings (wheel)', 'your hall: a calm carpet floor (still, its colour still showing the fees) and its pattern, things on the floor and falling snow on or off, the sky, the neon and the shelf wood', 'ts'], ['sound', 'sound on or off', 'tu'], ['code', 'download', 'tc'], ['tablet', 'search and fast travel', 'tsr'], ['shield', 'Family mode: pictures from inscriptions stay hidden until you choose (what may be adult is always kept behind an 18+ warning)', 'tf']]});
       S.push({t: 'mouse', rows: [['drag', 'turn the cube'], ['wheel', 'zoom in and out'], ['click a parcel', 'see what it is (its card)']]});
       S.push({t: 'keys', rows: [['[←] [→]', 'the block before / the block after'], ['[↑] [↓]', 'step through the parcels of the kind you picked'],
         ['[O]', 'open the layers'], ['[Esc]', 'close the parcel\'s card']].concat(crewOn ? [['[Enter]', 'crew chat']] : [])});
     } else {
       S.push({t: 'buttons', rows: [['door (top left)', 'back out to the cube', 'th'], ['people', 'play together: find a crew, connect your wallet (read only)', 'pt'],
-        ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'], ['settings (wheel, top right)', 'your hall: a calm carpet floor (still, lighter on your device, its colour still showing the fees) and its pattern, the sky, the neon and the shelf wood', 'ts'], ['sound', 'sound on or off', 'tu'], ['shield', 'Family mode: pictures from inscriptions stay hidden until you choose (what may be adult is always kept behind an 18+ warning)', 'tf']]
+        ['i', 'this list', 'ti'], ['menu (by the i)', 'the Ord Portal menu: the portal, the other apps, its tools and the blogs', 'tm'], ['settings (wheel, top right)', 'your hall: a calm carpet floor (still, its colour still showing the fees) and its pattern, things on the floor and falling snow on or off, the sky, the neon and the shelf wood', 'ts'], ['sound', 'sound on or off', 'tu'], ['shield', 'Family mode: pictures from inscriptions stay hidden until you choose (what may be adult is always kept behind an 18+ warning)', 'tf']]
         .concat(w === 'garden' || w === 'club' ? [['GIVE UP (bottom right)', 'shows while you are in a game: click it twice to give up (the other side wins)']] : [])});
       S.push({t: 'moving', rows: [['click the room', 'look around with the mouse ([Esc] gives the mouse back)'], ['[W] [A] [S] [D] or arrows', 'walk'], ['[Shift]', 'run']].concat(w === 'common' || w === 'garden' || w === 'club' ? [['walk', 'stand up from a seat']] : [])});
       S.push({t: 'doing', rows: (w === 'common' || w === 'garden' || w === 'club' ? [['[E] (or click)', 'use what you are looking at: the words near the middle of the screen say what']] : [])
