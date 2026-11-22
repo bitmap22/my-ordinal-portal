@@ -80,5 +80,6 @@ async function claimsOf(h) {
     if (n % 200 === 0) { save(); console.log('read up to block ' + h + ' (' + (end - h) + ' to go)'); }
   }
   save();
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'behind=' + Math.max(0, end - R.upTo) + '\n');   // (how many blocks it still has to read: the next step starts another run straight away if it is behind)
   console.log('Bitmap Record: read ' + n + ' blocks this run, up to block ' + R.upTo + ' of ' + end + '; ' + R.counts.numbersClaimed + ' numbers claimed, ' + R.counts.claimedMoreThanOnce + ' of them more than once');
 })().catch(e => { console.error(e && e.stack || e); process.exit(1); });

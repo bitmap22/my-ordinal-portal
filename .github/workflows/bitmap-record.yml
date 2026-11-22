@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: bitmap-record
@@ -32,6 +33,7 @@ jobs:
           if git fetch origin bitmap-record:bitmap-record; then git worktree add data bitmap-record; else
             git worktree add --detach data && cd data && git checkout --orphan bitmap-record && git rm -rfq . && cd ..; fi
       - name: Read the blocks
+        id: read
         run: node .github/bitmap-record/build.js data 50
       - name: Save it
         if: always()
@@ -41,3 +43,10 @@ jobs:
           git add -A
           git commit -qm "Bitmap Record: up to block $(node -e "console.log(require('./record.json').upTo)")" || exit 0
           git push origin bitmap-record
+      # (22 Nov 2026) while it is still catching up, it starts its next run itself as soon as this one has saved, on GitHub alone:
+      # the hourly timer alone would take a day or more, and GitHub sometimes skips a timed run. Once within 12 blocks it waits for the hourly timer
+      - name: Keep going if still behind
+        if: success() && steps.read.outputs.behind != '' && fromJSON(steps.read.outputs.behind) > 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run bitmap-record.yml --ref main
