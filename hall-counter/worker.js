@@ -1,6 +1,8 @@
 // Hall Counter: counts what visitors do in Agent Blockhall and Doge Cube, as anonymous daily totals.
 // It runs on Cloudflare at ordportal.com/hall-count. Nothing personal is kept: no IP address, no cookie, no browser
-// name, no visitor id. Each count is only "on this day, this happened once more", e.g. "a person walked into block 925,000".
+// name, no visitor id. (22 Nov 2026) Against fake counts: each visitor may count at most LIMIT things a minute (Cloudflare's
+// own rate limiter counts them by address for that minute and forgets it; this counter never sees or keeps it). More are
+// ignored, so a flood of fake visits can't bend the totals or use up the free daily allowance. Each count is only "on this day, this happened once more", e.g. "a person walked into block 925,000".
 //   GET /hall-count?s=btc&e=walk&b=925000&w=p   count one thing (the halls send these; anything not on the lists below is ignored)
 //   GET /hall-count/day?d=2026-11-22            that day's totals, as JSON (public: the catalog is public anyway)
 // © 2026 bitmap22. All rights reserved.
@@ -47,6 +49,10 @@ export default {
     }
     if (u.pathname === '/hall-count') {
       const key = keyOf(u.searchParams, req.headers.get('user-agent'));
+      if (key && env.LIMIT) {   // (over the limit: ignored, with the same empty answer, so the halls carry on as normal)
+        const who = req.headers.get('cf-connecting-ip') || 'unknown';
+        try { const {success} = await env.LIMIT.limit({key: who}); if (!success) return ok(null); } catch (e) {}
+      }
       if (key) {
         const day = new Date().toISOString().slice(0, 10);
         await env.DB.prepare('INSERT INTO counts (day, key, n) VALUES (?1, ?2, 1) ON CONFLICT(day, key) DO UPDATE SET n = n + 1').bind(day, key).run();
