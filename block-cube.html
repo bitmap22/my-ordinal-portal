@@ -1461,7 +1461,7 @@ async function loadTags(B) {
     const s = await (await fetchT(ORDPOOL + '/api/v1/block/' + B.hash + '/summary', null, 60000)).json(), m = new Map();
     for (const x of s) m.set(x.txid, x.flags);
     let hit = 0;
-    for (const t of B.txs) { const f = m.get(t.id); if (f != null) { try { t.op = BigInt(f); hit++; } catch (e) {} } }
+    for (const t of B.txs) { const f = m.get(t.id); if (f != null) { try { t.op = BigInt(f); if (B.height < RUNES_START) t.op &= ~(1n << 51n); hit++; } catch (e) {} } }   // (no runes before block 840,000, whatever a tag says)
     hl('tags', true, ORDPOOL); B.tags = hit === B.txs.length ? {ok: true} : {failed: true};
     if (!B.tags.ok) for (const t of B.txs) delete t.op;
   } catch (e) { B.tags = {failed: true}; hl('tags', false); }
@@ -1512,13 +1512,99 @@ function pushes(s, a, b) {
   }
   return o;
 }
-// runestones: OP_RETURN OP_13, then LEB128 numbers in tag/value pairs; tag 0 starts the edicts (rune moves)
-function runestone(s) {
-  const pay = catB(pushes(s, 2, s.length).filter(x => x[1]).map(x => x[1])), ints = [];
-  for (let i = 0; i < pay.length;) { let v = 0n, sh = 0n, c; do { c = pay[i++]; v |= BigInt(c & 127) << sh; sh += 7n; } while (c & 128 && i < pay.length); ints.push(v); }
-  const F = {}; let moves = false;
-  for (let k = 0; k < ints.length; k += 2) { const t = Number(ints[k]); if (t === 0) { moves = ints.length - k - 1 >= 4; break; } if (k + 1 < ints.length) (F[t] = F[t] || []).push(ints[k + 1]); }
-  return {F, moves};
+// RUNES. A rune message (a runestone) is read the way ord reads it: ord is the Runes reference, and every rule here is its own
+// (its runestone.rs, message.rs, varint.rs, tag.rs, flag.rs, rune_id.rs and edict.rs). A message that breaks a rule is a
+// broken one (ord calls it a cenotaph): nothing it asks for happens, and any runes its transaction spends are burned.
+const RUNES_START = 840000, ALK_START = 880000;   // (ord: runes count from block 840,000. Alkanes' own code: from block 880,000)
+const RUNE_ONE = 'UNCOMMON•GOODS', runeNm = id => id === '1:0' ? RUNE_ONE : id;   // (rune 1:0 is built into ord under this name: the one rune its number alone can name)
+// why a rune message is broken: ord's own names for the faults, said plainly
+const RUNE_FLAW = {Opcode: 'its script holds a step that is not data', InvalidScript: 'its script is cut short', Varint: 'one of its numbers is cut off or too big',
+  TrailingIntegers: 'its list of moves has numbers left over', EdictRuneId: 'a move names a rune number that cannot be', EdictOutput: 'a move points at an output the transaction does not have',
+  TruncatedField: 'a field has no value', UnrecognizedEvenTag: 'it holds a field that runes does not know, or one that is out of place', UnrecognizedFlag: 'it sets a flag that runes does not know',
+  SupplyOverflow: 'the new rune\'s supply would be too big to count'};
+// s: the output's script (it starts OP_RETURN OP_13); nout: how many outputs the transaction has. Gives back its fields (F, as
+// before), and what it does: etch (a new rune: its number n, spacers sp, symbol sym), mint (a rune's id), ptr (the output any
+// left-over runes go to), ed (its moves: rune id, amount, output), moves (it has moves that count), bad (why it is broken, or null)
+function runestone(s, nout) {
+  const U64 = 18446744073709551615n, U32 = 4294967295n, U128 = (1n << 128n) - 1n, R = {F: {}, moves: false, bad: null, etch: null, mint: null, ptr: null, ed: []}, bad = f => { if (!R.bad) R.bad = f; return R; };
+  let i = 2; const pay = [];
+  while (i < s.length) {   // the data pushes, joined up (any other script step breaks it)
+    const op = s[i++]; let n;
+    if (op <= 75) n = op; else if (op === 76) { if (i + 1 > s.length) return bad('InvalidScript'); n = s[i++]; }
+    else if (op === 77) { if (i + 2 > s.length) return bad('InvalidScript'); n = s[i] | s[i + 1] << 8; i += 2; }
+    else if (op === 78) { if (i + 4 > s.length) return bad('InvalidScript'); n = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+    else return bad('Opcode');
+    if (i + n > s.length) return bad('InvalidScript');
+    for (let k = 0; k < n; k++) pay.push(s[i + k]); i += n;
+  }
+  const ints = [];
+  for (let p = 0; p < pay.length;) {   // its numbers (LEB128, 128 bits at most)
+    let v = 0n, j = 0, end = false;
+    for (; p + j < pay.length; j++) { if (j > 18) return bad('Varint'); const b = pay[p + j]; if (j === 18 && b & 0x7c) return bad('Varint'); v |= BigInt(b & 127) << BigInt(7 * j); if (!(b & 128)) { end = true; j++; break; } }
+    if (!end) return bad('Varint');
+    ints.push(v); p += j;
+  }
+  const M = new Map();
+  for (let k = 0; k < ints.length; k += 2) {   // tag and value pairs; tag 0 starts the moves (four numbers each)
+    const tag = ints[k];
+    if (tag === 0n) {
+      let ib = 0n, it = 0n;
+      for (let c = k + 1; c < ints.length; c += 4) {
+        if (c + 3 >= ints.length) { bad('TrailingIntegers'); break; }
+        const blk = ints[c], tx = ints[c + 1]; let nb, nt, ok = blk <= U64 && tx <= U32;
+        if (ok) { nb = ib + blk; nt = blk === 0n ? it + tx : tx; ok = nb <= U64 && nt <= U32 && !(nb === 0n && nt > 0n); }
+        if (!ok) { bad('EdictRuneId'); break; }
+        if (ints[c + 3] > U32 || ints[c + 3] > BigInt(nout)) { bad('EdictOutput'); break; }
+        ib = nb; it = nt; R.ed.push({id: nb + ':' + nt, amt: ints[c + 2], out: Number(ints[c + 3])});
+      }
+      break;
+    }
+    if (k + 1 >= ints.length) { bad('TruncatedField'); break; }
+    if (!M.has(tag)) M.set(tag, []); M.get(tag).push(ints[k + 1]); (R.F[tag] = R.F[tag] || []).push(ints[k + 1]);
+  }
+  // a field is taken only if it is whole and in range; what is left over decides whether the message is broken
+  const take = (tag, N, f) => { const a = M.get(tag); if (!a || a.length < N) return undefined; const v = f(a); if (v === undefined) return undefined; a.splice(0, N); if (!a.length) M.delete(tag); return v; };
+  const one = a => a[0], u64 = a => a[0] <= U64 ? a[0] : undefined;
+  let flags = take(2n, 1, one) || 0n, over = false; const flag = b => { const m = 1n << b, on = (flags & m) !== 0n; flags &= ~m & U128; return on; };
+  if (flag(0n)) {
+    const e = R.etch = {}; take(1n, 1, a => a[0] <= 38n ? a[0] : undefined);
+    const prem = take(6n, 1, one) || 0n; let cap = 0n, amt = 0n;
+    e.n = take(4n, 1, one); e.sp = take(3n, 1, a => a[0] <= 0x07ffffffn ? a[0] : undefined); e.sym = take(5n, 1, a => a[0] <= 0x10ffffn && !(a[0] >= 0xd800n && a[0] <= 0xdfffn) ? a[0] : undefined);
+    if (flag(1n)) { cap = take(8n, 1, one) || 0n; take(12n, 1, u64); take(14n, 1, u64); amt = take(10n, 1, one) || 0n; take(16n, 1, u64); take(18n, 1, u64); }
+    flag(2n); over = prem + cap * amt > U128;
+  }
+  R.mint = take(20n, 2, a => a[0] <= U64 && a[1] <= U32 && !(a[0] === 0n && a[1] > 0n) ? a[0] + ':' + a[1] : undefined) || null;
+  const ptr = take(22n, 1, a => a[0] <= U32 && a[0] < BigInt(nout) ? a[0] : undefined); if (ptr !== undefined) R.ptr = Number(ptr);
+  if (over) bad('SupplyOverflow'); if (flags !== 0n) bad('UnrecognizedFlag');
+  for (const t of M.keys()) if (t % 2n === 0n) { bad('UnrecognizedEvenTag'); break; }
+  R.moves = !R.bad && R.ed.length > 0;
+  return R;
+}
+// what a rune message's tile says, and what it would say if the new rune it asks for never comes into being. Gives back
+// {word, lost (the tile then), x (the line a token's tile gets when it shares the transaction), x2 (that line then)}
+function runeWords(R) {
+  if (R.bad) return {word: {k: 'rune', s: 6, a: '', b: 'burns its runes'}, x: '+ broken rune message'};
+  const ids = [...new Set(R.ed.map(e => e.id))].filter(v => v !== '0:0'), also = ids.filter(v => v !== R.mint);
+  const w2 = R.mint ? {k: 'rune', s: 3, a: '', b: 'mint ' + runeNm(R.mint) + (also.length ? ' +move' : '')} : ids.length ? {k: 'rune', s: 4, a: '', b: 'move ' + runeNm(ids[0]) + (ids.length > 1 ? ' +' + (ids.length - 1) : '')} :
+    R.moves ? {k: 'rune', s: 4, a: '', b: 'move'} : {k: 'rune', s: 5, a: '', b: R.ptr != null ? 'any runes → out ' + (R.ptr + 1) : 'empty'};
+  const x2 = R.mint ? '+ rune mint ' + R.mint : R.moves ? '+ rune move' : '';
+  if (!R.etch) return {word: w2, x: x2, x2, ids};
+  const c = R.etch.sym == null ? -1 : Number(R.etch.sym), nm = R.etch.n != null ? runeName(R.etch.n, R.etch.sp) : null;
+  return {word: {k: 'rune', s: 2, a: '', b: (c >= 32 ? String.fromCodePoint(c) : '¤') + ' ' + (nm || 'new rune')}, lost: w2.s === 5 ? {k: 'rune', s: 5, a: '', b: 'new rune: not made'} : w2, x: '+ new rune', x2, ids, name: nm};
+}
+// what the block's reader found about a rune message, kept on the parcel (for its card, its tile and the agent kit)
+function runeCarry(t, r) { t.rbad = r.rbad || null; t.rtry = r.rtry || null; t.rmv = r.rmv || null; t.rptr = r.rptr == null ? null : r.rptr; t.pre = r.pre || null; t.wNE = r.wNE || null; t.rx2 = r.rx2 || ''; }
+// a new rune that never came into being: its tile falls back to what else its message does
+function runeLostWord(t) {
+  if (!t.word) return;
+  if (t.word.k === 'rune' || t.word.k === 'alk') t.word = t.wNE || {k: 'rune', s: 5, a: '', b: 'new rune: not made'};
+  else if (t.word.x === '+ new rune') { if (t.rx2) t.word.x = t.rx2; else delete t.word.x; }
+}
+// the rune line of a parcel's card, when its message makes, mints and moves nothing (or is broken)
+function runePlain(t) {
+  if (t.rbad) { const m = t.rtry && t.rtry.mint, e = t.rtry && t.rtry.etch;
+    return 'a broken rune message: ' + (RUNE_FLAW[t.rbad] || 'it breaks a rule') + '. Nothing it asks for happens, and any runes this transaction spends are burned' + (m ? '. Its mint of ' + runeNm(m) + ' still uses up one mint, and what it mints is burned' : '') + (e ? '. The rune it etches has no supply and can never be minted' : ''); }
+  return t.rptr != null ? 'a rune message with only a pointer: any runes this transaction spends go to out ' + (t.rptr + 1) : 'a rune message that makes, mints and moves nothing';
 }
 function runeName(n, sp) {
   n += 1n; let s = '';
@@ -1667,15 +1753,20 @@ async function scanBytes(X, h) {
       if (!t) continue;
       if (X[q] === 0x6a) {
         if (X[q + 1] === 0x5d) {
-          const {F, moves} = runestone(X.subarray(q, p)); set(TF.rune);
-          if (F[2] && F[2][0] & 1n) { set(TF.etch); if (F[4]) r.rn = runeName(F[4][0], F[3] && F[3][0]); }
-          if (F[20]) { set(TF.rmint); if (F[20].length >= 2) r.mint = F[20][0] + ':' + F[20][1]; }
-          if (moves) set(TF.rmove);
-          if (F[16383]) set(TF.alkanes);
-          if (F[16383]) r.word = alkWord(F, h, F[20] && F[20].length >= 2 ? '+ rune mint ' + F[20][0] + ':' + F[20][1] : F[2] && F[2][0] & 1n ? '+ new rune' : moves ? '+ rune move' : '');
-          else if (F[2] && F[2][0] & 1n) { const c = F[5] && F[5][0] <= 0x10ffffn ? Number(F[5][0]) : -1, sym = c >= 32 && (c < 0xd800 || c > 0xdfff) ? String.fromCodePoint(c) : '¤'; r.word = {k: 'rune', s: 2, a: '', b: sym + ' ' + (r.rn || 'new rune')}; }
-          else if (F[20] && F[20].length >= 2) r.word = {k: 'rune', s: 3, a: '', b: 'mint ' + F[20][0] + ':' + F[20][1]};
-          else r.word = {k: 'rune', s: 4, a: '', b: ''};
+          if (h < RUNES_START || r.rs) continue;   // (before block 840,000 there were no runes; and only a transaction's first rune message counts)
+          r.rs = 1; const R = runestone(X.subarray(q, p), nout), F = R.F, W = runeWords(R); set(TF.rune);
+          if (R.bad) r.rtry = {mint: R.mint, etch: !!R.etch}, r.rbad = R.bad;
+          else {
+            if (R.etch) { set(TF.etch); if (W.name) r.rn = W.name; }
+            if (R.mint) { set(TF.rmint); r.mint = R.mint; }
+            if (R.moves) { set(TF.rmove); r.rmv = W.ids; }
+            if (R.ptr != null) r.rptr = R.ptr;
+          }
+          r.rx = W.x; r.rx2 = W.x2 || '';
+          if (!R.bad && F[16383] && h >= ALK_START) {   // (Alkanes reads only an unbroken rune message, from its own start block)
+            set(TF.alkanes); const ex = R.mint ? '+ rune mint ' + R.mint : R.moves ? '+ rune move' : '';
+            r.word = alkWord(F, h, R.etch ? '+ new rune' : ex); r.wNE = R.etch ? alkWord(F, h, ex) : null; r.rx = '';
+          } else { r.word = W.word; r.wNE = W.lost || null; }
         } else if (l > 1) {
           const d = catB(pushes(X, q + 1, p).filter(x => x[1]).map(x => x[1])), k = d.length > 8 ? cpKind(key, [d]) : -1;
           if (k >= 0) set(k);
@@ -1804,6 +1895,7 @@ async function scanBytes(X, h) {
       if (nin >= 3 && nout === 1) set(TF.consol);
       if (pay - (mso ? mso.length : 0) - (((r.sc >> TF.stamps) & 1 || r.src20) && wsh ? wsh.length : 0) >= 10) set(TF.batch);   // data-only outputs are not payouts
     }
+    if (r.rx && r.word && r.word.k !== 'rune' && r.word.k !== 'alk') r.word.x = r.rx;   // (a token and a rune message in one transaction: its tile tells of both)
     out[t] = r;
     if ((t & 31) === 31 && performance.now() - t0 > burst) { await yieldNow(); t0 = performance.now(); }
   }
@@ -1834,7 +1926,7 @@ function loadEtch(B) {
       const n = t.rn.replace(/•/g, '');
       if (made.has(n) && !first.has(n)) { first.add(n); continue; }
       t.rnLost = t.rn; t.sc &= ~(1 << TF.etch); t.rn = null; t._k = null;
-      if (t.word && t.word.k === 'rune') t.word = (t.sc >> TF.rmint) & 1 && t.mint ? {k: 'rune', s: 3, a: '', b: 'mint ' + t.mint} : {k: 'rune', s: 4, a: '', b: ''};
+      runeLostWord(t);
     }
     B.etch = {ok: true};
   })();
@@ -1850,7 +1942,7 @@ async function scanBlock(B) {
     const k = Math.min(1, S.txs.length - 1);
     if (B.txs[k].id && window.crypto && crypto.subtle && await rawTxid(X, S.txs[k]) !== B.txs[k].id) throw new Error('order');
     B.txs.forEach((t, i) => {
-      const r = S.txs[i]; t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
+      const r = S.txs[i]; runeCarry(t, r); t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
       if (r.art) t.art = r.art; if (r.word) t.word = r.word;
       if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
@@ -2787,7 +2879,7 @@ async function loadArt(B) {
 // one word tile: what the inscription says, in the colour of its kind, drawn at the size it will be shown (big tiles get the
 // label, the word and the detail line; small ones just the word or logo, as big as it fits)
 const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
-  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
+  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], rune5: ['#1a1424', '#9b8bb4', 'RUNE MESSAGE'], rune6: ['#2a0a16', '#ff5a7a', 'BROKEN RUNES'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
 // ALKANES on a tile. Ten alkane tokens are named after real alkanes and carry the real formula as their symbol on the chain
 // (METHANE CH4 to OCTANE C8H18 are alkanes 2:16 to 2:23, then nonane C9H20 is 2:195 and DECANE C10H22 is 2:224). Each of those
 // shows its own molecule: the straight chain in its relaxed zig-zag shape, set out with the textbook measures (carbon to carbon
@@ -2849,11 +2941,12 @@ function chemText(x, f, cx, y, px, col, wt) {
 }
 // the drawn logos: ᚱ (the old runic letter R) for runes, a zig-zag carbon chain (how chemists draw an alkane) for Alkanes,
 // a rainbow for Counterparty (coloured coins). Drawn with lines, so they look the same on every device.
-function paintMark(x, k, fg) {
+function paintMark(x, k, fg, s) {
   x.lineCap = 'round'; x.lineJoin = 'round';
   if (k === 'rune') {
     x.strokeStyle = '#ffffff'; x.lineWidth = 3.4; x.beginPath();
     x.moveTo(26, 46); x.lineTo(26, 17); x.lineTo(38, 24.5); x.lineTo(26, 32); x.lineTo(39, 46); x.stroke();
+    if (s === 6) { x.strokeStyle = fg; x.lineWidth = 2.4; x.beginPath(); x.moveTo(15, 21); x.lineTo(29, 29); x.lineTo(25, 35); x.lineTo(49, 47); x.stroke(); }   // (a broken rune message: the rune cracked across)
   } else if (k === 'alk') {
     // the standard mark: a bare chain of five carbons, bent at the true zig-zag angle (109.47 degrees)
     const pts = [], hi = alkMix(fg, '#ffffff', .6), lo = alkMix(fg, '#000000', .55), sb = x.shadowBlur;
@@ -2913,15 +3006,16 @@ function paintWord(w, n) {
   } else if (small) {   // small tile: only the main word or the logo, as big as it fits
     x.strokeStyle = fg; x.lineWidth = 4; x.strokeRect(2, 2, 60, 60);
     if (w.k === 'alk' && w.m) alkMol(x, w.m, 32, 32, 50, 44, fg, n / 64, 16);
-    else if (w.k === 'alk') paintMark(x, w.k, fg);
-    else if (w.k === 'rune' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg); }
+    else if (w.k === 'alk') paintMark(x, w.k, fg, w.s);
+    else if (w.k === 'rune' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg, w.s); }
     else say(w.a, 33, 30, 9, 800, '#ffffff');
   } else {
     x.strokeStyle = fg; x.lineWidth = 2; x.strokeRect(2, 2, 60, 60);
     if (label) { x.fillStyle = fg; fitFont(x, label, 10, 5, 56, 700); x.fillText(label, 32, 11); }
     if (w.k === 'alk' && w.m) { alkMol(x, w.m, 32, 29.5, 54, 22, fg, n / 64); chemText(x, alkF(w.m), 32, 47, 9.5, '#ffffff', 800); }
-    else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') paintMark(x, w.k, fg);
-    else say(w.a, label ? 31 : 28, 24, 8, 800, '#ffffff');
+    else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') paintMark(x, w.k, fg, w.s);
+    else say(w.a, label ? (w.x ? 28 : 31) : 28, w.x ? 16 : 24, 8, 800, '#ffffff');
+    if (w.x) { x.fillStyle = alkMix(fg, '#ffffff', .35); fitFont(x, w.x, 6.5, 4, 56, 700); x.fillText(w.x, 32, 41.5, 58); }   // (the rune message in the same transaction)
     if (w.k === 'alk' && w.m) { const t = w.a || w.b; if (t) { x.fillStyle = fg; fitFont(x, t, 7, 4.5, 56, 600); x.fillText(t, 32, 57, 58); } }
     else if (w.k === 'alk' ? w.a || w.b : w.b) { const t = w.k === 'alk' ? w.a || w.b : w.b; x.fillStyle = fg; fitFont(x, t, 11, 6, 56, 600); x.fillText(t, 32, 54, 58); }   // (an Alkanes tile: what it does comes first)
   }
@@ -2959,11 +3053,12 @@ function paintRich(w, n, cv, x, bg, fg, label) {
     if (main) { x.fillStyle = mix(fg, '#ffffff', .35); fitFont(x, main, 5.4, 3.4, 54, 800); x.fillText(main, 32, 46.6, 56); }
   } else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') {
     const sc = w.k === 'alk' ? (main ? 1 : 1.06) : main ? .64 : .82, cy = main ? 26 : 31;   // (the carbon chain is wide and low: it is drawn larger than the other logos)
-    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, w.k === 'cp' ? -40 : -31); glow(() => paintMark(x, w.k, fg), 4); x.restore();
+    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, w.k === 'cp' ? -40 : -31); glow(() => paintMark(x, w.k, fg, w.s), 4); x.restore();
     if (main) { x.fillStyle = '#ffffff'; fitFont(x, main, 7, 3.4, 56, 800); glow(() => x.fillText(main, 32, 44.5, 58), 3); }
   } else if (main) {
     fitFont(x, main, 22, 6, 54, 800); glow(() => { x.fillStyle = '#ffffff'; x.fillText(main, 32, 31.5, 56); }, 6);
   }
+  if (w.x) { x.fillStyle = mix(fg, '#ffffff', .35); fitFont(x, w.x, 5, 3.4, 54, 700); x.fillText(w.x, 32, 47.6, 56); }   // (the rune message in the same transaction)
   // the detail line
   if (sub) { x.fillStyle = 'rgba(0,0,0,.42)'; x.fillRect(4.2, 51.5, 55.6, 8.3); x.fillStyle = fg; fitFont(x, sub, 7, 4, 52, 700); x.fillText(sub, 32, 55.8, 54); }
   x.setTransform(1, 0, 0, 1, 0, 0);
@@ -3438,7 +3533,7 @@ const lrSeen = new Map();   // what each read found, by transaction id (the last
 let lrQ = [], lrOn = 0, lrAt = 0, lrT = 0, lrRR = 0;
 const LR_SITES = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de'];   // (blockstream.info's mempool often lacks inscription transactions)
 function lrApply(t, r) {
-  t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
+  runeCarry(t, r); t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
   if (r.word) t.word = r.word;
   if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
 }
@@ -3913,8 +4008,8 @@ function select(t) {
     const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', t.src20 && 'SRC-20', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
     if (has(TF.rune)) {
-      const ra = [has(TF.etch) && (t.rnUnsure ? 'tries to etch' + (t.rn ? ' ' + t.rn : '') + ' (whether it made the rune is not known right now: ordinals.com did not answer)' : 'etched' + (t.rn ? ' ' + t.rn : '')), has(TF.rmint) && 'minted', has(TF.rmove) && 'moved'].filter(Boolean).join(' · ');
-      if (ra || !has(TF.alkanes)) rows.push(['rune', ra || 'runestone']);
+      const ra = [has(TF.etch) && (t.rnUnsure ? 'tries to etch' + (t.rn ? ' ' + t.rn : '') + ' (whether it made the rune is not known right now: ordinals.com did not answer)' : 'etched' + (t.rn ? ' ' + t.rn : '')), has(TF.rmint) && 'minted' + (t.mint ? ' ' + runeNm(t.mint) : ''), has(TF.rmove) && 'moved' + (t.rmv && t.rmv.length ? ' ' + t.rmv.slice(0, 3).map(runeNm).join(', ') + (t.rmv.length > 3 ? ' and ' + (t.rmv.length - 3) + ' more' : '') : '')].filter(Boolean).join(' · ');
+      if (ra || !has(TF.alkanes)) rows.push(['rune', ra || runePlain(t), t.rbad ? '#ff5a7a' : undefined]);
       // Alkanes is its own protocol: its message rides inside a rune message (a runestone), in a field rune readers skip
       if (has(TF.alkanes)) rows.push(['alkanes', ((t.word && t.word.k === 'alk' && t.word.a) || 'a message for Alkanes') + ' · sent inside ' + (ra ? 'the same' : 'a') + ' rune message']);
     }
@@ -8464,17 +8559,10 @@ const lebs = u => { const o = []; for (let i = 0; i < u.length;) { let v = 0n, s
 const b15 = vs => { const o = []; for (let v of vs) for (let k = 0; k < 15; k++) { o.push(Number(v & 255n)); v >>= 8n; } return new Uint8Array(o); };   // (Alkanes keeps 15 bytes in each number)
 function stoneOf(tx) {
   const o = tx && tx.vout && tx.vout.find(v => /^6a5d/.test(v.scriptpubkey || '')); if (!o) return null;
-  const s = hexB(o.scriptpubkey), ints = lebs(catB(pushes(s, 2, s.length).filter(x => x[1]).map(x => x[1])));
-  const F = {}; let body = [];
-  for (let k = 0; k < ints.length; k += 2) { const g = Number(ints[k]); if (g === 0) { body = ints.slice(k + 1); break; } if (k + 1 < ints.length) (F[g] = F[g] || []).push(ints[k + 1]); }
-  const ed = []; let bk = 0n, tx2 = 0n;
-  for (let i = 0; i + 3 < body.length; i += 4) { bk += body[i]; tx2 = body[i] ? body[i + 1] : tx2 + body[i + 1]; ed.push({id: bk + ':' + tx2, amt: body[i + 2], out: Number(body[i + 3])}); }
-  return {F, ed};
+  if (tx.status && tx.status.block_height && tx.status.block_height < RUNES_START) return null;
+  const R = runestone(hexB(o.scriptpubkey), tx.vout.length);
+  return R.bad ? {F: {}, ed: []} : {F: R.F, ed: R.ed};   // (a broken rune message moves nothing)
 }
-// ALKANES. The alkanes this hall knows by name: [its name on the chain, the block it was made in, its carbons when it is one of the
-// ten molecule tokens]. DIESEL and frBTC are part of Alkanes from its first block, 880,000 (its own code says so). The ten are the
-// first tokens made with each alkane's name: METHANE to OCTANE came one after another in March 2025, nonane and DECANE in April.
-// Each one's name and formula were read from its own deploy transaction; its number is ordiscan.com's.
 const ALK = {'2:0': ['DIESEL', 880000], '32:0': ['frBTC', 880000], '2:16': ['METHANE', 889398, 1], '2:17': ['ETHANE', 889719, 2], '2:18': ['PROPANE', 889721, 3], '2:19': ['BUTANE', 889723, 4],
   '2:20': ['PENTANE', 889724, 5], '2:21': ['HEXANE', 889725, 6], '2:22': ['HEPTANE', 889726, 7], '2:23': ['OCTANE', 889729, 8], '2:195': ['nonane', 892514, 9], '2:224': ['DECANE', 892650, 10]};
 const ALK_CHEM = [0, ['methane', 1], ['ethane', 1], ['propane', 1], ['butane', 2], ['pentane', 3], ['hexane', 5], ['heptane', 9], ['octane', 18], ['nonane', 35], ['decane', 75]];   // (each alkane's name, and how many ways its atoms can be joined up)
@@ -16923,10 +17011,10 @@ window.AgentKit = window.AgentKit || (() => {
     o.kindsReadFrom = typeof t.op === 'bigint' ? 'ordpool.space' : t.sc != null ? (t.live ? 'the transaction itself' : 'the block itself') : 'mempool.space tags';   // (where its kinds were read, as its card says)
     if (t.rnUnsure && ((t.sc >> TF.etch) & 1)) o.etching = 'an attempt: whether it made its rune is not known right now (ordinals.com, which confirms etchings, did not answer: health() says more)';
     if (o.types.includes('runes') && !o.types.some(k => /^runes (etched|minted|moved)$/.test(k)))   // a runestone that made, minted and moved nothing: what it is, as its card says
-      o.runestone = t.rnLost ? 'it tried to make a new rune, which never came into being (ordinals.com): the name it tried for is untrusted.runeTried' : 'a runestone with no new rune, no mint and no move';
+      o.runestone = t.rnLost ? 'it tried to make a new rune, which never came into being (ordinals.com): the name it tried for is untrusted.runeTried' : runePlain(t);
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.rune = t.rn; if (t.rnLost) u.runeTried = t.rnLost;
     if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a CRC-20 token's own word: deploy, mint…)
-    const lab = t.word ? [t.word.a, t.word.f, t.word.b].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box; a molecule token's formula with them)
+    const lab = t.word ? [t.word.a, t.word.f, t.word.b, t.word.x].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box; a molecule token's formula with them)
     if (t.txt) u.text = String(t.txt).slice(0, 300);
     if (Object.keys(u).length) o.untrusted = u;
     if (full) { try { const ids = folIds(t); if (ids && ids.length) o.inscriptionIds = ids; } catch (e) {} }
