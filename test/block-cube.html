@@ -1420,7 +1420,7 @@ function overpays(B) {
   if (med > 0) for (const t of B.txs.slice(1)) { const k = t.rate > 0 ? t.rate / med : 0; t.over = t.fee >= OVER_FEE && k >= OVER_X ? k : 0; t.med = med; t._k = null; }
 }
 // TOKENS: each transaction belongs to one token chip only (the most specific one it is), so hovering a chip shows that token
-// and nothing else. An Alkanes action that also mints a rune counts as Alkanes (its tile still says '+ rune mint'); NAT is NAT,
+// and nothing else. An Alkanes action that also mints a rune counts as Alkanes (its tile says what the Alkanes message asks for, then '+ rune mint'); NAT is NAT,
 // not TAP; SRC-20 is SRC-20, not Stamps. 'runes' is the rune family: new runes, mints, moves, and runestones that do none of those.
 const TOK_ORDER = ['Alkanes', 'NAT', 'DMT mints', 'TAP', 'BRC-20', 'BRC-420', 'CRC-20 · LEAF', 'SRC-20', 'Stamps', 'Counterparty', 'CAT-21', 'Labitbu', 'OpenTimestamps', 'Atomicals', 'runes etched', 'runes minted', 'runes moved', 'runes'];
 const TOK_IDX = TOK_ORDER.map(n => TYPES.findIndex(T => T.name === n)), TOK_RAW = TOK_IDX.map(i => TYPES[i].test);
@@ -1671,7 +1671,7 @@ async function scanBytes(X, h) {
           if (F[20]) { set(TF.rmint); if (F[20].length >= 2) r.mint = F[20][0] + ':' + F[20][1]; }
           if (moves) set(TF.rmove);
           if (F[16383]) set(TF.alkanes);
-          if (F[16383]) r.word = {k: 'alk', a: '', b: F[20] && F[20].length >= 2 ? '+ rune mint ' + F[20][0] + ':' + F[20][1] : F[2] && F[2][0] & 1n ? '+ new rune' : moves ? '+ rune move' : ''};
+          if (F[16383]) r.word = alkWord(F, h, F[20] && F[20].length >= 2 ? '+ rune mint ' + F[20][0] + ':' + F[20][1] : F[2] && F[2][0] & 1n ? '+ new rune' : moves ? '+ rune move' : '');
           else if (F[2] && F[2][0] & 1n) { const c = F[5] && F[5][0] <= 0x10ffffn ? Number(F[5][0]) : -1, sym = c >= 32 && (c < 0xd800 || c > 0xdfff) ? String.fromCodePoint(c) : '¤'; r.word = {k: 'rune', s: 2, a: '', b: sym + ' ' + (r.rn || 'new rune')}; }
           else if (F[20] && F[20].length >= 2) r.word = {k: 'rune', s: 3, a: '', b: 'mint ' + F[20][0] + ':' + F[20][1]};
           else r.word = {k: 'rune', s: 4, a: '', b: ''};
@@ -2787,6 +2787,65 @@ async function loadArt(B) {
 // label, the word and the detail line; small ones just the word or logo, as big as it fits)
 const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
   nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
+// ALKANES on a tile. Ten alkane tokens are named after real alkanes and carry the real formula as their symbol on the chain
+// (METHANE CH4 to OCTANE C8H18 are alkanes 2:16 to 2:23, then nonane C9H20 is 2:195 and DECANE C10H22 is 2:224). Each of those
+// shows its own molecule: the straight chain in its relaxed zig-zag shape, set out with the textbook measures (carbon to carbon
+// 1.54 Å, carbon to hydrogen 1.09 Å, every bond angle the tetrahedral 109.47°; real chains differ from these by a few hundredths
+// of an ångström and a few degrees), carbon in the shelf's orange, hydrogen white.
+// Every other alkane shows the standard mark: a bare zig-zag chain, the way chemists sketch any alkane.
+const alkF = n => 'C' + (n > 1 ? n : '') + 'H' + (2 * n + 2);   // (an alkane with n carbons has 2n + 2 hydrogens)
+const alkMix = (h, t, f) => { const a = parseInt(h.slice(1), 16), b = parseInt(t.slice(1), 16); return 'rgb(' + [16, 8, 0].map(s => Math.round(((a >> s) & 255) * (1 - f) + ((b >> s) & 255) * f)) + ')'; };
+const alkGeo = [];
+function alkAtoms(n) {
+  if (alkGeo[n]) return alkGeo[n];
+  const hA = Math.acos(-1 / 3) / 2, cs = Math.cos(hA), sn = Math.sin(hA), L = 1.54, LH = 1.09, A = [], Bd = [];
+  for (let i = 0; i < n; i++) A.push([i * L * sn, i % 2 ? L * cs : 0, 0, 1]);   // the carbons, in a flat zig-zag
+  for (let i = 0; i < n; i++) {
+    const c = A[i], s = i % 2 ? -1 : 1, h = [[0, -s * cs, sn], [0, -s * cs, -sn]];   // two hydrogens lean away from its neighbours, one each side of the chain's plane
+    if (i === 0) h.push([-sn, s * cs, 0]);   // an end carbon has one more, where the chain would have gone on
+    if (i === n - 1) h.push([sn, s * cs, 0]);
+    for (const d of h) { A.push([c[0] + d[0] * LH, c[1] + d[1] * LH, d[2] * LH, 0]); Bd.push([i, A.length - 1]); }
+    if (i) Bd.push([i - 1, i]);
+  }
+  return alkGeo[n] = {A, Bd};
+}
+// the molecule, fitted into a box W wide and H high around (cx, cy), no bigger than top units to the ångström. k is how many screen
+// dots one unit is: when the hydrogens would be too small to see, only the carbon chain is drawn (still one ball for each carbon)
+function alkMol(x, n, cx, cy, W, H, fg, k, top) {
+  const G = alkAtoms(n), cb = Math.cos(.6), sb = Math.sin(.6), ca = Math.cos(.24), sa = Math.sin(.24);
+  // turned a little to the side and tipped a little forward, so both side hydrogens of every carbon can be seen
+  const P = G.A.map(p => { const y = p[1] * ca - p[2] * sa, z = p[1] * sa + p[2] * ca; return [p[0] * cb + z * sb, -y, z * cb - p[0] * sb, p[3]]; });
+  const fit = (use, rC, rH, top) => { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const p of use) { const r = p[3] ? rC : rH; x0 = Math.min(x0, p[0] - r); x1 = Math.max(x1, p[0] + r); y0 = Math.min(y0, p[1] - r); y1 = Math.max(y1, p[1] + r); } const s = Math.min(W / (x1 - x0), H / (y1 - y0), top); return [s, cx - (x0 + x1) / 2 * s, cy - (y0 + y1) / 2 * s]; };
+  let use = P, rC = .46, rH = .3, bw = .17, [s, ox, oy] = fit(P, rC, rH, top || 9.5);
+  const lite = rH * s * (k || 1) < 1.7;
+  if (lite) { use = P.filter(p => p[3]); rC = .5; bw = .24; [s, ox, oy] = fit(use, rC, rH, (top || 9.5) * 1.7); }
+  const it = [];
+  for (const [i, j] of G.Bd) { const a = P[i], b = P[j]; if (!lite || (a[3] && b[3])) it.push([Math.min(a[2], b[2]) - .01, a, b]); }
+  for (const p of use) it.push([p[2], p]);
+  it.sort((a, b) => a[0] - b[0]);
+  const hi = alkMix(fg, '#ffffff', .78), lo = alkMix(fg, '#000000', .6), edge = 'rgba(20,8,2,.85)';
+  x.save(); x.lineCap = 'round'; x.shadowBlur = 0;
+  for (const q of it) {
+    if (q.length === 3) {   // a bond: a pale stick with a dark edge
+      const a = q[1], b = q[2], seg = () => { x.beginPath(); x.moveTo(ox + a[0] * s, oy + a[1] * s); x.lineTo(ox + b[0] * s, oy + b[1] * s); x.stroke(); };
+      x.strokeStyle = edge; x.lineWidth = bw * s + .55; seg(); x.strokeStyle = '#f1e2d6'; x.lineWidth = bw * s; seg();
+    } else {   // an atom: a lit ball
+      const p = q[1], r = (p[3] ? rC : rH) * s, X = ox + p[0] * s, Y = oy + p[1] * s, g = x.createRadialGradient(X - r * .36, Y - r * .42, r * .06, X, Y, r);
+      if (p[3]) { g.addColorStop(0, hi); g.addColorStop(.45, fg); g.addColorStop(1, lo); } else { g.addColorStop(0, '#ffffff'); g.addColorStop(.55, '#efe9e2'); g.addColorStop(1, '#9c9186'); }
+      x.fillStyle = g; x.beginPath(); x.arc(X, Y, r, 0, 7); x.fill(); x.strokeStyle = edge; x.lineWidth = .28; x.stroke();
+    }
+  }
+  x.restore();
+}
+// a formula set the way chemists write it, the counts small and low (drawn here, so it looks the same on every device)
+function chemText(x, f, cx, y, px, col, wt) {
+  const F = s => `${wt || 800} ${s}px ui-monospace,Menlo,Consolas,monospace`, parts = f.match(/\d+|\D+/g) || [], sub = px * .66, al = x.textAlign;
+  let w = 0; const ws = parts.map(p => { x.font = F(/\d/.test(p) ? sub : px); const m = x.measureText(p).width; w += m; return m; });
+  let X = cx - w / 2; x.textAlign = 'left'; x.fillStyle = col;
+  parts.forEach((p, i) => { const d = /\d/.test(p); x.font = F(d ? sub : px); x.fillText(p, X, y + (d ? px * .27 : 0)); X += ws[i]; });
+  x.textAlign = al;
+  return w;
+}
 // the drawn logos: ᚱ (the old runic letter R) for runes, a zig-zag carbon chain (how chemists draw an alkane) for Alkanes,
 // a rainbow for Counterparty (coloured coins). Drawn with lines, so they look the same on every device.
 function paintMark(x, k, fg) {
@@ -2795,9 +2854,12 @@ function paintMark(x, k, fg) {
     x.strokeStyle = '#ffffff'; x.lineWidth = 3.4; x.beginPath();
     x.moveTo(26, 46); x.lineTo(26, 17); x.lineTo(38, 24.5); x.lineTo(26, 32); x.lineTo(39, 46); x.stroke();
   } else if (k === 'alk') {
-    const pts = [[11, 37], [21.5, 27], [32, 37], [42.5, 27], [53, 37]];
-    x.strokeStyle = '#ffffff'; x.lineWidth = 3; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke();
-    x.fillStyle = fg; for (const [a, b] of pts) { x.beginPath(); x.arc(a, b, 2.6, 0, 7); x.fill(); }
+    // the standard mark: a bare chain of five carbons, bent at the true zig-zag angle (109.47 degrees)
+    const pts = [], hi = alkMix(fg, '#ffffff', .8), lo = alkMix(fg, '#000000', .45), sb = x.shadowBlur;
+    for (let i = 0; i < 5; i++) pts.push([32 + (i - 2) * 11.6, i % 2 ? 26.9 : 35.1]);
+    x.strokeStyle = '#ffffff'; x.lineWidth = 2.6; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); x.shadowBlur = 0;
+    for (const [a, b] of pts) { const r = 3.9, g = x.createRadialGradient(a - r * .34, b - r * .4, r * .06, a, b, r); g.addColorStop(0, hi); g.addColorStop(.5, fg); g.addColorStop(1, lo); x.fillStyle = '#ffffff'; x.beginPath(); x.arc(a, b, r + .75, 0, 7); x.fill(); x.fillStyle = g; x.beginPath(); x.arc(a, b, r, 0, 7); x.fill(); }
+    x.shadowBlur = sb;
   } else if (k === 'cp') {
     const bands = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc6a', '#3a86ff', '#9d4edd'];
     x.lineWidth = 3.4; x.lineCap = 'butt';
@@ -2847,14 +2909,18 @@ function paintWord(w, n) {
     }
   } else if (small) {   // small tile: only the main word or the logo, as big as it fits
     x.strokeStyle = fg; x.lineWidth = 4; x.strokeRect(2, 2, 60, 60);
-    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg); }
+    if (w.k === 'alk' && w.m) alkMol(x, w.m, 32, 32, 50, 44, fg, n / 64, 16);
+    else if (w.k === 'alk') paintMark(x, w.k, fg);
+    else if (w.k === 'rune' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg); }
     else say(w.a, 33, 30, 9, 800, '#ffffff');
   } else {
     x.strokeStyle = fg; x.lineWidth = 2; x.strokeRect(2, 2, 60, 60);
     if (label) { x.fillStyle = fg; fitFont(x, label, 10, 5, 56, 700); x.fillText(label, 32, 11); }
-    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') paintMark(x, w.k, fg);
+    if (w.k === 'alk' && w.m) { alkMol(x, w.m, 32, 29.5, 54, 22, fg, n / 64); chemText(x, alkF(w.m), 32, 47, 9.5, '#ffffff', 800); }
+    else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') paintMark(x, w.k, fg);
     else say(w.a, label ? 31 : 28, 24, 8, 800, '#ffffff');
-    if (w.b) { x.fillStyle = fg; fitFont(x, w.b, 11, 6, 56, 600); x.fillText(w.b, 32, 54, 58); }
+    if (w.k === 'alk' && w.m) { const t = w.a || w.b; if (t) { x.fillStyle = fg; fitFont(x, t, 7, 4.5, 56, 600); x.fillText(t, 32, 57, 58); } }
+    else if (w.k === 'alk' ? w.a || w.b : w.b) { const t = w.k === 'alk' ? w.a || w.b : w.b; x.fillStyle = fg; fitFont(x, t, 11, 6, 56, 600); x.fillText(t, 32, 54, 58); }   // (an Alkanes tile: what it does comes first)
   }
   x.setTransform(1, 0, 0, 1, 0, 0);
   return cv;
@@ -2883,8 +2949,13 @@ function paintRich(w, n, cv, x, bg, fg, label) {
     glow(() => { x.fillStyle = g; x.beginPath(); x.arc(c[0], c[1], c[2], 0, 7); x.fill(); }, 5);
     x.strokeStyle = '#8a5d08'; x.lineWidth = .9; x.beginPath(); x.arc(c[0], c[1], c[2] - 2.2, 0, 7); x.stroke();
     x.fillStyle = '#4a3002'; fitFont(x, main, 11, 6, 24, 800); x.fillText(main, c[0], c[1] + .5);
+  } else if (w.k === 'alk' && w.m) {
+    g = x.createRadialGradient(32, 25, 1, 32, 25, 27); g.addColorStop(0, mix(bg, fg, .5)); g.addColorStop(1, mix(bg, fg, 0)); x.globalAlpha = .55; x.fillStyle = g; x.fillRect(4.5, 14, 55, 24); x.globalAlpha = 1;   // (a soft light behind it)
+    alkMol(x, w.m, 32, 24.7, 53.5, 20, fg, k);
+    glow(() => chemText(x, alkF(w.m), 32, 39.2, 6.4, '#ffffff', 800), 3);
+    if (main) { x.fillStyle = mix(fg, '#ffffff', .35); fitFont(x, main, 5.4, 3.4, 54, 800); x.fillText(main, 32, 46.6, 56); }
   } else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') {
-    const sc = main ? .64 : .82, cy = main ? 26 : 31;
+    const sc = w.k === 'alk' ? (main ? 1 : 1.06) : main ? .64 : .82, cy = main ? 26 : 31;   // (the carbon chain is wide and low: it is drawn larger than the other logos)
     x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, w.k === 'cp' ? -40 : -31); glow(() => paintMark(x, w.k, fg), 4); x.restore();
     if (main) { x.fillStyle = '#ffffff'; fitFont(x, main, 7, 3.4, 56, 800); glow(() => x.fillText(main, 32, 44.5, 58), 3); }
   } else if (main) {
@@ -8392,22 +8463,65 @@ function stoneOf(tx) {
   for (let i = 0; i + 3 < body.length; i += 4) { bk += body[i]; tx2 = body[i] ? body[i + 1] : tx2 + body[i + 1]; ed.push({id: bk + ':' + tx2, amt: body[i + 2], out: Number(body[i + 3])}); }
   return {F, ed};
 }
-// the Alkanes calls packed into a runestone (protocol 1): which alkane, and the opcode it is asked to run
-function alkCalls(F) {
+// ALKANES. The alkanes this hall knows by name: [its name on the chain, the block it was made in, its carbons when it is one of the
+// ten molecule tokens]. DIESEL and frBTC are part of Alkanes from its first block, 880,000 (its own code says so). The ten are the
+// first tokens made with each alkane's name: METHANE to OCTANE came one after another in March 2025, nonane and DECANE in April.
+// Each one's name and formula were read from its own deploy transaction; its number is ordiscan.com's.
+const ALK = {'2:0': ['DIESEL', 880000], '32:0': ['frBTC', 880000], '2:16': ['METHANE', 889398, 1], '2:17': ['ETHANE', 889719, 2], '2:18': ['PROPANE', 889721, 3], '2:19': ['BUTANE', 889723, 4],
+  '2:20': ['PENTANE', 889724, 5], '2:21': ['HEXANE', 889725, 6], '2:22': ['HEPTANE', 889726, 7], '2:23': ['OCTANE', 889729, 8], '2:195': ['nonane', 892514, 9], '2:224': ['DECANE', 892650, 10]};
+const ALK_CHEM = [0, ['methane', 1], ['ethane', 1], ['propane', 1], ['butane', 2], ['pentane', 3], ['hexane', 5], ['heptane', 9], ['octane', 18], ['nonane', 35], ['decane', 75]];   // (each alkane's name, and how many ways its atoms can be joined up)
+const alkKnow = (id, h) => { const a = ALK[id]; return a && (h == null || h >= a[1]) ? a : null; };   // (a call from before the token was made is not given its name)
+// what an opcode asks for, where the contract's own code says so: DIESEL and the ten mint with 77, frBTC wraps with 77 and unwraps with 78
+const alkDo = (id, a, op) => !a ? null : op === 77n ? (id === '32:0' ? 'wrap' : 'mint') : op === 78n && id === '32:0' ? 'unwrap' : null;
+// every message packed into a runestone under tag 16383 (a protostone): its protocol (Alkanes is 1), the alkane it calls with the
+// opcode it asks for, and the alkanes it names to move
+function alkRead(F) {
   if (!F || !F[16383]) return [];
   const ints = lebs(b15(F[16383])), out = [];
-  for (let i = 0; i < ints.length && out.length < 4;) {
+  for (let i = 0; i < ints.length && out.length < 64;) {
     const tag = ints[i++]; if (!tag) break; const n = Number(ints[i++] || 0n), v = ints.slice(i, i + n); i += n; if (v.length < n) break;
-    if (tag !== 1n) { out.push({other: tag}); continue; }
-    const msg = []; for (let k = 0; k + 1 < v.length; k += 2) { if (v[k] === 0n) break; if (v[k] === 81n) msg.push(v[k + 1]); }
-    const c = lebs(b15(msg)); out.push(c.length >= 2 ? {b: c[0], x: c[1], op: c.length > 2 ? c[2] : null} : {bad: true});
+    const st = {p: tag, ids: []}; out.push(st);
+    if (tag !== 1n) continue;
+    const msg = []; let k = 0;
+    for (; k + 1 < v.length; k += 2) { if (v[k] === 0n) break; if (v[k] === 81n) msg.push(v[k + 1]); }
+    if (k < v.length && v[k] === 0n) { let bk = 0n, tx = 0n; for (let j = k + 1; j + 3 < v.length; j += 4) { bk += v[j]; tx = v[j] ? v[j + 1] : tx + v[j + 1]; st.ids.push(bk + ':' + tx); } }
+    if (msg.length) { const c = lebs(b15(msg)); if (c.length >= 2) st.call = {b: c[0], x: c[1], op: c.length > 2 ? c[2] : null}; else st.bad = true; }
   }
   return out;
 }
-const ALK_NAMES = {'2:0': 'DIESEL', '32:0': 'frBTC'};
-const alkSay = c => c.other != null ? 'a message for protocol ' + c.other : c.bad ? 'a message it could not read' :
-  c.b === 1n ? 'makes a new alkane' : c.b === 3n ? 'makes a new alkane at 4:' + c.x : c.b === 5n ? 'makes a copy of alkane 2:' + c.x : c.b === 6n ? 'makes a copy of alkane 4:' + c.x :
-  'calls alkane ' + c.b + ':' + c.x + (ALK_NAMES[c.b + ':' + c.x] ? ' (' + ALK_NAMES[c.b + ':' + c.x] + ')' : '') + (c.op != null ? ' · opcode ' + c.op + (c.op === 77n ? ' (mint)' : c.op === 0n ? ' (set up)' : '') : '');
+// what an Alkanes parcel's tile says, from its messages alone: its first call (one to a molecule token comes first), else the first
+// alkane it names to move; then how many more messages it carries, and the rune action that shares its runestone
+function alkWord(F, h, extra) {
+  const S = alkRead(F).filter(s => s.p === 1n), id = c => c.b + ':' + c.x, mol = i => { const a = alkKnow(i, h); return !!(a && a[2]); };
+  const calls = S.filter(s => s.call), st = calls.find(s => mol(id(s.call))) || calls[0] || S.find(s => s.ids.some(mol)) || S.find(s => s.ids.length) || S[0];
+  const w = {k: 'alk', a: '', b: ''}, bits = [], face = (i, a) => { if (a && a[2]) { w.m = a[2]; w.f = alkF(a[2]); } if (a) bits.push(i); return a ? a[0] : i; };
+  if (st && st.call) {
+    const c = st.call, i = id(c), a = alkKnow(i, h), d = alkDo(i, a, c.op);
+    if (c.b === 1n && c.x === 0n) w.a = 'new alkane';
+    else if (c.b === 3n) { w.a = 'new alkane'; bits.push('at 4:' + c.x); }
+    else if (c.b === 5n || c.b === 6n) { w.a = 'new alkane'; bits.push('copy of ' + (c.b === 5n ? 2 : 4) + ':' + c.x); }
+    else { w.a = (d || 'call') + ' ' + face(i, a); if (!d && c.op != null) bits.push('opcode ' + c.op); }
+  } else if (st && st.ids.length) { const i = st.ids.find(mol) || st.ids[0]; w.a = 'move ' + face(i, alkKnow(i, h)); }
+  else if (st) w.a = st.bad ? '' : 'move';
+  if (S.length > 1) bits.push('+' + (S.length - 1) + ' more');
+  if (extra) { if (ALK[bits[0]]) bits.shift(); bits.push(extra); }   // (the rune line takes the number's place: the name already says which alkane)
+  w.b = bits.join(' · ');
+  return w;
+}
+// one message, in words (for the tablet)
+function alkSay(s, h) {
+  if (s.p !== 1n) return 'a message for protocol ' + s.p;
+  const out = [], nm = i => { const a = alkKnow(i, h); return 'alkane ' + i + (a ? ' (' + a[0] + (a[2] ? ', ' + alkF(a[2]) : '') + ')' : ''); };
+  if (s.bad) out.push('a call it could not read');
+  else if (s.call) {
+    const c = s.call, i = c.b + ':' + c.x, d = alkDo(i, alkKnow(i, h), c.op);
+    out.push(c.b === 1n && c.x === 0n ? 'makes a new alkane' : c.b === 3n ? 'makes a new alkane at 4:' + c.x : c.b === 5n ? 'makes a copy of alkane 2:' + c.x : c.b === 6n ? 'makes a copy of alkane 4:' + c.x :
+      'calls ' + nm(i) + (c.op != null ? ' · opcode ' + c.op + (d ? ' (' + d + ')' : c.op === 77n ? ' (the usual mint opcode)' : c.op === 0n ? ' (the usual set-up opcode)' : '') : ''));
+  }
+  if (s.ids.length) out.push('moves ' + s.ids.slice(0, 3).map(nm).join(', ') + (s.ids.length > 3 ? ' and ' + (s.ids.length - 3) + ' more' : ''));
+  if (!out.length) out.push('no call: it only sends on any alkanes this transaction spends');
+  return out.join(' · ');
+}
 // a rune's page on ordinals.com, by name or id (kept, so a rune is only asked for once)
 const runePages = new Map();
 function runePage(q) {
@@ -8562,7 +8676,13 @@ async function heldInfo(t) {
   const tx = t._x && t._x.tx, names = kindsOf(t);
   if (tx && (has(TF.rmove) || has(TF.alkanes))) try {   // runes moved, and Alkanes calls: read from the runestone itself
     const st = stoneOf(tx);
-    if (st && has(TF.alkanes)) { const A = alkCalls(st.F); if (A.length) show(A.map((c, k) => [k ? '' : 'alkanes', alkSay(c)])); }
+    if (st && has(TF.alkanes)) {
+      const hh = tx.status && tx.status.block_height || null, A = alkRead(st.F), rows = A.slice(0, 8).map((c, k) => [k ? '' : 'alkanes', alkSay(c, hh)]);
+      if (A.length > 8) rows.push(['', '+ ' + (A.length - 8) + ' more messages']);
+      const m = (t.word && t.word.k === 'alk' && t.word.m) || 0;
+      if (m) rows.push(['molecule', ALK_CHEM[m][0] + ', ' + alkF(m) + ': ' + m + (m > 1 ? ' carbons' : ' carbon') + ' and ' + (2 * m + 2) + ' hydrogens. The token carries this formula as its symbol' + (ALK_CHEM[m][1] > 1 ? '. These atoms can be joined up ' + ALK_CHEM[m][1] + ' ways: its parcel shows the straight chain, the one chemists call ' + ALK_CHEM[m][0] : '')]);
+      show(rows);
+    }
     if (st && st.ed.length) {
       const rows = [], ids = [...new Set(st.ed.slice(0, 4).map(e => e.id))], P = {};
       await Promise.all(ids.map(id => (id === '0:0' ? (t.rn ? runePage(t.rn) : Promise.reject()) : runePage(id)).then(D => { P[id] = D; }, () => {})));   // (0:0 = the rune made by this transaction)
@@ -16798,7 +16918,7 @@ window.AgentKit = window.AgentKit || (() => {
       o.runestone = t.rnLost ? 'it tried to make a new rune, which never came into being (ordinals.com): the name it tried for is untrusted.runeTried' : 'a runestone with no new rune, no mint and no move';
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.rune = t.rn; if (t.rnLost) u.runeTried = t.rnLost;
     if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a CRC-20 token's own word: deploy, mint…)
-    const lab = t.word ? [t.word.a, t.word.b].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box)
+    const lab = t.word ? [t.word.a, t.word.f, t.word.b].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box; a molecule token's formula with them)
     if (t.txt) u.text = String(t.txt).slice(0, 300);
     if (Object.keys(u).length) o.untrusted = u;
     if (full) { try { const ids = folIds(t); if (ids && ids.length) o.inscriptionIds = ids; } catch (e) {} }
