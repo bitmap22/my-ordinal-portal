@@ -256,6 +256,12 @@
             html { scroll-behavior: auto; }
             .tip i { animation: none; }
         }
+        /* each tool's fact of the day (the Highlights job on GitHub: one real fact per tool, found with the tool's own code) */
+        .card-fact { margin: 2px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .03); font-size: 14px; line-height: 1.45; color: var(--text); text-align: left; }
+        .card-fact a { color: var(--edge, var(--c, var(--amber))); white-space: nowrap; }
+        .card-fact .when { display: block; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+        .card-fact.about { color: var(--muted); }
+        .hall .card-fact { max-width: 46ch; margin-top: 14px; --edge: var(--c); }
     </style>
 <!-- share-and-search: start -->
 <script>if (/\/test\//.test(location.pathname)) { var m = document.createElement('meta'); m.name = 'robots'; m.content = 'noindex'; document.head.appendChild(m); }   // (a test copy: kept out of search)</script>
@@ -1137,7 +1143,9 @@ window.AgentKit = window.AgentKit || (() => {
   function card(c) {
     const links = [...c.querySelectorAll('.button-row a, .button-row button')].map(b => ({does: text(b), page: b.getAttribute('href') || b.getAttribute('data-url') || undefined}));
     const note = c.querySelector('.card-note');
-    return {n: text(c.querySelector('.card-number')) || undefined, title: c.getAttribute('data-title'), kind: text(c.querySelector('.card-tag')) || c.getAttribute('data-category'), section: sectionOf(c), note: note ? text(note) : undefined, page: c.getAttribute('data-url'), shown: shown(c), buttons: links};
+    const H = (window.__highlights && window.__highlights.facts || {})[c.getAttribute('data-url')];
+    return {n: text(c.querySelector('.card-number')) || undefined, title: c.getAttribute('data-title'), kind: text(c.querySelector('.card-tag')) || c.getAttribute('data-category'), section: sectionOf(c), note: note ? text(note) : undefined, page: c.getAttribute('data-url'), shown: shown(c), buttons: links,
+      fact: H ? {text: H.text, about: H.period || null, link: H.link || null, whatItChecks: H.about || undefined, kept: H.kept || undefined} : undefined};
   }
   const OLDN = {'ai agent bitcoin block explorer': 'agent blockhall', 'block cube': 'agent blockhall'};   // (the game's earlier names)
   const find = q => { q = String(q || '').toLowerCase().trim(); q = OLDN[q] || q; const L = cards(); return L.find(c => c.getAttribute('data-title').toLowerCase() === q) || L.find(c => c.getAttribute('data-title').toLowerCase().startsWith(q)) || L.find(c => c.getAttribute('data-title').toLowerCase().includes(q)) || L.find(c => text(c.querySelector('.card-number')) === q || text(c.querySelector('.card-number')) === '#' + q.replace(/^#/, '').padStart(3, '0'))
@@ -1190,7 +1198,7 @@ window.AgentKit = window.AgentKit || (() => {
         return C.state(); }},
     {name: 'corridorSpacing', does: 'Space the corridor\'s frames evenly (even: one step a block) or by real time (time: the gap between two frames is the time between their blocks, so a long wait is a long stretch of hall). Gives back the corridor as corridor() does (or {ok: false, error} if it could not).', args: [{name: 'by', does: 'even or time', enum: ['even', 'time'], req: true}],
       run: ({by}) => { const C = window.__corridor; if (!C) return {ok: false, error: 'the corridor is not on this page'}; if (by !== 'even' && by !== 'time') return {ok: false, error: 'by: even or time'}; C.spacing(by); return C.state(); }},
-    {name: 'cards', ro: true, does: 'The portal\'s games and tools as data (number, title, kind, section, note, page, buttons). Gives back [{n, title, kind, section, note, page, shown, buttons[{does, page}]}] (or {ok: false, error} if it could not).', args: [{name: 'section', does: 'only one section: featured, tools-check, tools-make, tools-block, tools-sources, tools-doge, legacy-games or legacy-tools'}],
+    {name: 'cards', ro: true, does: 'The portal\'s games and tools as data (number, title, kind, section, note, page, buttons), each tool with its fact of the day (fact: one real fact found by GitHub with the tool\'s own code, the day or time it is about, and a link to see it in the tool; whatItChecks for the two tools that check your own files). Gives back [{n, title, kind, section, note, page, shown, buttons[{does, page}], fact{text, about, link}}] (or {ok: false, error} if it could not).', args: [{name: 'section', does: 'only one section: featured, tools-check, tools-make, tools-block, tools-sources, tools-doge, legacy-games or legacy-tools'}],
       run: ({section}) => { const L = cards().map(card), all = [...new Set(L.map(c => c.section))]; if (!section) return L; const k = String(section).toLowerCase(); if (!all.includes(k)) return {ok: false, error: 'sections: ' + all.join(', ') + ' (for the Tools filter use filter({kind: "Tools"}))'}; return L.filter(c => c.section === k); }},
     {name: 'open', does: 'Open a game or tool by its title (or number), as a visitor does: in the portal\'s viewer ("Open in Portal"), or Play Together (Agent Blockhall, Doge Cube and Block Paint City have it). Gives back {open, title, page, zoom, kit} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"open":{},"title":{},"page":{},"zoom":{},"kit":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'title', does: 'its title, e.g. "Agent Blockhall", or its number', req: true}, {name: 'how', enum: ['portal', 'together', 'page'], does: 'portal (the viewer, default), together (Play Together: Agent Blockhall, Doge Cube and Block Paint City), or page (go to the page itself in this tab: only the portal\'s own pages)'}],
       run: async ({title, how = 'portal'}) => {
@@ -1798,6 +1806,36 @@ window.AgentKit = window.AgentKit || (() => {
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && bar.classList.contains('open')) { set(false); btn.focus(); } });
     document.addEventListener('click', function (e) { if (bar.classList.contains('open') && !bar.contains(e.target)) set(false); });
     window.addEventListener('resize', function () { if (window.innerWidth > 640) set(false); });
+})();
+</script>
+<script>
+/* Each tool's fact of the day: one real fact per tool from the Highlights job on GitHub (its own branch, highlights.json),
+   found with the tool's own code on yesterday's blocks or a real example from them. Shown on the tool's card with its date
+   and a link to see it in the tool. If the file can't be read, the cards stay as they are. © 2026 bitmap22. All rights reserved. */
+(function () {
+  var URLS = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/highlights/highlights.json', 'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@highlights/highlights.json'];
+  function when(p) {
+    if (!p) return '';
+    var d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(p) ? p + 'T12:00:00Z' : p); if (isNaN(d)) return '';
+    var day = d.toLocaleDateString('en-GB', {day: 'numeric', month: 'long', timeZone: 'UTC'});
+    return /^\d{4}-\d{2}-\d{2}$/.test(p) ? day : day + ', ' + d.toISOString().slice(11, 16) + ' UTC';
+  }
+  function put(card, f) {
+    if (!card || card.querySelector('.card-fact') || !f || !f.text) return;
+    var box = document.createElement('p'); box.className = 'card-fact' + (f.about ? ' about' : '');
+    box.appendChild(document.createTextNode(f.text + ' '));
+    if (f.link) { var a = document.createElement('a'); a.href = f.link.replace(/^https:\/\/ordportal\.com\//, ''); a.textContent = (f.linkText || 'See it') + ' \u2192'; box.appendChild(a); }
+    if (!f.about) { var w = document.createElement('span'); w.className = 'when'; w.textContent = (f.period ? when(f.period) : '') + (f.kept ? ' (the newest one found)' : '') + ' \u00b7 found by GitHub with the tool\u2019s own code'; box.appendChild(w); }
+    var note = card.querySelector('.card-note'); if (note) note.after(box); else card.appendChild(box);
+  }
+  function show(j) {
+    var F = (j && j.facts) || {}; window.__highlights = j;
+    document.querySelectorAll('.shelf .card[data-url], .halls .hall[data-url]').forEach(function (c) { put(c, F[c.getAttribute('data-url')]); });
+  }
+  (function next(i) {
+    if (i >= URLS.length) return;
+    fetch(URLS[i] + '?t=' + Math.floor(Date.now() / 6e5), {cache: 'no-store'}).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(show, function () { next(i + 1); });
+  })(0);
 })();
 </script>
 </body>
