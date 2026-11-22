@@ -211,6 +211,12 @@
   const s = (v, n) => String(v == null ? '' : v).slice(0, n);
   const amt = o => o.amt != null ? s(o.amt, 40) : o.max != null ? s(o.max, 40) : null;
   // a token: its protocol is this reader's word; everything written in the transaction itself goes under "untrusted"
+  // (22 Nov 2026) SRC-101 names, stored the Stamps way (github.com/stampchain-io/stamps_sdk docs/src101specs.md): in bare multisig from 870,652, in P2WSH from 940,000
+  // (the Stamps indexer's own start blocks). The names are written in base64; read here as their letters. Whether a name is owned, paid for or in date needs the indexer.
+  const b64name = x => { try { const t = new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(atob(String(x)), c => c.charCodeAt(0))).toLowerCase(); return t ? t.slice(0, 64) : null; } catch (e) { return null; } };
+  const src101 = o => { const op = s(o.op, 16).toLowerCase(), raw = Array.isArray(o.tokenid) ? o.tokenid : o.tokenid != null ? [o.tokenid] : [];
+    return tok('SRC-101', {op, names: raw.slice(0, 10).filter(x => String(x).length <= 128).map(b64name).filter(Boolean).join(', '), root: op === 'deploy' ? s(o.root, 24).toLowerCase() : null,
+      deploy: /^[0-9a-f]{64}$/i.test(String(o.hash || '')) ? String(o.hash).toLowerCase() : null, years: o.dua != null ? s(o.dua, 4) : null, to: o.toaddress ? s(o.toaddress, 90) : null}); };
   const tok = (protocol, u, extra) => { const o = {}; for (const k in u) if (u[k] != null && u[k] !== '') o[k] = u[k]; return Object.assign({protocol}, extra || {}, Object.keys(o).length ? {untrusted: o} : {}); };
   // a content type as written in the inscription, kept only if it looks like one (it is written by whoever inscribed it)
   const ctype = ty => /^[a-z0-9!#$&^_.+-]{1,40}\/[a-z0-9!#$&^_.+-]{1,60}$/.test(ty) ? ty : ty ? 'not a standard type' : '';
@@ -266,12 +272,14 @@
       if (mso && sc(r, TF.stamps) && h >= 793068) try {   // (SRC-20's own start blocks: bare multisig from 793,068, P2WSH from 865,000)
         const D = rc4(key, catB(mso.flatMap(pk => pk.length < 2 ? [] : pk.slice(0, -1).map(k => k.subarray(1, k.length - 1))))), L = D[0] << 8 | D[1];
         if (L > 6 && L <= D.length - 2 && /^stamp:/i.test(L1D.decode(D.subarray(2, 8)))) { const o = JSON.parse(U8D.decode(D.subarray(8, 2 + L)));
-          if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.sc &= ~(1 << TF.stamps); r.token = tok('SRC-20', {tick: s(o.tick, 16).toUpperCase(), op: s(o.op, 12).toLowerCase(), amount: amt(o)}); } }
+          if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.sc &= ~(1 << TF.stamps); r.token = tok('SRC-20', {tick: s(o.tick, 16).toUpperCase(), op: s(o.op, 12).toLowerCase(), amount: amt(o)}); }
+          else if (String(o.p || '').toLowerCase() === 'src-101' && h >= 870652) r.token = src101(o); }
       } catch (e) {}
       if (wsh && h >= 865000) { const W2 = catB(wsh), L = W2[0] << 8 | W2[1];
         if (L > 6 && L <= W2.length - 2 && /^stamp:/i.test(L1D.decode(W2.subarray(2, 8)))) try {
           const o = JSON.parse(U8D.decode(W2.subarray(8, 2 + L)));
           if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.token = tok('SRC-20', {tick: s(o.tick, 16).toUpperCase(), op: s(o.op, 12).toLowerCase(), amount: amt(o)}); }
+          else if (String(o.p || '').toLowerCase() === 'src-101' && h >= 940000 && !r.token) r.token = src101(o);
         } catch (e) {}
       }
       r.e = p;
