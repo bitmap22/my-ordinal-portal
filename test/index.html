@@ -83,6 +83,8 @@
             .hero h1 { background: linear-gradient(180deg, #ffffff 8%, #eef2f8 46%, #c5d0e6 96%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
                 text-shadow: none; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .4)) drop-shadow(0 0 26px rgba(243, 165, 48, .46)); padding-bottom: .06em; }
         }
+        .hero h1::selection { -webkit-text-fill-color: #fff; }
+        @media (forced-colors: active) { .hero h1 { background: none; -webkit-text-fill-color: currentColor; color: CanvasText; filter: none; } }
         @media (prefers-reduced-motion: no-preference) {
             .hero h1 { animation: sign-on 1.5s .25s cubic-bezier(.2, .7, .2, 1) backwards; }
             @keyframes sign-on { from { filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .4)) drop-shadow(0 0 0 rgba(243, 165, 48, 0)); opacity: .55; } }
@@ -200,8 +202,8 @@
         .shelf.mint { --edge: var(--mint); }
         .shelf::before { content: ""; position: absolute; z-index: -1; left: 50%; top: -34px; width: min(1100px, 100%); height: 440px; transform: translateX(-50%); pointer-events: none;
             background: radial-gradient(50% 50% at 50% 28%, color-mix(in srgb, var(--edge) 9%, transparent), transparent 72%); transition: opacity .9s; }
-        .section-title { width: fit-content; max-width: 100%; margin: 0 auto; padding: 10px 22px 9px; border: 2px solid color-mix(in srgb, var(--edge) 82%, #fff); border-radius: 7px; background: rgba(8, 12, 22, .84);
-            font: 700 16px/1.25 var(--sign); letter-spacing: .09em; text-transform: uppercase; text-align: center; color: color-mix(in srgb, var(--edge) 50%, #fff);
+        .section-title { width: fit-content; max-width: 100%; margin: 0 auto; padding: 9px 22px 12px; border: 2px solid color-mix(in srgb, var(--edge) 82%, #fff); border-radius: 7px; background: rgba(8, 12, 22, .84);
+            font: 700 20px/1 var(--sign); font-variant-caps: all-small-caps; letter-spacing: .09em; text-align: center; color: color-mix(in srgb, var(--edge) 50%, #fff);
             text-shadow: 0 0 12px var(--edge), 0 0 3px color-mix(in srgb, var(--edge) 70%, transparent);
             box-shadow: 0 0 24px color-mix(in srgb, var(--edge) 40%, transparent), inset 0 0 18px color-mix(in srgb, var(--edge) 20%, transparent); transition: color .5s, border-color .5s, box-shadow .6s, text-shadow .6s; }
         .shelf .gallery { display: flex; flex-wrap: wrap; justify-content: center; gap: 34px 16px; padding-top: 30px; }
@@ -324,6 +326,8 @@
             .topbar.open .topnav { display: flex; }
             .topnav a { padding: 13px 18px; color: var(--text); border-top: 1px solid rgba(35, 48, 74, .7); }
             .topnav a:first-child { border-top: 0; }
+            .topnav a::after { display: none; }
+            .topnav a.here { color: var(--amber-hot); }
             .topnav .wide { display: block; }
             .hero { min-height: 0; padding-top: clamp(300px, 46svh, 400px); }   /* the corridor above, the words below it: no sign under the title */
             .hero-in { padding-bottom: 40px; }
@@ -1418,7 +1422,7 @@ window.AgentKit = window.AgentKit || (() => {
         840000: ["THE 4TH HALVING · RUNES", "the fourth halving (6.25 to 3.125 BTC), and the block where runes began"], 1050000: ["THE 5TH HALVING", "the fifth halving: 3.125 to 1.5625 BTC"]};
 
     function size() {
-        dpr = Math.min(2, window.devicePixelRatio || 1); W = hero.clientWidth; H = hero.clientHeight;
+        W = hero.clientWidth; H = hero.clientHeight; dpr = Math.min(2, window.devicePixelRatio || 1, Math.max(1, Math.sqrt(4.2e6 / Math.max(1, W * H))));   // (at most about 4 million dots)
         FREE = card ? Math.max(0, card.getBoundingClientRect().top - hero.getBoundingClientRect().top) : H;   // (the room above the words)
         cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); x.setTransform(dpr, 0, 0, dpr, 0, 0);
         kick();
@@ -1446,8 +1450,10 @@ window.AgentKit = window.AgentKit || (() => {
        posts mirrored in the floor; the floor, walls and ceiling between two frames are lit by them; dust drifts in the light;
        the view leans a little toward a mouse, near frames moving more than far ones (the far end stays put). All of that is
        decoration: every number is still the block's own. With "reduce motion" on there is no lean, no sway and no dust. */
-    var camX = 0, camY = 0, par = [0, 0], lean = null, motes = null;
+    var camX = 0, camY = 0, par = [0, 0], lean = null, motes = null, calm = false;
     var AMB = "rgba(243, 165, 48, ", HOT = "rgba(255, 214, 140, ", FIL = "rgba(255, 240, 205, ";
+    var SH_UP = [0.028, 0.065, 0.115, 0.18], SH_A = [0.05, 0.034, 0.022, 0.014];   // (the light above a shelf's edge: how high each step reaches, and how much it adds)
+    var GLOW_W = [1.7, 2.5, 3.6, 5.2, 7.6], GLOW_A = [0.15, 0.09, 0.055, 0.032, 0.018];   // (a tube's glow: soft strokes under it, each wider and fainter)
     function fillQuad(ax, ay, bx, by, cx, cy, dx, dy) { x.beginPath(); x.moveTo(ax, ay); x.lineTo(bx, by); x.lineTo(cx, cy); x.lineTo(dx, dy); x.closePath(); x.fill(); }
     function draw(now) {
         var dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -1465,6 +1471,7 @@ window.AgentKit = window.AgentKit || (() => {
         var tgx = !still && lean ? Math.max(-1, Math.min(1, lean[0] * 2 - 1)) : 0, tgy = !still && lean ? Math.max(-1, Math.min(1, lean[1] * 2 - 1)) : 0;
         par[0] += (tgx - par[0]) * Math.min(1, dt * 2.4); par[1] += (tgy - par[1]) * Math.min(1, dt * 2.4);
         camX = still ? 0 : (Math.sin(now / 7000) * 0.016 + par[0] * 0.05) * HW; camY = still ? 0 : par[1] * 0.035 * HH;
+        calm = Math.abs(goal - cam) < 0.002 && Math.abs(tgx - par[0]) < 0.004 && Math.abs(tgy - par[1]) < 0.004 && now - born > 1700 && !(flashAt && now - flashAt < 2300) && hover < 0 && pinned < 0;
         var ox = camX, oy = camY;
         var intro = still ? 1 : Math.min(1, (now - born) / 1600);
         var g = x.createRadialGradient(vx, vy, 0, vx, vy, Math.max(W, H) * 0.32);
@@ -1486,28 +1493,6 @@ window.AgentKit = window.AgentKit || (() => {
             }
         }
         var shelfCol = ["rgba(99, 210, 214, ", "rgba(224, 98, 154, ", "rgba(238, 242, 248, "];
-        // shading that keeps to the lines running to the far end (a gradient round the far end's point): the light above each
-        // shelf's lit edge on the two walls, and the floor's boards
-        var wallG = null, floorG = null;
-        if (x.createConicGradient) {
-            wallG = [[], []];
-            for (var sd0 = 0; sd0 < 2; sd0++) for (var k3 = 0; k3 < 3; k3++) {
-                var X97 = (sd0 ? 1 : -1) * HW * 0.97 - ox, cg = x.createConicGradient(sd0 ? -Math.PI / 2 : Math.PI / 2, vx, vy), st = [];
-                var fr = function (yy) { var th = Math.atan2(HH * yy - oy, X97); return sd0 ? (th + Math.PI / 2) / 6.2832 : ((th < 0 ? th + 6.2832 : th) - Math.PI / 2) / 6.2832; };
-                for (var j0 = 0; j0 < 5; j0++) {
-                    var yj = -0.55 + j0 * 0.27, c0 = shelfCol[(j0 + k3) % 3], one = [[fr(yj + 0.06), c0 + "0)"], [fr(yj), c0 + "0.05)"], [fr(yj), c0 + "0.15)"], [fr(yj - 0.17), c0 + "0)"]];
-                    st = sd0 ? st.concat(one.reverse()) : one.concat(st);   // (the right wall runs top to bottom, the left one bottom to top)
-                }
-                st.forEach(function (S1) { cg.addColorStop(Math.max(0, Math.min(1, S1[0])), S1[1]); });
-                wallG[sd0][k3] = cg;
-            }
-            floorG = x.createConicGradient(0, vx, vy);
-            for (var kb = 10; kb >= 0; kb--) {
-                var fb = Math.atan2(HH - oy, -HW + kb * HW / 5 - ox) / 6.2832;
-                if (kb < 10) floorG.addColorStop(fb, kb % 2 ? "rgba(130, 160, 220, 0.066)" : "rgba(130, 160, 220, 0.022)");
-                if (kb > 0) floorG.addColorStop(fb, kb % 2 ? "rgba(130, 160, 220, 0.022)" : "rgba(130, 160, 220, 0.066)");
-            }
-        }
         var F = frames();
         var floorEnd = F.length && F[0].z > 0.35 ? Math.min(H, vy + (HH - oy) / F[0].z) : H;   // (where the floor ends: the nearest frame's foot; nothing is mirrored past it)
         // which signs can be read: nearest first, a sign that would sit on a nearer one's is left off (blocks mined close together, in Real time)
@@ -1541,14 +1526,19 @@ window.AgentKit = window.AgentKit || (() => {
                 pl.addColorStop(0, AMB + (0.07 * fog).toFixed(3) + ")"); pl.addColorStop(0.3, "rgba(6, 10, 22, " + (0.22 * fog).toFixed(3) + ")"); pl.addColorStop(0.78, "rgba(6, 10, 22, " + (0.24 * fog).toFixed(3) + ")"); pl.addColorStop(1, AMB + (0.11 * fog).toFixed(3) + ")");
                 x.fillStyle = pl; fillQuad(xa, t, xa, b, xb, b2, xb, t2);
             }
-            if (wallG) {
-                x.globalAlpha = Math.min(1, fog);
-                x.fillStyle = floorG; fillQuad(l, b, r, b, r2, b2, l2, b2);
-                for (var sd2 = 0; sd2 < 2; sd2++) {
-                    var w1 = vx + ((sd2 ? 1 : -1) * HW * 0.97 - ox) * s, w2 = vx + ((sd2 ? 1 : -1) * HW * 0.97 - ox) * s2;
-                    x.fillStyle = wallG[sd2][h % 3]; fillQuad(w1, t, w1, b, w2, b2, w2, t2);
+            for (var kb = 0; kb < 9; kb += 2) {   // the floor's boards: every other one a little lighter (nine across, so the middle one is in the middle)
+                var xa0 = -HW + kb * HW / 4.5 - ox, xa1 = xa0 + HW / 4.5, yf = HH - oy;
+                x.fillStyle = "rgba(130, 160, 220, " + (0.05 * fog).toFixed(3) + ")"; fillQuad(vx + xa0 * s, vy + yf * s, vx + xa1 * s, vy + yf * s, vx + xa1 * s2, vy + yf * s2, vx + xa0 * s2, vy + yf * s2);
+            }
+            for (var sd2 = -1; sd2 <= 1; sd2 += 2) {   // the light above each shelf's lit edge
+                var XW = sd2 * HW * 0.97 - ox;
+                for (var j1 = 0; j1 < 5; j1++) {
+                    var yb = HH * (-0.55 + j1 * 0.27) - oy, c1 = shelfCol[(j1 + h) % 3];
+                    for (var st = 0; st < 4; st++) {   // (each step reaches higher and adds a little: together they fall off softly)
+                        var yt = yb - HH * SH_UP[st];
+                        x.fillStyle = c1 + (SH_A[st] * fog).toFixed(3) + ")"; fillQuad(vx + XW * s, vy + yb * s, vx + XW * s2, vy + yb * s2, vx + XW * s2, vy + yt * s2, vx + XW * s, vy + yt * s);
+                    }
                 }
-                x.globalAlpha = 1;
             }
             // the shelves' lit edges, running to the far end
             for (var j = 0; j < 5; j++) {
@@ -1595,12 +1585,9 @@ window.AgentKit = window.AgentKit || (() => {
             pl = x.createLinearGradient(r, 0, rj, 0); pl.addColorStop(0, AMB + ja.toFixed(3) + ")"); pl.addColorStop(1, AMB + (ja * 0.2).toFixed(3) + ")"); x.fillStyle = pl; fillQuad(r, t, rj, tj, rj, bj, r, b);
             pl = x.createLinearGradient(0, t, 0, tj); pl.addColorStop(0, AMB + (ja * 0.8).toFixed(3) + ")"); pl.addColorStop(1, AMB + (ja * 0.16).toFixed(3) + ")"); x.fillStyle = pl; fillQuad(l, t, r, t, rj, tj, lj, tj);
             pl = x.createLinearGradient(0, b, 0, bj); pl.addColorStop(0, AMB + Math.min(1, ja * 1.25).toFixed(3) + ")"); pl.addColorStop(1, AMB + (ja * 0.3).toFixed(3) + ")"); x.fillStyle = pl; fillQuad(l, b, r, b, rj, bj, lj, bj);
-            x.strokeStyle = AMB + (0.085 * a).toFixed(3) + ")"; x.lineWidth = lw * 3.6; x.strokeRect(l, t, r - l, b - t);   // its halo
-            x.save();
-            x.shadowColor = AMB + Math.min(1, a).toFixed(3) + ")"; x.shadowBlur = (hot ? 46 : 32) * s + flash * 40;
-            x.strokeStyle = (hot || flash > 0.2 ? HOT : AMB) + a.toFixed(3) + ")";
-            x.lineWidth = lw; x.strokeRect(l, t, r - l, b - t);
-            x.restore();
+            var glow = a * (1 + flash * 1.4 + (hot ? 0.45 : 0));
+            for (var gi = 4; gi >= 0; gi--) { x.strokeStyle = AMB + (GLOW_A[gi] * glow).toFixed(3) + ")"; x.lineWidth = lw * GLOW_W[gi]; x.strokeRect(l, t, r - l, b - t); }
+            x.strokeStyle = (hot || flash > 0.2 ? HOT : AMB) + a.toFixed(3) + ")"; x.lineWidth = lw; x.strokeRect(l, t, r - l, b - t);
             x.strokeStyle = FIL + (0.5 * a).toFixed(3) + ")"; x.lineWidth = Math.max(0.6, lw * 0.2); x.strokeRect(l, t, r - l, b - t);
             x.strokeStyle = AMB + (0.42 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.7, lw * 0.4); x.strokeRect(lj, tj, rj - lj, bj - tj);
             // its sign: the block's number, as over each hall's door; a milestone's plaque under it
@@ -1650,10 +1637,10 @@ window.AgentKit = window.AgentKit || (() => {
         x.strokeStyle = "rgba(243, 165, 48, " + ((hot ? 0.75 : 0.5) * fog * breathe).toFixed(3) + ")"; x.strokeRect(l, t, r - l, b - t); x.restore();
         var full = Math.max(0, Math.min(1, next.vsize / 1e6)), P = 2 * ((r - l) + (b - t)), left = full * P;   // how full: the edge lit from the bottom left, up and round
         var pts = [[l, b], [l, t], [r, t], [r, b], [l, b]];
-        x.save(); x.lineWidth = lw; x.lineCap = "butt"; x.setLineDash([lw * 2.4, lw * 1.8]); x.shadowColor = "rgba(255, 207, 122, " + (0.8 * fog).toFixed(3) + ")"; x.shadowBlur = 18 * s;
-        x.strokeStyle = "rgba(255, 207, 122, " + (0.9 * fog).toFixed(3) + ")"; x.beginPath(); x.moveTo(l, b);
+        x.save(); x.lineCap = "butt"; x.beginPath(); x.moveTo(l, b);
         for (var i = 1; i < pts.length && left > 0; i++) { var ax = pts[i - 1][0], ay = pts[i - 1][1], bx = pts[i][0], by = pts[i][1], d = Math.abs(bx - ax) + Math.abs(by - ay), u = Math.min(1, left / d); x.lineTo(ax + (bx - ax) * u, ay + (by - ay) * u); left -= d; }
-        x.stroke(); x.restore();
+        for (var gi = 3; gi >= 0; gi--) { x.strokeStyle = "rgba(255, 207, 122, " + (GLOW_A[gi] * 0.62 * fog).toFixed(3) + ")"; x.lineWidth = lw * GLOW_W[gi] * 0.9; x.stroke(); }
+        x.setLineDash([lw * 2.4, lw * 1.8]); x.strokeStyle = "rgba(255, 207, 122, " + (0.9 * fog).toFixed(3) + ")"; x.lineWidth = lw; x.stroke(); x.restore();
         var fs = Math.min(30, HH * 0.075 * s);
         if (fs >= 7.5 && z >= Z0 * 0.9) {
             var label = "NEXT: BLOCK " + fmt(h), py = Math.max(t + lw / 2 + fs * 1.05, fs * 1.4), px = (l + r) / 2;
@@ -1673,7 +1660,11 @@ window.AgentKit = window.AgentKit || (() => {
         }
         if (z >= Z0 * 0.92) rects.push({h: h, l: l, t: t, r: r, b: b, lw: lw});
     }
-    function loop(now) { raf = 0; draw(now); if (seen && !document.hidden && (!still || Math.abs(goal - cam) > 0.001)) raf = requestAnimationFrame(loop); }
+    function loop(now) {
+        raf = 0;
+        if (still || !(calm && now - last < 30)) draw(now);   // (calm: only the slow sway and the dust are moving, and every other frame is enough)
+        if (seen && !document.hidden && (!still || Math.abs(goal - cam) > 0.001)) raf = requestAnimationFrame(loop);
+    }
     function kick() { if (!raf) raf = requestAnimationFrame(loop); }
 
     /* the blocks, from mempool.space (or its copy): 15 at a time, from a height down */
