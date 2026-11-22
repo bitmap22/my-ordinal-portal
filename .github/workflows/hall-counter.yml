@@ -1,0 +1,76 @@
+# Hall Counter: puts the counter (hall-counter/worker.js) on your Cloudflare, at ordportal.com/hall-count, with its free
+# database (D1, named hall-visits). It runs when the counter's files change, or by hand: Actions > Hall Counter > Run workflow.
+# It needs one GitHub secret, CLOUDFLARE_API_TOKEN (a Cloudflare key that may edit Workers, Workers Routes and D1, made in
+# Cloudflare and pasted into GitHub by the owner). Free: Cloudflare's free plan allows 100,000 counts a day.
+# © 2026 bitmap22. All rights reserved.
+name: Hall Counter
+
+on:
+  push:
+    branches: [main]
+    paths: ['hall-counter/**', '.github/workflows/hall-counter.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hall-counter
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: hall-counter
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Is the Cloudflare key there?
+        id: key
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::notice::No CLOUDFLARE_API_TOKEN secret yet (Settings > Secrets and variables > Actions), so nothing was put live."; echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Which Cloudflare account
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          id=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts | jq -r '.result[0].id // empty')
+          if [ -z "$id" ]; then echo "::error::The Cloudflare key can't see an account: it needs Account Settings: Read."; exit 1; fi
+          echo "CLOUDFLARE_ACCOUNT_ID=$id" >> "$GITHUB_ENV"
+      - name: Install Wrangler (Cloudflare's own tool)
+        if: steps.key.outputs.ok == 'true'
+        run: npm i --no-save --silent wrangler@4.166.0
+      - name: The database (made the first time only)
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          find_db() { curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database?name=hall-visits" | jq -r '.result[]? | select(.name == "hall-visits") | .uuid' | head -1; }
+          db=$(find_db)
+          if [ -z "$db" ]; then npx wrangler d1 create hall-visits; db=$(find_db); fi
+          if [ -z "$db" ]; then echo "::error::Could not find or make the hall-visits database."; exit 1; fi
+          cat > wrangler.toml <<EOF
+          name = "hall-counter"
+          main = "worker.js"
+          compatibility_date = "2026-11-01"
+          workers_dev = false
+          routes = [ { pattern = "ordportal.com/hall-count*", zone_name = "ordportal.com" } ]
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "hall-visits"
+          database_id = "$db"
+          EOF
+          npx wrangler d1 execute hall-visits --remote --file schema.sql -y
+      - name: Put the counter live
+        if: steps.key.outputs.ok == 'true'
+        run: npx wrangler deploy
+      - name: Check it answers
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          sleep 10
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://ordportal.com/hall-count/day?d=$(date -u +%F)")
+          echo "ordportal.com/hall-count/day answered $code"
+          [ "$code" = "200" ]

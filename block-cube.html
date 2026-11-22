@@ -17420,6 +17420,40 @@ window.AgentKit = window.AgentKit || (() => {
 })();
 </script>
 <!-- visitor counter: end -->
+<!-- hall counter: start -->
+<script>
+/* (22 Nov 2026) Hall Visits: what visitors do in the halls, counted as anonymous daily totals by the portal's own counter on
+   Cloudflare (ordportal.com/hall-count, its code in hall-counter/): which blocks are walked into and how long visitors stay,
+   which kinds of parcel are picked up and how long they are held, and whether the visitor is a person or an AI agent.
+   Nothing personal is sent: no address, no wallet, no id. Each thing is counted once a visit. Only on ordportal.com; the test
+   copies are counted as tests, kept apart. The daily totals are public: hall-visits.html. © 2026 bitmap22. All rights reserved. */
+(function () {
+  if (!/(^|\.)ordportal\.com$/.test(location.hostname)) return;
+  var S = /doge/.test(location.pathname) ? 'doge' : 'btc', X = /\/test\//.test(location.pathname) ? '&x=1' : '', sent = {}, n = 0;
+  var STAY = [30, 120, 600], LOOK = [10, 60], at = null, atT = 0, held = null, heldT = 0;
+  function who() { try { return window.__agentOn || navigator.webdriver ? 'a' : 'p'; } catch (e) { return 'p'; } }
+  function send(q) {
+    if (sent[q] || n >= 300) return; sent[q] = 1; n++;
+    try { fetch('/hall-count?s=' + S + '&' + q + '&w=' + who() + X, {keepalive: true, credentials: 'omit'}).catch(function () {}); } catch (e) {}
+  }
+  function where() {   // (a block, or the common room; galleries, the garden and clubs are not counted)
+    try { if (typeof room === 'undefined' || !room || !room.at) return null; var C = room.at;
+      if (C.gal || C.gd || C.cl) return null; if (C.h === COMMON) return 'common'; return C.h >= 0 ? String(C.h) : null; } catch (e) { return null; }
+  }
+  function holding() {   // (a parcel from a block's shelves in your hands)
+    try { var H = room && room.held; if (!H || H.back || !H.it || !H.it.t) return null; var t = H.it.t, T = TYPES[H.it.k];
+      if (t.gal || t.who || t.mate || !(t.h >= 0) || !T) return null; return {b: String(t.h), k: T.name, it: H.it}; } catch (e) { return null; }
+  }
+  setInterval(function () {
+    var now = Date.now(), w = where(), h = holding();
+    if (w !== at) { at = w; atT = now; if (w) send('e=walk&b=' + w); }
+    if (at) STAY.forEach(function (s) { if (now - atT >= s * 1000) send('e=stay&b=' + at + '&t=' + s); });
+    if (!h || !held || h.it !== held.it) { held = h; heldT = now; if (h) send('e=hold&b=' + h.b + '&k=' + encodeURIComponent(h.k)); }
+    if (held) LOOK.forEach(function (s) { if (now - heldT >= s * 1000) send('e=look&b=' + held.b + '&k=' + encodeURIComponent(held.k) + '&t=' + s); });
+  }, 1000);
+})();
+</script>
+<!-- hall counter: end -->
 <!-- portal-menu: start -->
 <style>#tm{position:fixed;z-index:20;width:40px;height:40px;border-radius:20px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer}#tm svg{width:19px;height:19px}#tm[aria-expanded="true"]{background:rgba(247,147,26,.85);color:#140c05}#tm{left:calc(114px + env(safe-area-inset-left));top:calc(18px + env(safe-area-inset-top))}body.room:not(.crewpage) #tm{left:calc(162px + env(safe-area-inset-left))}@media (pointer:coarse),(max-width:600px){#tm{left:auto;right:calc(4px + env(safe-area-inset-right));top:calc(4px + env(safe-area-inset-top))}html body.room #tm{right:auto;left:calc(50px + env(safe-area-inset-left))}html body.room:not(.crewpage) #tm{left:calc(96px + env(safe-area-inset-left))}}body.tiny #tm,body.bc-common #tm{display:none!important}#tmp{position:fixed;z-index:46;left:calc(14px + env(safe-area-inset-left));top:calc(64px + env(safe-area-inset-top));width:max-content;min-width:230px;max-width:calc(100vw - 28px);max-height:calc(100vh - 90px);overflow:auto;padding:8px 10px 10px;border:1px solid rgba(247,147,26,.5);border-radius:12px;background:rgba(10,8,14,.97);box-shadow:0 10px 30px rgba(0,0,0,.6);display:grid;gap:1px;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}#tmp[hidden]{display:none}#tmp b{color:#9a8a74;font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin:8px 4px 2px}#tmp b:first-child{margin-top:2px}#tmp a{color:#f0e6d6;text-decoration:none;padding:5px 8px;border-radius:7px}#tmp a:hover,#tmp a:focus{background:rgba(247,147,26,.16);color:#fff}#tmp a[aria-current]{color:#f7931a}@media (pointer:coarse),(max-width:600px){#tmp{left:calc(4px + env(safe-area-inset-left));top:calc(50px + env(safe-area-inset-top))}html body:not(.room) #tmp{left:auto;right:calc(4px + env(safe-area-inset-right))}}</style>
 <script>(() => {

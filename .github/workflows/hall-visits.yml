@@ -1,0 +1,47 @@
+# Hall Visits: once a day, saves yesterday's counts from the Hall Counter (ordportal.com/hall-count) as the catalog on the
+# hall-visits branch (.github/hall-visits/build-visits.js). Days already saved stay as they are. Free: GitHub runs it, and
+# reading the counts needs no key. To run it by hand: Actions > Hall Visits > Run workflow.
+# © 2026 bitmap22. All rights reserved.
+name: Hall Visits
+
+on:
+  schedule:
+    # Just after midnight UTC, when the day is finished. GitHub starts timed jobs late, sometimes by hours, so it is
+    # asked a few times a day; a run with nothing new to save changes nothing.
+    - cron: '20 0,4,9,15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hall-visits
+  cancel-in-progress: false
+
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: The days already saved
+        run: |
+          if git fetch -q origin hall-visits; then git worktree add -q hv FETCH_HEAD; else mkdir -p hv; fi
+      - name: Save any finished day that is missing
+        run: node .github/hall-visits/build-visits.js hv
+      - name: Save them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp .github/hall-visits/README.md hv/README.md
+          cd hv
+          if [ ! -e .git ]; then git init -q -b hall-visits; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Nothing new."; exit 0; fi
+          git commit -qm "Hall Visits: $(date -u +%FT%H:%MZ)"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:hall-visits
