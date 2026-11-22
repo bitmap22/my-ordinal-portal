@@ -222,7 +222,7 @@
   // "smaller kinds", and clicking it opens a pie of just those, with the same rule, so even a kind of 0.01% can be seen. The
   // bars and lines follow the pie that is open. Colours come from one checked set of eight, given out in the kinds' own order
   // within each pie (so the pie, the bars, the lines and the list beside them always match); "smaller kinds" is grey.
-  const KINDS = SP.NAMES, SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c', '#9085e9', '#e66767'], REST = '#77746c', MAXN = 8, CUT = 10;
+  let KINDS = SP.NAMES; const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c', '#9085e9', '#e66767'], REST = '#77746c', MAXN = 8, CUT = 10;
   const SMALL = 'smaller kinds';
   const S = {index: null, by: 'day', show: 'space', list: [], at: null, ticked: new Set(KINDS), byAgent: false, zoom: []};
   // space or fees: what the charts and shares are of
@@ -345,7 +345,7 @@
     if (lo != null) { L.appendChild(document.createTextNode(S.by === 'day' ? ' · ' : '')); const a2 = el('a', null, 'Walk into block ' + fmt(lo) + ' in Agent Blockhall'); a2.href = 'block-cube.html#block=' + lo; a2.target = '_blank'; a2.rel = 'noopener'; L.appendChild(a2); $('goHall').href = 'block-cube.html#block=' + lo; }
     // the numbers: every kind, ticked or not
     const tb = $('rows'); tb.textContent = '';
-    for (const k of SP.NAMES) {
+    for (const k of KINDS) {
       const tr = el('tr'), col = V.colour[k] || (V.rest.includes(k) ? REST : 'transparent');
       const c0 = el('td', 'left'); const sw = el('span'); sw.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;border:1px solid #333;background:' + col; c0.appendChild(sw); c0.appendChild(document.createTextNode(k)); tr.appendChild(c0);
       tr.appendChild(el('td', 'left', SP.WHAT[k])); tr.appendChild(el('td', 'num', pct(P.size ? 100 * (P.bytes[k] || 0) / P.size : null)));
@@ -446,6 +446,7 @@
     say('Reading the saved days…');
     S.index = await SP.fetchIndex();
     if (!S.index.days || !S.index.days.length) throw new Error('no days are saved yet: the first are being filled in now');
+    { const was = allTicked(); KINDS = SP.namesOf(S.index.days); if (was) S.ticked = new Set(KINDS); drawTicks(); }   // (a day counted before 22 Nov 2026 has a few kinds of its own)
     $('how').textContent = '';
     for (const t of ['What is counted: every transaction’s bytes, as the block holds them (its witness data included), and each block’s 80-byte header with its count of transactions ("block header"). So for every block, the kinds add up to its exact size.',
       'Each transaction is counted once. ' + SP.ORDER + ' So a rune mint that also carries an inscription counts as runes, and an Alkanes transaction (which rides inside a rune message) counts as Alkanes.',
@@ -493,13 +494,13 @@
     return {shareOfTicked: Object.fromEntries(T.map(k => [k, t ? r3(100 * (v[k] || 0) / t) : null])), tickedShareOfAll: V.all ? r3(100 * t / V.all) : null, pie: pieOf(P)}; };
   const cmds = [
     {name: 'kinds', does: 'The kinds the space is split into (every token is its own kind, and payments are split by the coins they spend), what each holds, and the rule for a transaction that is several kinds at once. Gives back {kinds[{kind, what}], order, pieRule}.', args: [],
-      run: async () => ({kinds: SP.NAMES.map(k => ({kind: k, what: SP.WHAT[k]})), order: SP.ORDER, pieRule: 'A pie shows each kind with ' + CUT + '% or more of it; the kinds under ' + CUT + '% share one slice, "' + SMALL + '", which opens a pie of just those (zoom).'})},
+      run: async () => ({kinds: KINDS.map(k => ({kind: k, what: SP.WHAT[k]})), order: SP.ORDER, pieRule: 'A pie shows each kind with ' + CUT + '% or more of it; the kinds under ' + CUT + '% share one slice, "' + SMALL + '", which opens a pie of just those (zoom).'})},
     {name: 'periods', does: 'Every saved day, week or month, oldest first, with each kind’s share of all the bytes and of all the fees paid (percent), its bytes, fees (sats) and blocks, and whether the period is whole (a period not over yet, or with a day or block missing, says so in note; feeNote says the same for the fees). Shows that view on the page. Gives back {period, periods[{period, from, to, whole, note, days, daysExpected, blocks, blocksRead, blocksNotRead, bytes, shareOfAll{kind: percent}, fees, feesWhole, feeNote, blocksWithFees, shareOfFees{kind: percent}}], data}.', args: [PERIOD],
       run: async ({period}) => { await open({by: period}, true); return {period: S.by, periods: S.list.map(plainP), data: S.index.from}; }},
     {name: 'split', does: 'Open one day, week or month on the page (as picking it does) and give its split: every kind’s bytes, transactions and fees (sats), and its share of all the bytes and of all the fees paid; and the shares of the kinds ticked on the page, of what the page shows (showing: space or fees). at: a day (YYYY-MM-DD) for day; a week’s Monday or any day in it for week; YYYY-MM for month. Leave at out for the newest. Gives back {period, from, to, whole, note, bytes, blocksRead, fees, feesWhole, feeNote, blocksWithFees, kinds[{kind, what, bytes, transactions, shareOfAll, sats, shareOfFees}], showing, ticked, shareOfTicked{kind: percent}, tickedShareOfAll, pie{level, slices[{kind, share, holds}], pieShareOfAll}, links{dailyData, agentBlockhall, data}}.', args: [PERIOD, {name: 'at', does: 'which one: YYYY-MM-DD, or YYYY-MM for a month', type: 'string'}],
       run: async ({period, at}) => {
         const P = await open({by: period, at}, true), days = S.index.days.filter(d => d.day >= P.from && d.day <= P.to), lo = days.length ? days[0].firstBlock : null;
-        return Object.assign(plainP(P), {kinds: SP.NAMES.map(k => ({kind: k, what: SP.WHAT[k], bytes: P.bytes[k] || 0, transactions: P.txs[k] || 0, shareOfAll: P.share[k], sats: P.feesRead ? P.sats[k] || 0 : null, shareOfFees: P.feeShare[k]})),
+        return Object.assign(plainP(P), {kinds: KINDS.map(k => ({kind: k, what: SP.WHAT[k], bytes: P.bytes[k] || 0, transactions: P.txs[k] || 0, shareOfAll: P.share[k], sats: P.feesRead ? P.sats[k] || 0 : null, shareOfFees: P.feeShare[k]})),
           showing: S.show, ticked: [...S.ticked]}, tickedShares(P), {
           links: {dailyData: S.by === 'day' ? 'https://ordportal.com/daily.html?day=' + P.from : 'https://ordportal.com/daily.html', agentBlockhall: lo != null ? 'https://ordportal.com/block-cube.html#block=' + lo : 'https://ordportal.com/block-cube.html', data: S.index.from, page: location.origin + location.pathname + location.search}});
       }},

@@ -56,7 +56,13 @@
     ['other payments', 'any other transaction', ['regular']]];
   const HEADER = 'block header';
   const NAMES = KINDS.map(k => k[0]).concat([HEADER]);
-  const WHAT = Object.assign(Object.fromEntries(KINDS.map(k => [k[0], k[1]])), {[HEADER]: 'each block\'s 80-byte header and its count of transactions'});
+  // the kinds of days counted before 2.0.0 (22 Nov 2026), so a day not yet read again still adds up; each is several of today's
+  const OLD = {'Stamps & Counterparty': 'Stamps, SRC-20 and Counterparty together (a day counted before 22 Nov 2026)',
+    'other tokens': 'CRC-20, TAP, DMT, NAT, BRC-420, Atomicals, CAT-21 and Labitbu together (a day counted before 22 Nov 2026)',
+    'payments': 'every other payment, not split by coins (a day counted before 22 Nov 2026)'};
+  // the kinds some of these days have: today's, and an old one only where a day still has it
+  const namesOf = days => { const seen = new Set(); for (const d of days || []) for (const k of Object.keys(d.bytes || {})) if (OLD[k] && d.bytes[k] > 0) seen.add(k); return NAMES.concat(Object.keys(OLD).filter(k => seen.has(k))); };
+  const WHAT = Object.assign(Object.fromEntries(KINDS.map(k => [k[0], k[1]])), {[HEADER]: 'each block\'s 80-byte header and its count of transactions'}, OLD);
   const ORDER = 'A transaction that is several kinds at once is counted under the first that fits, in this order: ' + KINDS.map(k => k[0]).join(', ') + '.';
 
   // the kind of one transaction, from its hall kinds (the Block Manifest's item.kinds)
@@ -141,14 +147,14 @@
       P.days++; P.blocks += d.blocks; P.read += d.read; P.notRead += (d.notRead || []).length; P.size += d.size; addInto(P.bytes, d.bytes); addInto(P.txs, d.txs);
       const fr = d.feesRead || 0; P.feesRead += fr; P.feesNotRead += d.read - fr; P.fees += d.fees || 0; addInto(P.sats, d.sats);   // (a day saved before fees were counted has none)
     }
-    const out = [...by.values()].sort((a, b) => a.from < b.from ? -1 : 1);
+    const out = [...by.values()].sort((a, b) => a.from < b.from ? -1 : 1), ALL = namesOf(days);
     for (const P of out) {
       P.whole = P.days === P.daysExpected && !P.notRead;
-      P.share = {}; for (const k of NAMES) P.share[k] = P.size ? +(100 * (P.bytes[k] || 0) / P.size).toFixed(3) : null;
+      P.share = {}; for (const k of ALL) P.share[k] = P.size ? +(100 * (P.bytes[k] || 0) / P.size).toFixed(3) : null;
       if (!P.whole) P.note = (P.days < P.daysExpected ? P.days + ' of its ' + P.daysExpected + ' days are saved' : '') + (P.days < P.daysExpected && P.notRead ? '; ' : '') +
         (P.notRead ? P.notRead + ' block' + (P.notRead === 1 ? ' was' : 's were') + ' not read' : '') + ': its shares are of the bytes that were read.';
-      for (const k of NAMES) P.sats[k] = P.sats[k] || 0;
-      P.feeShare = {}; for (const k of NAMES) P.feeShare[k] = P.fees ? +(100 * P.sats[k] / P.fees).toFixed(3) : null;
+      for (const k of ALL) P.sats[k] = P.sats[k] || 0;
+      P.feeShare = {}; for (const k of ALL) P.feeShare[k] = P.fees ? +(100 * P.sats[k] / P.fees).toFixed(3) : null;
       P.feesWhole = P.whole && !P.feesNotRead;
       if (!P.feesRead) P.feeNote = 'no fees are saved for it';
       else if (!P.feesWhole) P.feeNote = (P.days < P.daysExpected ? P.days + ' of its ' + P.daysExpected + ' days are saved' : '') + (P.days < P.daysExpected && P.feesNotRead ? '; ' : '') +
@@ -192,5 +198,5 @@
     return index;
   }
 
-  return {VERSION, KINDS, NAMES, HEADER, WHAT, ORDER, FIRST_DAY, DATA_URLS, LICENCE, kindOf, newCoins, coinbaseOut, feesOf, splitBlock, dayRecord, periodOf, periods, fetchIndex, writeDay};
+  return {VERSION, KINDS, NAMES, OLD, namesOf, HEADER, WHAT, ORDER, FIRST_DAY, DATA_URLS, LICENCE, kindOf, newCoins, coinbaseOut, feesOf, splitBlock, dayRecord, periodOf, periods, fetchIndex, writeDay};
 });

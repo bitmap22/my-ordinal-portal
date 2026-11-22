@@ -56,7 +56,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.23.0';
+const VERSION = '1.24.0';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://ordportal.com/';
 const GAME = PORTAL + 'block-cube.html';
@@ -902,14 +902,14 @@ async function blockspaceShare({period, at}) {
   if (!list.length) throw new Error('no days are saved yet');
   const plainP = P => ({period: P.period, from: P.from, to: P.to, whole: P.whole, note: P.note || null, days: P.days, daysExpected: P.daysExpected, blocks: P.blocks, blocksRead: P.read, blocksNotRead: P.notRead, bytes: P.size, shareOfAll: P.share,
     fees: P.feesRead ? P.fees : null, feesWhole: P.feesWhole, feeNote: P.feeNote || null, blocksWithFees: P.feesRead, shareOfFees: P.feeShare});
-  const base = {kinds: SPACE.NAMES.map(k => ({kind: k, what: SPACE.WHAT[k]})), order: SPACE.ORDER, what: 'Each kind\'s share is its percent of all the bytes read in the period (each transaction counted once, so the kinds add up to 100). shareOfFees is its percent of all the fees paid (fees, in sats): each transaction\'s fee from mempool.space\'s list (or a copy\'s), kept for a block only if they add up to what its coinbase pays out (read from the block\'s own bytes) less the new coins. A period that is not whole (not over yet, a day not saved, or a block not read) says so in note, and feeNote says the same for the fees: its shares are of what was read. Bitcoin only.', updated: I.updated, licence: I.licence, source: x.site};
+  const base = {kinds: SPACE.namesOf(I.days).map(k => ({kind: k, what: SPACE.WHAT[k]})), order: SPACE.ORDER, what: 'Each kind\'s share is its percent of all the bytes read in the period (each transaction counted once, so the kinds add up to 100). shareOfFees is its percent of all the fees paid (fees, in sats): each transaction\'s fee from mempool.space\'s list (or a copy\'s), kept for a block only if they add up to what its coinbase pays out (read from the block\'s own bytes) less the new coins. A period that is not whole (not over yet, a day not saved, or a block not read) says so in note, and feeNote says the same for the fees: its shares are of what was read. Bitcoin only.', updated: I.updated, licence: I.licence, source: x.site};
   if (at == null || at === '') return Object.assign({period: by, periods: list.map(plainP)}, base, {page: PORTAL + 'blockspace-share.html?by=' + by,
     next: 'blockspaceShare({period, at}) gives one ' + by + ' with every kind\'s bytes, transactions and fees (at: YYYY-MM-DD, or YYYY-MM for a month).'});
   at = String(at).trim();
   const P = list.find(y => y.period === at || y.from === at) || list.find(y => /^\d{4}-\d{2}-\d{2}$/.test(at) && at >= y.from && at <= y.to);
   if (!P) throw new Error('no ' + by + ' "' + at + '" is saved (' + list.length + ' ' + by + (list.length === 1 ? ' is' : 's are') + ' saved, from "' + list[0].period + '" to "' + list[list.length - 1].period + '")');
   const days = (I.days || []).filter(d => d.day >= P.from && d.day <= P.to), lo = days.length ? days[0].firstBlock : null;
-  const kinds = SPACE.NAMES.map(k => ({kind: k, what: SPACE.WHAT[k], bytes: P.bytes[k] || 0, transactions: P.txs[k] || 0, shareOfAll: P.share[k], sats: P.feesRead ? P.sats[k] || 0 : null, shareOfFees: P.feeShare[k]}));
+  const kinds = SPACE.namesOf(I.days).map(k => ({kind: k, what: SPACE.WHAT[k], bytes: P.bytes[k] || 0, transactions: P.txs[k] || 0, shareOfAll: P.share[k], sats: P.feesRead ? P.sats[k] || 0 : null, shareOfFees: P.feeShare[k]}));
   return Object.assign(plainP(P), base, {kinds, firstBlock: lo, lastBlock: days.length ? days[days.length - 1].lastBlock : null,
     links: {page: PORTAL + 'blockspace-share.html?by=' + by + '&at=' + encodeURIComponent(P.period), dailyData: PORTAL + 'daily.html' + (by === 'day' ? '?day=' + P.from : ''), agentBlockhall: lo != null ? GAME + '#block=' + lo : GAME},
     next: by === 'day' ? 'dailyData({day: "' + P.from + '"}) gives every block of this day; blockManifest({height}) every transaction in one.' : 'blockspaceShare({period: "day", at: "' + P.from + '"}) gives its first day.'});
