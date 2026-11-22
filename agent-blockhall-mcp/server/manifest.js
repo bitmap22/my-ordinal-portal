@@ -324,6 +324,9 @@
                 if (pr === 'brc-420') { set(TF.brc420); if (!r.token) r.token = tok('BRC-420', {name: o.name != null ? s(o.name, 24) : null, amount: amt(o)}, {op: String(o.op || '').toLowerCase() === 'deploy' ? 'deploy' : 'mint (not checked)'}); }
                 else if (pr === 'brc-20' && o.p === 'brc-20' && h >= 779832 && /^(text\/plain|application\/json)(;|$)/.test(ct) && i === 0 && ei === 1 && !pn) {   // (BRC-20's own filter: plain text or JSON, the transaction's first inscription, written the standard way, from block 779,832)
                   set(TF.brc20); if (!r.token) r.token = tok('BRC-20', {tick: s(o.tick, 16), op: s(o.op, 12), amount: amt(o)}); }
+                // BRC2.0 (from block 912,690): programs (EVM smart contracts) written as inscriptions, under BRC-20's same rules
+                else if ((pr === 'brc20-prog' || (pr === 'brc20-module' && o.module === 'BRC20PROG')) && o.p === pr && h >= 912690 && /^(text\/plain|application\/json)(;|$)/.test(ct) && i === 0 && ei === 1 && !pn) {
+                  set(TF.brc20); if (!r.token) r.token = tok('BRC2.0', {op: s(o.op, 12)}); }
                 else if (pr === 'tap' && h >= 801993) {   // (TAP's own start; DMT from 817,705; NAT mints not counted from 885,588)
                   set(TF.tap);
                   const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));

@@ -1593,7 +1593,7 @@ function runeWords(R) {
   return {word: {k: 'rune', s: 2, a: '', b: (c >= 32 ? String.fromCodePoint(c) : '¤') + ' ' + (nm || 'new rune')}, lost: w2.s === 5 ? {k: 'rune', s: 5, a: '', b: 'new rune: not made'} : w2, x: '+ new rune', x2, ids, name: nm};
 }
 // what the block's reader found about a rune message, kept on the parcel (for its card, its tile and the agent kit)
-function runeCarry(t, r) { t.bmN = r.bmN == null ? null : r.bmN; t.bmI = r.bmI; t.natOff = !!r.natOff; t.bmReal = false; t.bmNo = null; t.rbad = r.rbad || null; t.rtry = r.rtry || null; t.rmv = r.rmv || null; t.rptr = r.rptr == null ? null : r.rptr; t.pre = r.pre || null; t.wNE = r.wNE || null; t.rx2 = r.rx2 || ''; }
+function runeCarry(t, r) { t.brc2 = !!r.brc2; t.bmN = r.bmN == null ? null : r.bmN; t.bmI = r.bmI; t.natOff = !!r.natOff; t.bmReal = false; t.bmNo = null; t.rbad = r.rbad || null; t.rtry = r.rtry || null; t.rmv = r.rmv || null; t.rptr = r.rptr == null ? null : r.rptr; t.pre = r.pre || null; t.wNE = r.wNE || null; t.rx2 = r.rx2 || ''; }
 // a new rune that never came into being: its tile falls back to what else its message does
 function runeLostWord(t) {
   if (!t.word) return;
@@ -1866,6 +1866,10 @@ async function scanBytes(X, h) {
               }
               else if (pr === 'brc-20' && o.p === 'brc-20' && h >= 779832 && /^(text\/plain|application\/json)(;|$)/.test(ct) && i === 0 && ei === 1 && !pn) {   // (BRC-20's own rules, as its indexer reads them: a plain-text or JSON file, the transaction's first inscription, written the standard way, from block 779,832)
                 set(TF.brc20); r.tick = String(o.tick || '').slice(0, 16); if (r.word && !r.wj) r.word = {k: 'brc20', a: r.tick, b: wb}; }
+              // BRC2.0 (from block 912,690): programs (EVM smart contracts) written as inscriptions, under BRC-20's same rules
+              else if ((pr === 'brc20-prog' || (pr === 'brc20-module' && o.module === 'BRC20PROG')) && o.p === pr && h >= 912690 && /^(text\/plain|application\/json)(;|$)/.test(ct) && i === 0 && ei === 1 && !pn) {
+                set(TF.brc20); r.brc2 = true; const op = String(o.op || '').toLowerCase(), ow = {d: 'deploy', deploy: 'deploy', c: 'call', call: 'call', t: 'transact', transact: 'transact', withdraw: 'withdraw'}[op] || op.slice(0, 12);
+                if (r.word && !r.wj) r.word = {k: 'brc2', a: (ow || 'program').toUpperCase(), b: ow === 'deploy' ? 'a new smart contract' : ow === 'withdraw' ? 'tokens out of BRC2.0' : 'a smart contract step'}; }
               else if (pr === 'tap' && h >= 801993) {   // (TAP's own start block; DMT from 817,705)
                 set(TF.tap);
                 const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));
@@ -2932,7 +2936,7 @@ async function loadArt(B) {
 }
 // one word tile: what the inscription says, in the colour of its kind, drawn at the size it will be shown (big tiles get the
 // label, the word and the detail line; small ones just the word or logo, as big as it fits)
-const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
+const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], brc2: ['#0b2440', '#4aa8ff', 'BRC2.0'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
   nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], rune5: ['#1a1424', '#9b8bb4', 'RUNE MESSAGE'], rune6: ['#2a0a16', '#ff5a7a', 'BROKEN RUNES'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
 // ALKANES on a tile. Ten alkane tokens are named after real alkanes and carry the real formula as their symbol on the chain
 // (METHANE CH4 to OCTANE C8H18 are alkanes 2:16 to 2:23, then nonane C9H20 is 2:195 and DECANE C10H22 is 2:224). Each of those
@@ -4102,7 +4106,7 @@ function select(t) {
     const ty = [has(TF.taproot) ? 'taproot' : has(TF.segwit) ? 'segwit' : has(TF.legacy) ? 'legacy' : null, has(TF.consol) && 'consolidation', has(TF.batch) && 'batch payout', has(TF.msig) && 'multisig'].filter(Boolean);
     if (ty.length) rows.push(['kind', ty.join(' · ')]);
     if (t.ins && t.ins.length) rows.push(['inscription', [...new Set(t.ins.map(e => e.ct))].join(', ') + (t.ins.length > 1 ? ' × ' + t.ins.length : '') + (has(TF.child) ? ' · child of a parent' : '') + (has(TF.cursed) ? ' · cursed' : '')]);
-    const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', t.src20 && 'SRC-20', has(TF.cp) && 'Counterparty'].filter(Boolean);
+    const tok = [has(TF.brc20) && (t.brc2 ? 'BRC2.0 (a program on BRC-20)' : 'BRC-20'), has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', t.src20 && 'SRC-20', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
     if (t.bmN != null && (t.bmReal || t.bmNo)) rows.push([t.bmReal ? 'bitmap' : 'not a bitmap', bmSay(t)]);
     if (has(TF.brc20)) rows.push(['BRC-20 rules', 'checked here: its file type, that it is its transaction’s first inscription, written the standard way, and made from block 779,832. Checked when you pick it up: whether ord marks it cursed or a re-inscription (BRC-20 does not count those). The token’s own limits are the BRC-20 ledger’s to say']);
@@ -16296,7 +16300,7 @@ function ciData(tab) {
     ['HTML in matrix green', 'a web page inscription. The page itself is never run here: see "why some files open elsewhere"'],
     ['a 3D model', 'a picture of the model, drawn here from its file (only its shape is read)'],
     ['words on a page', 'a text inscription: its first words'],
-    ['BRC-20, TAP, NAT, CRC-20, SRC-20, BRC-420', 'the token’s name and what it does (deploy, mint, transfer). Each is read by its own rules (file type, start block and more); "+ rune mint 1:0" under it means the same transaction also minted a rune'],
+    ['BRC-20, BRC2.0, TAP, NAT, CRC-20, SRC-20, BRC-420', 'the token’s name and what it does (deploy, mint, transfer; for BRC2.0 the program step). Each is read by its own rules (file type, start block and more); "+ rune mint 1:0" under it means the same transaction also minted a rune'],
     ['BITMAP', 'only the real claim of a block: the first proper "N.bitmap" (bop’s on-chain index, with ord agreeing; from block 942,000 the Bitmap Record). A later copy stays a plain text box'],
     ['NEW RUNE', 'a rune made here: its symbol and name'],
     ['RUNE MINT', 'which rune it mints, by name where it is known (rune 1:0 is UNCOMMON•GOODS), else by its number'],
@@ -16307,6 +16311,25 @@ function ciData(tab) {
     ['a colourful CP coin', 'Counterparty'],
     ['a cat or a rabbit', 'a CAT-21 cat or a Labitbu, each drawn here from its own transaction'],
     ['a plain box', 'an ordinary transaction, or a kind with no picture or words of its own']]});
+  S.push({t: 'the standards: what each does, and what is shown here', rows: [
+    ['Ordinals inscriptions', 'any file written into Bitcoin. Here: pictures, words, 3D models, sound and films are shown; web pages and code are never run (they link to their own page)'],
+    ['BRC-20', 'tokens written as small text notes (deploy, mint, transfer). Here: each note, read by BRC-20’s own rules. Missing: whether a step is within the token’s limits, which needs the whole BRC-20 ledger (more than a page can hold)'],
+    ['BRC2.0', 'programs (smart contracts) on BRC-20, from block 912,690. Here: which step it is (deploy, call, transact, withdraw). Missing: what the program does when it runs, which needs the BRC2.0 engine'],
+    ['TAP, DMT and NAT', 'tokens as text notes; a DMT mint is made from a block’s own data. Here: each note, from TAP’s start block; NAT mints from block 885,588 are marked not counted (NAT now comes from each block’s reward)'],
+    ['BRC-420', 'a mint is a link to an existing inscription. Here: deploys, and mints marked "not checked": whether a mint was paid for needs the BRC-420 indexer'],
+    ['bitmap', 'claims a whole block as "N.bitmap". Here: only the real, first claim (bop’s index with ord agreeing; the Bitmap Record from 942,000)'],
+    ['runes', 'tokens made, minted and moved by a rune message. Here: every message, read exactly as ord (the runes reference) reads it, broken ones included'],
+    ['Alkanes', 'programs (smart contracts) and tokens; its pictures are called Orbitals. Here: what each message asks, and the ten alkane molecules. Missing: Orbital pictures, which are made or kept inside their contracts: reading them needs an Alkanes server, and the free ones do not let a web page read them. Ordiscan shows them on each Alkane’s page'],
+    ['Counterparty', 'assets and messages carried in Bitcoin. Here: the kind, and what a message does (read from counterparty.io when you pick it up)'],
+    ['Stamps', 'pictures stored in a transaction’s own outputs. Here: the pictures'],
+    ['SRC-20', 'tokens as text notes, stored the Stamps way. Here: each note, from its own start blocks'],
+    ['SRC-721', 'pictures built from up to ten Stamps layered together. Missing: the layers are not put together here yet (each must be looked up and stacked)'],
+    ['SRC-101', 'names, stored the Stamps way. Missing: not read here yet'],
+    ['Atomicals', 'files (one or more, which the owner can update) and ARC-20 tokens. Here: its first picture. Missing: later updates to its files, and ARC-20 amounts, which need the Atomicals indexer'],
+    ['CAT-21', 'a cat for every transaction with lock time 21. Here: each cat, drawn by the CAT-21 reference code'],
+    ['Labitbu', 'a small picture hidden in a taproot spend. Here: each picture'],
+    ['CRC-20', 'tokens as text notes in OP_RETURN. Here: each note'],
+    ['OpenTimestamps', 'a proof that a file existed at a time (only its fingerprint goes on chain). Here: the kind']]});
   S.push({t: 'why some files open elsewhere', p: ['Some inscriptions are programs: web pages (HTML) and other files that can run code. Agent Blockhall never runs another person’s code, because a page could try to fool you or reach your wallet.',
     'So when you pick one up, its card says NOT OPENED HERE and gives a link to its own page on ordinals.com (with ordiscan.com as a back-up), to open in a new tab if you choose.',
     'Pictures, sound, films and plain text are shown here, because nothing in them runs. A 3D model is drawn from its shape alone.']});
