@@ -43,7 +43,7 @@
         ::selection { background: rgba(243, 165, 48, .34); color: #fff; }
         h1, h2, h3 { text-wrap: balance; }
         p { text-wrap: pretty; }
-        #tools, #legacy, #for-agents { scroll-margin-top: 76px; }
+        #agent-blockhall, #tools, #legacy, #for-agents { scroll-margin-top: 76px; }   /* a jump lands clear of the top bar (the first part: at the very top, its top sign in view) */
         a { color: var(--amber); }
         a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
         .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
@@ -2059,20 +2059,40 @@ window.AgentKit = window.AgentKit || (() => {
 })();
 </script>
 <script>
-/* (22 Nov 2026) the top bar's links: the one for the part of the page you are in is lit (and marked for screen readers) */
+/* (22 Nov 2026) the top bar's links: the one for the part of the page you are in is lit (and marked for screen readers).
+   The part you are in is the last one whose top has passed a line a third of the way down the window. The last parts can't
+   always climb that high (the page ends first), so two things come before that line: a part you just asked for, by a link to
+   it or by opening the Legacy box, is the lit one while its top is on screen, until you scroll by hand; and at the very end
+   of the page the lit one is the last part whose top is on screen. */
 (function () {
     var links = [].slice.call(document.querySelectorAll('.topnav a[href^="#"]')), parts = links.map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); });
     if (!links.length) return;
-    var tick = false;
+    var tick = false, asked = -1;
     function mark() {
         tick = false;
-        var line = window.scrollY + window.innerHeight * 0.35, best = -1, top = -1;
-        parts.forEach(function (p, i) { if (!p) return; var y = p.getBoundingClientRect().top + window.scrollY; if (y <= line && y >= top) { top = y; best = i; } });
+        var y0 = window.scrollY, H = window.innerHeight, line = y0 + H * 0.35, best = -1, top = -1;
+        parts.forEach(function (p, i) { if (!p) return; var y = p.getBoundingClientRect().top + y0; if (y <= line && y >= top) { top = y; best = i; } });
+        var a = asked >= 0 && parts[asked] ? parts[asked].getBoundingClientRect().top : -1;
+        if (a >= 0 && a < H) best = asked;
+        else if (y0 + H >= document.documentElement.scrollHeight - 2) parts.forEach(function (p, i) { if (!p) return; var y = p.getBoundingClientRect().top + y0; if (y < y0 + H && y >= top) { top = y; best = i; } });
         links.forEach(function (a, i) { a.classList.toggle('here', i === best); if (i === best) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current'); });
     }
+    function ask(id) { asked = -1; parts.forEach(function (p, i) { if (p && id && p.id === id) asked = i; }); }
+    function forget() { asked = -1; }
     window.addEventListener('scroll', function () { if (!tick) { tick = true; requestAnimationFrame(mark); } }, {passive: true});
     window.addEventListener('resize', mark);
+    /* asking: a link to a part of this page, or the Legacy box's own bar (a press comes first and forgets; the click then asks) */
+    document.addEventListener('click', function (e) {
+        var t = e.target && e.target.closest ? e.target.closest('a[href^="#"], #legacy-box > summary') : null; if (!t) return;
+        ask(t.tagName === 'A' ? t.getAttribute('href').slice(1) : 'legacy'); mark();
+    });
+    window.addEventListener('hashchange', function () { ask(location.hash.slice(1)); mark(); });
+    /* scrolling by hand: a press (a swipe, the scroll bar), the wheel, or the keys that scroll */
+    window.addEventListener('pointerdown', forget, true);
+    window.addEventListener('wheel', forget, {passive: true});
+    window.addEventListener('keydown', function (e) { if (/^(ArrowUp|ArrowDown|PageUp|PageDown|Home|End| )$/.test(e.key)) forget(); });
     var box = document.getElementById('legacy-box'); if (box) box.addEventListener('toggle', mark);
+    ask(location.hash.slice(1));
     mark();
 })();
 </script>
