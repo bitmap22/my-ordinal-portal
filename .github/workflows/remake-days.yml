@@ -1,0 +1,74 @@
+# Remake saved Daily Data days (Bitcoin or Dogecoin) one after another, e.g. after the reader's rules change, then (if asked)
+# recount Blockspace Share. Started by hand only. The daily jobs keep one run waiting at a time, so this starts one day, waits until
+# that day's file is saved again, then starts the next (trying a day again if its run was set aside). Near its time limit it
+# starts itself again for the days still to do. © 2026 bitmap22. All rights reserved.
+name: Remake saved days
+
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: 'btc or doge'
+        required: true
+      days:
+        description: 'The UTC days to remake, oldest first, separated by spaces (YYYY-MM-DD)'
+        required: true
+      space:
+        description: 'btc only. When the days are done, recount Blockspace Share for the days before them, from this day (YYYY-MM-DD) to the day before the first remade day (remaking a Bitcoin day remakes its Blockspace day too)'
+        required: false
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: remake-days-${{ github.event.inputs.chain }}
+  cancel-in-progress: false
+
+jobs:
+  remake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Remake each day in turn
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHAIN: ${{ github.event.inputs.chain }}
+          DAYS: ${{ github.event.inputs.days }}
+          SPACE: ${{ github.event.inputs.space }}
+        run: |
+          set -u
+          case "$CHAIN" in btc) WF=daily-data.yml; BR=daily-data;; doge) WF=doge-daily-data.yml; BR=doge-daily-data;; *) echo "chain: btc or doge"; exit 1;; esac
+          for d in $DAYS; do case "$d" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "Days must be YYYY-MM-DD: $d"; exit 1;; esac; done
+          case "$SPACE" in ""|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "space: a day (YYYY-MM-DD) or empty"; exit 1;; esac
+          R="repos/${GITHUB_REPOSITORY}"; START=$(date +%s); LEFT=""; FAILED=""
+          saved_at() { gh api "$R/commits?sha=$BR&path=days/$1.json&per_page=1" --jq '.[0].commit.committer.date // ""' 2>/dev/null | xargs -I{} date -u -d {} +%s 2>/dev/null || echo 0; }
+          for DAY in $DAYS; do
+            # (stop starting new days after 4 hours 30 minutes, and start again for the rest)
+            if [ $(( $(date +%s) - START )) -gt 16200 ]; then LEFT="$LEFT $DAY"; continue; fi
+            done_ok=""
+            for try in 1 2 3; do
+              ASKED=$(date +%s)
+              echo "$DAY: starting its remake (try $try)"
+              gh workflow run "$WF" --ref "${GITHUB_REF_NAME}" -f day="$DAY"
+              # wait until the day's file is saved after we asked (at most 2 hours 30 minutes), or its run ends without it
+              while [ $(( $(date +%s) - ASKED )) -lt 9000 ]; do
+                sleep 60
+                if [ "$(saved_at "$DAY")" -ge "$ASKED" ]; then done_ok=yes; break; fi
+                busy=$(gh api "$R/actions/workflows/$WF/runs?per_page=5" --jq '[.workflow_runs[] | select(.status != "completed")] | length')
+                if [ "$busy" = "0" ] && [ $(( $(date +%s) - ASKED )) -gt 180 ]; then sleep 60; [ "$(saved_at "$DAY")" -ge "$ASKED" ] && done_ok=yes; break; fi
+              done
+              [ -n "$done_ok" ] && { echo "$DAY: saved again"; break; }
+              echo "$DAY: not saved yet, trying again"
+            done
+            [ -n "$done_ok" ] || FAILED="$FAILED $DAY"
+          done
+          if [ -n "$LEFT" ]; then
+            echo "Time is short: starting again for$LEFT"
+            gh workflow run remake-days.yml --ref "${GITHUB_REF_NAME}" -f chain="$CHAIN" -f days="${LEFT# }" -f space="$SPACE"
+          elif [ -n "$SPACE" ] && [ "$CHAIN" = btc ]; then
+            FIRST=$(echo $DAYS | cut -d' ' -f1); TO=$(date -u -d "$FIRST - 1 day" +%F)
+            echo "Days done: recounting Blockspace Share from $SPACE to $TO (into space2, then swapped in)"
+            gh workflow run blockspace-fill.yml --ref "${GITHUB_REF_NAME}" -f from="$SPACE" -f to="$TO" -f redo=yes -f folder=space2
+          fi
+          if [ -n "$FAILED" ]; then echo "Not remade:$FAILED"; exit 1; fi
