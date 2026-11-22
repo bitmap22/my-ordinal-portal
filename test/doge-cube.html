@@ -1338,20 +1338,54 @@ function runeName(n, sp) {
   let o = ''; for (let i = 0; i < s.length; i++) { o += s[i]; if (i < s.length - 1 && (sp >> BigInt(i)) & 1n) o += '•'; }
   return o;
 }
-// a dunestone (Dogecoin's runestone, from ord-with-dunes): OP_RETURN, a push of the letter D, then LEB128 numbers in tag/value
-// pairs; tag 0 starts the edicts (each: a step to the dune's id, an amount, an output). An edict whose id has the claim bit is a mint
-const DUNE_CLAIM = 1n << 48n;
-function dunestone(s) {
-  const pay = catB(pushes(s, 3, s.length).filter(x => x[1]).map(x => x[1])), ints = [];
-  for (let i = 0; i < pay.length;) { let v = 0n, sh = 0n, c; do { c = pay[i++]; v |= BigInt(c & 127) << sh; sh += 7n; } while (c & 128 && i < pay.length); ints.push(v); }
-  const F = {}, ed = []; let mint = false, move = false;
-  for (let k = 0; k < ints.length; k += 2) {
-    if (ints[k] === 0n) { let id = 0n; for (let j = k + 1; j + 2 < ints.length; j += 3) { id += ints[j]; const c = (id & DUNE_CLAIM) !== 0n, b = c ? id ^ DUNE_CLAIM : id; if (c) mint = true; else move = true; ed.push({id: (b >> 16n) + ':' + (b & 0xffffn), claim: c, amt: ints[j + 1], out: Number(ints[j + 2])}); } break; }
-    if (k + 1 < ints.length) (F[ints[k]] = F[ints[k]] || []).push(ints[k + 1]);
+// a dunestone (Dogecoin's runestone), read the way the Dunes reference reads it (sirduney/ord-with-dunes: dunestone.rs, varint.rs,
+// edict.rs, dune_id.rs, flag.rs, tag.rs): OP_RETURN, a push of the letter D, then numbers in tag/value pairs. Its numbers are NOT
+// the runes' kind: each is big-endian, 7 bits a byte, and each byte that carries on adds one (Bitcoin Core's VARINT). Tag 0 starts
+// the edicts (each: a step to the dune's id, an amount, an output); an edict whose id has the claim bit is a mint. A message that
+// breaks a rule is broken (a cenotaph): nothing it asks for happens, and any dunes its transaction spends are burned.
+// Dunes count from block 5,084,000 (the reference's first dune height).
+const DUNES_START = 5084000, DUNE_CLAIM = 1n << 48n, D128 = (1n << 128n) - 1n, dsat = n => n > D128 ? D128 : n;
+const DUNE_FLAW = {edict: 'a move names a dune that cannot be, or an output the transaction does not have', overflow: 'the new dune\'s supply would be too big to count',
+  flag: 'it sets a flag that dunes does not know', even: 'it holds a field that dunes does not know'};
+function dunestone(s, nout) {
+  let i = 3; const pay = [];
+  while (i < s.length) {
+    const op = s[i++]; let n = -1;
+    if (op <= 75) n = op; else if (op === 76) { if (i + 1 > s.length) return null; n = s[i++]; } else if (op === 77) { if (i + 2 > s.length) return null; n = s[i] | s[i + 1] << 8; i += 2; } else if (op === 78) { if (i + 4 > s.length) return null; n = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+    if (n < 0) continue;   // (any other step is skipped)
+    if (i + n > s.length) return null;   // (a push that runs off the end: no dune message at all)
+    for (let k = 0; k < n; k++) pay.push(s[i + k]); i += n;
   }
-  const fl = F[2] ? F[2][0] : 0n, prem = F[22] ? F[22][0] : 0n, etch = !!((fl & 1n) || F[4] || prem > 0n);
-  const c = F[5] && F[5][0] <= 0x10ffffn ? Number(F[5][0]) : -1;
-  return {etch, mint, move, ed, div: F[1] ? Number(F[1][0]) : 0, name: F[4] ? runeName(F[4][0], F[3] && F[3][0]) : null, sym: c >= 32 && (c < 0xd800 || c > 0xdfff) ? String.fromCodePoint(c) : null};
+  const ints = [];
+  for (let p = 0; p < pay.length;) { let v = 0n; for (;;) { if (p >= pay.length) break; const b = BigInt(pay[p++]); v = dsat(v * 128n); if (b < 128n) { v = dsat(v + b); break; } v = dsat(v + b - 127n); } ints.push(v); }
+  const F = new Map(), ed = []; let bad = null;
+  for (let k = 0; k < ints.length; k += 2) {
+    const tag = ints[k];
+    if (tag === 0n) { let id = 0n; for (let j = k + 1; j + 2 < ints.length; j += 3) { id = dsat(id + ints[j]); const hh = id >> 16n, ix = id & 0xffffn, out = ints[j + 2];
+        if (hh > (1n << 64n) - 1n || (hh === 0n && ix > 0n) || out > BigInt(nout)) { bad = bad || 'edict'; continue; }
+        const c = (id & DUNE_CLAIM) !== 0n, b = c ? id ^ DUNE_CLAIM : id; ed.push({id: (b >> 16n) + ':' + (b & 0xffffn), claim: c, zero: id === 0n, amt: ints[j + 1], out: Number(out)}); } break; }
+    if (k + 1 >= ints.length) break;
+    if (!F.has(tag)) F.set(tag, ints[k + 1]);
+  }
+  const take = t => { const v = F.get(t); F.delete(t); return v; };
+  const ptr = take(12n), div = take(1n), lim = take(6n), dn = take(4n), cap = take(20n), prem = take(22n), sp = take(3n), sym = take(5n); take(14n); take(18n); take(16n); take(8n);
+  let flags = take(2n) || 0n; const fl = b => { const m = 1n << b, on = (flags & m) !== 0n; flags &= ~m & D128; return on; }, etch = fl(0n); fl(1n); fl(2n);
+  if (!bad && (prem || 0n) + (cap || 0n) * (lim || 0n) > D128) bad = 'overflow';
+  if (!bad && flags !== 0n) bad = 'flag';
+  if (!bad && [...F.keys()].some(t => t % 2n === 0n)) bad = 'even';
+  const c = sym != null && sym <= 0x10ffffn && !(sym >= 0xd800n && sym <= 0xdfffn) ? Number(sym) : -1, good = bad ? [] : ed;
+  const mintIds = [...new Set(good.filter(e => e.claim).map(e => e.id))], moveIds = [...new Set(good.filter(e => !e.claim && !e.zero).map(e => e.id))];
+  return {bad, etch: !bad && etch, mint: mintIds.length > 0, move: moveIds.length > 0, mintIds, moveIds, ed: good, ptr: !bad && ptr != null && ptr <= 0xffffffffn ? Number(ptr) : null,
+    div: div != null && div <= 38n ? Number(div) : 0, name: etch && dn != null ? runeName(dn, sp != null && sp <= 0x07ffffffn ? sp : 0n) : null, sym: c >= 32 ? String.fromCodePoint(c) : null};
+}
+// a dune's name, from the explorer's list of dunes (its id if the list has not come yet)
+const duneNm = id => { const d = DUNES && DUNES.get(id); return d ? d.name : id; };
+const duneList3 = ids => ids.slice(0, 3).map(duneNm).join(', ') + (ids.length > 3 ? ' and ' + (ids.length - 3) + ' more' : '');
+// a parcel's dune line on its card: what its dune message does, said plainly
+function duneSay(t, etchTxt) {
+  if (t.dbad) return 'a broken dune message: ' + (DUNE_FLAW[t.dbad] || 'it breaks a rule') + '. Nothing it asks for happens, and any dunes this transaction spends are burned';
+  const a = [etchTxt, t.dmIds && t.dmIds.length && 'minted ' + duneList3(t.dmIds), t.dmvIds && t.dmvIds.length && 'moved ' + duneList3(t.dmvIds)].filter(Boolean).join(' · ');
+  return a || (t.dptr != null ? 'a dune message with only a pointer: any dunes this transaction spends go to out ' + (t.dptr + 1) : 'a dune message that makes, mints and moves nothing');
 }
 // readable words: mostly printable characters
 const U8F = new TextDecoder('utf-8', {fatal: true});
@@ -1580,7 +1614,7 @@ async function rawTxRead(t) {
   for (let i = 0; i < nout; i++) {
     p += 8; const l = vi(), s = X.subarray(p, p + l); p += l;
     if (s[0] !== 0x6a) continue;
-    if (l >= 3 && s[1] === 1 && s[2] === 0x44) r.dune = dunestone(s);
+    if (l >= 3 && s[1] === 1 && s[2] === 0x44) { if (!r.dSeen && !(j.block_height > 0 && j.block_height < DUNES_START)) r.dune = dunestone(s, nout); r.dSeen = true; }   // (only the first dune message counts, and only from block 5,084,000)
     else if (l > 1) { const w = words(catB(pushes(s, 1, s.length).filter(x => x[1]).map(x => x[1]))); if (w && !r.msg) r.msg = w; }
   }
   if (t.idx === 0 && isc[0]) r.cbWords = coinbaseWords(isc[0]);
@@ -1609,9 +1643,15 @@ function cbRead(B) {
 // what the bytes said, kept on the parcel: the dune flags, its message, the miner's words
 function rawApply(t, r) {
   if (!r) return;
-  if (r.dune) { let f = 1 << TF.dune; if (r.dune.mint) f |= 1 << TF.dmint; if (r.dune.move) f |= 1 << TF.dmove; if (r.dune.etch && t.dune) f |= 1 << TF.detch; t.scD = (t.scD || 0) | f;
-    if (!t.word || t.word.k === 'text') t.word = r.dune.etch && t.dune ? {k: 'rune', s: 2, a: '', b: (t.dsym || '¤') + ' ' + t.rn} : r.dune.mint ? {k: 'rune', s: 3, a: '', b: 'mint'} : {k: 'rune', s: 4, a: '', b: ''};
-    if (r.dune.etch && !t.dune) t.rnLost = r.dune.name || 'a new dune'; }
+  if (r.dune) { const d = r.dune; let f = 1 << TF.dune; if (d.mint) f |= 1 << TF.dmint; if (d.move) f |= 1 << TF.dmove; if (d.etch && t.dune) f |= 1 << TF.detch; t.scD = (t.scD || 0) | f;
+    t.dbad = d.bad; t.dmIds = d.mintIds; t.dmvIds = d.moveIds; t.dptr = d.ptr;
+    const more = ids => ids.length > 1 ? ' +' + (ids.length - 1) : '';
+    const w = d.bad ? {k: 'rune', s: 6, a: '', b: 'burns its dunes'} : d.etch && t.dune ? {k: 'rune', s: 2, a: '', b: (t.dsym || '¤') + ' ' + t.rn}
+      : d.mint ? {k: 'rune', s: 3, a: '', b: 'mint ' + duneNm(d.mintIds[0]) + more(d.mintIds) + (d.move ? ' +move' : '')} : d.move ? {k: 'rune', s: 4, a: '', b: 'move ' + duneNm(d.moveIds[0]) + more(d.moveIds)}
+      : {k: 'rune', s: 5, a: '', b: d.etch ? 'new dune: not made' : d.ptr != null ? 'any dunes → out ' + (d.ptr + 1) : 'empty'};
+    if (!t.word || t.word.k === 'text' || t.word.k === 'rune') t.word = w;
+    else { const x = d.bad ? '+ broken dune message' : d.etch && t.dune ? '+ new dune' : d.mint ? '+ dune mint ' + duneNm(d.mintIds[0]) : d.move ? '+ dune move' : ''; if (x) t.word = Object.assign({}, t.word, {x}); }   // (a token and a dune message in one transaction: its tile tells of both)
+    if (d.etch && !t.dune) t.rnLost = d.name || 'a new dune'; }
   if (r.msg) t.msg = r.msg;
   t.sc = dgFlags(t); t._k = null;
 }
@@ -2545,15 +2585,16 @@ async function loadArt(B) {
 // one word tile: what the inscription says, in the colour of its kind, drawn at the size it will be shown (big tiles get the
 // label, the word and the detail line; small ones just the word or logo, as big as it fits)
 const WSTYLE = {drc20: ['#0b2440', '#4aa8ff', 'DRC-20'], brc20: ['#0b2440', '#4aa8ff', 'DRC-20'], tap: ['#05303a', '#36f1ff', 'TAP'], dogemap: ['#3a0a16', '#ff3b5c', 'DOGEMAP'], bitmap: ['#3a0a16', '#ff3b5c', 'DOGEMAP'], dns: ['#0c2a0a', '#7cff6b', 'NAME'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
-  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW DUNE'], rune3: ['#2b1046', '#b56bff', 'DUNE MINT'], rune4: ['#170828', '#8a4fd8', 'DUNE MOVE'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
+  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW DUNE'], rune3: ['#2b1046', '#b56bff', 'DUNE MINT'], rune4: ['#170828', '#8a4fd8', 'DUNE MOVE'], rune5: ['#1a1424', '#9b8bb4', 'DUNE MESSAGE'], rune6: ['#2a0a16', '#ff5a7a', 'BROKEN DUNES'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
 // the drawn logos: two sand ridges for dunes, a zig-zag carbon chain (how chemists draw an alkane) for Alkanes,
 // a rainbow for Counterparty (coloured coins). Drawn with lines, so they look the same on every device.
-function paintMark(x, k, fg) {
+function paintMark(x, k, fg, s) {
   x.lineCap = 'round'; x.lineJoin = 'round';
   if (k === 'rune') {
     x.strokeStyle = '#ffffff'; x.lineWidth = 3.2; x.beginPath();
     x.moveTo(11, 42); x.quadraticCurveTo(23, 20, 33, 33); x.quadraticCurveTo(42, 25, 53, 40); x.stroke();
     x.lineWidth = 2.2; x.beginPath(); x.moveTo(15, 48); x.quadraticCurveTo(31, 37, 49, 47); x.stroke();
+    if (s === 6) { x.strokeStyle = fg; x.lineWidth = 2.4; x.beginPath(); x.moveTo(20, 16); x.lineTo(30, 30); x.lineTo(26, 36); x.lineTo(40, 52); x.stroke(); }   // (a broken dune message: the dunes cracked across)
   } else if (k === 'alk') {
     const pts = [[11, 37], [21.5, 27], [32, 37], [42.5, 27], [53, 37]];
     x.strokeStyle = '#ffffff'; x.lineWidth = 3; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke();
@@ -2607,13 +2648,14 @@ function paintWord(w, n) {
     }
   } else if (small) {   // small tile: only the main word or the logo, as big as it fits
     x.strokeStyle = fg; x.lineWidth = 4; x.strokeRect(2, 2, 60, 60);
-    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg); }
+    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg, w.s); }
     else say(w.a, 33, 30, 9, 800, '#ffffff');
   } else {
     x.strokeStyle = fg; x.lineWidth = 2; x.strokeRect(2, 2, 60, 60);
     if (label) { x.fillStyle = fg; fitFont(x, label, 10, 5, 56, 700); x.fillText(label, 32, 11); }
-    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') paintMark(x, w.k, fg);
-    else say(w.a, label ? 31 : 28, 24, 8, 800, '#ffffff');
+    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') paintMark(x, w.k, fg, w.s);
+    else say(w.a, label ? (w.x ? 28 : 31) : 28, w.x ? 16 : 24, 8, 800, '#ffffff');
+    if (w.x) { x.fillStyle = fg; fitFont(x, w.x, 6.5, 4, 56, 700); x.fillText(w.x, 32, 41.5, 58); }   // (the dune message in the same transaction)
     if (w.b) { x.fillStyle = fg; fitFont(x, w.b, 11, 6, 56, 600); x.fillText(w.b, 32, 54, 58); }
   }
   x.setTransform(1, 0, 0, 1, 0, 0);
@@ -2646,11 +2688,12 @@ function paintRich(w, n, cv, x, bg, fg, label) {
     x.fillStyle = '#4a3002'; fitFont(x, main, 11, 6, 24, 800); x.fillText(main, c[0], c[1] + .5);
   } else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') {
     const sc = main ? .64 : .82, cy = main ? 26 : 31;
-    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, w.k === 'cp' ? -40 : -31); glow(() => paintMark(x, w.k, fg), 4); x.restore();
+    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, w.k === 'cp' ? -40 : -31); glow(() => paintMark(x, w.k, fg, w.s), 4); x.restore();
     if (main) { x.fillStyle = '#ffffff'; fitFont(x, main, 7, 3.4, 56, 800); glow(() => x.fillText(main, 32, 44.5, 58), 3); }
   } else if (main) {
     fitFont(x, main, 22, 6, 54, 800); glow(() => { x.fillStyle = '#ffffff'; x.fillText(main, 32, 31.5, 56); }, 6);
   }
+  if (w.x) { x.fillStyle = mix(fg, '#ffffff', .35); fitFont(x, w.x, 5, 3.4, 54, 700); x.fillText(w.x, 32, 47.6, 56); }   // (the dune message in the same transaction)
   // the detail line
   if (sub) { x.fillStyle = 'rgba(0,0,0,.42)'; x.fillRect(4.2, 51.5, 55.6, 8.3); x.fillStyle = fg; fitFont(x, sub, 7, 4, 52, 700); x.fillText(sub, 32, 55.8, 54); }
   x.setTransform(1, 0, 0, 1, 0, 0);
@@ -3433,7 +3476,7 @@ function enrich(t) {
       rawApply(t, r); if (sel !== t || tok !== cardTok || !r) return;
       const more = [];
       if (r.cbWords) more.push(['miner says', '“' + r.cbWords + '”']);
-      if (r.dune) more.push(['dune', [r.dune.etch && (t.dune ? 'etched ' + t.rn : 'tried to etch ' + (r.dune.name || 'a dune') + ' · it never came into being'), r.dune.mint && 'minted', r.dune.move && 'moved'].filter(Boolean).join(' · ') || 'dunestone']);
+      if (r.dune) more.push(['dune', duneSay(t, r.dune.etch && (t.dune ? 'etched ' + t.rn : 'tried to etch ' + (r.dune.name || 'a dune') + ' · it never came into being')), t.dbad ? '#ff5a7a' : undefined]);
       if (r.msg) more.push(['message', '“' + r.msg + '”']);
       if (more.length) { addRows(more); fitCard(); }
       if (cur && cur.txs.includes(t)) rebuild();
@@ -3518,7 +3561,7 @@ function select(t) {
     if (has(TF.part)) rows.push(['inscription', 'a piece of a bigger file, written over several transactions']);
     const tok = [has(TF.drc20) && 'DRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.tap) && 'TAP', has(TF.dogemap) && 'dogemap' + (t.dmN != null ? ' ' + fmt(t.dmN) : ''), has(TF.dns) && 'name' + (t.word && t.word.k === 'dns' ? ' ' + t.word.a + t.word.b.split(' ')[0] : '')].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
-    if (has(TF.dune)) rows.push(['dune', [has(TF.detch) && 'etched' + (t.rn ? ' ' + t.rn : ''), has(TF.dmint) && 'minted', has(TF.dmove) && 'moved'].filter(Boolean).join(' · ') || 'dunestone']);
+    if (has(TF.dune)) rows.push(['dune', duneSay(t, has(TF.detch) && 'etched' + (t.rn ? ' ' + t.rn : '')), t.dbad ? '#ff5a7a' : undefined]);
     if (t.rnLost) rows.push(['new dune', 'tried for ' + t.rnLost + ' · it never came into being (thedoginalsexplorer.com)']);
     if (t.msg) rows.push(['message', '“' + t.msg + '”']);
   }
@@ -10127,10 +10170,10 @@ window.AgentKit = window.AgentKit || (() => {
     o.kindsReadFrom = t.live ? 'the explorer\'s inscription pool (thedoginalsexplorer.com)' : t.sc != null ? 'thedoginalsexplorer.com' : !inRoom() && cur && cur.scan && cur.scan.loading ? 'not read yet: the block is being read now, so its kinds come in as it goes' : 'not read for its kinds: only its size and fee are known (picking it up reads it for its card)';   // (where its kinds were read, as its card says)
     try { if (t.sc != null && ((t.sc >> TF.part) & 1)) o.inscriptionPiece = 'a piece of a bigger file, written over several transactions (as its card says)'; } catch (e) {}
     if (o.types.includes('dunes') && !o.types.some(k => /^dunes (etched|minted|moved)$/.test(k)))   // a dunestone that made, minted and moved nothing: what it is, as its card says
-      o.dunestone = t.rnLost ? 'it tried to make a new dune, which never came into being (thedoginalsexplorer.com): the name it tried for is untrusted.duneTried' : 'a dunestone with no new dune, no mint and no move';
+      o.dunestone = t.rnLost ? 'it tried to make a new dune, which never came into being (thedoginalsexplorer.com): the name it tried for is untrusted.duneTried' : duneSay(t, '');
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.dune = t.rn; if (t.rnLost) u.duneTried = t.rnLost;
     if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a DRC-20 token's own word: deploy, mint…)
-    const lab = t.word ? [t.word.a, t.word.b].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box)
+    const lab = t.word ? [t.word.a, t.word.b, t.word.x].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box)
     if (t.txt) u.text = String(t.txt).slice(0, 300);
     if (Object.keys(u).length) o.untrusted = u;
     if (full) { try { const ids = folIds(t); if (ids && ids.length) o.inscriptionIds = ids; } catch (e) {} }
