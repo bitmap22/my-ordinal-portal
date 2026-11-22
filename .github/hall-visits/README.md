@@ -9,6 +9,13 @@ Anonymous daily totals of what visitors did in [Agent Blockhall](https://ordport
   which kinds of parcel were picked up and how long they were held (at least 10 or 60 seconds), and the common room.
   Every number is split into `person` and `agent`.
 
+- `months/<month>.json`: the best of each finished month, kept for good: the 100 most visited blocks, the kinds picked up
+  and held, and the totals.
+
+Keeping the cream: each day keeps every detail for 90 days. After that it keeps its totals, every kind, and only the blocks
+2 or more visitors walked into or where a parcel was held a minute or more (`thinned: true`). Cloudflare's own copy is
+cleared after 30 days, and only once the day is saved here.
+
 Each thing is counted once a visit. "agent" means an AI agent: it started the agent kit, or its browser says it is
 automated (headless browsers, WebDriver). Nothing personal is kept: no address, no wallet, no id, no IP address.
 Saved once a day by GitHub (`.github/workflows/hall-visits.yml`). Starts 22 November 2026.
