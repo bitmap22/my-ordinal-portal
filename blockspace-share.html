@@ -71,6 +71,16 @@
   .keylist .pc { color: #fff; text-align: right; min-width: 58px; } .keylist .by2 { color: var(--dim); text-align: right; min-width: 78px; font-size: 13px; }
   .keylist li.off { color: var(--muted); } .keylist li.off .sw { opacity: .25; }
   .keylist .openrest { font: inherit; font-size: 14px; margin: 0; padding: 2px 8px; border: 1px dashed var(--orange); border-radius: 8px; background: transparent; color: #fff; text-align: left; justify-self: start; }
+  .chartpanel { position: relative; } .chartpanel > h2 { padding: 0 44px; }
+  .fsbtn { position: absolute; top: 10px; right: 10px; width: 38px; height: 38px; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; border-color: #555; background: rgba(0,0,0,.4); }
+  .fsbtn svg { width: 18px; height: 18px; }
+  .turnhint { margin: 0 0 8px; color: var(--orange); }
+  .chartpanel.big { position: fixed; inset: 0; z-index: 70; margin: 0; border-radius: 0; overflow: auto; background: #070707; padding: 18px 14px; max-width: none; }
+  .chartpanel:fullscreen { overflow: auto; background: #070707; padding: 18px 14px; border-radius: 0; }
+  .chartpanel.big .donutwrap, .chartpanel:fullscreen .donutwrap { width: min(70vh, 86vw); height: min(70vh, 86vw); }
+  .chartpanel.big .split, .chartpanel:fullscreen .split { grid-template-columns: auto minmax(260px, 420px); justify-content: center; }
+  @media (max-width: 760px) { .chartpanel.big .split, .chartpanel:fullscreen .split { grid-template-columns: 1fr; } }
+  body.anybig { overflow: hidden; }
   #zoomBar:empty { display: none; } #zoomBar button { font-size: 14px; padding: 6px 12px; }
   .note { color: var(--orange); font-size: 13px; margin-top: 8px; }
   .chartwrap { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
@@ -137,7 +147,8 @@
 
   <div id="outwait" style="height:60vh" aria-hidden="true"></div>
   <div id="out" class="hidden">
-    <div class="panel">
+    <div class="panel chartpanel" id="pSplit">
+      <button type="button" class="fsbtn" aria-label="Full screen: the pie" title="Full screen"></button>
       <h2 id="splitTitle">The split</h2>
       <div class="pick"><label for="at" class="small">Showing</label><select id="at"></select></div>
       <div class="pick" id="zoomBar" aria-live="polite"></div>
@@ -147,13 +158,15 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel chartpanel" id="pBars">
+      <button type="button" class="fsbtn" aria-label="Full screen: the bars" title="Full screen"></button>
       <h2 id="barsTitle">Day by day</h2>
       <div class="chartwrap" id="barsWrap"><svg id="bars" role="img" aria-labelledby="barsDesc"><desc id="barsDesc">Stacked bars: each bar is 100% of the space, split into kinds</desc></svg></div>
       <p class="small" id="barsNote">Each bar is all the space of that period, split into the kinds you've ticked. A faded bar is a period that isn't over yet, or isn't all saved. Click a bar to see its split above.</p>
     </div>
 
-    <div class="panel">
+    <div class="panel chartpanel" id="pLines">
+      <button type="button" class="fsbtn" aria-label="Full screen: the lines" title="Full screen"></button>
       <h2 id="linesTitle">Each kind's share of the space over time</h2>
       <div class="chartwrap" id="linesWrap"><svg id="lines" role="img" aria-labelledby="linesDesc"><desc id="linesDesc">Lines: each kind's share of the space over time</desc></svg></div>
       <p class="small" id="linesNote">One line for each kind you've ticked: its share of the space. Untick the big ones to see the small ones more clearly.</p>
@@ -247,7 +260,8 @@
   }
   // the series the bars and lines show: the open pie's named kinds and its smaller kinds, for every period
   function series() { const P = S.list.find(x => x.period === S.at); const V = P ? view(P) : null; if (!V) return [];
-    return V.named.map(k => ({key: k, kinds: [k], colour: V.colour[k]})).concat(V.rest.length ? [{key: SMALL, kinds: V.rest, colour: REST}] : []); }
+    const others = V.K.filter(k => !V.named.includes(k));   // (every other kind of this pie, so each bar still adds up to 100% in a period with other kinds)
+    return V.named.map(k => ({key: k, kinds: [k], colour: V.colour[k]})).concat(others.length ? [{key: SMALL, kinds: others, colour: REST}] : []); }
   function seriesShares(P, ser) { const v = valOf(P), K = levelKinds(), tot = K.reduce((n, k) => n + (v[k] || 0), 0), o = {};
     for (const x of ser) o[x.key] = tot ? 100 * x.kinds.reduce((n, k) => n + (v[k] || 0), 0) / tot : null; return {share: o, tot}; }
   const allTicked = () => S.ticked.size === KINDS.length;
@@ -359,7 +373,7 @@
   }
 
   /* ---------- the stacked bars and the lines, one slot per period ---------- */
-  const PAD = {l: 44, r: 12, t: 12, b: 40}, H = 270;
+  const PAD = {l: 44, r: 12, t: 12, b: 40}; let H = 270;   // (taller when its chart is full screen)
   function slotGeom(n, wrap) {
     const avail = Math.max(280, wrap.clientWidth - 4), w = Math.max(16, Math.min(56, (avail - PAD.l - PAD.r) / Math.max(1, n)));
     return {w, W: Math.max(avail, PAD.l + PAD.r + w * n), bw: Math.min(24, w - 4)};
@@ -374,6 +388,7 @@
   }
   const roundTop = (x, y, w, h, r) => { r = Math.min(r, h, w / 2); return 'M' + x + ' ' + (y + h) + 'V' + (y + r) + 'Q' + x + ' ' + y + ' ' + (x + r) + ' ' + y + 'H' + (x + w - r) + 'Q' + (x + w) + ' ' + y + ' ' + (x + w) + ' ' + (y + r) + 'V' + (y + h) + 'Z'; };
   function drawBars() {
+    H = isBig($('barsWrap')) ? Math.max(270, innerHeight - 190) : 270;
     const svg = $('bars'), wrap = $('barsWrap'), g = slotGeom(S.list.length, wrap); svg.textContent = ''; sv('desc', {id: 'barsDesc'}, svg).textContent = 'Stacked bars: each bar is 100% of the ' + (FEES() ? 'fees paid in' : 'space of') + ' one ' + S.by + ', split into the kinds ticked';
     svg.setAttribute('width', g.W); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + g.W + ' ' + H);
     axisY(svg, g.W, 100); axisX(svg, g);
@@ -393,6 +408,7 @@
     $('barsNote').textContent = 'Each bar is ' + (FEES() ? 'all the fees paid in' : 'all the space of') + ' that period, split into the kinds you\'ve ticked. A faded bar is a period that isn\'t over yet, or isn\'t all saved. Click a bar to see its split above.';
   }
   function drawLines() {
+    H = isBig($('linesWrap')) ? Math.max(270, innerHeight - 190) : 270;
     const svg = $('lines'), wrap = $('linesWrap'), g = slotGeom(S.list.length, wrap); svg.textContent = ''; sv('desc', {id: 'linesDesc'}, svg).textContent = 'Lines: each ticked kind’s share of the ' + (FEES() ? 'fees paid' : 'space') + ', one point per ' + S.by;
     $('linesTitle').textContent = 'Each kind\'s share of the ' + (FEES() ? 'fees' : 'space') + ' over time';
     $('linesNote').textContent = 'One line for each kind you\'ve ticked: its share of the ' + (FEES() ? 'fees paid' : 'space') + '. Untick the big ones to see the small ones more clearly.';
@@ -481,7 +497,28 @@
   for (const b of document.querySelectorAll('#showBox button')) b.addEventListener('click', () => { open({show: b.dataset.show}).catch(e => say(String(e.message || e))); });
   $('at').addEventListener('change', e => { S.byAgent = false; select(e.target.value); });
   $('tickAll').addEventListener('click', () => { S.ticked = new Set(KINDS); S.zoom = []; S.byAgent = false; drawAll(); });
-  let rz = null; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (S.at) { drawBars(); drawLines(); } }, 150); });
+  // full screen for each chart: the browser's own full screen where it has one (Esc leaves it), else the panel fills the window
+  const ICON_IN = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>';
+  const ICON_OUT = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M7 3v4H3M17 7h-4V3M13 17v-4h4M3 13h4v4"/></svg>';
+  function isBig(n) { const p = n && n.closest('.chartpanel'); return !!p && (p.classList.contains('big') || document.fullscreenElement === p); }
+  function fsSync() {
+    for (const p of document.querySelectorAll('.chartpanel')) { const on = isBig(p), b = p.querySelector('.fsbtn'); b.innerHTML = on ? ICON_OUT : ICON_IN; b.setAttribute('aria-label', (on ? 'Leave full screen: ' : 'Full screen: ') + b.getAttribute('aria-label').replace(/^.*?: /, '')); b.title = on ? 'Leave full screen (Esc)' : 'Full screen'; }
+    document.body.classList.toggle('anybig', !!document.querySelector('.chartpanel.big'));
+    for (const p of document.querySelectorAll('.chartpanel')) { let t = p.querySelector('.turnhint');   // (a phone held upright: say it can turn)
+      if (isBig(p) && matchMedia('(pointer: coarse) and (orientation: portrait)').matches) { if (!t) { t = el('p', 'turnhint small', 'Turn your phone sideways for a bigger chart.'); p.insertBefore(t, p.querySelector('h2').nextSibling); } } else if (t) t.remove(); }
+    if (S.at) { drawSplit(); drawBars(); drawLines(); }
+  }
+  for (const p of document.querySelectorAll('.chartpanel')) p.querySelector('.fsbtn').addEventListener('click', async () => {
+    if (isBig(p)) { try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {} if (document.fullscreenElement === p) await document.exitFullscreen().catch(() => {}); p.classList.remove('big'); fsSync(); return; }
+    const phone = matchMedia('(pointer: coarse)').matches;
+    if (p.requestFullscreen) { try { await p.requestFullscreen(); if (phone && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); return; } catch (e) {} }
+    p.classList.add('big'); fsSync();   // (an iPhone has no full screen for a page: the chart fills the window instead)
+  });
+  document.addEventListener('fullscreenchange', fsSync);
+  addEventListener('keydown', e => { const b = document.querySelector('.chartpanel.big'); if (e.key === 'Escape' && b) { b.classList.remove('big'); fsSync(); } });
+  addEventListener('orientationchange', () => setTimeout(fsSync, 300));
+  for (const b of document.querySelectorAll('.fsbtn')) b.innerHTML = ICON_IN;
+  let rz = null; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (S.at) { drawSplit(); drawBars(); drawLines(); } }, 150); });
   drawTicks();
 
   /* ---------- the agent kit: window.agent (the same steps as the buttons and tick boxes; the page says when an agent asked) ---------- */
