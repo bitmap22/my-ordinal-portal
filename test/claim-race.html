@@ -41,6 +41,12 @@
   .sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 10px 0 14px; }
   .pick { background: #1a1408; border: 1px solid var(--amber); border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; }
   .pick b { color: var(--hot); }
+  .chart { position: relative; background: var(--wall); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 4px; margin: 0 0 14px; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font: 13px var(--sign); color: var(--muted); margin: 2px 6px 8px; }
+  .legend svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; }
+  .tip { position: absolute; pointer-events: none; background: #070b15; border: 1px solid var(--amber); border-radius: 8px; padding: 7px 9px; font: 12px/1.5 var(--sign); color: var(--text); display: none; max-width: 300px; z-index: 3; }
+  .who { margin: 0 0 14px; } .who li { margin: 3px 0; font: 13px var(--sign); } .who a { color: var(--cyan); }
   button { font: 600 14px var(--sign); color: var(--night); background: var(--amber); border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
 </style>
 </head>
@@ -59,10 +65,10 @@
   </div>
 
   <h2>Claims waiting now</h2>
-  <div id="races"><div class="empty">Watching… a claim shows here within about 10 seconds of mempool.space seeing it. Claims already waiting before this page opened are not shown (the live feed only sends new ones).</div></div>
+  <div id="races"><div class="empty">Reading the claims already waiting, then watching: a new claim shows here within about 10 seconds of mempool.space seeing it.</div></div>
 
   <h2>The last 50 blocks: what claims paid</h2>
-  <p class="note">Reads the last 50 blocks from their own bytes: every claim of a number in that window, the fee it paid (from mempool.space's fee list for each block), and which one won. About 75 MB to download, so it starts when you ask. <button id="hist">Read the last 50 blocks</button></p>
+  <p class="note">Reads the last 50 blocks from their own bytes: every claim of a number in that window, the fee it paid (from mempool.space's fee list for each block), which one won, and who each claim went to. About 75 MB to download, so it starts when you ask. <button id="hist">Read the last 50 blocks</button></p>
   <div id="histout"></div>
 
   <h2>What happened</h2>
@@ -78,7 +84,7 @@
     <li>Each claim is also looked up on a second site (mempool.emzy.de, its own node) to show it is really waiting there too.</li>
     <li>Taken or not: below block 942,000, bop's on-chain index (checked with ord); from 942,000, the portal's Bitmap Record, and for the newest blocks the blocks themselves.</li>
     <li>Fee: what the claim pays per vbyte, counting any child transaction paying for it. Higher usually wins, but a miner decides: nothing here is certain until it is mined.</li>
-    <li>It can't see transactions sent straight to a miner, the first seconds before mempool.space hears of one, or claims that were already waiting before the page opened.</li>
+    <li>It can't see transactions sent straight to a miner, the first seconds before mempool.space hears of one, and when the page opens it reads only the next 8 blocks' worth of waiting transactions (mempool.space's projected blocks): a claim waiting further back is seen only if it moves up.</li>
   </ul>
   <p class="note">© 2026 bitmap22. All rights reserved. Free, for information only, not financial advice.</p>
 </div>
@@ -175,18 +181,20 @@
       if (!T) { verdict = 'Checking whether ' + n + '.bitmap is already taken…'; vcls = 'wait'; }
       else if (T.by) { cls = 'lose'; vcls = 'bad'; verdict = 'Already taken in block ' + fmt(T.block) + ' (' + esc(T.why) + '). Every claim below can only be a copy, not a bitmap.'; }
       else if (T.unsure) { vcls = 'wait'; verdict = 'Taken or not: ' + esc(T.why) + '.'; }
-      else if (waiting.length > 1) { cls = 'clash'; vcls = 'warn'; verdict = 'Not taken yet (' + esc(T.why) + '). ' + waiting.length + ' claims are racing for it: the one paying most is likeliest to be mined first, and only that one would count.'; }
+      else if (waiting.length > 1) { cls = 'clash'; vcls = 'warn'; verdict = 'Not taken yet (' + esc(T.why) + '). ' + waiting.length + ' claims are racing for it: the one paying most is likeliest to be mined first, and only that one would count. To get ahead of the leader now, a claim would need more than ' + waiting[0].rate.toFixed(1) + ' sat/vB.'; }
       else { vcls = 'ok'; verdict = 'Not taken yet (' + esc(T.why) + '), and no other claim for it is waiting.'; }
       const rows = list.slice().sort((a, b) => (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || b.rate - a.rate).map((c, i) =>
         '<tr><td><a href="https://mempool.space/tx/' + c.txid + '" target="_blank" rel="noopener noreferrer">' + c.txid.slice(0, 10) + '…</a></td><td>' + c.rate.toFixed(1) + ' sat/vB</td><td>' +
         (c.gone ? esc(c.gone) : (c.pos != null ? 'heading for the ' + (c.pos === 0 ? 'next block' : (c.pos + 1) + 'th block from now') : '–')) + '</td><td>' +
-        (c.second == null ? 'checking…' : c.second ? '✓ waiting on mempool.emzy.de too' : '‼ not found on mempool.emzy.de') + '</td><td>' + (!c.gone && waiting.length > 1 ? (c === waiting[0] ? 'ahead' : 'behind') : '') + '</td></tr>').join('');
-      parts.push('<div class="race ' + cls + '"><h3>' + n + '.bitmap</h3><p class="verdict ' + vcls + '">' + verdict + '</p><table><tr><th>claim</th><th>fee</th><th>where it is</th><th>second site</th><th></th></tr>' + rows + '</table></div>');
+        (c.second == null ? 'checking…' : c.second ? '✓ waiting on mempool.emzy.de too' : '‼ not found on mempool.emzy.de') + '</td><td>' + (c.to ? '<a href="https://mempool.space/address/' + c.to + '" target="_blank" rel="noopener noreferrer">' + c.to.slice(0, 12) + '…</a>' : '–') + '</td><td>' + (!c.gone && waiting.length > 1 ? (c === waiting[0] ? 'ahead' : 'behind') : '') + '</td></tr>').join('');
+      parts.push('<div class="race ' + cls + '"><h3>' + n + '.bitmap</h3><p class="verdict ' + vcls + '">' + verdict + '</p><table><tr><th>claim</th><th>fee</th><th>where it is</th><th>second site</th><th>went to</th><th></th></tr>' + rows + '</table></div>');
     }
     $('races').innerHTML = parts.join('');
   }
 
-  async function onAdded(t) {
+  const done = new Set();
+  async function onAdded(t, extra) {
+    if (done.has(t.txid)) return; done.add(t.txid);
     seen++; $('s-seen').textContent = fmt(seen);
     const hasEnv = (t.vin || []).some(v => (v.witness || []).some(w => w.indexOf('0063036f7264') >= 0));
     if (!hasEnv) return;
@@ -199,7 +207,9 @@
     catch (e) { log('Could not read ' + t.txid.slice(0, 10) + '… (' + esc(e.message) + ')'); return; }
     if (got.txid !== t.txid) { log('‼ ' + t.txid.slice(0, 10) + '… read back as a different transaction: skipped'); return; }
     if (!got.claim) return;
-    const n = got.claim.number, c = {txid: t.txid, n, rate: +(t.effectiveFeePerVsize || t.adjustedFeePerVsize || t.feePerVsize || 0), pos: t.position ? t.position.block : null, firstSeen: t.firstSeen, second: null, gone: null};
+    const n = got.claim.number, out0 = (t.vout || [])[0] || {};
+    const c = {txid: t.txid, n, rate: +(extra && extra.rate != null ? extra.rate : (t.effectiveFeePerVsize || t.adjustedFeePerVsize || t.feePerVsize || (t.fee && t.weight ? t.fee / (t.weight / 4) : 0))),
+      pos: extra && extra.pos != null ? extra.pos : t.position ? t.position.block : null, firstSeen: t.firstSeen, second: null, gone: null, to: out0.scriptpubkey_address || null};
     claims.set(t.txid, c);
     log('Claim seen: <b>' + n + '.bitmap</b> at ' + c.rate.toFixed(1) + ' sat/vB (' + t.txid.slice(0, 10) + '…)');
     render();
@@ -227,8 +237,32 @@
     };
     ws.onclose = () => { $('dot').classList.remove('on'); $('s-live').lastChild.textContent = 'off'; log('Live feed closed: reconnecting in 10 seconds.'); setTimeout(connect, 10000); };
   }
+  /* ---------- claims already waiting when the page opens: mempool.space's next 8 projected blocks, every transaction it flags as
+     an inscription (its flag 1<<26), then only those whose bytes hold ".bitmap" are read ---------- */
+  const INSC = 2 ** 26, hasBit = (f, b) => Math.floor(f / b) % 2 === 1;
+  async function snapshot() {
+    const found = new Map();
+    await new Promise(res => {
+      const w = new WebSocket('wss://mempool.space/api/v1/ws'); let i = 0, timer = null;
+      const next = () => { clearTimeout(timer); if (i > 7) { w.close(); res(); return; } w.send(JSON.stringify({'track-mempool-block': i})); timer = setTimeout(() => { i++; next(); }, 15000); };
+      w.onopen = next; w.onerror = () => res();
+      w.onmessage = e => { let j; try { j = JSON.parse(e.data); } catch (er) { return; } const p = j['projected-block-transactions'];
+        if (!p || p.index !== i || !p.blockTransactions) return;
+        for (const t of p.blockTransactions) if (hasBit(+t[5] || 0, INSC) && !found.has(t[0])) found.set(t[0], {rate: +t[4], pos: i});
+        i++; next(); };
+    });
+    log('Already waiting: ' + found.size + ' inscriptions in the next 8 projected blocks. Reading the ones that could be claims…');
+    let k = 0;
+    for (const [txid, ex] of found) {
+      k++;
+      try { const t = (await io.mpJson('/api/tx/' + txid)).j; if (!t.status || !t.status.confirmed) await onAdded(t, ex); } catch (e) {}
+      if (k % 20 === 0) log('…' + k + ' of ' + found.size + ' read');
+    }
+    log('Done reading what was already waiting.');
+  }
   io.mpText('/api/blocks/tip/height').then(x => { if (tip == null) { tip = +x.t; $('s-tip').textContent = fmt(tip); } }).catch(() => {});
   connect();
+  snapshot();
 
   /* ---------- the check: three real claims, read the same way ---------- */
   $('selftest').onclick = async () => {
@@ -264,27 +298,72 @@
           races.get(c.number).push({block: h, order, txid: r.txid, rate: rate.get(r.txid)});
         });
       }
-      const R = [...races.entries()].map(([n, L]) => ({n, claims: L, win: L[0], after: L[0].block - n, contested: L.length > 1}));   // (already in Bitcoin order: block, then place in the block)
-      const all = R.map(r => r.win.rate).filter(x => x != null), hot = R.filter(r => r.contested), hotWin = hot.map(r => r.win.rate).filter(x => x != null);
-      const maxRate = Math.max(...R.flatMap(r => r.claims.map(c => c.rate || 0)), 0);
+      // who each claim went to: the first output of its transaction (where the new inscription lands)
+      const all = [...races.values()].flat(); let k = 0;
+      for (const c of all) { k++; out.innerHTML = '<div class="empty">Reading who each claim went to (' + k + ' of ' + all.length + ')…</div>';
+        try { const t = (await io.mpJson('/api/tx/' + c.txid)).j; c.to = ((t.vout || [])[0] || {}).scriptpubkey_address || null; } catch (e) { c.to = null; } }
+      const R = [...races.entries()].map(([n, L]) => ({n, claims: L, win: L[0], after: L[0].block - n}));   // (in Bitcoin order: block, then place in the block)
+      const lost = R.flatMap(r => r.claims.slice(1).map(c => Object.assign({n: r.n, late: c.block > r.win.block}, c)));
+      const late = lost.filter(c => c.late), same = R.filter(r => r.claims.slice(1).some(c => c.block === r.win.block));
+      const sameHigher = same.filter(r => r.claims.filter(c => c.block === r.win.block).every(c => c === r.win || (r.win.rate || 0) >= (c.rate || 0))).length;
+      const inOwn = R.filter(r => r.after === 0).length, winRates = R.map(r => r.win.rate).filter(x => x != null);
       let fees = null; try { fees = (await io.mpJson('/api/v1/fees/recommended')).j; } catch (e) {}
-      const unclaimed = 50 - R.length;
-      const sugg = hotWin.length ? Math.max(pct(hotWin, 0.9), fees ? fees.fastestFee : 0) : (fees ? fees.fastestFee : null);
-      history = {from, to: top, numbers: R.length, contested: hot.length, unclaimed, winnerRates: all, contestedWinnerRates: hotWin, maxRate, nextBlockFee: fees && fees.fastestFee, suggested: sugg};
-      const rows = R.sort((a, b) => b.n - a.n).map(r => '<tr><td>' + r.n + '.bitmap</td><td>' + (r.win.rate != null ? r.win.rate.toFixed(1) : '–') + ' sat/vB</td><td>block ' + fmt(r.win.block) + (r.after ? ' (' + r.after + ' after)' : ' (the same block)') + '</td><td>' +
-        (r.contested ? (r.claims.length - 1) + ' lost: ' + r.claims.slice(1).map(c => (c.rate != null ? c.rate.toFixed(1) : '–') + (c.block === r.win.block ? ' (same block)' : ' (block ' + fmt(c.block) + ')')).join(', ') : 'no race') + '</td></tr>').join('');
-      out.innerHTML = '<div class="sum">' +
-        '<div class="stat"><b>' + R.length + ' of 50</b><span>numbers claimed (blocks ' + fmt(from) + ' to ' + fmt(top) + ')</span></div>' +
-        '<div class="stat"><b>' + hot.length + '</b><span>of them raced (two or more claims)</span></div>' +
-        '<div class="stat"><b>' + (all.length ? pct(all, 0.5).toFixed(1) : '–') + '</b><span>sat/vB: the middle winning fee</span></div>' +
-        '<div class="stat"><b>' + (hotWin.length ? pct(hotWin, 0.9).toFixed(1) : '–') + '</b><span>sat/vB: 9 in 10 raced winners paid this or less</span></div>' +
-        '<div class="stat"><b>' + maxRate.toFixed(1) + '</b><span>sat/vB: the most any claim paid</span></div></div>' +
-        (sugg != null ? '<div class="pick">A fee to aim for, to win the next number: <b>about ' + Math.ceil(sugg) + ' sat/vB</b>. That is the higher of: what 9 in 10 raced winners paid here' + (hotWin.length ? ' (' + pct(hotWin, 0.9).toFixed(1) + ')' : ' (no races in these blocks)') + ', and the fee to get into the next block right now (' + (fees ? fees.fastestFee : '–') + ', mempool.space). An estimate from these 50 blocks only: a rival can always pay more, and nothing is certain until it is mined.</div>' : '') +
-        (R.length ? '<table><tr><th>number</th><th>winner paid</th><th>won in</th><th>claims that lost (fee)</th></tr>' + rows + '</table>' : '<div class="empty">No numbers in these blocks were claimed.</div>');
-      log('Read the last 50 blocks: ' + R.length + ' numbers claimed, ' + hot.length + ' raced.');
+      const who = new Map(); R.forEach(r => { const a = r.win.to || 'unknown'; who.set(a, (who.get(a) || 0) + 1); });
+      const whoTop = [...who.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5);
+      history = {from, to: top, numbers: R.length, wonInOwnBlock: inOwn, sameBlockRaces: same.length, sameBlockHigherFeeWon: sameHigher, lateClaimsLost: late.length,
+        lateMaxRate: late.length ? Math.max(...late.map(c => c.rate || 0)) : null, middleWinningRate: pct(winRates, 0.5), nextBlockFee: fees && fees.fastestFee,
+        winnersBy: whoTop.map(([a, n]) => ({address: a, won: n})), claims: R.map(r => ({number: r.n, claims: r.claims.map(c => ({txid: c.txid, block: c.block, feeRate: c.rate, to: c.to}))}))};
+      const addr = a => a === 'unknown' ? 'unknown' : '<a href="https://mempool.space/address/' + a + '" target="_blank" rel="noopener noreferrer">' + a.slice(0, 14) + '…' + a.slice(-6) + '</a>';
+      out.innerHTML =
+        '<div class="sum">' +
+        '<div class="stat"><b>' + inOwn + ' of ' + R.length + '</b><span>numbers won by a claim mined in the number\'s own block</span></div>' +
+        '<div class="stat"><b>' + (winRates.length ? pct(winRates, 0.5).toFixed(1) : '–') + '</b><span>sat/vB: the middle winning fee</span></div>' +
+        '<div class="stat"><b>' + late.length + '</b><span>claims sent after their block was found: all lost' + (late.length ? ' (up to ' + Math.max(...late.map(c => c.rate || 0)).toFixed(1) + ' sat/vB)' : '') + '</span></div>' +
+        '<div class="stat"><b>' + sameHigher + ' of ' + same.length + '</b><span>races inside one block won by the higher fee</span></div></div>' +
+        '<div class="pick"><b>How to win the next number</b>, going by these 50 blocks: have the claim waiting <b>before</b> that block is found, and paying more than any other claim waiting for the same number (the live list above shows them). ' +
+        inOwn + ' of ' + R.length + ' numbers were won by a claim already in the number\'s own block, mostly at the lowest fee' + (fees ? ' (the fee to get into the next block right now: ' + fees.fastestFee + ' sat/vB, mempool.space)' : '') + '. Paying more after the block is found did not help: every such claim lost. An estimate from these 50 blocks only: nothing is certain until it is mined.</div>' +
+        '<div class="chart" id="hchart"><div class="legend">' +
+        '<span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#cc8015"/></svg>won (the real bitmap)</span>' +
+        '<span><svg viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" fill="#d95790"/></svg>lost in the same block</span>' +
+        '<span><svg viewBox="0 0 14 14"><path d="M7 1 L13 12 L1 12 Z" fill="none" stroke="#2fa3c4" stroke-width="2"/></svg>lost: sent after the block was found</span></div>' +
+        '<div id="hsvg"></div><div class="tip" id="htip"></div></div>' +
+        '<p class="note">Who the winning claims went to (the address the new inscription landed in; it may be a person, a bot or a service claiming for others: the chain alone can\'t say):</p><ul class="who">' +
+        whoTop.map(([a, n]) => '<li>' + addr(a) + ': won ' + n + ' of ' + R.length + '</li>').join('') + '</ul>' +
+        (R.length ? '<table><tr><th>number</th><th>winner paid</th><th>won in</th><th>went to</th><th>claims that lost (fee)</th></tr>' + R.slice().sort((x, y) => y.n - x.n).map(r => '<tr><td>' + r.n + '.bitmap</td><td>' + (r.win.rate != null ? r.win.rate.toFixed(1) : '–') + ' sat/vB</td><td>block ' + fmt(r.win.block) + (r.after ? ' (' + r.after + ' after)' : ' (its own)') + '</td><td>' + (r.win.to ? addr(r.win.to) : '–') + '</td><td>' +
+          (r.claims.length > 1 ? r.claims.slice(1).map(c => (c.rate != null ? c.rate.toFixed(1) : '–') + (c.block === r.win.block ? ' (same block)' : ' (block ' + fmt(c.block) + ', too late)')).join(', ') : 'no race') + '</td></tr>').join('') + '</table>' : '');
+      drawChart(R, from, top, fees && fees.fastestFee);
+      log('Read the last 50 blocks: ' + R.length + ' numbers claimed, ' + lost.length + ' claims lost.');
     } catch (e) { out.innerHTML = '<div class="empty">Could not finish: ' + esc(e.message) + '. Try again in a minute.</div>'; }
     $('hist').disabled = false;
   };
+
+  /* ---------- the chart: one mark per claim, its number along, its fee up (log), shape and colour by what happened ---------- */
+  function drawChart(R, from, top, nextFee) {
+    const W = 900, H = 330, L = 54, Rm = 14, T = 12, B = 40;
+    const pts = R.flatMap(r => r.claims.map((c, i) => ({n: r.n, c, kind: i === 0 ? 'win' : c.block === r.win.block ? 'same' : 'late'}))).filter(p => p.c.rate != null);
+    const maxR = Math.max(2, ...pts.map(p => p.c.rate), nextFee || 0), lo = Math.log(0.8), hi = Math.log(maxR * 1.4);
+    const x = n => L + (n - from + 0.5) / (top - from + 1) * (W - L - Rm), y = v => T + (1 - (Math.log(Math.max(v, 0.8)) - lo) / (hi - lo)) * (H - T - B);
+    let g = '';
+    for (const v of [1, 2, 5, 10, 20, 50, 100, 200, 500]) if (Math.log(v) <= hi) g += '<line x1="' + L + '" x2="' + (W - Rm) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#23304a"/><text x="' + (L - 8) + '" y="' + (y(v) + 4) + '" fill="#9aa8be" font-size="12" text-anchor="end">' + v + '</text>';
+    for (let n = from; n <= top; n += 10) g += '<text x="' + x(n) + '" y="' + (H - 18) + '" fill="#9aa8be" font-size="12" text-anchor="middle">' + fmt(n) + '</text>';
+    g += '<text x="' + ((L + W) / 2) + '" y="' + (H - 2) + '" fill="#9aa8be" font-size="12" text-anchor="middle">bitmap number</text><text x="14" y="' + (H / 2) + '" fill="#9aa8be" font-size="12" text-anchor="middle" transform="rotate(-90 14 ' + (H / 2) + ')">fee paid, sat/vB</text>';
+    if (nextFee) g += '<line x1="' + L + '" x2="' + (W - Rm) + '" y1="' + y(nextFee) + '" y2="' + y(nextFee) + '" stroke="#9aa8be" stroke-dasharray="5 5"/><text x="' + (W - Rm) + '" y="' + (y(nextFee) - 6) + '" fill="#9aa8be" font-size="12" text-anchor="end">next-block fee now: ' + nextFee + '</text>';
+    pts.forEach((p, i) => {
+      const cx = x(p.n), cy = y(p.c.rate), hit = '<circle cx="' + cx + '" cy="' + cy + '" r="11" fill="transparent" data-i="' + i + '" style="cursor:pointer"/>';
+      g += (p.kind === 'win' ? '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="#cc8015" stroke="#111a2c" stroke-width="2"/>'
+        : p.kind === 'same' ? '<rect x="' + (cx - 5) + '" y="' + (cy - 5) + '" width="10" height="10" fill="#d95790" stroke="#111a2c" stroke-width="2"/>'
+        : '<path d="M' + cx + ' ' + (cy - 7) + ' L' + (cx + 6.5) + ' ' + (cy + 5) + ' L' + (cx - 6.5) + ' ' + (cy + 5) + ' Z" fill="#111a2c" stroke="#2fa3c4" stroke-width="2"/>') + hit;
+    });
+    $('hsvg').innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Every bitmap claim of the last 50 blocks by number and fee paid; the table below has the same data.">' + g + '</svg>';
+    const tipEl = $('htip'), box = $('hchart');
+    $('hsvg').querySelectorAll('[data-i]').forEach(el => {
+      const p = pts[+el.getAttribute('data-i')];
+      el.addEventListener('mouseenter', () => { tipEl.innerHTML = '<b>' + p.n + '.bitmap</b><br>' + (p.kind === 'win' ? 'won' : p.kind === 'same' ? 'lost in the same block' : 'lost: sent after the block was found') + '<br>' + p.c.rate.toFixed(1) + ' sat/vB, mined in block ' + fmt(p.c.block) + '<br>went to ' + (p.c.to ? p.c.to.slice(0, 14) + '…' : '–') + '<br>click to open it on mempool.space'; tipEl.style.display = 'block'; });
+      el.addEventListener('mousemove', ev => { const r = box.getBoundingClientRect(); tipEl.style.left = Math.min(r.width - 310, ev.clientX - r.left + 14) + 'px'; tipEl.style.top = (ev.clientY - r.top + 14) + 'px'; });
+      el.addEventListener('mouseleave', () => { tipEl.style.display = 'none'; });
+      el.addEventListener('click', () => window.open('https://mempool.space/tx/' + p.c.txid, '_blank', 'noopener'));
+    });
+  }
 
   /* ---------- for agents ---------- */
   window.__claimRace = {state: () => ({tip, watched: seen, inscriptions: inscCount, live: !!(ws && ws.readyState === 1),
