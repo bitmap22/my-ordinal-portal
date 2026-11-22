@@ -422,7 +422,7 @@ body.room #card.on{display:flex;flex-direction:column}body.room #cp{order:-1;mar
 body.room #card::before{content:'';order:-2;align-self:center;width:38px;height:4px;border-radius:2px;background:rgba(227,179,65,.35);margin:-6px 0 10px}
 /* (13 Nov 2026) 5. the fee colour key on a phone: its words on their own line and the colours in rows that fit, so the numbers no longer run into each other */
 @media (max-width:640px){#fs{flex-wrap:wrap;row-gap:3px;margin-right:16px}#fs .fl2{flex:0 0 100%;margin:0 0 2px}#fs i{flex:1 0 24px;min-width:24px;padding:3px 2px;font-size:9.5px}}
-</style>
+/* (22 Nov 2026) the door button: a gentle glow every 45 seconds while you are outside, so new visitors see they can walk in */@media (prefers-reduced-motion:no-preference){#th:not(.on){animation:thPulse 45s ease-in-out 6s infinite}@keyframes thPulse{0%,4.4%,100%{box-shadow:0 0 0 0 rgba(227,179,65,0);transform:none}1.6%{box-shadow:0 0 0 7px rgba(227,179,65,.38),0 0 18px 4px rgba(227,179,65,.55);transform:scale(1.08)}3%{box-shadow:0 0 0 12px rgba(227,179,65,0),0 0 10px 2px rgba(227,179,65,.2);transform:scale(1.02)}}}</style>
 <!-- share-and-search: start -->
 <script>if (/\/test\//.test(location.pathname)) { var m = document.createElement('meta'); m.name = 'robots'; m.content = 'noindex'; document.head.appendChild(m); }   // (a test copy: kept out of search)</script>
 <link rel="describedby" type="text/plain" href="https://ordportal.com/llms.txt" title="A plain guide for AI agents">
@@ -1470,6 +1470,7 @@ function dgFlags(t) {
   if (a && a.length) { const s = a[0] || ''; set(/^D/.test(s) ? TF.p2pkh : /^[9A]/.test(s) ? TF.p2sh : TF.p2pk); }
   if ((t.nin || 0) >= 3 && (t.nout || 0) === 1) set(TF.consol);
   if (t.dxi) { set(TF.insc); set(ctFlag(t.dxi.contentType)); }
+  if (t.dxi && !t.dxi.delegate && !t.word) { const fw = fileWord(t.dxi.contentType); if (fw) t.word = fw; }   // (another kind of file: a logo for its kind, from its type alone)
   return f | (t.scC || 0) | (t.scD || 0);
 }
 function dgFill(B) {
@@ -1674,7 +1675,7 @@ function rawApply(t, r) {
     if (!t.word || t.word.k === 'text' || t.word.k === 'rune') t.word = w;
     else { const x = d.bad ? '+ broken dune message' : d.etch && t.dune ? '+ new dune' : d.mint ? '+ dune mint ' + duneNm(d.mintIds[0]) : d.move ? '+ dune move' : ''; if (x) t.word = Object.assign({}, t.word, {x}); }   // (a token and a dune message in one transaction: its tile tells of both)
     if (d.etch && !t.dune) t.rnLost = d.name || 'a new dune'; }
-  if (r.msg) t.msg = r.msg;
+  if (r.msg) { t.msg = r.msg; if (!t.word) t.word = {k: 'msg', a: r.msg.slice(0, 140), b: ''}; }   // (words written into the transaction: an envelope)
   t.sc = dgFlags(t); t._k = null;
 }
 
@@ -2676,11 +2677,79 @@ function paintHtml(x, n) {
   x.shadowBlur = 2 * gl; x.fillStyle = '#b8ffc8'; x.fillText('HTML', 32, 34.5); x.shadowBlur = 0;
   x.setTransform(1, 0, 0, 1, 0, 0);
 }
+// (22 Nov 2026) "other files": a logo for each kind of file that is not a picture, words, a page, sound, film or a 3D model. Only the
+// file's type is read: the file itself is never opened or run
+function fileWord(ct) {
+  const ty = (String(ct || '').split(';')[0] || '').trim().toLowerCase();
+  if (!ty || /^(image|audio|video|model)\//.test(ty) || /html|json/.test(ty) || /^text\/(plain|markdown)/.test(ty)) return null;
+  const f = /javascript|ecmascript/.test(ty) ? 'js' : /^font\/|font-(woff|sfnt|ttf|otf)|woff/.test(ty) ? 'font' : /gzip|x-gz|zip|brotli|x-br|bzip|7z|zstd|x-tar|x-xz|compress/.test(ty) ? 'zip' : /wasm/.test(ty) ? 'wasm' : /pdf/.test(ty) ? 'pdf' : 'bin';
+  const a = {js: 'JS', font: 'Aa', wasm: 'WASM', pdf: 'PDF', bin: '01'}[f] || (/gzip|x-gz/.test(ty) ? 'GZ' : /brotli|x-br/.test(ty) ? 'BR' : /bzip/.test(ty) ? 'BZ2' : /7z/.test(ty) ? '7Z' : /zstd/.test(ty) ? 'ZST' : /tar/.test(ty) ? 'TAR' : /xz/.test(ty) ? 'XZ' : 'ZIP');
+  return {k: 'file', f, a, b: ty.slice(0, 40)};
+}
+function paintFile(x, n, w) {
+  const k = n / 64, f = w.f, big = n >= 64; x.setTransform(k, 0, 0, k, 0, 0); x.shadowBlur = 0; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const C = {js: ['#1a1708', '#f7df1e'], font: ['#14161c', '#e8ecf4'], zip: ['#1c1408', '#e2a74a'], wasm: ['#130f24', '#8f7bff'], pdf: ['#1a0c0c', '#ff5a4f'], bin: ['#0f1416', '#9fb3bd']}[f], [bg, fg] = C;
+  let g = x.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, bg); g.addColorStop(1, '#050608'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  x.strokeStyle = fg; x.globalAlpha = .7; x.lineWidth = 1.2; x.strokeRect(2.5, 2.5, 59, 59); x.globalAlpha = 1;
+  const mono = s => s + 'px ui-monospace,Menlo,Consolas,monospace', cy = big ? 29 : 32;
+  if (f === 'js') {
+    x.globalAlpha = .18; x.fillStyle = fg; for (let i = 0; i < 6; i++) x.fillRect(9 + (i % 3) * 4, 10 + i * 8, 18 + ((i * 7) % 5) * 5, 1.6); x.globalAlpha = 1;
+    x.fillStyle = fg; x.font = '900 ' + mono(big ? 15 : 17); x.fillText('{ JS }', 32, cy);
+  } else if (f === 'font') {
+    x.strokeStyle = 'rgba(232,236,244,.35)'; x.lineWidth = .6; x.beginPath(); x.moveTo(8, cy + 8.5); x.lineTo(56, cy + 8.5); x.moveTo(8, cy - 9); x.lineTo(56, cy - 9); x.stroke();
+    x.fillStyle = fg; x.font = '700 ' + (big ? 24 : 27) + 'px Georgia,"Times New Roman",serif'; x.textBaseline = 'alphabetic'; x.fillText('Aa', 32, cy + 8.5); x.textBaseline = 'middle';
+  } else if (f === 'zip') {
+    const L = 17, R = 47, T = cy - 11, B = cy + 11;
+    g = x.createLinearGradient(0, T, 0, B); g.addColorStop(0, '#d9a85a'); g.addColorStop(1, '#9c6d2c'); x.fillStyle = g; x.fillRect(L, T, R - L, B - T);
+    x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(30.5, T, 3, B - T);
+    x.strokeStyle = '#c9ced6'; x.lineWidth = 2.2; x.beginPath(); x.moveTo(L - 5, T - 3); x.lineTo(L - 5, B + 3); x.moveTo(R + 5, T - 3); x.lineTo(R + 5, B + 3); x.moveTo(L - 5, cy); x.lineTo(L - 1, cy); x.moveTo(R + 5, cy); x.lineTo(R + 1, cy); x.stroke();
+    x.fillStyle = '#1c1408'; x.font = '900 ' + mono(7.5); x.fillText(w.a, 32, cy + .5);
+  } else if (f === 'wasm') {
+    const s = 22, L = 32 - s / 2, T = cy - s / 2; x.strokeStyle = fg; x.lineWidth = 1.2;
+    for (let i = 0; i < 4; i++) { const o = 4 + i * 4.7; x.beginPath(); x.moveTo(L + o, T - 4); x.lineTo(L + o, T); x.moveTo(L + o, T + s); x.lineTo(L + o, T + s + 4); x.moveTo(L - 4, T + o); x.lineTo(L, T + o); x.moveTo(L + s, T + o); x.lineTo(L + s + 4, T + o); x.stroke(); }
+    g = x.createLinearGradient(0, T, 0, T + s); g.addColorStop(0, '#2a2156'); g.addColorStop(1, '#171236'); x.fillStyle = g; x.fillRect(L, T, s, s); x.strokeRect(L, T, s, s);
+    x.fillStyle = fg; x.font = '800 ' + mono(5.6); x.fillText('WASM', 32, cy + .3);
+  } else if (f === 'pdf') {
+    const L = 20, R = 44, T = cy - 15, B = cy + 15, c = 7;
+    x.fillStyle = '#f4f1ea'; x.beginPath(); x.moveTo(L, T); x.lineTo(R - c, T); x.lineTo(R, T + c); x.lineTo(R, B); x.lineTo(L, B); x.closePath(); x.fill();
+    x.fillStyle = '#cfc8b8'; x.beginPath(); x.moveTo(R - c, T); x.lineTo(R - c, T + c); x.lineTo(R, T + c); x.closePath(); x.fill();
+    x.fillStyle = 'rgba(60,60,70,.35)'; for (let i = 0; i < 3; i++) x.fillRect(L + 3, T + 9 + i * 3.2, 14 - i * 3, 1.1);
+    x.fillStyle = fg; x.fillRect(L - 3, cy + 3, R - L + 6, 8); x.fillStyle = '#fff'; x.font = '900 ' + mono(6.2); x.fillText('PDF', 32, cy + 7.2);
+  } else {
+    x.fillStyle = fg; x.font = '800 ' + mono(big ? 10 : 12); x.fillText('01 10', 32, cy - 6); x.globalAlpha = .55; x.fillText('10 01', 32, cy + 7); x.globalAlpha = 1;
+  }
+  if (big && w.b) { x.fillStyle = fg; x.globalAlpha = .8; x.font = '600 ' + mono(4.6); x.fillText(w.b.length > 26 ? w.b.slice(0, 25) + '…' : w.b, 32, 54, 56); x.globalAlpha = 1; }
+  x.setTransform(1, 0, 0, 1, 0, 0);
+}
+// (22 Nov 2026) a message written into a transaction (OP_RETURN words): an envelope, its letter half out with the first words on it
+function paintMsg(x, n, text) {
+  const k = n / 64, big = n >= 64; x.setTransform(k, 0, 0, k, 0, 0); x.shadowBlur = 0; x.textAlign = 'left'; x.textBaseline = 'alphabetic';
+  let g = x.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, '#16233a'); g.addColorStop(1, '#0a1120'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  x.strokeStyle = 'rgba(214,190,140,.55)'; x.lineWidth = 1; x.strokeRect(2.5, 2.5, 59, 59);
+  x.save(); x.translate(32, 30); x.rotate(-.06); x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(-16.5, -19, 34, 30);
+  g = x.createLinearGradient(0, -20, 0, 10); g.addColorStop(0, '#fffdf6'); g.addColorStop(1, '#efe6d2'); x.fillStyle = g; x.fillRect(-17, -20, 34, 30);
+  if (big && text) { x.fillStyle = '#2b2440'; x.font = '600 4.3px ui-monospace,Menlo,Consolas,monospace'; const ws = String(text).split(/\s+/), ls = []; let l = '';
+    for (const w of ws) { const t = l ? l + ' ' + w : w; if (x.measureText(t).width > 29 && l) { ls.push(l); l = w; } else l = t; if (ls.length >= 3) break; } if (l && ls.length < 3) ls.push(l);
+    ls.slice(0, 3).forEach((t, i) => x.fillText(t.length > 16 ? t.slice(0, 15) + '…' : t, -14.5, -14 + i * 5.2)); }
+  else { x.strokeStyle = 'rgba(60,50,90,.45)'; x.lineWidth = 1; for (let i = 0; i < 3; i++) { x.beginPath(); x.moveTo(-13, -14 + i * 5); x.lineTo(i === 2 ? 4 : 13, -14 + i * 5); x.stroke(); } }
+  x.restore();
+  const L = 9, R = 55, T = 30, B = 54;
+  g = x.createLinearGradient(0, T, 0, B); g.addColorStop(0, '#e9d9b4'); g.addColorStop(1, '#cdb88c');
+  x.fillStyle = g; x.beginPath(); x.moveTo(L, T); x.lineTo(32, T + 12); x.lineTo(R, T); x.lineTo(R, B); x.lineTo(L, B); x.closePath(); x.fill();
+  x.fillStyle = 'rgba(120,90,50,.18)'; x.beginPath(); x.moveTo(L, B); x.lineTo(30, T + 13); x.lineTo(34, T + 13); x.lineTo(R, B); x.closePath(); x.fill();
+  x.strokeStyle = 'rgba(110,85,45,.55)'; x.lineWidth = .7; x.beginPath(); x.moveTo(L, B); x.lineTo(29.5, T + 12.6); x.moveTo(R, B); x.lineTo(34.5, T + 12.6); x.stroke();
+  x.strokeStyle = 'rgba(110,85,45,.7)'; x.lineWidth = .8; x.beginPath(); x.moveTo(L, T); x.lineTo(32, T + 12); x.lineTo(R, T); x.stroke(); x.strokeRect(L, T, R - L, B - T);
+  g = x.createRadialGradient(31, T + 11, .5, 32, T + 12, 5); g.addColorStop(0, '#ff6a5a'); g.addColorStop(1, '#9e1b18'); x.fillStyle = g; x.beginPath(); x.arc(32, T + 12, 4.4, 0, 7); x.fill();
+  x.strokeStyle = 'rgba(255,220,200,.5)'; x.lineWidth = .5; x.beginPath(); x.arc(32, T + 12, 3, 0, 7); x.stroke();
+  x.setTransform(1, 0, 0, 1, 0, 0);
+}
 function paintWord(w, n) {
   n = n || 64;
   if (window.FamilyWords && w) { const T = v => typeof v === 'string' ? FamilyWords.clean(v) : v; w = Object.assign({}, w, {a: T(w.a), b: T(w.b)}); }   // (the Family Guard: rude words starred out)
   const [cv, x] = artCanvas(n), [bg, fg, label0] = (w.k === 'rune' ? WSTYLE['rune' + (w.s || 4)] : WSTYLE[w.k]) || WSTYLE.text, small = n <= 32;
   if (w.k === 'html') { paintHtml(x, n); return cv; }
+  if (w.k === 'file') { paintFile(x, n, w); return cv; }
+  if (w.k === 'msg') { paintMsg(x, n, w.a); return cv; }
   const label = w.dmt ? (w.k === 'nat' ? 'DMT · NAT' : 'DMT · TAP') : label0;
   if (n >= 128 && w.k !== 'text') return paintRich(w, n, cv, x, bg, fg, label);
   x.setTransform(n / 64, 0, 0, n / 64, 0, 0);   // drawn in a 64 x 64 space at the tile's real size, so text is sharp at every size
