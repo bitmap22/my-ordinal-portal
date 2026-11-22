@@ -1548,22 +1548,26 @@ async function contentOf(id, maxB) {
   }
   throw err || new Error('no content');
 }
-// (22 Nov 2026) DOGEMAPS, no fakes: a parcel shows as a dogemap only if the explorer's dogemap index (thedoginalsexplorer.com,
-// /v1/dogemap/N) names its transaction as the claim of block N. A later copy, or a claim that can't be checked, stays plain text.
+// (22 Nov 2026) DOGEMAPS, no fakes and none missed: a parcel shows as a dogemap only if the explorer's dogemap index
+// (thedoginalsexplorer.com, /v1/dogemap/N) names its transaction as the claim of block N. A later copy stays plain text. A claim
+// not yet answered is "being checked": each check is tried again (2 s, 4 s, 8 s… up to a minute apart) until it is answered, with no
+// limit on how many claims or how long. The hall waits up to a minute and a half; later answers update the boxes as they come.
 async function dmMark(B) {
   const seen = new Set(), todo = [];
-  for (const t of B.txs) { if (t.dmN == null || !t.id || t.dmOk || t.dmNo) continue; if (seen.has(t.dmN)) { t.dmNo = 'copy'; continue; } seen.add(t.dmN); todo.push(t); }
-  const T0 = Date.now();
-  await poolMap(todo.slice(0, 300), 4, async t => {
-    if (Date.now() - T0 > 40000) { t.dmNo = 'unchecked'; return; }
-    try { const j = await dj(DX + '/v1/dogemap/' + t.dmN, 15000);
-      if (j && j.txid === t.id) { t.dmOk = true; t.scC = (t.scC || 0) | 1 << TF.dogemap; if (!t.word || t.word.k === 'text') t.word = {k: 'dogemap', a: String(t.dmN), b: '.dogemap'}; t.sc = dgFlags(t); t._k = null; }
-      else t.dmNo = j && j.txid ? 'copy' : 'unchecked';
-    } catch (e) { t.dmNo = 'unchecked'; }
-  });
-  for (const t of todo) if (!t.dmOk && !t.dmNo) t.dmNo = 'unchecked';
+  for (const t of B.txs) { if (t.dmN == null || !t.id || t.dmOk || t.dmNo === 'copy') continue; if (seen.has(t.dmN)) { t.dmNo = 'copy'; continue; } seen.add(t.dmN); t.dmNo = 'checking'; todo.push(t); }
+  if (!todo.length) return;
+  const wait = ms => new Promise(r => setTimeout(r, ms)); let nDone = 0;
+  hallNote = 'CHECKING DOGEMAPS 0 OF ' + todo.length;
+  const one = async t => { for (let a = 0; ; a++) { try { const j = await dj(DX + '/v1/dogemap/' + t.dmN, 15000);
+      if (!j || !j.txid) throw new Error('no answer');
+      if (j.txid === t.id) { t.dmOk = true; t.dmNo = null; t.scC = (t.scC || 0) | 1 << TF.dogemap; if (!t.word || t.word.k === 'text') t.word = {k: 'dogemap', a: String(t.dmN), b: '.dogemap'}; t.sc = dgFlags(t); t._k = null; }
+      else t.dmNo = 'copy';
+      nDone++; hallNote = 'CHECKING DOGEMAPS ' + nDone + ' OF ' + todo.length;
+      if (cur === B && !room) { rebuild(); head(); } else if (room) room.dirty = true;
+      return; } catch (e) { await wait(Math.min(60000, 2000 * 2 ** a)); } } };
+  await Promise.race([poolMap(todo, 4, one), wait(90000)]);
 }
-const dmSay = t => t.dmOk ? t.dmN + '.dogemap: the claim of block ' + fmt(t.dmN) + ' (the explorer’s dogemap index)' : t.dmNo === 'copy' ? 'it says ' + t.dmN + '.dogemap, but it is not the claim of block ' + fmt(t.dmN) + ', so it is not a dogemap (the explorer’s dogemap index)' : 'it says ' + t.dmN + '.dogemap: whether it is the claim of block ' + fmt(t.dmN) + ' could not be checked, so it is not shown as a dogemap';
+const dmSay = t => t.dmOk ? t.dmN + '.dogemap: the claim of block ' + fmt(t.dmN) + ' (the explorer’s dogemap index)' : t.dmNo === 'copy' ? 'it says ' + t.dmN + '.dogemap, but it is not the claim of block ' + fmt(t.dmN) + ', so it is not a dogemap (the explorer’s dogemap index)' : 'it says ' + t.dmN + '.dogemap: being checked now (whether it is the claim of block ' + fmt(t.dmN) + '). Its card updates when the answer comes';
 async function dxContent(B) {
   if (!B || B.cont) return B && B.contP;
   B.cont = {loading: true};
@@ -1572,7 +1576,7 @@ async function dxContent(B) {
     const list = contList(B);
     B.cont.n = 0; B.cont.of = list.length;   // (how far it has got: shown while a hall is being built)
     await poolMap(list, 4, async t => {
-      B.cont.n++;
+      B.cont.n++; hallNote = 'READING INSCRIPTIONS ' + B.cont.n + ' OF ' + list.length;
       if (bytes > 40e6 || (cur !== B && !room)) return;
       const img = /^image\//.test(t.dxi.contentType), mdlF = MDL_RE.test(String(t.dxi.contentType || '').toLowerCase());
       try { const c = await contentOf(t.dxi.id, img ? 400000 : mdlF ? 1500000 : 8000); bytes += c.u.length; classifyBody(t, t.dxi.contentType, c.u); } catch (e) { if (t.scC == null) t.scC = 0; }
@@ -9105,6 +9109,7 @@ async function showBack() {
   const b = showBackTo; document.body.classList.remove('shw'); showBackTo = null;
   if (b) srTravel(b.h);
 }
+let hallNote = '';   // (what the hall being built is doing right now: shown on the loading screen)
 async function roomEnter(h, spot, opt) {
   cmPrewarm();
   if (h !== COMMON && (!(h >= 0) || h > tipH)) h = mode === 'block' && want >= 0 ? want : tipH;
@@ -9121,7 +9126,16 @@ async function roomEnter(h, spot, opt) {
   head(h === COMMON ? 'walking into the common room…' : 'walking into ' + hallName(h, C.h1).toLowerCase() + '…');
   const t = performance.now();
   const mine = room;
-  while (room === mine && !C.ready && !C.failed && performance.now() - t < (opt && opt.wait ? 45000 : 20000)) await new Promise(r => setTimeout(r, 120));
+  // (22 Nov 2026) the dark loading screen stays up until the hall is fully built, however long a busy block takes: never a bare
+  // carpet with no hall. It says what is being done, and how far it has got
+  const say0 = $rf.dataset.say;
+  while (room === mine && !C.ready && !C.failed) {
+    const s = Math.round((performance.now() - t) / 1000);
+    $rf.dataset.say = (h === COMMON ? 'THE COMMON ROOM' : 'BLOCK ' + fmt(h)) + ' · ' + (hallNote || 'BUILDING THE HALL') + (s >= 4 ? ' · ' + s + ' S' : '');
+    await new Promise(r => setTimeout(r, 150));
+  }
+  if (say0 != null) $rf.dataset.say = say0; else delete $rf.dataset.say;
+  hallNote = '';
   if (!room || room !== mine) return;   // (another trip started meanwhile: that one carries on)
   if (C.failed) { roomExit(); head('block ' + fmt(h) + ' not reachable'); return; }
   if (spot && spot.cm && C.common) { const [wx, wz] = cmW(C, spot.cm[0], spot.cm[1]); room.p.x = wx; room.p.z = C.z0 + wz; room.p.lv = spot.cm[2] || 0; room.p.y = cmH(spot.cm[0], spot.cm[1], room.p.lv); if (spot.face) { room.p.yaw = cmYaw(C); room.p.pitch = spot.pitch != null ? spot.pitch : .02; } }
