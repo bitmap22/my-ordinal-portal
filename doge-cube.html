@@ -922,31 +922,53 @@ else{float p=clamp(age/.55,0.,1.);sc=1.-p;pos.y+=p*p*${(S * 0.08).toFixed(2)};}
 pos.y+=floor(iC.y/${LAYER})*${LIFT}*uOpen;
 vec3 s=iS*sc;vFl=fl;vSl=uSel<0?0.:gl_InstanceID==uSel?1.:-1.;
 vec3 w=pos+aP*s,nn=aN;if(uMir>.5){w.y=-w.y;nn.y=-nn.y;}
-vN=nn;vQ=aP*s;vS=s;vK=iK.rgb;float sd=iA.w>20.5?-1.:iA.w>10.5?1.:0.;vA=iA;vA.w-=sd>0.?10.:sd<0.?20.:0.;vSd=sd;vG=iG;vTw=-1.;if(iG>2.5&&iG<3.5){vG=.3;if(vA.w<.5){float hq=fract(sin(dot(iC,vec3(12.9898,78.233,37.719)))*43758.5453),hr=fract(hq*7.13+.37);vTw=pow(max(sin(uNow*(.38+.3*hr)+hq*6.2832),0.),30.)*smoothstep(.2,.6,sin(uNow*(.11+.06*hq)+hr*6.2832));}}else if(iG>3.5&&iG<4.5){vG=.3;vTw=-2.;}vW=w;gl_Position=uVP*vec4(w,1.);}`,
+vN=nn;vQ=aP*s;vS=s;vK=iK.rgb;float sd=iA.w>20.5?-1.:iA.w>10.5?1.:0.;vA=iA;vA.w-=sd>0.?10.:sd<0.?20.:0.;vSd=sd;vG=iG;vTw=-1.;if(iG>2.5&&iG<3.5){vG=.3;if(vA.w<.5){float hq=fract(sin(dot(iC,vec3(12.9898,78.233,37.719)))*43758.5453),hr=fract(hq*7.13+.37);vTw=pow(max(sin(uNow*(.38+.3*hr)+hq*6.2832),0.),30.)*smoothstep(.2,.6,sin(uNow*(.11+.06*hq)+hr*6.2832));}}else if(iG>3.5&&iG<4.5){vG=.3;vTw=-2.;}else if(iG>4.5&&iG<7.5){vTw=2.-iG;vG=0.;}vW=w;gl_Position=uVP*vec4(w,1.);}`,
   V + `in vec3 vN;in vec3 vQ;in vec3 vS;in vec3 vK;in vec3 vW;in float vFl;in float vSl;in float vG;in vec4 vA;in float vAo;in float vSd;in float vTw;uniform sampler2D uArt;uniform sampler2D uArt2;uniform vec3 uE;uniform float uMir,uXr,uGa,uRf,uAmb;out vec4 o;
 ${CML}
-void main(){vec3 K=vK;vec3 aS=vec3(0.);bool ar=false;vec3 an0=abs(normalize(vN));vec3 sn=sign(vN);vec2 fu=an0.x>.5?vec2(-sn.x*vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,-sn.y*vQ.z/vS.z):vec2(sn.z*vQ.x/vS.x,vQ.y/vS.y);
+// (22 Nov 2026) the halls' bookcases and signs. A board's grain runs along its longest side, each board its own; the light under
+// each shelf's front edge (and under the top board) falls on the shelf below, its back and its sides; a sign is its own light.
+// (The numbers are the hall's own: half its width 3.8, the cases .46 deep and 2.62 tall, a shelf top every .4 from .1.)
+float bkH(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float bkN(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(bkH(i),bkH(i+vec2(1.,0.)),f.x),mix(bkH(i+vec2(0.,1.)),bkH(i+1.),f.x),f.y);}
+vec3 bkWood(vec3 K,vec3 q,vec3 s,vec3 an,vec3 ctr,vec3 fq){
+ float id=bkH(floor(ctr.xz*3.1)+floor(ctr.y*5.3)*.37),u,v,fv;
+ if(s.y>=s.x&&s.y>=s.z){u=q.y;if(an.x>.5){v=q.z;fv=fq.z;}else{v=q.x;fv=fq.x;}}
+ else if(s.z>=s.x){u=q.z;if(an.x>.5){v=q.y;fv=fq.y;}else{v=q.x;fv=fq.x;}}
+ else{u=q.x;if(an.z>.5){v=q.y;fv=fq.y;}else{v=q.z;fv=fq.z;}}
+ u+=id*37.;v+=id*11.;
+ float wob=bkN(vec2(u*1.1,v*4.)),band=bkN(vec2(u*.8,(v+wob*.05)*24.));
+ float line=mix(bkN(vec2(u*2.4,(v+wob*.03)*170.)),.5,clamp(fv*170.,0.,1.));
+ float pore=mix(smoothstep(.7,.96,bkN(vec2(u*34.,v*560.))),.15,clamp(fv*560.,0.,1.));
+ return K*(.72+.34*band+.2*line-.12*pore)*(.9+.2*id)*mix(vec3(1.),vec3(1.1,.95,.82),band*.6);}
+vec3 bkLamp(vec3 n,vec3 w){float sx=w.x<0.?-1.:1.,dwl=3.8-abs(w.x),y=abs(w.y);if(y>2.63||dwl>.47)return vec3(0.);
+ float top=step(2.1,y),b0=mix(.1+floor(max(y-.1,0.)/.4)*.4,2.1,top),lh=mix(.366,.516,top);
+ vec2 lv=vec2(.456-dwl,b0+lh-y);float ld=length(lv)+.05;vec3 ldir=vec3(-sx*lv.x,lv.y,0.)/ld;
+ return vec3(1.,.9,.76)*min(max(max(dot(n,ldir),0.),abs(n.z)*.4)/(ld*ld),7.)*.4;}
+float bkAo(vec3 w,vec3 an,bool back){float dwl=3.8-abs(w.x),y=abs(w.y);if(y>2.63)return 1.;float fy=y>2.1?y-2.1:fract(max(y-.1,0.)/.4)*.4;
+ return back?mix(.5,1.,smoothstep(0.,.08,fy)):an.y>.5?mix(.55,1.,smoothstep(.04,.17,dwl)):1.;}
+void main(){bool sg=vTw<-3.5&&vTw>-4.5,bw=vTw<-2.5&&vTw>-3.5,bb=vTw<-4.5;vec3 fq=fwidth(vQ);vec3 K=vK;vec3 aS=vec3(0.);bool ar=false;vec3 an0=abs(normalize(vN));vec3 sn=sign(vN);vec2 fu=an0.x>.5?vec2(-sn.x*vQ.z/vS.z,vQ.y/vS.y):an0.y>.5?vec2(vQ.x/vS.x,-sn.y*vQ.z/vS.z):vec2(sn.z*vQ.x/vS.x,vQ.y/vS.y);
 bool nr=vA.w>2.5;float aw=nr?vA.w-2.:vA.w;
 vec2 ts=nr?vec2(textureSize(uArt2,0)):vec2(textureSize(uArt,0)),tz=vec2(vA.z,vA.z*ts.x/ts.y),p=(vA.xy+vec2(fu.x+.5,.5-fu.y)*tz)*ts,dd=fwidth(p);
-if(vA.w>.5){float lod=clamp(log2(max(sqrt(dd.x*dd.y),1e-6))-.6,0.,max(log2(vA.z*ts.x)-1.,0.));if(lod<.01&&aw<1.5){vec2 sm=floor(p+.5);p=sm+clamp((p-sm)/max(dd,vec2(1e-5)),-.5,.5);}
-float h=.5*exp2(lod);p=clamp(p,vA.xy*ts+h,(vA.xy+tz)*ts-h);aS=(nr?textureLod(uArt2,p/ts,lod):textureLod(uArt,p/ts,lod)).rgb;ar=true;K=pow(aS,vec3(2.2))*1.15+.01;}if(vSd!=0.){vec3 sa=abs(vS);float nc=sa.x<=sa.y&&sa.x<=sa.z?vN.x:sa.y<=sa.z?vN.y:vN.z;if(nc*vSd<.5){K=vec3(.012);ar=false;}}if(vTw>-.5){K=vec3(.028,.026,.038);ar=false;}float gA=vA.w>.5?.4:1.;if(vA.w<.5&&vA.z>.5){float gr=.5+.5*sin((vW.z+vW.x)*48.+sin(vW.y*11.+vW.z*2.3)*2.6);K*=.72+.4*gr;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
+if(vA.w>.5){float lod=clamp(log2(max(sqrt(dd.x*dd.y),1e-6))-(sg?.95:.6),0.,max(log2(vA.z*ts.x)-1.,0.));if(lod<.01&&aw<1.5){vec2 sm=floor(p+.5);p=sm+clamp((p-sm)/max(dd,vec2(1e-5)),-.5,.5);}
+float h=.5*exp2(lod);p=clamp(p,vA.xy*ts+h,(vA.xy+tz)*ts-h);aS=(nr?textureLod(uArt2,p/ts,lod):textureLod(uArt,p/ts,lod)).rgb;ar=true;K=pow(aS,vec3(2.2))*1.15+.01;}if(sg){vec3 sa=abs(vS);float nc=sa.x<=sa.y&&sa.x<=sa.z?an0.x:sa.y<=sa.z?an0.y:an0.z;if(nc<.5){K=vec3(.006,.004,.003);ar=false;}}if(vSd!=0.){vec3 sa=abs(vS);float nc=sa.x<=sa.y&&sa.x<=sa.z?vN.x:sa.y<=sa.z?vN.y:vN.z;if(nc*vSd<.5){K=vec3(.012);ar=false;}}if(vTw>-.5){K=vec3(.028,.026,.038);ar=false;}float gA=vA.w>.5?.4:1.;if(bw||bb)K=bkWood(K,vQ,vS,an0,vW-vQ,fq);else if(vA.w<.5&&vA.z>.5){float gr=.5+.5*sin((vW.z+vW.x)*48.+sin(vW.y*11.+vW.z*2.3)*2.6);K*=.72+.4*gr;}vec3 n=normalize(vN),an=abs(n),d=vS*.5-abs(vQ);
 float m=an.x>.5?min(d.y,d.z):an.y>.5?min(d.x,d.z):min(d.x,d.y);
 float fw=fwidth(m),es=.25+.75*smoothstep(.3,1.4,min(vS.x,min(vS.y,vS.z))),edge=(1.-smoothstep(0.,fw*1.3,m))*es;
 vec3 L=normalize(vec3(.42,.86,.3)),F=normalize(vec3(-.75,.15,-.45));
 float dif=max(dot(n,L),0.),fil=max(dot(n,F),0.),sky=.5+.5*n.y;
 vec3 c=K*(.12*sky+1.08*dif)+K*vec3(.95,.72,.55)*.26*fil+K*uAmb;
+if(bw||bb){vec3 Lh=normalize(vec3(vW.x<0.?.42:-.42,.86,0.));c=(K*(.1*sky+.85*max(dot(n,Lh),0.)+.75*uAmb)+K*bkLamp(n,vW))*bkAo(vW,an,bb);}   // (a bookcase: the hall's light falls on both walls alike, and each shelf has its own)
 vec3 vd=normalize(uE-vW);int cz=-1;vec2 cq=vec2(0.);if(uCmT.w>.5&&uMir<.5){cq=cmQ(vW);cz=cmZ(cq);}
-float gk=cz>=0?.42:1.;if(cz>=0){c=cmLit(K,n,vW,vd,cz,cq,.12);if(cz==5&&uCmD.x>.01)c+=cmDisco(vW,cq)*(.45+K*2.5);if(vA.w>.5&&min(vS.x,min(vS.y,vS.z))<.03)c+=K*.5;}else{c+=vec3(1.,.58,.2)*pow(1.-max(dot(n,vd),0.),3.)*.16;
-c+=vec3(1.,.8,.55)*pow(max(dot(reflect(-L,n),vd),0.),28.)*.22;}
+float gk=cz>=0?.42:1.;if(cz>=0){c=cmLit(K,n,vW,vd,cz,cq,.12);if(cz==5&&uCmD.x>.01)c+=cmDisco(vW,cq)*(.45+K*2.5);if(vA.w>.5&&min(vS.x,min(vS.y,vS.z))<.03)c+=K*.5;}else{c+=vec3(1.,.58,.2)*pow(1.-max(dot(n,vd),0.),3.)*(uAmb>0.?.05:.16);
+c+=vec3(1.,.8,.55)*pow(max(dot(reflect(-L,n),vd),0.),28.)*(uAmb>0.?.09:.22);}
 float sd=1.-an.y;c*=mix(1.,vAo*(vA.w>.5?1.:.88+.12*smoothstep(-.5,.5,vQ.y/vS.y)),sd);
-c=mix(c,c*1.6+(cz>=0?.004:.05),edge*.5);
-c+=(K*.7+.06)*vFl;c=mix(c,K*1.3,vG*.3*gA);float st=0.;if(vTw>-.5){c*=.5;if(vTw>0.){st=exp(-dot(fu,fu)*90.)*2.2+(exp(-abs(fu.x)*60.)*exp(-abs(fu.y)*9.)+exp(-abs(fu.y)*60.)*exp(-abs(fu.x)*9.))*.9;c+=vec3(1.,.9,.72)*vTw*st+vec3(1.,.8,.55)*vTw*.1;}}else if(vTw<-1.5)c=mix(c,K*1.1,.85);
-float g=edge*.08+vFl*.35+vG*.28*gA;if(vG>1.5){c=K*(1.7+edge*.6);g=.95;}g*=gk;if(vTw>0.)g+=vTw*(.2+st*.5);else if(vTw<-1.5)g+=.15;
+c=mix(c,c*1.6+(cz>=0?.004:bw||bb?.012:uAmb>0.?.018:.05),edge*.5);
+c+=(K*.7+.06)*vFl;c=mix(c,K*1.3,vG*.3*gA);float st=0.;if(vTw>-.5){c*=.5;if(vTw>0.){st=exp(-dot(fu,fu)*90.)*2.2+(exp(-abs(fu.x)*60.)*exp(-abs(fu.y)*9.)+exp(-abs(fu.y)*60.)*exp(-abs(fu.x)*9.))*.9;c+=vec3(1.,.9,.72)*vTw*st+vec3(1.,.8,.55)*vTw*.1;}}else if(vTw<-1.5&&vTw>-2.5)c=mix(c,K*1.1,.85);if(sg)c=K*1.08;
+float g=edge*.08+vFl*.35+vG*.28*gA;if(vG>1.5){c=K*(1.7+edge*.6);g=.95;}g*=gk;if(vTw>0.)g+=vTw*(.2+st*.5);else if(vTw<-1.5&&vTw>-2.5)g+=.15;if(sg)g=.2*max(K.r,max(K.g,K.b));
 if(vSl>.5){c=c*1.3+K*.35+edge*.6;g+=.85;}else if(vSl<-.5){c=mix(vec3(dot(c,vec3(.3,.5,.2))),c,.35)*.3;g*=.15;}
 if(uXr>.5){float rim=pow(1.-abs(dot(n,vd)),2.);vec3 gc=K*(.3+.7*dif)*.6+K*edge*1.6+K*rim*.35+vec3(1.,.6,.25)*edge*.15;
 float ga=(.06+edge*.62+rim*.08)*uGa;if(vSl>.5){gc=K*1.6+.25;ga=.95;}gc=gc*(1.+gc/6.)/(1.+gc);o=vec4(pow(clamp(gc,0.,1.),vec3(.4545)),ga);return;}
 float al=clamp(g,0.,1.);if(uMir>.5){float f=clamp(1.+vW.y/${(S * 0.45).toFixed(2)},0.,1.);c*=.75;al=min(.32*f*f*uRf,.8);}
-if(uAmb>0.){float fd=length(vW-uE);c=mix(c,vec3(.022,.013,.01),1.-exp(-fd*(cz>=0?.012:.034)));}
+if(uAmb>0.){float fd=length(vW-uE);c=mix(c,vec3(.022,.013,.01),1.-exp(-fd*(cz>=0||sg?.012:.034)));}
 c*=1.35;c=c*(1.+c/6.)/(1.+c);
 vec3 oc=pow(clamp(c,0.,1.),vec3(.4545));
 // (20 Nov 2026) right up close, a picture on a box shows in its own true colours: unlit, no fog, no colour curve
@@ -4890,35 +4912,62 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && pa
 // come late the 3D view is drawn a little smaller (the page stretches it to fill the screen; buttons and writing stay
 // sharp), and it goes back up to full size once there is time again. Always full size while you hold a block, and for a
 // saved picture or an agent's picture.
-const PIC = {K: [1, .9, .8, .75, .67, .6], i: 0, ts: 0, iv: [], n: 0, per: 0, win: [], lt: [], hold: 0, at: 0, up: 4000, tried: 0, cpu: 0, full: 0};
+// (22 Nov 2026) sharpness first. Two things are tried before the picture is made smaller. One: where the browser can time the
+// graphics card (one picture in six), the picture is only made smaller when the card really is what makes pictures late; when
+// the card has time to spare a smaller picture would not help, so it stays full size (and goes back up). Two: on a fast screen
+// (110 pictures a second or more) the view is first drawn on every other refresh at full size (90 a second on a 180 screen:
+// even, and sharp), and only made smaller if that is still too much.
+const PIC = {K: [1, .9, .8, .75, .67, .6], i: 0, skip: 0, ts: 0, cts: 0, iv: [], n: 0, per: 0, win: [], lt: [], hold: 0, at: 0, up: 4000, tried: 0, cpu: 0, full: 0, gx: undefined, gq: null, gw: null, gn: 0, gpu: 0, gpuAt: 0};
 const picFull = () => !!(room && room.held) || performance.now() < PIC.full;
 const picK = () => picFull() ? 1 : PIC.K[PIC.i];
+// the screen's own beat, from every refresh; and whether this refresh is drawn (every other one, while PIC.skip is on)
+function picBeat(ts) {
+  const P = PIC, d = P.cts ? ts - P.cts : 0; P.cts = ts;
+  if (d > 0 && d <= 250) { P.iv.push(d); if (P.iv.length > 240) P.iv.shift(); if (++P.n % 30 === 0 || !P.per) { const s = P.iv.slice().sort((a, b) => a - b); P.per = s[Math.floor(s.length * .05)]; } }   // (the quickest of the recent gaps)
+  return !(P.skip && P.per && P.ts && ts - P.ts < P.per * 1.5);
+}
+// how long the graphics card takes over a picture (a timer query round one picture in six; the answer comes a picture or two later)
+function picGpuStart() {
+  const P = PIC; if (P.gx === undefined) { try { P.gx = gl.getExtension('EXT_disjoint_timer_query_webgl2') || null; } catch (e) { P.gx = null; } }
+  if (!P.gx) return;
+  try {
+    if (P.gw && gl.getQueryParameter(P.gw, gl.QUERY_RESULT_AVAILABLE)) {
+      if (!gl.getParameter(P.gx.GPU_DISJOINT_EXT)) { const ms = gl.getQueryParameter(P.gw, gl.QUERY_RESULT) / 1e6; if (ms > 0 && ms < 500) { P.gpu = P.gpu ? P.gpu * .7 + ms * .3 : ms; P.gpuAt = performance.now(); } }
+      gl.deleteQuery(P.gw); P.gw = null;
+    }
+    if (!P.gw && ++P.gn % 6 === 0) { P.gq = gl.createQuery(); gl.beginQuery(P.gx.TIME_ELAPSED_EXT, P.gq); }
+  } catch (e) { P.gx = null; P.gq = P.gw = null; }
+}
+function picGpuEnd() { const P = PIC; if (!P.gq) return; try { gl.endQuery(P.gx.TIME_ELAPSED_EXT); P.gw = P.gq; } catch (e) { P.gx = null; P.gw = null; } P.gq = null; }
 function picTick(ts) {
-  const P = PIC, d = P.ts ? ts - P.ts : 0; P.ts = ts;
+  const P = PIC, d = P.ts ? ts - P.ts : 0; P.ts = ts;   // (the gap since the last picture drawn)
   if (!(d > 0) || d > 250) return;   // (the first picture, or after a pause: nothing to learn)
-  P.iv.push(d); if (P.iv.length > 240) P.iv.shift();
-  if (++P.n % 30 === 0 || !P.per) { const s = P.iv.slice().sort((a, b) => a - b); P.per = s[Math.floor(s.length * .05)]; }   // the screen's own beat: the quickest of the recent gaps
   if (P.iv.length < 60) return;
-  const fresh = () => { P.win = []; P.lt = []; P.hold = ts + 1000; P.at = ts; };
+  const T = P.per * (P.skip ? 2 : 1), fresh = () => { P.win = []; P.lt = []; P.hold = ts + 1000; P.at = ts; };   // (T: the time one picture has)
   if (picFull()) { fresh(); return; }   // (full size on purpose: late pictures then do not count)
-  if (d >= P.per * 4 || P.cpu > P.per * .6) return;   // (a long stall, or the page's own work that frame: a smaller picture would not help)
-  if (ts < P.hold) return;   // (just changed size: let it settle)
-  const late = d > P.per * 1.5 ? 1 : 0;
+  if (d >= T * 4 || P.cpu > T * .6) return;   // (a long stall, or the page's own work that frame: a smaller picture would not help)
+  if (ts < P.hold) return;   // (just changed: let it settle)
+  const late = d > T + P.per * .5 ? 1 : 0;
   P.win.push(late); if (P.win.length > 120) P.win.shift();
   if (late) P.lt.push(ts); while (P.lt.length && P.lt[0] < ts - P.up) P.lt.shift();
-  if (P.i < P.K.length - 1 && P.win.reduce((a, b) => a + b, 0) >= (P.i < 3 ? 12 : 24)) {   // 1 picture in 10 late: a little smaller (below three quarters only when 1 in 5 are late)
-    if (P.tried && ts - P.tried < 3000) P.up = Math.min(60000, P.up * 2);   // (it was just made bigger and could not keep up: wait longer before trying again)
-    P.i++; P.tried = 0; fresh();
-  } else if (P.i && ts - P.at > P.up && P.lt.length <= P.up / P.per * .01) {   // hardly any late for a while (1 in 100 or fewer): try a little bigger
-    P.i--; P.tried = ts; fresh();
-  }
-  if (P.tried && ts - P.tried > 10000) { P.tried = 0; P.up = 4000; }   // (bigger held up: the next try comes as soon as usual)
+  const known = !!(P.gx && P.gpu && performance.now() - P.gpuAt < 4000), fast = P.per < 9.2, K = P.K;
+  if (P.win.reduce((a, b) => a + b, 0) >= (P.i < 3 ? 12 : 24)) {   // 1 picture in 10 late (below three quarters only when 1 in 5 are late)
+    if (P.tried && ts - P.tried < 3000) P.up = Math.min(60000, P.up * 2);   // (it was just made bigger or quicker and could not keep up: wait longer before trying again)
+    if (fast && !P.skip) { P.skip = 1; P.tried = 0; fresh(); }   // a fast screen: every other refresh first (that gives the page's own work twice the time too)
+    else if (known && P.gpu < T * .45) P.win = [];   // (the card has time to spare: the picture's size is not why they are late, so it stays)
+    else if (P.i < K.length - 1) { P.i++; P.tried = 0; fresh(); }   // a little smaller
+  } else if (ts - P.at > (known ? 1500 : P.up) && P.lt.length <= P.up / T * .01) {   // hardly any late for a while (1 in 100 or fewer)
+    if (P.i) { if (!known || P.gpu * (K[P.i - 1] / K[P.i]) ** 2 < T * .7) { P.i--; P.tried = ts; fresh(); } }   // a little bigger (where the card is timed: only when it will fit)
+    else if (P.skip && ts - P.at > P.up && (!known || P.gpu < P.per * .7) && P.cpu < P.per * .4) { P.skip = 0; P.tried = ts; fresh(); }   // full size holds with time to spare: every refresh again (a card slows itself down when it has little to do, so its time here reads long: if every refresh turns out too much, it comes back to every other and waits longer before the next try)
+  } else if (known && P.i && ts - P.at > 1500 && P.gpu * (K[P.i - 1] / K[P.i]) ** 2 < T * .4) { P.i--; P.tried = ts; fresh(); }   // (late or not, the card has far more time than a bigger picture needs)
+  if (P.tried && ts - P.tried > 10000) { P.tried = 0; P.up = 4000; }   // (it held up: the next try comes as soon as usual)
 }
 function frame(ts) {
   if (document.hidden) { paused = true; return; }   // (hidden)
   requestAnimationFrame(frame);   // (asked for first: an error while drawing one frame must never stop the game)
+  if (!picBeat(ts)) return;   // (a fast screen kept busy: every other refresh)
   picTick(ts);
-  const c0 = performance.now(); try { drawFrame(); } catch (e) { frameErr(e); } PIC.cpu = performance.now() - c0;
+  const c0 = performance.now(); picGpuStart(); try { drawFrame(); } catch (e) { frameErr(e); } picGpuEnd(); PIC.cpu = performance.now() - c0;
 }
 // an error while drawing a frame: kept for agents and for finding it (window.__bcFrameErr), told once in the console; the game goes on
 function frameErr(e) { const m = String(e && e.message || e).slice(0, 300), o = window.__bcFrameErr; window.__bcFrameErr = {at: new Date().toISOString(), error: m, times: (o && o.error === m ? o.times : 0) + 1}; if (frameErr.last !== m) { frameErr.last = m; console.error('frame:', e); } }
@@ -5026,13 +5075,15 @@ function drawFrame() {
     gl.bindTexture(gl.TEXTURE_2D, src); gl.drawArrays(gl.TRIANGLES, 0, 3); src = l.t; sw = l.w; shh = l.h;
   });
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  const hallGlow = !!(room && room.at && !room.at.common && !room.at.gal && !room.at.gd && !room.at.cl);   // (22 Nov 2026) in a block's hall the glow keeps close to its light: the two widest layers count for less, and less of it is added
   for (let i = RT.lv.length - 1; i > 0; i--) {
     const s = RT.lv[i], d = RT.lv[i - 1];
+    if (hallGlow && i >= 3) { gl.blendColor(.4, .4, .4, .4); gl.blendFunc(gl.CONSTANT_COLOR, gl.ONE); } else gl.blendFunc(gl.ONE, gl.ONE);
     pass(upP, d.f, d.w, d.h); gl.uniform1i(upP.u.T, 0); gl.uniform2f(upP.u.uPx, 0.5 / s.w, 0.5 / s.h);
     gl.bindTexture(gl.TEXTURE_2D, s.t); gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
   gl.disable(gl.BLEND);
-  pass(coP, null, W, H); gl.uniform1i(coP.u.T, 0); gl.uniform1i(coP.u.G, 1); gl.uniform1f(coP.u.uB, room && cmOn(room.at) ? .42 : 0.7); gl.uniform1i(coP.u.M, 2); gl.uniform1f(coP.u.uM, cm.holes ? 1 : 0); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, RT.mk);
+  pass(coP, null, W, H); gl.uniform1i(coP.u.T, 0); gl.uniform1i(coP.u.G, 1); gl.uniform1f(coP.u.uB, room && cmOn(room.at) ? .42 : hallGlow ? .45 : 0.7); gl.uniform1i(coP.u.M, 2); gl.uniform1f(coP.u.uM, cm.holes ? 1 : 0); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, RT.mk);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, RT.lv[0].t);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, RT.st);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -5111,22 +5162,37 @@ function labUp(x, y, w, h, noMip) {
   if (!noMip) { if (w * h <= 1024 * 256) labMipRect(x, y, w, h); else gl.generateMipmap(gl.TEXTURE_2D); }
 }
 // one label: a dark plate with a glowing edge, the words in their colour (and a count, or a second line)
+// (22 Nov 2026) the halls' signs have their own look (LABH is set while one is painted): the plate is dark glass, a touch lighter at
+// the top; the frame has a fine line inside it; the words are a little bigger, with a soft glow of their own colour under crisp letters
+let LABH = 0;
+const labHall = f => (...a) => { const was = LABH; LABH = 1; try { return f(...a); } finally { LABH = was; } };
 function labPaint(x, y, w, h, main, col, right, sub, edge) {
-  const c = labCx, m = h * .1;
-  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#0d0805'; c.fillRect(x, y, w, h);
+  const c = labCx, m = h * .1, H = LABH;
+  c.save(); if (H) { c.beginPath(); c.rect(x, y, w, h); c.clip(); }
+  c.clearRect(x, y, w, h); c.fillStyle = '#0d0805';
+  if (H) { const pg = c.createLinearGradient(0, y, 0, y + h); pg.addColorStop(0, '#1b140d'); pg.addColorStop(.5, '#0d0805'); pg.addColorStop(1, '#070403'); c.fillStyle = pg; }
+  c.fillRect(x, y, w, h);
   if (edge) {   // a block's sign: its edge in the colour of how warm the block is (its fees: icy blue when cheap, through green and sand, to fire red and plasma pink)
     const lw = Math.max(3, h * .085); c.strokeStyle = edge; c.lineWidth = lw; c.strokeRect(x + lw / 2, y + lw / 2, w - lw, h - lw);
     c.lineWidth = Math.max(1, h * .02); c.globalAlpha = .55; c.strokeRect(x + lw * 1.9, y + lw * 1.9, w - lw * 3.8, h - lw * 3.8); c.globalAlpha = 1;
+  } else if (H) { const lw = Math.max(2, h * .05); c.strokeStyle = col; c.lineWidth = lw; c.strokeRect(x + lw / 2, y + lw / 2, w - lw, h - lw);
+    c.lineWidth = Math.max(1, h * .014); c.globalAlpha = .45; c.strokeRect(x + lw * 2.2, y + lw * 2.2, w - lw * 4.4, h - lw * 4.4); c.globalAlpha = 1;
   } else { c.strokeStyle = col; c.lineWidth = Math.max(2, h * .06); c.strokeRect(x + c.lineWidth / 2, y + c.lineWidth / 2, w - c.lineWidth, h - c.lineWidth); }
   c.textBaseline = 'middle'; c.lineJoin = 'round';
   const fit = (t, sz, mw, wt) => { let f = sz; c.font = `${wt} ${f}px ui-monospace,Menlo,Consolas,monospace`; while (f > 6 && c.measureText(t).width > mw) { f--; c.font = `${wt} ${f}px ui-monospace,Menlo,Consolas,monospace`; } };
   if (right != null) {   // shelf label: name on the left, count on the right
     fit(right, h * .5, w * .4, 700); const rw = c.measureText(right).width; c.fillStyle = '#f7efe3'; c.textAlign = 'right'; c.fillText(right, x + w - m * 1.6, y + h / 2 + 1);
-    fit(main, h * .54, w - rw - m * 5, 800); c.fillStyle = col; c.textAlign = 'left'; c.fillText(main, x + m * 1.6, y + h / 2 + 1);
+    fit(main, h * .54, w - rw - m * 5, 800); c.fillStyle = col; c.textAlign = 'left'; if (H) { c.shadowColor = col; c.shadowBlur = h * .2; c.fillText(main, x + m * 1.6, y + h / 2 + 1); c.shadowBlur = 0; } c.fillText(main, x + m * 1.6, y + h / 2 + 1);
   } else {
     c.textAlign = 'center'; c.fillStyle = col;
+    if (H) {   // (bigger, a glow under crisp letters; the second line bigger and lighter too)
+      fit(main, h * (sub ? .5 : .6), w - m * 3.4, 800); const my = y + h * (sub ? .365 : .52);
+      c.shadowColor = col; c.shadowBlur = h * .16; c.fillText(main, x + w / 2, my); c.shadowBlur = 0; c.fillText(main, x + w / 2, my);
+      if (sub) { fit(sub, h * .25, w - m * 3.4, 700); c.fillStyle = '#f3e8d2'; c.fillText(sub, x + w / 2, y + h * .765); }
+    } else {
     fit(main, h * (sub ? .46 : .58), w - m * 3, 800); c.fillText(main, x + w / 2, y + h * (sub ? .38 : .52));
     if (sub) { fit(sub, h * .2, w - m * 3, 600); c.fillStyle = '#cdbca3'; c.fillText(sub, x + w / 2, y + h * .76); }
+    }
   }
   c.restore();
 }
@@ -5134,8 +5200,11 @@ function labPaint(x, y, w, h, main, col, right, sub, edge) {
 // a tall label whose main text wraps over as many lines as it needs, as big as it can be while all of it fits
 function labWrap(x, y, w, h, main, col, right, sub) {
   const c = labCx, m = h * .07, F = s => `700 ${s}px ui-monospace,Menlo,Consolas,monospace`;
-  c.save(); c.clearRect(x, y, w, h); c.fillStyle = '#0d0805'; c.fillRect(x, y, w, h);
+  c.save(); if (LABH) { c.beginPath(); c.rect(x, y, w, h); c.clip(); } c.clearRect(x, y, w, h); c.fillStyle = '#0d0805';
+  if (LABH) { const pg = c.createLinearGradient(0, y, 0, y + h); pg.addColorStop(0, '#1b140d'); pg.addColorStop(.5, '#0d0805'); pg.addColorStop(1, '#070403'); c.fillStyle = pg; }
+  c.fillRect(x, y, w, h);
   c.strokeStyle = col; c.lineWidth = Math.max(2, h * .03); c.strokeRect(x + c.lineWidth / 2, y + c.lineWidth / 2, w - c.lineWidth, h - c.lineWidth);
+  if (LABH) { const lw = c.lineWidth; c.lineWidth = Math.max(1, h * .008); c.globalAlpha = .45; c.strokeRect(x + lw * 2.2, y + lw * 2.2, w - lw * 4.4, h - lw * 4.4); c.globalAlpha = 1; }
   const sh = h * .1, mw = w - m * 3, mh = h - m * 2.4 - sh * 1.3;
   const wrap = sz => {
     c.font = F(sz); const out = []; let line = '';
@@ -5150,10 +5219,12 @@ function labWrap(x, y, w, h, main, col, right, sub) {
   while (sz > 7 && lines.length * sz * 1.18 > mh) lines = wrap(--sz);
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = col; c.font = F(sz);
   const y0 = y + m * 1.2 + (mh - lines.length * sz * 1.18) / 2 + sz * .59;
+  if (LABH) { c.shadowColor = col; c.shadowBlur = h * .07; lines.forEach((l, i) => c.fillText(l, x + w / 2, y0 + i * sz * 1.18)); c.shadowBlur = 0; }
   lines.forEach((l, i) => c.fillText(l, x + w / 2, y0 + i * sz * 1.18));
-  if (sub) { c.font = `600 ${Math.round(sh)}px ui-monospace,Menlo,Consolas,monospace`; c.fillStyle = '#cdbca3'; c.fillText(sub, x + w / 2, y + h - m - sh * .55); }
+  if (sub) { c.font = `${LABH ? 700 : 600} ${Math.round(sh * (LABH ? 1.15 : 1))}px ui-monospace,Menlo,Consolas,monospace`; c.fillStyle = LABH ? '#f3e8d2' : '#cdbca3'; c.fillText(sub, x + w / 2, y + h - m - sh * .55); }
   c.restore();
 }
+const labPaintH = labHall(labPaint), labWrapH = labHall(labWrap);   // (as the halls' signs are painted)
 
 // block 0's front page: the word written into the block ("Nintondo"), as the block holds it, set like a newspaper's front page
 function labPaper(x, y, w, h, words, when) {
@@ -5413,9 +5484,9 @@ function rmFix(R) {
   // box: centre, size, colour; g = glow (2 = a light: drawn bright and unlit); m = 'wood' for a grain; a = a label tile
   const box = (x, y, z, sx, sy, sz, k, g, a, m) => d.push(x, y, z0 + z, sx, sy, sz, k[0], k[1], k[2], 0, x, y, z0 + z, 0, g || 0, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : m ? 1 : 0, a ? 2 : 0);   // (labels are drawn smooth, not as pixels)
   // a label made of square tiles side by side, facing along the normal nx (±1 on x) or nz (±1 on z)
-  const tiles = (cx, cy, cz, nx, nz, s, px, py, ts, n) => {
+  const tiles = (cx, cy, cz, nx, nz, s, px, py, ts, n, lit = 6, th = .012) => {   // (lit 6: a sign that is its own light, as the halls' signs are; 0: lit by the hall. th: how thick)
     const rx = nx ? 0 : (nz > 0 ? 1 : -1), rz = nx ? (nx > 0 ? -1 : 1) : 0;
-    for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2) * s; box(cx + rx * o, cy, cz + rz * o, nx ? .012 : s, s, nz ? .012 : s, K.sign, 0, [(px + k * ts) / LT, py / LH, ts / LT]); }
+    for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2) * s; box(cx + rx * o, cy, cz + rz * o, nx ? th : s, s, nz ? th : s, K.sign, lit, [(px + k * ts) / LT, py / LH, ts / LT]); }
   };
   const tabOf = b => { let g = -1; for (const c of P.cats) if (c.bay <= b) g = c.g; return g; };
   // the hall: tall dark walls, a light running along the top and another lower down, ribs across the open top
@@ -5446,21 +5517,22 @@ function rmFix(R) {
   for (let b = 0; b < 2 * P.side; b++) {
     const p = bayAt(P, b), zc = p.zs + p.dz * BAY / 2, xw = p.s * (RW / 2), xs = p.s * (RW / 2 - DEEP / 2), g = tabOf(b);
     const glowK = g >= 0 && b < P.nb ? LC(CATS[g][1]) : K.dim;
-    box(p.s * (RW / 2 - .02), CASEH / 2, zc, .04, CASEH, BAY, K.back);
-    box(xs, CASEH + .03, zc, DEEP + .04, .06, BAY + .05, K.post, 0, null, 1);
-    box(xs, .04, zc, DEEP + .02, .08, BAY, K.post);
+    box(p.s * (RW / 2 - .02), CASEH / 2, zc, .04, CASEH, BAY, K.wood.map(v => v * .62), 7);   // the back: wood, lit by the shelf lights (7)
+    box(xs, CASEH + .03, zc, DEEP + .04, .06, BAY, K.post, 5, null, 1);   // the top board: a bay long exactly (it used to run 5 cm into the next, and the two flickered where they met)
+    box(xs, .04, zc, DEEP + .02, .08, BAY, K.post, 5, null, 1);
     box(p.s * (RW / 2 - DEEP - .006), .045, zc, .012, .02, BAY - .1, glowK, 2);   // a light along the foot of the case
     for (const y of PLANKS) {
-      box(xs, y - .015, zc, DEEP, .03, BAY, K.wood, 0, null, 1);
+      box(xs, y - .015, zc, DEEP, .03, BAY - .05, K.wood, 5, null, 1);   // a shelf: between the uprights (not through them)
       box(xw - p.s * (DEEP - .004), y - .034, zc, .008, .008, BAY - .08, glowK, 2);   // a thin light under each shelf's edge
     }
+    box(xw - p.s * (DEEP - .004), CASEH - .004, zc, .008, .008, BAY - .08, glowK, 2);   // (and one under the top board, for the top shelf)
     for (const ze of b === P.side - 1 || b === 2 * P.side - 1 ? [p.zs, p.zs + p.dz * BAY] : [p.zs]) {
-      box(xs, CASEH / 2, ze, DEEP, CASEH, .05, K.post, 0, null, 1);
-      box(p.s * (RW / 2 - .16), RH / 2, ze, .32, RH, .2, K.pillar);   // the pillar, floor to sky
+      box(xs - p.s * .006, CASEH / 2, ze, DEEP + .012, CASEH, .05, K.post, 5, null, 1);   // an upright: a little proud of the shelves
+      box(p.s * (RW / 2 - .16), (RH + CASEH + .06) / 2, ze, .32, RH - CASEH - .06, .2, K.pillar);   // the pillar, from the top of the cases to the sky (it used to run down through the shelves, and cut into the parcels beside it)
       box(p.s * (RW / 2 - .325), (RH + CASEH) / 2 + .1, ze, .012, RH - CASEH - .5, .045, K.neon, 2);
     }
     const t = R.cs.bay[b];
-    if (t) tiles(p.s * (RW / 2 - .05), CASEH + 1.05, zc, -p.s, 0, .29, t.x, t.y, R.cs.w / 4, 4);
+    if (t) tiles(p.s * (RW / 2 - .327), CASEH + 1.05, zc, -p.s, 0, .3, t.x, t.y, R.cs.w / 4, 4, 6, .008);   // the case's sign: on the pillars' faces, between their lights (it used to sit back between the pillars, which cut its ends off and hid it from along the hall)
   }
   // labels: tab signs on top of the first bookcase of each tab, a plate on the edge of each chip's first shelf
   for (const c of P.cats) {
@@ -5503,7 +5575,7 @@ function rmFix(R) {
   if (G) {
     const GD = LC('#ffc94a'), GB = LC('#9a6f12'), ST = LC('#15110c'), zc = -L / 2;
     // the front page, standing in the doorway that leads nowhere (there is no block before this one)
-    if (G.paper && !rmOk(R.back.to)) for (let r = 0; r < 6; r++) tiles(0, 3.85 - .275 - r * .55, -.05, 0, -1, .55, G.paper.x, G.paper.y + r * 128, 128, 4);
+    if (G.paper && !rmOk(R.back.to)) for (let r = 0; r < 6; r++) tiles(0, 3.85 - .275 - r * .55, -.05, 0, -1, .55, G.paper.x, G.paper.y + r * 128, 128, 4, 0);
     // the 88 DOGE: alone on a pedestal in the middle of the hall, in a case edged with light, a lamp over it, a glowing square round it on the floor
     box(0, .04, zc, .86, .08, .86, GB);
     box(0, .58, zc, .6, 1.0, .6, ST);
@@ -5526,8 +5598,8 @@ function rmFix(R) {
       q.at = [x, h, z0 + zz];
     });
     // the hash wall (left, high up) and the gifts board (right, high up)
-    if (G.hash) { tiles(-(RW / 2 - .345), 4.85, zc, 1, 0, .5, G.hash.x, G.hash.y, 128, 12); box(-(RW / 2 - .35), 4.55, zc, .02, .02, 6.1, GD, 2); }
-    tiles(RW / 2 - .345, 4.85, zc, -1, 0, .5, G.trib.x, G.trib.y, 128, 8); box(RW / 2 - .35, 4.55, zc, .02, .02, 4.1, GD, 2);
+    if (G.hash) { tiles(-(RW / 2 - .345), 4.85, zc, 1, 0, .5, G.hash.x, G.hash.y, 128, 12, 0); box(-(RW / 2 - .35), 4.55, zc, .02, .02, 6.1, GD, 2); }
+    tiles(RW / 2 - .345, 4.85, zc, -1, 0, .5, G.trib.x, G.trib.y, 128, 8, 0); box(RW / 2 - .35, 4.55, zc, .02, .02, 4.1, GD, 2);
   }
   R.fix = new Float32Array(d);
 }
@@ -5575,21 +5647,21 @@ function* rmLabelsG(R) {
   labCx.clearRect(0, y0, LT, LSLOT);
   R.signs = {};
   for (const end of ['back', 'front']) { const [x, y] = place(512, 128); R.signs[end] = {x, y}; }
-  { const [x, y] = place(512, 128); R.title = {x, y}; labPaint(x, y, 512, 128, hallName(R.h, R.h1), '#f0c75e', null, fmt(R.B.count || R.B.txs.length) + ((R.B.count || R.B.txs.length) === 1 ? ' transaction' : ' transactions'), heatCol(R.B.fees ? heatOf(medianRate(R.B.txs)) : null)); }
-  for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaint(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
+  { const [x, y] = place(512, 128); R.title = {x, y}; labPaintH(x, y, 512, 128, hallName(R.h, R.h1), '#f0c75e', null, fmt(R.B.count || R.B.txs.length) + ((R.B.count || R.B.txs.length) === 1 ? ' transaction' : ' transactions'), heatCol(R.B.fees ? heatOf(medianRate(R.B.txs)) : null)); }
+  for (const c of P.cats) { const [x, y] = place(512, 128); c.lx = x; c.ly = y; labPaintH(x, y, 512, 128, CATS[c.g][0], CATS[c.g][1]); }
   R.credit = null;   // (a credit plaque: block 0's, for who made Dogecoin; the first Doginal's hall's, for who made Doginals: two strips, after the shelf signs)
   { const k = R.h === 0 ? 'gen' : hallHas(R, DG0_H) ? 'dg' : null; if (k) { const a = place(512, 128), b = place(512, 128); R.credit = {k, rows: [a, b]}; labCred(k, a, b); } }
   yield;
   px = LT;
   R.facts = rmFacts(R.B);
-  for (const f of R.facts) { const [x, y] = place(384, f.big ? 192 : 96); f.x = x; f.y = y; (f.big ? labWrap : labPaint)(x, y, 384, f.big ? 192 : 96, f.a, '#f0c75e', null, f.b); }
+  for (const f of R.facts) { const [x, y] = place(384, f.big ? 192 : 96); f.x = x; f.y = y; (f.big ? labWrapH : labPaintH)(x, y, 384, f.big ? 192 : 96, f.a, '#f0c75e', null, f.b); }
   yield;
   px = LT;
   const B = R.B, utc = t => new Date(t * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).toUpperCase();
   R.halv = null;
   if (REWARD_SAY[R.h]) {   // a change in the reward: the first block paying the new one
     const [x, y] = place(512, 128); R.halv = {x, y};
-    labPaint(x, y, 512, 128, REWARD_SAY[R.h][0], '#ffd36b', null, REWARD_SAY[R.h][1] + ' · ' + utc(B.t0 || B.time), '#ffd36b');
+    labPaintH(x, y, 512, 128, REWARD_SAY[R.h][0], '#ffd36b', null, REWARD_SAY[R.h][1] + ' · ' + utc(B.t0 || B.time), '#ffd36b');
   }
   R.gen = null;
   if (G0) {
@@ -5597,17 +5669,17 @@ function* rmLabelsG(R) {
     if (B.hash) { px = lim; const [x, y] = place(1536, 128); g.hash = {x, y}; labHash(x, y, 1536, 128, B.hash, B.diff); }
     { const [x, y] = place(1024, 128); g.trib = {x, y}; }
     if (B.cb && B.cb.words) { g.paper = {x: LT - 512, y: y0}; labPaper(LT - 512, y0, 512, 768, B.cb.words, utc(B.time)); }
-    g.plq = {x: LT - 512, y: y0 + 768}; labPaint(LT - 512, y0 + 768, 512, 128, '88 DOGE · THE FIRST REWARD', '#ffd36b', null, 'can never be spent: it was never added to the coins that can be', '#ffd36b');
+    g.plq = {x: LT - 512, y: y0 + 768}; labPaintH(LT - 512, y0 + 768, 512, 128, '88 DOGE · THE FIRST REWARD', '#ffd36b', null, 'can never be spent: it was never added to the coins that can be', '#ffd36b');
     tribPaint(R);
   }
   px = LT;
   R.cs = rmCaseSigns(P);
-  const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (lim / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (lim / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (lim / 320)) * 80 <= left ? 320 : 256;
+  const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (lim / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (lim / 512)) * 128 <= left ? 512 : Math.ceil(R.cs.groups.length / (lim / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (lim / 320)) * 80 <= left ? 320 : 256;   // (as sharp as the sheet has room for)
   R.cs.w = cw;
-  { let q = 0; for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaint(x, y, cw, cw / 4, g.main, g.col, null, g.sub); if (++q % 6 === 0) yield; } }
+  { let q = 0; for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaintH(x, y, cw, cw / 4, g.main, g.col, null, g.sub); if (++q % 6 === 0) yield; } }
   yield;
   px = LT;
-  { let q = 0; for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaint(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); if (++q % 8 === 0) yield; } }
+  { let q = 0; for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaintH(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); if (++q % 8 === 0) yield; } }
 }
 const rmNear = (R, end) => { const r = room && room.rooms; if (!r) return null; const i = r.indexOf(R); return end === 'front' ? r[i + 1] : r[i - 1]; };
 function rmSignPaint(R, quiet) {
@@ -5627,7 +5699,7 @@ function rmSignPaint(R, quiet) {
     }
     const edge = rmOk(D.to) ? heatCol(blockHeat.get(D.to)) : null;
     if (s.txt === txt + sub + edge) continue;
-    s.txt = txt + sub + edge; labPaint(s.x, s.y, 512, 128, txt, rmOk(D.to) ? '#f0c75e' : '#7a6853', null, sub, edge);
+    s.txt = txt + sub + edge; labPaintH(s.x, s.y, 512, 128, txt, rmOk(D.to) ? '#f0c75e' : '#7a6853', null, sub, edge);
     if (!quiet) labUp(s.x, s.y, 512, 128);
   }
 }
