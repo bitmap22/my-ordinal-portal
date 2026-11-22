@@ -3997,10 +3997,14 @@ $fs.innerHTML = '<span class="fl2">FEE DOGE/kB</span>' + [['.001', 100], ['.01',
 // (22 Nov 2026) settings (where the camera was): the calm carpet floor. The floor becomes a still woven carpet whose colour
 // still shows how much the block paid (the same bands as the moving floors), with no animation, so it is calmer and lighter on
 // the device. Kept in this browser only.
-const SET = {calm: false, pat: 0, sky: 0};
-const SKIES = ['moving lights', 'still stars', 'dusk', 'plain dark'];   // (the moving lights' and the dusk's colours show the fees too)
+const SET = {calm: false, pat: 0, sky: 0, neon: 0, wood: 0};
+const SKIES = ['moving lights', 'still stars', 'dusk', 'plain dark'];
+// the neon round the doors and along the shelves, and the shelves' wood: the hall's own first (block 0 keeps its gold)
+const NEONS = [['gold (Doge Cube\'s own)', '#e3b341'], ['ice blue', '#4cc9f0'], ['pink', '#ff4fa3'], ['green', '#3ddc84'], ['purple', '#b06bff'], ['red', '#ff4646'], ['white', '#f2efe6'], ['orange', '#ff8a1e']];
+const WOODS = [['walnut (the hall\'s own)', '#3b2313', '#1e120a'], ['oak', '#6b4a2b', '#3c2817'], ['birch', '#a8875c', '#6b543a'], ['ebony', '#1a120c', '#0d0906'], ['cherry', '#5a2a1c', '#2e150e'], ['grey ash', '#4a4540', '#28241f']];   // (the moving lights' and the dusk's colours show the fees too)
 const PATS = ['plain', 'stripes', 'checks', 'diamonds', 'herringbone', 'waves', '₿ symbols', 'Ð symbols', 'paw prints'];   // (all drawn here, by this page's own code)
-try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; const n = +localStorage.getItem('blockhall.carpet'); if (n >= 0 && n < PATS.length) SET.pat = n; const k = +localStorage.getItem('blockhall.sky'); if (k >= 0 && k < SKIES.length) SET.sky = k; } catch (e) {}
+try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; const n = +localStorage.getItem('blockhall.carpet'); if (n >= 0 && n < PATS.length) SET.pat = n; const k = +localStorage.getItem('blockhall.sky'); if (k >= 0 && k < SKIES.length) SET.sky = k;
+  const ne = +localStorage.getItem('dogecube.neon'), wo = +localStorage.getItem('blockhall.wood'); if (ne >= 0 && ne < NEONS.length) SET.neon = ne; if (wo >= 0 && wo < WOODS.length) SET.wood = wo; } catch (e) {}
 const CARPETS = [['ice', '#8fb3c9'], ['water', '#2f6f8f'], ['grass', '#5f8a4e'], ['desert', '#c49a5a'], ['fire', '#b5532b'], ['lava storm', '#7a2335'], ['plasma', '#6a3fa0']];
 const $tset = document.createElement('div'); $tset.id = 'tset'; $tset.hidden = true; $tset.setAttribute('role', 'dialog'); $tset.setAttribute('aria-label', 'Settings'); document.body.appendChild($tset);
 function setDraw() {
@@ -4009,6 +4013,8 @@ function setDraw() {
     + '<div class="pats" role="group" aria-label="Carpet pattern">' + PATS.map((n, i) => '<button type="button" data-pat="' + i + '" aria-pressed="' + (SET.pat === i) + '">' + n + '</button>').join('') + '</div>'
     + '<div class="cpts">' + CARPETS.map(([n, c], i) => '<span><i style="background:' + c + '"></i>' + n.replace('lava storm', 'lava') + '</span>').join('') + '</div>'
     + '<b class="b2">SKY</b><div class="pats" role="group" aria-label="Sky">' + SKIES.map((n, i) => '<button type="button" data-sky="' + i + '" aria-pressed="' + (SET.sky === i) + '">' + n + '</button>').join('') + '</div>'
+    + '<b class="b2">NEON</b><div class="pats" role="group" aria-label="Neon">' + NEONS.map(([n, c], i) => '<button type="button" data-neon="' + i + '" aria-pressed="' + (SET.neon === i) + '"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:' + c + '"></i>' + n + '</button>').join('') + '</div>'
+    + '<b class="b2">SHELF WOOD</b><div class="pats" role="group" aria-label="Shelf wood">' + WOODS.map(([n, c], i) => '<button type="button" data-wood="' + i + '" aria-pressed="' + (SET.wood === i) + '"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;background:' + c + '"></i>' + n + '</button>').join('') + '</div>'
     + '<p class="sm">The moving lights and the dusk glow are the colour of the block\'s fees too. Only the moving lights move.</p>'
     + '<p class="sm">The same bands as the moving floors: the further along, the more the block paid.</p>';
   const c = $tset.querySelector('#setCalm'); c.checked = SET.calm;
@@ -4016,8 +4022,16 @@ function setDraw() {
   for (const b of $tset.querySelectorAll('[data-pat]')) b.onclick = () => { SET.pat = +b.dataset.pat; SET.calm = true; c.checked = true;   // (picking a pattern lays the carpet)
     try { localStorage.setItem('blockhall.carpet', String(SET.pat)); localStorage.setItem('blockhall.calm', '1'); } catch (e) {}
     for (const x of $tset.querySelectorAll('[data-pat]')) x.setAttribute('aria-pressed', String(x === b)); };
+  for (const [key, list, store] of [['neon', NEONS, 'dogecube.neon'], ['wood', WOODS, 'blockhall.wood']])
+    for (const b of $tset.querySelectorAll('[data-' + key + ']')) b.onclick = () => { SET[key] = +b.dataset[key]; try { localStorage.setItem(store, String(SET[key])); } catch (e) {}
+      for (const x of $tset.querySelectorAll('[data-' + key + ']')) x.setAttribute('aria-pressed', String(x === b)); hallColours(true); };
   for (const b of $tset.querySelectorAll('[data-sky]')) b.onclick = () => { SET.sky = +b.dataset.sky; try { localStorage.setItem('blockhall.sky', String(SET.sky)); } catch (e) {}
     for (const x of $tset.querySelectorAll('[data-sky]')) x.setAttribute('aria-pressed', String(x === b)); };
+}
+function hallColours(now) {
+  const L = h => LC(h), sc = (k, m) => k.map(v => v * m), [, nc] = NEONS[SET.neon], [, wc, pc] = WOODS[SET.wood], n = L(nc);
+  RC.neon = n; RC.neon2 = sc(n, .8); RC.dim = sc(n, .38); RC.trim = L(nc).map(v => Math.min(1, v * 1.12)); RC.wood = L(wc); RC.post = L(pc);
+  if (now && typeof room !== 'undefined' && room) { for (const R of room.rooms) if (R && R.ready && R.h >= 0 && !R.gal && !R.gd && !R.cl && !R.common && R.plan) { try { rmFix(R); } catch (e) {} } room.fixDirty = room.dirty = true; }
 }
 function setOpen(on) { if (on) setDraw(); $tset.hidden = !on; $ts.setAttribute('aria-expanded', on ? 'true' : 'false'); $ts.classList.toggle('on', on);
   if (on) { if (document.pointerLockElement) document.exitPointerLock(); const r = $ts.getBoundingClientRect(); $tset.style.top = Math.round(r.bottom + 8) + 'px'; $tset.style.left = Math.max(8, Math.min(innerWidth - 300, Math.round(r.right - 280))) + 'px'; if (r.top > innerHeight / 2) $tset.style.top = Math.max(8, Math.round(r.top - $tset.offsetHeight - 8)) + 'px'; } }
@@ -4910,6 +4924,7 @@ const CATS = [['INSCRIPTIONS', '#ffa53a'], ['TOKENS', '#c86bff'], ['TRANSACTIONS
 const LC = h => lin(hexc(parseInt(h.slice(1), 16)));
 const RCG = {wall: LC('#0b0906'), back: LC('#120d06'), wood: LC('#3b2a13'), post: LC('#21170a'), pillar: LC('#100c07'), neon: LC('#fff0b8'), neon2: LC('#f3dc8a'), dim: LC('#8a7a40'), trim: LC('#fff6d6'), door: LC('#171007'), sign: LC('#0d0805')};   // block 0: pale gold
 const RC = {wall: LC('#0a0708'), back: LC('#100a07'), wood: LC('#3b2313'), post: LC('#1e120a'), pillar: LC('#0e0a0b'), neon: LC('#e3b341'), neon2: LC('#c2a633'), dim: LC('#6a5212'), trim: LC('#f0c75e'), door: LC('#140d08'), sign: LC('#0d0805')};
+hallColours(false);   // (22 Nov 2026: the neon and wood picked in settings)
 // every transaction gets exactly one shelf: a new dune etched with a picture in DUNE ETCHINGS, else its token, else what kind of
 // inscription it is, else what kind of transaction
 function shelfOf(t) {
