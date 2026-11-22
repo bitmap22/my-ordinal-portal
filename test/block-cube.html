@@ -4057,7 +4057,7 @@ function select(t) {
     const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', t.src20 && 'SRC-20', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
     if (t.bmN != null && (t.bmReal || t.bmNo)) rows.push([t.bmReal ? 'bitmap' : 'not a bitmap', bmSay(t)]);
-    if (has(TF.brc20)) rows.push(['BRC-20 rules', 'checked here: its file type, that it is its transaction’s first inscription, written the standard way, and made from block 779,832. Not checkable from a page: whether its sat already held an inscription (BRC-20 ignores those) and whether the token’s own limits allow it']);
+    if (has(TF.brc20)) rows.push(['BRC-20 rules', 'checked here: its file type, that it is its transaction’s first inscription, written the standard way, and made from block 779,832. Checked when you pick it up: whether ord marks it cursed or a re-inscription (BRC-20 does not count those). The token’s own limits are the BRC-20 ledger’s to say']);
     if (t.natOff) rows.push(['NAT', 'a NAT mint: from block 885,588 TAP does not count these (NAT comes from each block’s reward)']);
     if (has(TF.rune)) {
       const ra = [has(TF.etch) && (t.rnUnsure ? 'tries to etch' + (t.rn ? ' ' + t.rn : '') + ' (whether it made the rune is not known right now: ordinals.com did not answer)' : 'etched' + (t.rn ? ' ' + t.rn : '')), has(TF.rmint) && 'minted' + (t.mint ? ' ' + runeNm(t.mint) : ''), has(TF.rmove) && 'moved' + (t.rmv && t.rmv.length ? ' ' + t.rmv.slice(0, 3).map(runeNm).join(', ') + (t.rmv.length > 3 ? ' and ' + (t.rmv.length - 3) + ' more' : '') : '')].filter(Boolean).join(' · ');
@@ -8829,6 +8829,13 @@ async function heldInfo(t) {
     if (!(n > 4200000)) { const u = new Uint8Array(await resp.arrayBuffer()); if (u.length <= 4200000) show(await mediaRows(u, resp.headers.get('content-type'))); }
   } catch (e) {}
   const has = f => t.sc != null && ((t.sc >> f) & 1) === 1;
+  // (22 Nov 2026) BRC-20, checked as you pick it up: ord's own marks on the inscription. BRC-20 does not count one ord marks cursed,
+  // vindicated (it would have been cursed before the jubilee) or a re-inscription (its sat already held an inscription)
+  if (has(TF.brc20) && t.id) try {
+    const o = await (await ordFetch('/r/inscription/' + t.id + 'i0', 15000)).json(), bad = (o.charms || []).filter(c => /^(cursed|vindicated|reinscription)$/.test(c));
+    t.brcOff = bad.length ? bad : null;
+    show([['BRC-20 check', bad.length ? 'not counted by BRC-20: ord marks this inscription ' + bad.join(' and ') + ', and BRC-20 does not count those (ordinals.com)' : 'counted by BRC-20’s rules: ord marks it neither cursed nor a re-inscription (ordinals.com). Whether the token’s own limits allow this step is the BRC-20 ledger’s to say', bad.length ? '#ff5a7a' : undefined]]);
+  } catch (e) {}
   const q = has(TF.etch) && t.rn ? t.rn : t.mint || null;
   if (q) try {   // the rune it makes, or mints: read from the rune's page on ordinals.com
     const h = await (await ordFetch('/rune/' + encodeURIComponent(q), 15000, ['https://ordinals.com', 'https://ordinals.com'])).text(), D = {};   // (only ordinals.com has rune pages: asked twice)
@@ -17099,7 +17106,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (o.types.includes('runes') && !o.types.some(k => /^runes (etched|minted|moved)$/.test(k)))   // a runestone that made, minted and moved nothing: what it is, as its card says
       o.runestone = t.rnLost ? 'it tried to make a new rune, which never came into being (ordinals.com): the name it tried for is untrusted.runeTried' : runePlain(t);
     if (t.bmN != null && (t.bmReal || t.bmNo)) o.bitmap = bmSay(t);
-    if (t.sc != null && (t.sc >> TF.brc20) & 1) o.brc20Rules = 'checked: file type, first inscription of its transaction, standard writing, from block 779,832. Not checked (needs the whole chain’s history): whether its sat already held an inscription, and the token’s own limits';
+    if (t.sc != null && (t.sc >> TF.brc20) & 1) o.brc20Rules = 'checked: file type, first inscription of its transaction, standard writing, from block 779,832. Checked when held (hold() shows it): whether ord marks it cursed or a re-inscription, which BRC-20 does not count. The token’s own limits are the BRC-20 ledger’s to say';
     if (t.natOff) o.nat = 'a NAT mint that TAP does not count (from block 885,588 NAT comes from each block’s reward)';
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.rune = t.rn; if (t.rnLost) u.runeTried = t.rnLost;
     if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a CRC-20 token's own word: deploy, mint…)
