@@ -386,7 +386,7 @@ const newest = f => Promise.race([fetch(f, {cache: 'no-cache'}).then(r => r.ok ?
 const verOf = (f, tag) => { if (!tag) return f; let h = 0; for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0; return f + '?v=' + h.toString(36); };
 let GAMEV = GAME, PAINTV = '';
 newest(GAME).then(tag => { GAMEV = verOf(GAME, tag); if (!frame.getAttribute('src')) frame.src = GAMEV; });
-const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, '*'); else gameQueue.push(msg); };
+const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assign({ app: 'blockcube-host' }, m); if (gameReady) frame.contentWindow.postMessage(msg, location.origin); else gameQueue.push(msg); };
 // ---------------- Block Paint City, through the cube's warehouse shutter ----------------
 // (not in Doge Cube: it has no Block Paint, so nothing here ever opens it. Kept, asleep, so this page stays in step with Block
 //  Cube's, for a doorway between the two one day)
@@ -395,7 +395,7 @@ const toCube = m => { if (frame.dataset.closed) return; const msg = Object.assig
 const pframe = $('paint'), PAINT = 'block-paint.html', PHONE = matchMedia('(pointer: coarse)').matches;
 let paintReady = false, paintQueue = [], inPaint = false, swapping = false;
 const mateG = new Map();   // the game each crewmate was last seen in
-const toPaint = m => { if (!pframe.getAttribute('src')) return; const msg = Object.assign({ app: 'blockpaint-host' }, m); if (paintReady) pframe.contentWindow.postMessage(msg, '*'); else paintQueue.push(msg); };
+const toPaint = m => { if (!pframe.getAttribute('src')) return; const msg = Object.assign({ app: 'blockpaint-host' }, m); if (paintReady) pframe.contentWindow.postMessage(msg, location.origin); else paintQueue.push(msg); };
 const inPaintSt = s => false;   // (Doge Cube has no Block Paint: nobody is ever in it)
 // what the crew does goes to the game each crewmate is in; who left and who is talking go to both
 const toGame = m => {
@@ -412,8 +412,8 @@ const toGame = m => {
 addEventListener('message', e => {
   if (e.source !== frame.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockcube') return;
   if (m.type === 'where') { gameIn = m.in ? 1 : 0; atCubeUi(); return; }   // in a room or at the cube itself
-  if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
-  if (m.type === 'hello') { gameReady = true; gameIn = 0; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, '*'); portraits(); if (net.on && net.sail) startGame(); return; }
+  if (m.type === 'page?') { frame.contentWindow.postMessage({ app: 'blockcube-host', type: 'page' }, location.origin); return; }   // yes: this page looks after the crew
+  if (m.type === 'hello') { gameReady = true; gameIn = 0; for (const q of gameQueue.splice(0)) frame.contentWindow.postMessage(q, location.origin); portraits(); if (net.on && net.sail) startGame(); return; }
   if (m.type === 'portraits') { gotPortraits(m); return; }
   if (m.type === 'hear') { voice.hear(m.d); return; }   // how far away each crewmate is in the rooms (for their voices)
   if (m.type === 'chat-open') { openSay(); return; }
@@ -422,8 +422,8 @@ addEventListener('message', e => {
 });
 addEventListener('message', e => {
   if (!pframe.contentWindow || e.source !== pframe.contentWindow) return; const m = e.data; if (!m || m.app !== 'blockpaint') return;
-  if (m.type === 'page?') { pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'page' }, '*'); return; }   // yes: this page looks after the crew
-  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, '*'); if (net.on && net.sail) paintStart(); return; }
+  if (m.type === 'page?') { pframe.contentWindow.postMessage({ app: 'blockpaint-host', type: 'page' }, location.origin); return; }   // yes: this page looks after the crew
+  if (m.type === 'hello') { paintReady = true; for (const q of paintQueue.splice(0)) pframe.contentWindow.postMessage(q, location.origin); if (net.on && net.sail) paintStart(); return; }
   if (m.type === 'go' && m.to === 'cube') { swapTo('cube'); return; }   // walked into Block Paint's Block Cube door
   if (m.type === 'chat-open') { openSay(); return; }
   if (!inPaint || !net.on) return;   // (Block Paint, waiting hidden: nothing of it goes to the crew)
@@ -1796,7 +1796,7 @@ window.AgentKit = window.AgentKit || (() => {
 
 </script>
 <!-- visitor counter: start -->
-<script data-goatcounter="https://bitmap22portal.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
+<script data-goatcounter="https://bitmap22portal.goatcounter.com/count" async src="https://gc.zgo.at/count.v5.js" crossorigin="anonymous" integrity="sha384-atnOLvQb9t+jTSipvd75X2yginT4PjVbqDdlJAmxMm+wYElFmeR6EmLP5bYeoRVQ"></script>
 <script>
 /* The visitor counter (GoatCounter: no cookies, nothing personal kept) counts visits to this page. A few moments are counted too,
    as events: an AI agent starting the agent kit, walking in (a hall or the common room), and errors (at most 3 a visit, with
