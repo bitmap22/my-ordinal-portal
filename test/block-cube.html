@@ -2792,7 +2792,7 @@ const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], tap: ['#05303a', '#36f1
 // shows its own molecule: the straight chain in its relaxed zig-zag shape, set out with the textbook measures (carbon to carbon
 // 1.54 Å, carbon to hydrogen 1.09 Å, every bond angle the tetrahedral 109.47°; real chains differ from these by a few hundredths
 // of an ångström and a few degrees), carbon in the shelf's orange, hydrogen white.
-// Every other alkane shows the standard mark: a bare zig-zag chain, the way chemists sketch any alkane.
+// Every other alkane shows the standard mark: a bare chain of five carbons (the chain every alkane is built on).
 const alkF = n => 'C' + (n > 1 ? n : '') + 'H' + (2 * n + 2);   // (an alkane with n carbons has 2n + 2 hydrogens)
 const alkMix = (h, t, f) => { const a = parseInt(h.slice(1), 16), b = parseInt(t.slice(1), 16); return 'rgb(' + [16, 8, 0].map(s => Math.round(((a >> s) & 255) * (1 - f) + ((b >> s) & 255) * f)) + ')'; };
 const alkGeo = [];
@@ -2823,7 +2823,7 @@ function alkMol(x, n, cx, cy, W, H, fg, k, top) {
   for (const [i, j] of G.Bd) { const a = P[i], b = P[j]; if (!lite || (a[3] && b[3])) it.push([Math.min(a[2], b[2]) - .01, a, b]); }
   for (const p of use) it.push([p[2], p]);
   it.sort((a, b) => a[0] - b[0]);
-  const hi = alkMix(fg, '#ffffff', .78), lo = alkMix(fg, '#000000', .6), edge = 'rgba(20,8,2,.85)';
+  const hi = alkMix(fg, '#ffffff', .66), lo = alkMix(fg, '#000000', .62), edge = 'rgba(20,8,2,.85)';
   x.save(); x.lineCap = 'round'; x.shadowBlur = 0;
   for (const q of it) {
     if (q.length === 3) {   // a bond: a pale stick with a dark edge
@@ -2831,7 +2831,7 @@ function alkMol(x, n, cx, cy, W, H, fg, k, top) {
       x.strokeStyle = edge; x.lineWidth = bw * s + .55; seg(); x.strokeStyle = '#f1e2d6'; x.lineWidth = bw * s; seg();
     } else {   // an atom: a lit ball
       const p = q[1], r = (p[3] ? rC : rH) * s, X = ox + p[0] * s, Y = oy + p[1] * s, g = x.createRadialGradient(X - r * .36, Y - r * .42, r * .06, X, Y, r);
-      if (p[3]) { g.addColorStop(0, hi); g.addColorStop(.45, fg); g.addColorStop(1, lo); } else { g.addColorStop(0, '#ffffff'); g.addColorStop(.55, '#efe9e2'); g.addColorStop(1, '#9c9186'); }
+      if (p[3]) { g.addColorStop(0, hi); g.addColorStop(.36, fg); g.addColorStop(1, lo); } else { g.addColorStop(0, '#ffffff'); g.addColorStop(.55, '#efe9e2'); g.addColorStop(1, '#9c9186'); }
       x.fillStyle = g; x.beginPath(); x.arc(X, Y, r, 0, 7); x.fill(); x.strokeStyle = edge; x.lineWidth = .28; x.stroke();
     }
   }
@@ -2855,10 +2855,12 @@ function paintMark(x, k, fg) {
     x.moveTo(26, 46); x.lineTo(26, 17); x.lineTo(38, 24.5); x.lineTo(26, 32); x.lineTo(39, 46); x.stroke();
   } else if (k === 'alk') {
     // the standard mark: a bare chain of five carbons, bent at the true zig-zag angle (109.47 degrees)
-    const pts = [], hi = alkMix(fg, '#ffffff', .8), lo = alkMix(fg, '#000000', .45), sb = x.shadowBlur;
+    const pts = [], hi = alkMix(fg, '#ffffff', .6), lo = alkMix(fg, '#000000', .55), sb = x.shadowBlur;
     for (let i = 0; i < 5; i++) pts.push([32 + (i - 2) * 11.6, i % 2 ? 26.9 : 35.1]);
-    x.strokeStyle = '#ffffff'; x.lineWidth = 2.6; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); x.shadowBlur = 0;
-    for (const [a, b] of pts) { const r = 3.9, g = x.createRadialGradient(a - r * .34, b - r * .4, r * .06, a, b, r); g.addColorStop(0, hi); g.addColorStop(.5, fg); g.addColorStop(1, lo); x.fillStyle = '#ffffff'; x.beginPath(); x.arc(a, b, r + .75, 0, 7); x.fill(); x.fillStyle = g; x.beginPath(); x.arc(a, b, r, 0, 7); x.fill(); }
+    x.strokeStyle = '#ffffff'; x.lineWidth = 2.6; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke();
+    x.fillStyle = '#ffffff'; for (const [a, b] of pts) { x.beginPath(); x.arc(a, b, 4.5, 0, 7); x.fill(); }   // (each ball's white rim, lit like the bonds)
+    x.shadowBlur = 0;
+    for (const [a, b] of pts) { const r = 3.95, g = x.createRadialGradient(a - r * .36, b - r * .42, r * .05, a, b, r); g.addColorStop(0, hi); g.addColorStop(.32, fg); g.addColorStop(1, lo); x.fillStyle = g; x.beginPath(); x.arc(a, b, r, 0, 7); x.fill(); }
     x.shadowBlur = sb;
   } else if (k === 'cp') {
     const bands = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc6a', '#3a86ff', '#9d4edd'];
@@ -8517,7 +8519,7 @@ function alkWord(F, h, extra) {
 function alkSay(s, h) {
   if (s.p !== 1n) return 'a message for protocol ' + s.p;
   const out = [], nm = i => { const a = alkKnow(i, h); return 'alkane ' + i + (a ? ' (' + a[0] + (a[2] ? ', ' + alkF(a[2]) : '') + ')' : ''); };
-  if (s.bad) out.push('a call it could not read');
+  if (s.bad) out.push('a call that could not be read');
   else if (s.call) {
     const c = s.call, i = c.b + ':' + c.x, d = alkDo(i, alkKnow(i, h), c.op);
     out.push(c.b === 1n && c.x === 0n ? 'makes a new alkane' : c.b === 3n ? 'makes a new alkane at 4:' + c.x : c.b === 5n ? 'makes a copy of alkane 2:' + c.x : c.b === 6n ? 'makes a copy of alkane 4:' + c.x :
