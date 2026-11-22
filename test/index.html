@@ -59,14 +59,26 @@
         .hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: default; touch-action: pan-y; }
         .hero canvas.on-frame { cursor: pointer; }
         .hero::after { content: ""; position: absolute; inset: 0; pointer-events: none;
-            background: linear-gradient(to top, var(--night) 0%, rgba(10, 15, 28, .9) 22%, rgba(10, 15, 28, .45) 46%, rgba(10, 15, 28, 0) 64%); }
+            background: radial-gradient(ellipse 46% 37% at 50% 69%, rgba(10, 15, 28, .9) 0%, rgba(10, 15, 28, .8) 42%, rgba(10, 15, 28, .36) 74%, rgba(10, 15, 28, 0) 100%),
+                linear-gradient(to top, var(--night) 0%, rgba(10, 15, 28, .86) 7%, rgba(10, 15, 28, .55) 13%, rgba(10, 15, 28, 0) 25%); }
+        /* (narrow screens: the corridor stands above the words, so everything under it fades away) */
+        .hero.roomy::after { background: linear-gradient(to top, var(--night) 0%, rgba(10, 15, 28, .9) 22%, rgba(10, 15, 28, .45) 46%, rgba(10, 15, 28, 0) 64%); }
         .hero-in { position: relative; z-index: 2; width: 100%; max-width: 1080px; padding: 0 22px 64px; text-align: center; pointer-events: none; }
         .hero-in .card > * { pointer-events: auto; }
         .hero h1 { margin: 0; font: 700 clamp(50px, 7.2vw, 112px)/.92 var(--head); letter-spacing: -.015em; color: var(--text);
-            text-shadow: 0 0 34px rgba(243, 165, 48, .38), 0 2px 0 rgba(0, 0, 0, .35); }
+            text-shadow: 0 0 34px rgba(243, 165, 48, .38), 0 2px 0 rgba(0, 0, 0, .35); text-wrap: balance; }
+        /* (22 Nov 2026) the title is lit from above (a soft fall from white to the halls' pale blue), with the door frames' amber behind it */
+        @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+            .hero h1 { background: linear-gradient(180deg, #ffffff 8%, #eef2f8 46%, #c5d0e6 96%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+                text-shadow: none; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .4)) drop-shadow(0 0 26px rgba(243, 165, 48, .46)); padding-bottom: .06em; }
+        }
+        @media (prefers-reduced-motion: no-preference) {
+            .hero h1 { animation: sign-on 1.5s .25s cubic-bezier(.2, .7, .2, 1) backwards; }
+            @keyframes sign-on { from { filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .4)) drop-shadow(0 0 0 rgba(243, 165, 48, 0)); opacity: .55; } }
+        }
         .hero .subtitle { margin: 20px auto 0; font-size: 19px; color: var(--text); max-width: 44ch; }
         .tip { margin: 22px auto 0; display: inline-block; line-height: 24px; min-height: 34px; padding: 4px 14px; border: 1px solid rgba(243, 165, 48, .45); border-radius: 17px;
-            background: rgba(10, 15, 28, .7); font: 500 14px var(--sign); letter-spacing: .02em; color: var(--muted); }
+            background: rgba(10, 15, 28, .7); font: 500 14px var(--sign); letter-spacing: .02em; color: var(--muted); text-wrap: balance; }
         .tip:empty { display: none; }
         .tip b { color: var(--amber-hot); font-weight: 600; }
         .tip i { display: inline-block; width: 8px; height: 8px; margin-right: 10px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 10px var(--amber); animation: open 2.4s ease-in-out infinite; }
@@ -90,8 +102,9 @@
         .time-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 22px; }
         .time-row .tip { margin: 0; }
         .tbtn { min-height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid rgba(243, 165, 48, .45); background: rgba(10, 15, 28, .7);
-            color: var(--amber-hot); font: 500 14px var(--sign); cursor: pointer; white-space: nowrap; }
-        .tbtn:hover { border-color: var(--amber); background: rgba(243, 165, 48, .12); }
+            color: var(--amber-hot); font: 500 14px var(--sign); cursor: pointer; white-space: nowrap; transition: border-color .15s, background-color .15s, box-shadow .2s; }
+        .tbtn:hover { border-color: var(--amber); background: rgba(243, 165, 48, .12); box-shadow: 0 0 16px rgba(243, 165, 48, .22); }
+        .tbtn, .tip, .time-go input { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
         .tbtn:focus-visible, .time-go input:focus-visible, .chip:focus-visible, .tip-back:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         .time-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; margin-top: 12px; }
         .spacing, .time-go { display: flex; flex: 0 1 290px; min-width: 0; }
@@ -1351,6 +1364,14 @@ window.AgentKit = window.AgentKit || (() => {
         return out;
     }
 
+    /* (22 Nov 2026) The corridor's look: the same frames, signs, boxes and hit areas as before, drawn with depth. Each frame is a
+       door frame with thickness (its inner faces lit), a hot line along its middle, a pool of light on the floor and its two
+       posts mirrored in the floor; the floor, walls and ceiling between two frames are lit by them; dust drifts in the light;
+       the view leans a little toward a mouse, near frames moving more than far ones (the far end stays put). All of that is
+       decoration: every number is still the block's own. With "reduce motion" on there is no lean, no sway and no dust. */
+    var camX = 0, camY = 0, par = [0, 0], lean = null, motes = null;
+    var AMB = "rgba(243, 165, 48, ", HOT = "rgba(255, 214, 140, ", FIL = "rgba(255, 240, 205, ";
+    function fillQuad(ax, ay, bx, by, cx, cy, dx, dy) { x.beginPath(); x.moveTo(ax, ay); x.lineTo(bx, by); x.lineTo(cx, cy); x.lineTo(dx, dy); x.closePath(); x.fill(); }
     function draw(now) {
         var dt = Math.min(0.1, (now - last) / 1000); last = now;
         if (goal >= 0) {
@@ -1360,21 +1381,63 @@ window.AgentKit = window.AgentKit || (() => {
         }
         x.clearRect(0, 0, W, H);
         var narrow = W < H * 0.8, room = narrow && FREE > 220 ? FREE : 0;   // (narrow screens: the corridor stands in the room above the words)
-        var vx = W / 2 + (still ? 0 : Math.sin(now / 7000) * W * 0.004), vy = room ? room * 0.5 : H * (narrow ? 0.25 : 0.43);
+        if (hero.classList.contains("roomy") !== !!room) hero.classList.toggle("roomy", !!room);   // (the words then have no corridor behind them: see .hero.roomy)
+        var vx = W / 2, vy = room ? room * 0.5 : H * (narrow ? 0.25 : 0.43);
         var HW = W * (narrow ? 0.47 : 0.46), HH = room ? room * 0.45 : H * (narrow ? 0.30 : 0.47);
+        // the view: a slow sway, and a lean toward a mouse
+        var tgx = !still && lean ? Math.max(-1, Math.min(1, lean[0] * 2 - 1)) : 0, tgy = !still && lean ? Math.max(-1, Math.min(1, lean[1] * 2 - 1)) : 0;
+        par[0] += (tgx - par[0]) * Math.min(1, dt * 2.4); par[1] += (tgy - par[1]) * Math.min(1, dt * 2.4);
+        camX = still ? 0 : (Math.sin(now / 7000) * 0.016 + par[0] * 0.05) * HW; camY = still ? 0 : par[1] * 0.035 * HH;
+        var ox = camX, oy = camY;
         var intro = still ? 1 : Math.min(1, (now - born) / 1600);
         var g = x.createRadialGradient(vx, vy, 0, vx, vy, Math.max(W, H) * 0.32);
         g.addColorStop(0, "rgba(255, 200, 120, .20)"); g.addColorStop(1, "rgba(255, 200, 120, 0)");
         x.fillStyle = g; x.fillRect(0, 0, W, H);
         rects = []; chips = [];
         if (cam < 0) return;
+        g = x.createRadialGradient(vx, vy, 0, vx, vy, HH * 0.22);   // the light at the far end
+        g.addColorStop(0, "rgba(255, 232, 190, " + (0.20 * intro).toFixed(3) + ")"); g.addColorStop(1, "rgba(255, 232, 190, 0)");
+        x.fillStyle = g; x.fillRect(vx - HH * 0.22, vy - HH * 0.22, HH * 0.44, HH * 0.44);
+        if (!still) {   // dust in the light, drifting toward you
+            if (!motes) { motes = []; for (var m0 = 0; m0 < 44; m0++) motes.push([Math.random() * 2 - 1, Math.random() * 2 - 1, Z0 + 0.04 + Math.random() * (FAR - Z0 - 0.04), Math.random() * 6.283, 0.6 + Math.random() * 0.8]); }
+            for (var m1 = 0; m1 < motes.length; m1++) {
+                var P = motes[m1]; P[2] -= dt * 0.045 * P[4]; if (P[2] < Z0 + 0.04) { P[2] = FAR; P[0] = Math.random() * 2 - 1; P[1] = Math.random() * 2 - 1; }
+                var mz = P[2], ma = Math.pow(Math.max(0, 1 - (mz - Z0) / (N * GAP)), 1.1) * Math.min(1, (mz - Z0 - 0.04) / 0.5) * (0.30 + 0.22 * Math.sin(now / 1300 + P[3] * 3)) * intro;
+                if (ma <= 0.012) continue;
+                x.fillStyle = "rgba(255, 228, 176, " + ma.toFixed(3) + ")";
+                x.beginPath(); x.arc(vx + (P[0] * HW * 0.86 + Math.sin(now / 5200 + P[3]) * HW * 0.02 - ox) / mz, vy + (P[1] * HH * 0.86 + Math.cos(now / 6100 + P[3]) * HH * 0.02 - oy) / mz, Math.max(0.6, Math.min(2.2, 1.5 / mz)), 0, 6.2832); x.fill();
+            }
+        }
         var shelfCol = ["rgba(99, 210, 214, ", "rgba(224, 98, 154, ", "rgba(238, 242, 248, "];
+        // shading that keeps to the lines running to the far end (a gradient round the far end's point): the light above each
+        // shelf's lit edge on the two walls, and the floor's boards
+        var wallG = null, floorG = null;
+        if (x.createConicGradient) {
+            wallG = [[], []];
+            for (var sd0 = 0; sd0 < 2; sd0++) for (var k3 = 0; k3 < 3; k3++) {
+                var X97 = (sd0 ? 1 : -1) * HW * 0.97 - ox, cg = x.createConicGradient(sd0 ? -Math.PI / 2 : Math.PI / 2, vx, vy), st = [];
+                var fr = function (yy) { var th = Math.atan2(HH * yy - oy, X97); return sd0 ? (th + Math.PI / 2) / 6.2832 : ((th < 0 ? th + 6.2832 : th) - Math.PI / 2) / 6.2832; };
+                for (var j0 = 0; j0 < 5; j0++) {
+                    var yj = -0.55 + j0 * 0.27, c0 = shelfCol[(j0 + k3) % 3], one = [[fr(yj + 0.06), c0 + "0)"], [fr(yj), c0 + "0.05)"], [fr(yj), c0 + "0.15)"], [fr(yj - 0.17), c0 + "0)"]];
+                    st = sd0 ? st.concat(one.reverse()) : one.concat(st);   // (the right wall runs top to bottom, the left one bottom to top)
+                }
+                st.forEach(function (S1) { cg.addColorStop(Math.max(0, Math.min(1, S1[0])), S1[1]); });
+                wallG[sd0][k3] = cg;
+            }
+            floorG = x.createConicGradient(0, vx, vy);
+            for (var kb = 10; kb >= 0; kb--) {
+                var fb = Math.atan2(HH - oy, -HW + kb * HW / 5 - ox) / 6.2832;
+                if (kb < 10) floorG.addColorStop(fb, kb % 2 ? "rgba(130, 160, 220, 0.066)" : "rgba(130, 160, 220, 0.022)");
+                if (kb > 0) floorG.addColorStop(fb, kb % 2 ? "rgba(130, 160, 220, 0.022)" : "rgba(130, 160, 220, 0.066)");
+            }
+        }
         var F = frames();
+        var floorEnd = F.length && F[0].z > 0.35 ? Math.min(H, vy + (HH - oy) / F[0].z) : H;   // (where the floor ends: the nearest frame's foot; nothing is mirrored past it)
         // which signs can be read: nearest first, a sign that would sit on a nearer one's is left off (blocks mined close together, in Real time)
         var signed = {}, taken = [];
         for (var i0 = 0; i0 < F.length; i0++) {
             var z0 = F[i0].z, B0 = byH.get(F[i0].h) || (next && F[i0].h === tip + 1 ? {h: F[i0].h} : null); if (!B0 || z0 < Z0 * 0.9) continue;
-            var s0 = 1 / z0, t0 = vy - HH * s0, lw0 = Math.max(1, 11 * s0 * Math.min(1, (room || H) / 760)), fs0 = Math.min(30, HH * 0.075 * s0); if (fs0 < 7.5) continue;
+            var s0 = 1 / z0, t0 = vy - (HH + oy) * s0, lw0 = Math.max(1, 11 * s0 * Math.min(1, (room || H) / 760)), fs0 = Math.min(30, HH * 0.075 * s0); if (fs0 < 7.5) continue;
             var S0 = safetyOf(B0.h), lamps0 = S0 && S0.marks && S0.marks.length;
             var py0 = Math.max(t0 + lw0 / 2 + fs0 * 1.05, fs0 * 1.4), top0 = py0 - fs0 * 0.8, bot0 = py0 + fs0 * ((MILESTONES[B0.h] || B0.h === tip + 1 ? 2.0 : 0.8) + (lamps0 ? 1.3 : 0));
             if (taken.some(function (R) { return top0 < R[1] + 2 && bot0 > R[0] - 2; })) continue;
@@ -1385,56 +1448,99 @@ window.AgentKit = window.AgentKit || (() => {
             var reach = Math.max(0, Math.min(1, intro * (N + 2) - Math.min(N - 1, (z - Z0) / GAP) * 0.85 - 0.5)); if (reach <= 0) continue;   // (on arrival: far frames first, then nearer)
             var s = 1 / z, fog = Math.pow(Math.max(0, 1 - (z - Z0) / (N * GAP)), 1.25) * reach * Math.min(1, (z - 0.35) / 0.5);
             if (fog <= 0.004) continue;
-            var l = vx - HW * s, r = vx + HW * s, t = vy - HH * s, b = vy + HH * s, lw = Math.max(1, 11 * s * Math.min(1, (room || H) / 760));
+            var l = vx - (HW + ox) * s, r = vx + (HW - ox) * s, t = vy - (HH + oy) * s, b = vy + (HH - oy) * s, lw = Math.max(1, 11 * s * Math.min(1, (room || H) / 760));
             var zn = i < F.length - 1 ? F[i + 1].z : z + GAP, s2 = 1 / zn;
-            // the walls between this frame and the next one back: shelf edges running to the far end
+            var l2 = vx - (HW + ox) * s2, r2 = vx + (HW - ox) * s2, t2 = vy - (HH + oy) * s2, b2 = vy + (HH - oy) * s2;
+            // the hall between this frame and the next one back: its floor, ceiling and walls, lit by the two frames
+            var pl = x.createLinearGradient(0, b2, 0, b);
+            pl.addColorStop(0, AMB + (0.10 * fog).toFixed(3) + ")"); pl.addColorStop(0.3, "rgba(72, 104, 168, " + (0.07 * fog).toFixed(3) + ")"); pl.addColorStop(0.75, "rgba(72, 104, 168, " + (0.08 * fog).toFixed(3) + ")"); pl.addColorStop(1, AMB + (0.24 * fog).toFixed(3) + ")");
+            x.fillStyle = pl; fillQuad(l, b, r, b, r2, b2, l2, b2);
+            pl = x.createLinearGradient(0, t2, 0, t);
+            pl.addColorStop(0, AMB + (0.05 * fog).toFixed(3) + ")"); pl.addColorStop(0.35, "rgba(3, 6, 14, " + (0.30 * fog).toFixed(3) + ")"); pl.addColorStop(0.8, "rgba(3, 6, 14, " + (0.34 * fog).toFixed(3) + ")"); pl.addColorStop(1, AMB + (0.08 * fog).toFixed(3) + ")");
+            x.fillStyle = pl; fillQuad(l, t, r, t, r2, t2, l2, t2);
+            for (var sd = -1; sd <= 1; sd += 2) {
+                var xa = sd < 0 ? l : r, xb = sd < 0 ? l2 : r2;
+                pl = x.createLinearGradient(xb, 0, xa, 0);
+                pl.addColorStop(0, AMB + (0.07 * fog).toFixed(3) + ")"); pl.addColorStop(0.3, "rgba(6, 10, 22, " + (0.22 * fog).toFixed(3) + ")"); pl.addColorStop(0.78, "rgba(6, 10, 22, " + (0.24 * fog).toFixed(3) + ")"); pl.addColorStop(1, AMB + (0.11 * fog).toFixed(3) + ")");
+                x.fillStyle = pl; fillQuad(xa, t, xa, b, xb, b2, xb, t2);
+            }
+            if (wallG) {
+                x.globalAlpha = Math.min(1, fog);
+                x.fillStyle = floorG; fillQuad(l, b, r, b, r2, b2, l2, b2);
+                for (var sd2 = 0; sd2 < 2; sd2++) {
+                    var w1 = vx + ((sd2 ? 1 : -1) * HW * 0.97 - ox) * s, w2 = vx + ((sd2 ? 1 : -1) * HW * 0.97 - ox) * s2;
+                    x.fillStyle = wallG[sd2][h % 3]; fillQuad(w1, t, w1, b, w2, b2, w2, t2);
+                }
+                x.globalAlpha = 1;
+            }
+            // the shelves' lit edges, running to the far end
             for (var j = 0; j < 5; j++) {
-                var yy = -0.55 + j * 0.27;
-                x.strokeStyle = shelfCol[(j + h) % 3] + (0.16 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.6, 2.2 * s);
-                x.beginPath(); x.moveTo(vx - HW * 0.97 * s, vy + HH * yy * s); x.lineTo(vx - HW * 0.97 * s2, vy + HH * yy * s2);
-                x.moveTo(vx + HW * 0.97 * s, vy + HH * yy * s); x.lineTo(vx + HW * 0.97 * s2, vy + HH * yy * s2); x.stroke();
+                var yy = HH * (-0.55 + j * 0.27) - oy;
+                x.beginPath(); x.moveTo(vx - (HW * 0.97 + ox) * s, vy + yy * s); x.lineTo(vx - (HW * 0.97 + ox) * s2, vy + yy * s2);
+                x.moveTo(vx + (HW * 0.97 - ox) * s, vy + yy * s); x.lineTo(vx + (HW * 0.97 - ox) * s2, vy + yy * s2);
+                x.strokeStyle = shelfCol[(j + h) % 3] + (0.055 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(1.5, 7 * s); x.stroke();
+                x.strokeStyle = shelfCol[(j + h) % 3] + (0.26 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.6, 2.2 * s); x.stroke();
             }
             var B = byH.get(h);
             if (next && h === tip + 1) { ghost(h, z, s, s2, zn, l, t, r, b, lw, fog, vx, vy, HW, HH, now); continue; }
             // its shelves' boxes: one for every 250 of this block's real transactions, along both walls (as its hall's shelves are)
             if (B && s > 0.08) {
                 var nb = Math.max(1, Math.min(48, Math.round(B.tx / 250))), per = Math.ceil(nb / 8), dz = zn - z, cols = boxesOf(h, nb);
-                for (var q = 0; q < nb; q++) {
-                    var side = q % 2 ? 1 : -1, row = Math.floor(q / 2) % 4, slot = Math.floor(q / 8), f0 = 0.08 + slot * (0.84 / Math.max(1, per)), f1 = f0 + Math.min(0.16, 0.7 / Math.max(1, per));
-                    var za = z + f0 * dz, zb = z + f1 * dz, wx = HW * 0.97 * side, y1 = HH * (-0.55 + row * 0.27), y0 = y1 - HH * 0.11;
-                    x.fillStyle = cols ? cols[q] + (0.34 * fog).toFixed(3) + ")" : "rgba(125, 140, 171, " + (0.11 * fog).toFixed(3) + ")";   // (not sorted: plain)
+                for (var q2 = 0; q2 < nb; q2++) {
+                    var side = q2 % 2 ? 1 : -1, row = Math.floor(q2 / 2) % 4, slot = Math.floor(q2 / 8), f0 = 0.08 + slot * (0.84 / Math.max(1, per)), f1 = f0 + Math.min(0.16, 0.7 / Math.max(1, per));
+                    var za = z + f0 * dz, zb = z + f1 * dz, wx = HW * 0.97 * side - ox, y1 = HH * (-0.55 + row * 0.27) - oy, y0 = y1 - HH * 0.11;
+                    x.fillStyle = cols ? cols[q2] + (0.46 * fog).toFixed(3) + ")" : "rgba(125, 140, 171, " + (0.14 * fog).toFixed(3) + ")";   // (not sorted: plain)
                     x.beginPath(); x.moveTo(vx + wx / za, vy + y0 / za); x.lineTo(vx + wx / zb, vy + y0 / zb); x.lineTo(vx + wx / zb, vy + y1 / zb); x.lineTo(vx + wx / za, vy + y1 / za); x.closePath(); x.fill();
+                    if (s > 0.22) {   // its lit top edge
+                        x.strokeStyle = cols ? cols[q2] + (0.7 * fog).toFixed(3) + ")" : "rgba(170, 184, 210, " + (0.22 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.6, 1.4 * s);
+                        x.beginPath(); x.moveTo(vx + wx / za, vy + y0 / za); x.lineTo(vx + wx / zb, vy + y0 / zb); x.stroke();
+                    }
                 }
             }
-            x.strokeStyle = "rgba(243, 165, 48, " + (0.10 * fog).toFixed(3) + ")"; x.lineWidth = 1;   // the floor's seam
+            x.strokeStyle = AMB + (0.14 * fog).toFixed(3) + ")"; x.lineWidth = 1;   // the floor's seam
             x.beginPath(); x.moveTo(l, b); x.lineTo(r, b); x.stroke();
             var hot = h === hover || h === pinned, newest = h === tip && B;
             var pulse = newest && !still ? 0.82 + 0.18 * Math.sin(now / 520) : 1, flash = newest && flashAt ? Math.max(0, 1 - (now - flashAt) / 2200) : 0;
             var a = Math.min(1, (0.85 * fog * pulse) + flash * 0.6 + (hot ? 0.35 : 0));
+            // on the floor: a pool of its light, and its two posts mirrored
+            var rx = Math.max(1, (r - l) * 0.5), ry = Math.max(2, (b - t) * 0.05);
+            x.save(); x.translate((l + r) / 2, b); x.scale(1, ry / rx);
+            pl = x.createRadialGradient(0, 0, 0, 0, 0, rx); pl.addColorStop(0, AMB + (0.22 * a).toFixed(3) + ")"); pl.addColorStop(0.6, AMB + (0.07 * a).toFixed(3) + ")"); pl.addColorStop(1, AMB + "0)");
+            x.fillStyle = pl; x.fillRect(-rx, -rx, rx * 2, rx * 2); x.restore();
+            var rl = Math.max(0, Math.min((b - t) * 0.55, floorEnd - b));
+            if (rl > 1) {
+                pl = x.createLinearGradient(0, b, 0, b + (b - t) * 0.55); pl.addColorStop(0, AMB + (0.40 * a).toFixed(3) + ")"); pl.addColorStop(0.5, AMB + (0.10 * a).toFixed(3) + ")"); pl.addColorStop(1, AMB + "0)");
+                x.strokeStyle = pl; x.lineWidth = lw * 0.9; x.beginPath(); x.moveTo(l, b); x.lineTo(l, b + rl); x.moveTo(r, b); x.lineTo(r, b + rl); x.stroke();
+            }
+            // the frame: its inner faces (it has thickness), its lit tube and the hot line along its middle
+            var sj = 1 / (z + 0.07), lj = vx - (HW + ox) * sj, rj = vx + (HW - ox) * sj, tj = vy - (HH + oy) * sj, bj = vy + (HH - oy) * sj, ja = (hot ? 0.46 : 0.30) * a;
+            pl = x.createLinearGradient(l, 0, lj, 0); pl.addColorStop(0, AMB + ja.toFixed(3) + ")"); pl.addColorStop(1, AMB + (ja * 0.2).toFixed(3) + ")"); x.fillStyle = pl; fillQuad(l, t, lj, tj, lj, bj, l, b);
+            pl = x.createLinearGradient(r, 0, rj, 0); pl.addColorStop(0, AMB + ja.toFixed(3) + ")"); pl.addColorStop(1, AMB + (ja * 0.2).toFixed(3) + ")"); x.fillStyle = pl; fillQuad(r, t, rj, tj, rj, bj, r, b);
+            pl = x.createLinearGradient(0, t, 0, tj); pl.addColorStop(0, AMB + (ja * 0.8).toFixed(3) + ")"); pl.addColorStop(1, AMB + (ja * 0.16).toFixed(3) + ")"); x.fillStyle = pl; fillQuad(l, t, r, t, rj, tj, lj, tj);
+            pl = x.createLinearGradient(0, b, 0, bj); pl.addColorStop(0, AMB + Math.min(1, ja * 1.25).toFixed(3) + ")"); pl.addColorStop(1, AMB + (ja * 0.3).toFixed(3) + ")"); x.fillStyle = pl; fillQuad(l, b, r, b, rj, bj, lj, bj);
+            x.strokeStyle = AMB + (0.085 * a).toFixed(3) + ")"; x.lineWidth = lw * 3.6; x.strokeRect(l, t, r - l, b - t);   // its halo
             x.save();
-            x.shadowColor = "rgba(243, 165, 48, " + Math.min(1, a).toFixed(3) + ")"; x.shadowBlur = (hot ? 34 : 22) * s + flash * 40;
-            x.strokeStyle = hot || flash > 0.2 ? "rgba(255, 214, 140, " + a.toFixed(3) + ")" : "rgba(243, 165, 48, " + a.toFixed(3) + ")";
+            x.shadowColor = AMB + Math.min(1, a).toFixed(3) + ")"; x.shadowBlur = (hot ? 46 : 32) * s + flash * 40;
+            x.strokeStyle = (hot || flash > 0.2 ? HOT : AMB) + a.toFixed(3) + ")";
             x.lineWidth = lw; x.strokeRect(l, t, r - l, b - t);
             x.restore();
-            var ins = lw * 1.9;
-            x.strokeStyle = "rgba(243, 165, 48, " + (0.42 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.7, lw * 0.45);
-            x.strokeRect(l + ins, t + ins, r - l - 2 * ins, b - t - 2 * ins);
-            x.fillStyle = "rgba(243, 165, 48, " + (0.07 * fog).toFixed(3) + ")"; x.fillRect(l, b + lw, r - l, Math.max(1, lw * 1.6));
+            x.strokeStyle = FIL + (0.5 * a).toFixed(3) + ")"; x.lineWidth = Math.max(0.6, lw * 0.2); x.strokeRect(l, t, r - l, b - t);
+            x.strokeStyle = AMB + (0.42 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.7, lw * 0.4); x.strokeRect(lj, tj, rj - lj, bj - tj);
             // its sign: the block's number, as over each hall's door; a milestone's plaque under it
             if (B && signed[h]) {
                 var fs = Math.min(30, HH * 0.075 * s);
                 if (fs >= 7.5) {
                     var label = "BLOCK " + fmt(B.h);
                     x.font = "600 " + fs.toFixed(1) + "px ui-monospace, Menlo, Consolas, monospace"; x.textAlign = "center"; x.textBaseline = "middle";
-                    var tw = x.measureText(label).width, py = Math.max(t + lw / 2 + fs * 1.05, fs * 1.4), px = vx;
+                    var tw = x.measureText(label).width, py = Math.max(t + lw / 2 + fs * 1.05, fs * 1.4), px = (l + r) / 2;
                     x.fillStyle = "rgba(10, 15, 28, " + (0.82 * fog).toFixed(3) + ")"; x.fillRect(px - tw / 2 - fs * 0.6, py - fs * 0.78, tw + fs * 1.2, fs * 1.56);
-                    x.strokeStyle = "rgba(243, 165, 48, " + (0.7 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.8, fs * 0.07); x.strokeRect(px - tw / 2 - fs * 0.6, py - fs * 0.78, tw + fs * 1.2, fs * 1.56);
+                    x.strokeStyle = AMB + (0.7 * fog).toFixed(3) + ")"; x.lineWidth = Math.max(0.8, fs * 0.07); x.strokeRect(px - tw / 2 - fs * 0.6, py - fs * 0.78, tw + fs * 1.2, fs * 1.56);
                     x.fillStyle = hot ? "rgba(255, 228, 170, " + fog.toFixed(3) + ")" : "rgba(255, 207, 122, " + (fog * 0.95).toFixed(3) + ")"; x.fillText(label, px, py + fs * 0.04);
                     var M = MILESTONES[B.h];
                     if (M && fs >= 9) {
                         var ps = fs * 0.62; x.font = "600 " + ps.toFixed(1) + "px ui-monospace, Menlo, Consolas, monospace";
                         var pw = x.measureText(M[0]).width, qy = py + fs * 0.78 + ps * 1.25;
-                        x.fillStyle = "rgba(243, 165, 48, " + (0.9 * fog).toFixed(3) + ")"; x.fillRect(px - pw / 2 - ps * 0.7, qy - ps * 0.8, pw + ps * 1.4, ps * 1.6);
+                        x.fillStyle = AMB + (0.9 * fog).toFixed(3) + ")"; x.fillRect(px - pw / 2 - ps * 0.7, qy - ps * 0.8, pw + ps * 1.4, ps * 1.6);
                         x.fillStyle = "rgba(10, 15, 28, " + fog.toFixed(3) + ")"; x.fillText(M[0], px, qy + ps * 0.04);
                     }
                     var S = safetyOf(B.h);
@@ -1457,8 +1563,8 @@ window.AgentKit = window.AgentKit || (() => {
         var nb = Math.max(1, Math.min(48, Math.round(next.tx / 250))), per = Math.ceil(nb / 8), dz = zn - z;
         for (var q = 0; q < nb; q++) {   // a faint box for every 250 transactions waiting to go in it
             var side = q % 2 ? 1 : -1, row = Math.floor(q / 2) % 4, slot = Math.floor(q / 8), f0 = 0.08 + slot * (0.84 / Math.max(1, per)), f1 = f0 + Math.min(0.16, 0.7 / Math.max(1, per));
-            var za = z + f0 * dz, zb = z + f1 * dz, wx = HW * 0.97 * side, y1 = HH * (-0.55 + row * 0.27), y0 = y1 - HH * 0.11;
-            x.strokeStyle = "rgba(255, 207, 122, " + (0.16 * fog).toFixed(3) + ")"; x.lineWidth = 1; x.setLineDash([3, 3]);
+            var za = z + f0 * dz, zb = z + f1 * dz, wx = HW * 0.97 * side - camX, y1 = HH * (-0.55 + row * 0.27) - camY, y0 = y1 - HH * 0.11;
+            x.strokeStyle = "rgba(255, 207, 122, " + (0.2 * fog).toFixed(3) + ")"; x.lineWidth = 1; x.setLineDash([3, 3]);
             x.beginPath(); x.moveTo(vx + wx / za, vy + y0 / za); x.lineTo(vx + wx / zb, vy + y0 / zb); x.lineTo(vx + wx / zb, vy + y1 / zb); x.lineTo(vx + wx / za, vy + y1 / za); x.closePath(); x.stroke();
         }
         x.setLineDash([]);
@@ -1473,7 +1579,7 @@ window.AgentKit = window.AgentKit || (() => {
         x.stroke(); x.restore();
         var fs = Math.min(30, HH * 0.075 * s);
         if (fs >= 7.5 && z >= Z0 * 0.9) {
-            var label = "NEXT: BLOCK " + fmt(h), py = Math.max(t + lw / 2 + fs * 1.05, fs * 1.4), px = vx;
+            var label = "NEXT: BLOCK " + fmt(h), py = Math.max(t + lw / 2 + fs * 1.05, fs * 1.4), px = (l + r) / 2;
             x.font = "600 " + fs.toFixed(1) + "px ui-monospace, Menlo, Consolas, monospace"; x.textAlign = "center"; x.textBaseline = "middle";
             var tw = x.measureText(label).width;
             x.fillStyle = "rgba(10, 15, 28, " + (0.82 * fog).toFixed(3) + ")"; x.fillRect(px - tw / 2 - fs * 0.6, py - fs * 0.78, tw + fs * 1.2, fs * 1.56);
@@ -1654,6 +1760,8 @@ window.AgentKit = window.AgentKit || (() => {
         else if (h >= 0) walk(h);
     });
     cv.addEventListener("pointercancel", function () { drag = null; });
+    hero.addEventListener("pointermove", function (e) { if (e.pointerType === "touch") return; var r = cv.getBoundingClientRect(); lean = [(e.clientX - r.left) / Math.max(1, r.width), (e.clientY - r.top) / Math.max(1, r.height)]; });   // (22 Nov 2026: the view leans toward a mouse)
+    hero.addEventListener("pointerleave", function () { lean = null; });
     cv.addEventListener("pointerleave", function () { if (!drag) { hoverChip = -1; tell(-1); kick(); } });
     cv.addEventListener("wheel", function (e) {   // sideways scrolling only (or Shift + wheel): up and down still scrolls the page
         var dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
