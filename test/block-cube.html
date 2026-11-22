@@ -1593,7 +1593,7 @@ function runeWords(R) {
   return {word: {k: 'rune', s: 2, a: '', b: (c >= 32 ? String.fromCodePoint(c) : '¤') + ' ' + (nm || 'new rune')}, lost: w2.s === 5 ? {k: 'rune', s: 5, a: '', b: 'new rune: not made'} : w2, x: '+ new rune', x2, ids, name: nm};
 }
 // what the block's reader found about a rune message, kept on the parcel (for its card, its tile and the agent kit)
-function runeCarry(t, r) { t.brc2 = !!r.brc2; t.bmN = r.bmN == null ? null : r.bmN; t.bmI = r.bmI; t.natOff = !!r.natOff; t.bmReal = false; t.bmNo = null; t.rbad = r.rbad || null; t.rtry = r.rtry || null; t.rmv = r.rmv || null; t.rptr = r.rptr == null ? null : r.rptr; t.pre = r.pre || null; t.wNE = r.wNE || null; t.rx2 = r.rx2 || ''; }
+function runeCarry(t, r) { t.s721 = r.s721 || null; t.s101 = r.s101 || null; t.brc2 = !!r.brc2; t.bmN = r.bmN == null ? null : r.bmN; t.bmI = r.bmI; t.natOff = !!r.natOff; t.bmReal = false; t.bmNo = null; t.rbad = r.rbad || null; t.rtry = r.rtry || null; t.rmv = r.rmv || null; t.rptr = r.rptr == null ? null : r.rptr; t.pre = r.pre || null; t.wNE = r.wNE || null; t.rx2 = r.rx2 || ''; }
 // a new rune that never came into being: its tile falls back to what else its message does
 function runeLostWord(t) {
   if (!t.word) return;
@@ -1628,6 +1628,107 @@ function cpKind(key, chunks) {
 // a Bitcoin Stamp's picture, rebuilt from its own transaction (checked pixel for pixel against stampchain.io):
 // old style = "STAMP:" + base64 inside the Counterparty message in its multisig outputs (each output decrypted on its own);
 // new style (OLGA) = a 2-byte length, then the file itself, across its P2WSH outputs
+// (22 Nov 2026) SRC-721 and SRC-101: two more standards built on Stamps, read by their own rules (SRC-721: github.com/DerpHerpenstein/src-721;
+// SRC-101: github.com/stampchain-io/stamps_sdk docs/src101specs.md; start blocks from the Stamps indexer itself, github.com/stampchain-io/btc_stamps
+// config.py: SRC-721 from 792,370; SRC-101 in bare multisig from 870,652 and in P2WSH from 940,000)
+const S721_FROM = 792370, S101_FROM = 870652, S101_WSH = 940000;
+const cpAsset = v => /^A\d{4,30}$/.test(String(v || ''));
+function s721Of(o) {
+  const op = String(o.op || '').toLowerCase().slice(0, 12);
+  const ts = Array.isArray(o.ts) ? o.ts.slice(0, 10).map(v => typeof v === 'number' && v >= 0 && v === Math.floor(v) ? v : cpAsset(v) ? String(v) : null) : null;
+  return {op, c: cpAsset(o.c) ? String(o.c) : null, ts: ts && ts.length && ts.every(v => v !== null) ? ts : null, sym: String(o.symbol || o.tick || '').slice(0, 16), name: String(o.name || '').slice(0, 40)};
+}
+const s721Word = s => ({k: 's721', a: s.op === 'deploy' ? s.name || s.sym || 'SRC-721' : s.sym || 'SRC-721', b: s.op === 'deploy' ? 'new collection' : s.op || ''});
+// a name in SRC-101 is written in base64; shown as its letters, small (the standard turns names to lower case)
+const b64name = s => { try { return new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(atob(String(s)), c => c.charCodeAt(0))).toLowerCase().slice(0, 64); } catch (e) { return null; } };
+function s101Of(o) {
+  const op = String(o.op || '').toLowerCase().slice(0, 16), raw = Array.isArray(o.tokenid) ? o.tokenid : o.tokenid != null ? [o.tokenid] : [];
+  return {op, names: raw.slice(0, 10).filter(x => String(x).length <= 128).map(b64name).filter(Boolean), root: op === 'deploy' ? String(o.root || '').toLowerCase().slice(0, 24) : null,
+    hash: /^[0-9a-f]{64}$/i.test(String(o.hash || '')) ? String(o.hash).toLowerCase() : null, dua: o.dua != null ? String(o.dua).slice(0, 4) : null, cname: String(o.name || '').slice(0, 40), to: o.toaddress ? String(o.toaddress).slice(0, 90) : null};
+}
+const s101Word = s => ({k: 's101', a: s.op === 'deploy' ? '.' + (s.root || '?') : s.names.length ? s.names[0] + (s.root ? '.' + s.root : '') + (s.names.length > 1 ? ' +' + (s.names.length - 1) : '') : 'SRC-101',
+  b: s.op === 'deploy' ? 'new names' + (s.cname ? ' · ' + s.cname : '') : s.op + (s.dua ? ' · ' + s.dua + (s.dua === '1' ? ' year' : ' years') : '')});
+// the JSON note a transaction keeps the Stamps way ("stamp:" then the note), in bare multisig or P2WSH outputs, read from its own bytes
+function stampNote(tx) {
+  const key = RR.unhex(tx.ins[0].txid), mso = [], wsh = [];
+  for (const o of tx.outs) {
+    const s = o.script;
+    if (s.length > 36 && s[s.length - 1] === 0xae && s[0] >= 0x51 && s[0] <= 0x53) { const ks = []; for (let u = 1; u < s.length - 2 && (s[u] === 33 || s[u] === 65); u += 1 + s[u]) ks.push(s.subarray(u + 1, u + 1 + s[u])); mso.push(ks); }
+    else if (s.length === 34 && s[0] === 0 && s[1] === 32) wsh.push(s.subarray(2));
+  }
+  const pick = D => { const L = D[0] << 8 | D[1]; if (L > 6 && L <= D.length - 2 && /^stamp:/i.test(L1D.decode(D.subarray(2, 8)))) try { return JSON.parse(U8D.decode(D.subarray(8, 2 + L))); } catch (e) {} return null; };
+  let o = null;
+  if (mso.length) try { o = pick(rc4(key, catB(mso.flatMap(pk => pk.length < 2 ? [] : pk.slice(0, -1).map(k => k.subarray(1, k.length - 1)))))); } catch (e) {}
+  if (!o && wsh.length) o = pick(catB(wsh));
+  return o;
+}
+// a whole transaction's bytes, asked again (2 s, then twice as long each time, at most a minute apart) until a site answers
+async function txSure(id) {
+  for (let wait = 2000; ; wait = Math.min(60000, wait * 2)) {
+    try { if (rrNow()) return RR.parseTx(await RR.txBytes(id)); } catch (e) {}
+    try { return RR.parseTx(RR.unhex((await (await mpFetch('/api/tx/' + id + '/hex', null, 15000)).text()).trim())); } catch (e) {}
+    await new Promise(r => setTimeout(r, wait));
+  }
+}
+// an SRC-721 layer or collection: stampchain.io says which transaction holds the asset; its file is then read from that transaction's own bytes
+const s721Files = new Map();
+function s721File(cpid) {
+  if (!s721Files.has(cpid)) s721Files.set(cpid, (async () => {
+    let tx = null;
+    for (let wait = 2000; !tx; wait = Math.min(60000, wait * 2)) {
+      try { const j = await (await fetchT('https://stampchain.io/api/v2/stamps/' + cpid, null, 15000)).json(), S = j && j.data && j.data.stamp; if (j && !S) return null; tx = S.tx_hash; }
+      catch (e) { await new Promise(r => setTimeout(r, wait)); }
+    }
+    if (!/^[0-9a-f]{64}$/.test(tx)) return null;
+    const T = await txSure(tx); let M = []; try { M = RR.marks(T); } catch (e) {}
+    const m = M.find(m => m.kind === 'stamp' && m.file);
+    return m ? {tx, bytes: m.file, type: m.type || ''} : null;
+  })());
+  return s721Files.get(cpid);
+}
+// an SRC-721 mint's picture, stacked as the Stamps indexer stacks it: the collection's trait lists t0 to t9, the mint's ts picking one from each,
+// each layer drawn over the one before on a 420 x 420 square (layers that are missing or not pictures are left out, as the indexer leaves them out)
+const s721Pics = new Map();
+function s721Pic(s) {
+  const k = s.c + ':' + s.ts.join(',');
+  if (!s721Pics.has(k)) s721Pics.set(k, (async () => {
+    const d = await s721File(s.c); if (!d) return {why: 'the collection it names (' + s.c + ') is not a Stamp'};
+    let o = null; try { o = JSON.parse(U8D.decode(d.bytes)); } catch (e) {}
+    if (!o || String(o.p || '').toLowerCase() !== 'src-721' || String(o.op || '').toLowerCase() !== 'deploy') return {why: 'the asset it names (' + s.c + ') is not an SRC-721 collection'};
+    const cps = s.ts.map((v, i) => Array.isArray(o['t' + i]) && typeof v === 'number' && v < o['t' + i].length && cpAsset(o['t' + i][v]) ? String(o['t' + i][v]) : null);
+    const files = await Promise.all(cps.map(cp => cp ? s721File(cp) : null)), px = /pixel|crisp/i.test(String(o['image-rendering'] || 'pixelated'));
+    const c = document.createElement('canvas'); c.width = c.height = 420; const x = c.getContext('2d'); x.imageSmoothingEnabled = !px;
+    const used = [];
+    for (const f of files) {
+      const ct = f && sniffImg(f.bytes); if (!ct) { used.push(null); continue; }
+      const u = URL.createObjectURL(new Blob([f.bytes], {type: ct})), im = new Image(); im.src = u;   // (drawn as a picture: an SVG layer's own code never runs)
+      try { await im.decode(); x.drawImage(im, 0, 0, 420, 420); used.push(f); } catch (e) { used.push(null); } URL.revokeObjectURL(u);
+    }
+    if (!used.some(Boolean)) return {why: 'none of its layers could be read as pictures', name: String(o.name || '').slice(0, 40)};
+    const png = await new Promise(r => c.toBlob(b => r(b), 'image/png'));
+    return {png: new Uint8Array(await png.arrayBuffer()), name: String(o.name || '').slice(0, 40), used, of: s.ts.length};
+  })());
+  return s721Pics.get(k);
+}
+// a block hall's SRC-721 mints get their pictures, a few at a time, once the block is read
+async function s721Block(B) {
+  const L = B.txs.filter(t => t.s721 && t.s721.op === 'mint' && t.s721.c && t.s721.ts && !t.s721.try); if (!L.length) return;
+  let n = 0;
+  const one = async t => { t.s721.try = 1; const p = await s721Pic(t.s721); t.s721.pic = p; if (p.name && t.word) t.word = Object.assign({}, t.word, {b: p.name}); if (p.png) { t.art = {ct: 'image/png', bytes: p.png, s721: true}; t._k = null; n++; } };
+  for (let i = 0; i < L.length; i += 4) { await Promise.all(L.slice(i, i + 4).map(t => one(t).catch(() => {}))); if (cur !== B) break; }
+  if (!n || cur !== B) return;
+  loadArt(B);
+  if (room) { for (const R of room.rooms) if (R) R.nl = null; near.rk = ''; room.dirty = true; }
+}
+// an SRC-101 name's ending (.btc and the like) is in the note that started those names; read once from that note's own bytes
+const s101Roots = new Map();
+const s101Root = h => { if (!s101Roots.has(h)) s101Roots.set(h, txSure(h).then(T => { const o = stampNote(T); return o && String(o.p || '').toLowerCase() === 'src-101' && String(o.op || '').toLowerCase() === 'deploy' ? String(o.root || '').toLowerCase().slice(0, 24) || null : null; })); return s101Roots.get(h); };
+async function s101Block(B) {
+  const L = B.txs.filter(t => t.s101 && t.s101.hash && t.s101.op !== 'deploy' && !t.s101.root); if (!L.length) return;
+  for (const h of [...new Set(L.map(t => t.s101.hash))]) { const root = await s101Root(h).catch(() => null); if (cur !== B) return; if (!root) continue; for (const t of L) if (t.s101.hash === h) { t.s101.root = root; t.word = s101Word(t.s101); t._k = null; } }
+  loadArt(B);
+  if (room) { for (const R of room.rooms) if (R) R.nl = null; near.rk = ''; room.dirty = true; }
+}
 function stampArt(key, mso, wsh) {
   let b = null;
   if (mso) {
@@ -1642,6 +1743,7 @@ function stampArt(key, mso, wsh) {
   }
   if (!b && wsh && wsh.length) { const W = catB(wsh), L = W[0] << 8 | W[1]; if (L > 8 && L <= W.length - 2) b = W.subarray(2, 2 + L); }
   if (!b || b.length < 8 || b.length > 400000) return null;
+  if (b[0] === 0x7b) try { const o = JSON.parse(U8D.decode(b)); if (o && String(o.p || '').toLowerCase() === 'src-721') return {json: o}; } catch (e) {}   // (an SRC-721 note, not a picture)
   const ct = sniffImg(b);
   return ct ? {ct, bytes: b.slice()} : null;
 }
@@ -1787,17 +1889,19 @@ async function scanBytes(X, h) {
     }
     if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
     if ((r.sc >> TF.cp) & 1 && !((r.sc >> TF.stamps) & 1) && !r.word) r.word = {k: 'cp', a: '', b: ''};
-    if ((r.sc >> TF.stamps) & 1 && artN < 2048 && artB < 64e6) { const a = stampArt(key, mso, wsh); if (a) { r.art = a; artN++; artB += a.bytes.length; } }
+    if ((r.sc >> TF.stamps) & 1 && artN < 2048 && artB < 64e6) { const a = stampArt(key, mso, wsh); if (a && a.json) { if (h >= S721_FROM) { r.s721 = s721Of(a.json); if (!r.word) r.word = s721Word(r.s721); } } else if (a) { r.art = a; artN++; artB += a.bytes.length; } }
     if (mso && (r.sc >> TF.stamps) & 1 && h >= 793068) try { const D = rc4(key, catB(mso.flatMap(pk => pk.length < 2 ? [] : pk.slice(0, -1).map(k => k.subarray(1, k.length - 1))))), L = D[0] << 8 | D[1];   // SRC-20 in multisig outputs (the older way): a 2-byte length, then "stamp:" and its JSON
       if (L > 6 && L <= D.length - 2 && /^stamp:/i.test(L1D.decode(D.subarray(2, 8)))) { const o = JSON.parse(U8D.decode(D.subarray(8, 2 + L)));
         if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.sc &= ~(1 << TF.stamps); const tk = String(o.tick || '').toUpperCase().slice(0, 16), op = String(o.op || '').toLowerCase(); r.tick = tk;
-          if (!r.word) r.word = {k: 'src20', a: tk, b: (op + (o.amt != null ? ' ' + String(o.amt).slice(0, 14) : o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')).trim()}; } }
+          if (!r.word) r.word = {k: 'src20', a: tk, b: (op + (o.amt != null ? ' ' + String(o.amt).slice(0, 14) : o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')).trim()}; }
+        else if (String(o.p || '').toLowerCase() === 'src-101' && h >= S101_FROM) { r.s101 = s101Of(o); if (!r.word || r.word.k === 's721') r.word = s101Word(r.s101); } }
     } catch (e) {}
     if (wsh && h >= 865000) { const W = catB(wsh), L = W[0] << 8 | W[1];   // SRC-20 in P2WSH outputs: a 2-byte length, then "stamp:" and its JSON
       if (L > 6 && L <= W.length - 2 && /^stamp:/i.test(L1D.decode(W.subarray(2, 8)))) try {
         const o = JSON.parse(U8D.decode(W.subarray(8, 2 + L)));
         if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; const tk = String(o.tick || '').toUpperCase().slice(0, 16), op = String(o.op || '').toLowerCase(); r.tick = tk;
           if (!r.word) r.word = {k: 'src20', a: tk, b: (op + (o.amt != null ? ' ' + String(o.amt).slice(0, 14) : o.max != null ? ' · max ' + String(o.max).slice(0, 12) : '')).trim()}; }
+        else if (String(o.p || '').toLowerCase() === 'src-101' && h >= S101_WSH && !r.s101) { r.s101 = s101Of(o); if (!r.word) r.word = s101Word(r.s101); }
       } catch (e) {}
     }
     r.e = p;
@@ -2021,6 +2125,7 @@ async function scanBlock(B) {
   } catch (e) { B.scan = {failed: true}; }
   if (cur === B) { rebuild(); head(); if (sel) select(sel); if (B.scan.ok) loadArt(B); }
   if (B.scan && B.scan.ok) mdlBlock(B).catch(() => {});
+  if (B.scan && B.scan.ok) { s721Block(B).catch(() => {}); s101Block(B).catch(() => {}); }   // (SRC-721 pictures stacked, SRC-101 name endings read)
 }
 /* ---------- art: image inscriptions decoded straight from the block's bytes, painted onto their parcels ---------- */
 // the sticker sheet: every picture and word tile in the block on screen, each in a square sized to its parcel
@@ -2866,7 +2971,7 @@ const artWant = (t, pic) => {
 };
 // a parcel shows its picture, unless it stands on a token's shelf and has that token's own face (a new rune etched with a
 // picture shows its picture: it stands in RUNE ETCHINGS)
-const artPic = t => !!t.art && (etchPic(t) || t.cat21 || t.labitbu || !(t.word && tokC(t) >= 0));
+const artPic = t => !!t.art && (etchPic(t) || t.cat21 || t.labitbu || t.art.s721 || !(t.word && tokC(t) >= 0));
 async function loadArt(B) {
   const my = ++artGen, live = () => my === artGen && cur === B;
   // pictures first (block order), then words: people's own words and tokens, then Alkanes and Counterparty, new runes, rune mints, rune moves
@@ -2939,7 +3044,7 @@ async function loadArt(B) {
 // one word tile: what the inscription says, in the colour of its kind, drawn at the size it will be shown (big tiles get the
 // label, the word and the detail line; small ones just the word or logo, as big as it fits)
 const WSTYLE = {brc20: ['#0b2440', '#4aa8ff', 'BRC-20'], brc2: ['#0b2440', '#4aa8ff', 'BRC2.0'], tap: ['#05303a', '#36f1ff', 'TAP'], bitmap: ['#3a0a16', '#ff3b5c', 'BITMAP'], json: ['#1d1530', '#b08cff', ''], text: ['#f1e8d4', '#2a2118', ''],
-  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], rune5: ['#1a1424', '#9b8bb4', 'RUNE MESSAGE'], rune6: ['#2a0a16', '#ff5a7a', 'BROKEN RUNES'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20']};
+  nat: ['#2a2006', '#ffd23f', 'NAT'], b420: ['#2c0a2a', '#ff4ff0', 'BRC-420'], crc20: ['#0c2a0a', '#7cff6b', 'CRC-20'], rune2: ['#3a1d52', '#e0aaff', 'NEW RUNE'], rune3: ['#2b1046', '#b56bff', 'RUNE MINT'], rune4: ['#170828', '#8a4fd8', 'RUNE MOVE'], rune5: ['#1a1424', '#9b8bb4', 'RUNE MESSAGE'], rune6: ['#2a0a16', '#ff5a7a', 'BROKEN RUNES'], alk: ['#2a1206', '#ff7a45', 'ALKANES'], cp: ['#120c22', '#b08cff', 'COUNTERPARTY'], src20: ['#062a26', '#2fe0c0', 'SRC-20'], s721: ['#24102a', '#ff8ad8', 'SRC-721'], s101: ['#0a1c2c', '#6fd0ff', 'SRC-101']};
 // ALKANES on a tile. Ten alkane tokens are named after real alkanes and carry the real formula as their symbol on the chain
 // (METHANE CH4 to OCTANE C8H18 are alkanes 2:16 to 2:23, then nonane C9H20 is 2:195 and DECANE C10H22 is 2:224). Each of those
 // shows its own molecule: the straight chain in its relaxed zig-zag shape, set out with the textbook measures (carbon to carbon
@@ -9022,6 +9127,39 @@ async function heldInfo(t) {
     const j = await (await fetchT('https://stampchain.io/api/v2/src20/tx/' + t.id, null, 15000)).json(), S = j && j.data; hl('stamps', true, 'https://stampchain.io');
     if (S && S.tick) show([['SRC-20', String(S.op || '').toLowerCase() + ' ' + (S.amt != null ? String(parseFloat(S.amt)) + ' ' : '') + String(S.tick).toUpperCase()],
       ...(S.holders != null ? [['token', fmt(S.holders) + ' holders' + (S.progress != null ? ' · ' + S.progress + '% minted' : '')]] : [])]);
+  } catch (e) {}
+  if (t.s721) try {   // SRC-721: what its note asks for, its stacked picture, and stampchain.io's own picture of it, layer by layer
+    const s = t.s721, p = s.op === 'mint' && s.c && s.ts ? await s721Pic(s) : null;
+    show([['SRC-721', s.op === 'deploy' ? 'a new collection' + (s.name ? ': ' + s.name : '') : (s.op || '?') + (p && p.name ? ' · ' + p.name : s.sym ? ' · ' + s.sym : '')]]);
+    if (s.op === 'mint' && !s.c) show([['picture', 'a single piece that names its own layers: the Stamps indexer does not stack these, so this hall does not either']]);
+    else if (p && p.why) show([['picture', 'none: ' + p.why]]);
+    else if (p) {
+      show([['picture', fmt(p.used.filter(Boolean).length) + ' of ' + fmt(p.of) + ' layers stacked, each read from its own Stamp’s bytes']]);
+      let say = 'not checked this time: stampchain.io did not answer';
+      try {
+        const j = await (await fetchT('https://stampchain.io/api/v2/stamps/' + t.id, null, 15000)).json(), S = j && j.data && j.data.stamp;
+        if (S && /\.svg$/.test(S.stamp_url || '')) {
+          const svg = await (await fetchT(S.stamp_url, null, 15000)).text(), theirs = [...svg.matchAll(/href="data:[^;"]+;base64,([^"]+)"/g)].map(m => m[1]), ours = p.used.filter(Boolean).map(f => RR.b64(f.bytes));
+          say = theirs.length === ours.length && ours.every((b, i) => b === theirs[i]) ? '✓ the same ' + fmt(ours.length) + ' layers, in the same order, as stampchain.io’s picture of it'
+            : '‼ differs from stampchain.io’s picture (' + fmt(theirs.length) + ' layers there, ' + fmt(ours.length) + ' here)';
+        } else if (S) say = 'stampchain.io keeps it as ' + (S.stamp_mimetype || 'another kind of file') + ', not a stacked picture, so there is nothing to set beside it';
+        else if (j) say = 'stampchain.io does not list it as a Stamp';
+      } catch (e) {}
+      show([['checked', say]]);
+    }
+  } catch (e) {}
+  if (t.s101) try {   // SRC-101: the name it is about (with its ending, from the note that started those names) and whether the Stamps indexer counts it
+    const s = t.s101, root = s.root || (s.hash ? await s101Root(s.hash).catch(() => null) : null), nm = s.names.map(n => n + (root ? '.' + root : '')).join(', '), yr = (d, more) => d ? ' for ' + d + (d === '1' ? (more ? ' more year' : ' year') : (more ? ' more years' : ' years')) : '';
+    const what = {deploy: 'starts a set of names' + (s.root ? ' ending .' + s.root : '') + (s.cname ? ' (' + s.cname + ')' : ''), mint: 'claims ' + (nm || 'a name') + yr(s.dua), renew: 'renews ' + (nm || 'a name') + yr(s.dua, 1),
+      transfer: 'passes ' + (nm || 'a name') + ' on', setrecord: 'sets what ' + (nm || 'a name') + ' points to'}[s.op] || (s.op || 'an action') + (nm ? ' · ' + nm : '');
+    show([['SRC-101', what], ...(s.to ? [['to', shortA(s.to)]] : [])]);
+    let say = 'not checked this time: stampchain.io did not answer';
+    try {
+      const j = await (await fetchT('https://stampchain.io/api/v2/src101/tx/' + t.id, null, 15000)).json(), R0 = j && j.data && j.data[0];
+      say = R0 ? (R0.status == null ? '✓ stampchain.io (the Stamps indexer) counts it as valid' : '‼ stampchain.io does not count it: ' + String(R0.status).replace(/^[A-Z]+:\s*/, '').split(/[,:]|\s[0-9a-f]{16}|\sbc1|\s[13][1-9A-HJ-NP-Za-km-z]{20}/)[0].toLowerCase().slice(0, 48))
+        : 'stampchain.io does not list it as a valid SRC-101 action';
+    } catch (e) {}
+    show([['checked', say]]);
   } catch (e) {}
   if (t.txt && /^\s*\{/.test(t.txt)) {   // a JSON token (BRC-20, TAP, BRC-420 and the like): what the inscription asks for
     let o = null; try { o = JSON.parse(t.txt); } catch (e) {}
@@ -16378,6 +16516,10 @@ function ciData(tab) {
     ['RUNE MESSAGE', 'a rune message that makes, mints and moves nothing'],
     ['BROKEN RUNES (a cracked rune)', 'a rune message that breaks the rules: nothing it asks for happens, and any runes its transaction spends are burned'],
     ['ALKANES', 'the ten alkane tokens show their real molecule and formula; other Alkanes a chain of five carbons'],
+    ['SRC-721', 'a Stamps picture stacked from its layers; until they arrive, its collection’s symbol'],
+    ['SRC-101', 'a name and its ending (like name.btc), and what the note does with it'],
+    ['an envelope with a red seal', 'a transaction with a message written into it (OP_RETURN); a big box shows the first words on the letter'],
+    ['JS, Aa, ZIP, WASM, PDF, 01 10', 'other files, by their type: code, a font, a squeezed file, a WebAssembly program, a PDF, or raw data with its type written under it'],
     ['a colourful CP coin', 'Counterparty'],
     ['a cat or a rabbit', 'a CAT-21 cat or a Labitbu, each drawn here from its own transaction'],
     ['a plain box', 'an ordinary transaction, or a kind with no picture or words of its own']]});
@@ -16393,8 +16535,8 @@ function ciData(tab) {
     ['Counterparty', 'assets and messages carried in Bitcoin. Here: the kind, and what a message does (read from counterparty.io when you pick it up)'],
     ['Stamps', 'pictures stored in a transaction’s own outputs. Here: the pictures'],
     ['SRC-20', 'tokens as text notes, stored the Stamps way. Here: each note, from its own start blocks'],
-    ['SRC-721', 'pictures built from up to ten Stamps layered together. Missing: the layers are not put together here yet (each must be looked up and stacked)'],
-    ['SRC-101', 'names, stored the Stamps way. Missing: not read here yet'],
+    ['SRC-721', 'pictures built from up to ten Stamps layered together (from block 792,370). Here: each mint’s layers, read from their own Stamps’ bytes and stacked as the Stamps indexer stacks them; picked up, set beside stampchain.io’s picture layer by layer. Missing: whether a mint was paid for and within its collection’s limits, which needs the Stamps indexer (its answer is not shown yet); single pieces that name their own layers are not stacked, as the indexer does not stack them; SRC-721r (pieces made as web pages) are not run'],
+    ['SRC-101', 'names (like name.btc), stored the Stamps way (from block 870,652; in P2WSH from 940,000). Here: each note, its names read from their base64 and their ending from the note that started them; picked up, whether stampchain.io (the Stamps indexer) counts it as valid. Missing in the hall: whether a name is really owned, paid for or still in date, which needs the indexer’s whole record (the card shows its answer)'],
     ['Atomicals', 'files (one or more, which the owner can update) and ARC-20 tokens. Here: its first picture. Missing: later updates to its files, and ARC-20 amounts, which need the Atomicals indexer'],
     ['CAT-21', 'a cat for every transaction with lock time 21. Here: each cat, drawn by the CAT-21 reference code'],
     ['Labitbu', 'a small picture hidden in a taproot spend. Here: each picture'],
