@@ -1120,7 +1120,7 @@ o=vec4(col*(1.-shd*.5),ln*fade*.75+foot*.12+ring*.9);}`);
 // floor seasons: the ground under the cube follows the fee heat of the block on screen
 // (uHeat 0..6 = ice, water, grass, desert, fire, lava storm, plasma; between two whole numbers it blends)
 const mtP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;uniform float uFS;uniform vec2 uFO;out vec2 vU;void main(){vec3 q=vec3(aP.x*max(uFS,1.)+uFO.x,0.,aP.z*max(uFS,1.)+uFO.y);vU=q.xz;gl_Position=uVP*vec4(q,1.);}`,
-  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm,uCalm,uAccM,uLitM;uniform sampler2D uCpt;uniform vec2 uFO,uTile;uniform vec3 uAccC;out vec4 o;float G;
+  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm,uCalm,uAccM,uLitM;uniform sampler2D uCpt;uniform vec2 uFO,uTile;uniform vec3 uAccC,uHall,uHallB,uHallF,uNeonC;out vec4 o;float G;
 float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h1(i),h1(i+vec2(1.,0.)),f.x),mix(h1(i+vec2(0.,1.)),h1(i+1.),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*ns(p);p=p*2.03+vec2(3.1,1.7);a*=.5;}return v;}
@@ -1144,27 +1144,30 @@ c+=vec3(.75,.8,1.)*(bolt*2.5+uFlash*.22);G=cr*pu*.75+bolt;return vec4(c,.88);}
 vec4 plasma(vec2 p,float t){float v=sin(p.x*1.25+t)+sin(p.y*1.05-t*1.3)+sin((p.x+p.y)*.85+t*.7)+sin(length(p)*2.1-t*2.);
 vec3 c=.5+.5*cos(vec3(0.,2.1,4.2)+v*1.15+t*.35);c=mix(c,vec3(.78,.22,1.),.35);float ar=pow(1.-abs(sin(v*5.+t*2.6)),18.);
 c=c*(.55+.35*abs(sin(v*3.14)))+vec3(.95,.85,1.)*ar*1.2;G=.45+ar*.8;return vec4(c,.78);}
-vec2 WU;vec3 CM;float CS;
-// the calm carpet: one woven tile (drawn once by the page into three masks: the deeper tone, the light tone, the accent),
-// coloured by the block's fees: sapphire, teal, emerald, amber, flame, crimson, violet (field, deeper tone, light tone)
-const vec3 PF[7]=vec3[7](vec3(.106,.239,.478),vec3(.039,.298,.333),vec3(.086,.333,.196),vec3(.612,.408,.102),vec3(.612,.200,.059),vec3(.400,.047,.102),vec3(.231,.098,.404));
-const vec3 PD[7]=vec3[7](vec3(.047,.118,.275),vec3(.016,.153,.176),vec3(.035,.176,.098),vec3(.380,.231,.043),vec3(.365,.094,.024),vec3(.208,.020,.051),vec3(.114,.039,.224));
+vec2 WU;vec3 CM,CG;float CS;
+// (22 Nov 2026) the calm carpet: one woven tile (drawn once by the page into three masks: the deeper tone, the light tone, the
+// accent), coloured by the block's fees: sapphire, teal, emerald, amber, flame, crimson, violet (field, deeper tone, light tone)
+const vec3 PF[7]=vec3[7](vec3(.098,.220,.447),vec3(.039,.298,.333),vec3(.086,.333,.196),vec3(.565,.369,.086),vec3(.612,.200,.059),vec3(.400,.047,.102),vec3(.231,.098,.404));
+const vec3 PD[7]=vec3[7](vec3(.043,.108,.255),vec3(.016,.153,.176),vec3(.035,.176,.098),vec3(.345,.204,.035),vec3(.365,.094,.024),vec3(.208,.020,.051),vec3(.114,.039,.224));
 const vec3 PL[7]=vec3[7](vec3(.698,.827,.949),vec3(.561,.851,.816),vec3(.682,.851,.635),vec3(1.,.914,.706),vec3(1.,.776,.553),vec3(.949,.647,.671),vec3(.808,.714,1.));
 vec3 carpet(int k){
  vec3 L=mix(PL[k],vec3(1.,.957,.863),uLitM),A=mix(vec3(.863,.694,.333),uAccC,uAccM);
  vec3 c=mix(PF[k],PD[k],CM.r);c=mix(c,A,CM.b);c=mix(c,L,CM.g);
- return c*CS;}
-// (in main, once for the pixel: the masks, and the pile and the hall's light on it)
+ return c*(CS+CG);}
+// (in main, once for the pixel: the masks, the pile, and the hall's light on it)
 void carpetLook(){
  bool rm=uRm>.5;vec2 u=rm?WU:WU*.42;
- CM=texture(uCpt,vec2(u.x/uTile.x+.5,u.y/uTile.y)).rgb;
+ CM=texture(uCpt,vec2(u.x/uTile.x+.5,u.y/uTile.y)).rgb;CG=vec3(0.);
  float px=max(fwidth(u.x),fwidth(u.y));vec2 w=vec2(u.x,mod(u.y,96.));   // (the grain keeps to a short stretch of floor, so it stays fine however far the halls run)
  float g1=mix(ns(w*210.),.5,clamp(px*150.,0.,1.)),g2=mix(ns(w*85.+7.),.5,clamp(px*60.,0.,1.)),g3=mix(ns(w*26.+3.),.5,clamp(px*18.,0.,1.));
- CS=(.86+.10*g1+.10*g2+.08*g3)*(.93+.14*ns(u*.9+3.));   // the pile: fine tufts close up, smooth far off; soft clouds in the wool
- if(rm){float ax=abs(WU.x);vec2 dv=WU-uFO;float gz=1.-1.62/sqrt(dot(dv,dv)+2.62);
-  CS*=mix(.6,1.,smoothstep(3.5,1.7,ax));   // the tall shelves shade its edges
-  CS*=1.+.8*exp(-max(3.33-ax,0.)*6.);   // (the lights along their feet wash over it)
-  CS*=1.+.35*gz*gz*gz;}   // (and it catches the light where you look along it, as velvet does)
+ CS=(.875+.10*g1+.10*g2+.05*g3)*(.925+.07*ns(u*.7+3.)+.08*ns(vec2(w.x*2.1,w.y*.3)+5.));   // the pile: fine tufts close up, smooth far off; soft clouds in the wool, and the long strokes of a brushed nap
+ if(rm){float ax=abs(WU.x);vec2 dv=WU-uFO;float gz=1.-1.62/sqrt(dot(dv,dv)+2.62),sh=mix(.5,1.,smoothstep(3.45,1.5,ax));
+  CS*=sh*(1.+.35*gz*gz*gz);   // the tall shelves shade its edges; it catches the light where you look along it, as velvet does
+  CS*=1.+.8*exp(-max(3.33-ax,0.)*6.);   // (the lights along the shelves' feet wash over it)
+  vec3 H=WU.y>uHall.x+.15?uHallB:WU.y<uHall.x-uHall.y-.15?uHallF:uHall;   // (this hall, the one behind or the one ahead: where its ribs and doors are)
+  if(H.z>.5){vec3 nc=mix(vec3(1.),uNeonC/max(max(uNeonC.r,uNeonC.g),max(uNeonC.b,.01)),.3);   // the hall's neon falls on the carpet: a soft band under each rib, a pool at each doorway
+   float rb=.5+.5*cos((WU.y-H.x+1.8)*2.41661),dd=min(abs(WU.y-H.x),abs(WU.y-H.x+H.y));
+   CG=nc*(.22*rb*rb*sh+.9*exp(-dd*.85)*smoothstep(2.9,.6,ax));}}
 }
 vec4 mat(int k,vec2 p,float t){if(uCalm>.5)return vec4(carpet(k),1.);if(k<=0)return ice(p,t);if(k==1)return water(p,t);if(k==2)return grass(p,t);if(k==3)return desert(p,t);if(k==4)return fire(p,t);if(k==5)return lava(p,t);return plasma(p,t);}
 void main(){vec2 p=vU/${SF}*4.*(uRm>.5?2.5:1.);float t=uNow,r=length(vU)/${SF},fade=uRm>.5?1.:exp(-r*r*.75)*(1.-smoothstep(1.15,1.85,r));
@@ -4352,7 +4355,7 @@ const WOODS = [['walnut (the hall\'s own)', '#3b2313', '#1e120a'], ['oak', '#6b4
 const PATS = ['plain', 'stripes', 'checks', 'diamonds', 'herringbone', 'waves', '₿ symbols', 'Ð symbols', 'paw prints'];   // (all drawn here, by this page's own code)
 try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; SET.deco = localStorage.getItem('blockhall.deco') !== '0'; SET.specks = localStorage.getItem('blockhall.specks') !== '0'; const n = +localStorage.getItem('blockhall.carpet'); if (n >= 0 && n < PATS.length) SET.pat = n; const k = +localStorage.getItem('blockhall.sky'); if (k >= 0 && k < SKIES.length) SET.sky = k;
   const ne = +localStorage.getItem('blockhall.neon'), wo = +localStorage.getItem('blockhall.wood'); if (ne >= 0 && ne < NEONS.length) SET.neon = ne; if (wo >= 0 && wo < WOODS.length) SET.wood = wo; } catch (e) {}
-const CARPETS = [['ice', '#1b3d7a'], ['water', '#0a4c55'], ['grass', '#165532'], ['desert', '#9c681a'], ['fire', '#9c330f'], ['lava storm', '#660c1a'], ['plasma', '#3b1967']];   // (sapphire, teal, emerald, amber, flame, crimson, violet: the carpets' own colours)
+const CARPETS = [['ice', '#193872'], ['water', '#0a4c55'], ['grass', '#165532'], ['desert', '#905e16'], ['fire', '#9c330f'], ['lava storm', '#660c1a'], ['plasma', '#3b1967']];   // (sapphire, teal, emerald, amber, flame, crimson, violet: the carpets' own colours)
 const $tset = document.createElement('div'); $tset.id = 'tset'; $tset.hidden = true; $tset.setAttribute('role', 'dialog'); $tset.setAttribute('aria-label', 'Settings'); document.body.appendChild($tset);
 function setDraw() {
   $tset.innerHTML = '<b>SETTINGS</b><label class="srow"><input type="checkbox" id="setCalm"> <span>Calm carpet floor</span></label>'
@@ -4410,14 +4413,14 @@ function cptPaint(pat, N) {
   if (pat === 1) {   // stripes, running the length of the hall: a broad deeper band edged in gold with a row of gold stars down it, fine light lines between
     const c0 = tw / 2, pair = (k, a, d, w) => { ink(k, a); for (const s of [-1, 1]) x.fillRect(c0 + s * d - w / 2, 0, w, th); };
     put(0, .8, () => x.fillRect(c0 - .15, 0, .3, th));
-    pair(2, 1, .178, .009); pair(1, .62, .385, .014); pair(1, .5, .352, .005); pair(0, .4, .25, .05);
+    pair(2, 1, .178, .009); pair(1, .3, .385, .012); pair(0, .42, .268, .06); pair(2, .55, .328, .005);
     ink(2, 1); for (let i = 0; i < 3; i++) star(c0, th * (i + .5) / 3, .028);
     ink(2, .9); for (let i = 0; i <= 3; i++) for (const s of [-1, 1]) disc(c0 + s * .09, th * i / 3, .0065);
   } else if (pat === 2) {   // checks: a tartan of its own, the same sett both ways (each band is laid at half strength, so where two cross the colour is whole)
     const band = (k, a, c, w) => { ink(k, a); for (const d of [-tw, 0, tw]) { x.fillRect(c + d - w / 2, 0, w, th); x.fillRect(0, c + d - w / 2, tw, w); } };
     band(0, .5, 0, .26); band(0, .5, .2, .034); band(0, .5, -.2, .034);   // the broad deeper band and its two guards
     band(0, .3, tw / 2 - .07, .016); band(0, .3, tw / 2 + .07, .016);
-    band(1, .46, tw / 2, .014); band(2, .55, 0, .011); band(2, .4, .2, .006); band(2, .4, -.2, .006);   // a light line through each square, gold through each band
+    band(1, .2, tw / 2, .016); band(2, .42, 0, .011); band(2, .26, .2, .006); band(2, .26, -.2, .006);   // a light line through each square, gold through each band
     x.lineWidth = .0026; ink(0, .1); for (let d = -th; d < tw; d += .0095) { x.beginPath(); x.moveTo(d, 0); x.lineTo(d + th, th); x.stroke(); }   // the twill
   } else if (pat === 3) {   // diamonds: a gold trellis, a rosette where its lines meet, every other diamond deeper, a small flower in each
     const dia = () => { x.beginPath(); x.moveTo(tw / 2, 0); x.lineTo(tw, th / 2); x.lineTo(tw / 2, th); x.lineTo(0, th / 2); x.closePath(); };
@@ -4439,7 +4442,7 @@ function cptPaint(pat, N) {
       rub(-1); disc(cx, cy, R);
       const g = x.createRadialGradient(cx, cy, R * .55, cx, cy, R); g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, 'rgba(255,0,0,.62)'); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; disc(cx, cy, R);   // deeper towards its rim
       ink(2, .95); ring(cx, cy, R - .006, .0085);
-      ink(1, .5); for (const f of [.74, .5, .26]) ring(cx, cy, R * f, R * .085); ink(1, .62); disc(cx, cy, R * .075); }
+      ink(1, .4); for (const f of [.74, .5, .26]) ring(cx, cy, R * f, R * .085); ink(1, .5); disc(cx, cy, R * .075); }
     weave(.6);
   } else if (pat === 6 || pat === 7) {   // coins: Bitcoin's orange, or Dogecoin's gold, each with its own sign, in a trellis of ogee curves; a small flower where the curves meet
     out.acc = pat === 6 ? [.969, .576, .102] : [.761, .651, .2]; out.accM = 1; out.litM = 1;
@@ -6149,6 +6152,8 @@ function roomFrame(W, H, tn, dpr) {
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
   gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); cptBind();
   gl.uniform1f(mtP.u.uFS, 7); gl.uniform2f(mtP.u.uFO, p.x, p.z); gl.uniform1f(mtP.u.uRm, 1);
+  if (SET.calm) { const hv = R => R && R.ready && R.plan && R.z0 != null && !R.common && !R.gal ? [R.z0, R.L, 1] : [0, 0, 0];   // (the neon's light on the carpet: where each hall's ribs and doors are)
+    gl.uniform3fv(mtP.u.uHall, hv(R1)); gl.uniform3fv(mtP.u.uHallB, hv(R0)); gl.uniform3fv(mtP.u.uHallF, hv(R2)); gl.uniform3fv(mtP.u.uNeonC, (R1 && R1.h === 0 ? RCG : RC).neon); }
   gl.bindVertexArray(flVAO);
   gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(false, false, false, true); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 1); gl.drawArrays(gl.TRIANGLES, 0, 6);
