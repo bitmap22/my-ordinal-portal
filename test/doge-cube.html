@@ -837,15 +837,17 @@ const SF = S.toFixed(1), LAYER = (S / 8).toFixed(3), LIFT = (S * 0.07).toFixed(3
 const FS_VS = V + `out vec2 vU;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);vU=p;gl_Position=vec4(p*2.-1.,0.,1.);}`;
 // background: near-black with a slow drifting orange glow, warm light behind the cube, a few stars (decoration only)
 // and northern lights: curtains of light that ripple slowly overhead, their colours set by how hot the block is (icy green to plasma pink)
-const bgP = prog(FS_VS, V + `in vec2 vU;uniform vec2 uR;uniform float uNow,uD,uSky,uHt,uGold,uSkyM;uniform vec3 uF,uX,uY;out vec4 o;
+const bgP = prog(FS_VS, V + `in vec2 vU;uniform vec2 uR;uniform float uNow,uD,uSky,uHt,uGold,uSkyM,uCalm;uniform vec3 uF,uX,uY;out vec4 o;
 float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float n1(float x){float i=floor(x),f=fract(x);return mix(fract(sin(i*127.1)*43758.5453),fract(sin(i*127.1+127.1)*43758.5453),f*f*(3.-2.*f));}
 const vec3 AL[7]=vec3[7](vec3(.12,1.,.45),vec3(.1,.8,1.),vec3(.45,1.,.2),vec3(1.,.7,.2),vec3(1.,.4,.1),vec3(1.,.2,.1),vec3(1.,.3,.9));
+const vec3 CL[7]=vec3[7](vec3(.25,.55,1.),vec3(.1,.85,.9),vec3(.15,1.,.5),vec3(1.,.7,.2),vec3(1.,.42,.12),vec3(1.,.18,.22),vec3(.65,.35,1.));   // (22 Nov 2026) with the calm carpet laid, the lights take the carpet's colours: sapphire, teal, emerald, amber, flame, crimson, violet
+const vec3 CH[7]=vec3[7](vec3(.35,.3,1.),vec3(.1,.5,1.),vec3(.1,.75,.7),vec3(1.,.4,.3),vec3(.95,.15,.2),vec3(.8,.1,.45),vec3(.35,.4,1.));
 const vec3 AH[7]=vec3[7](vec3(.5,.2,1.),vec3(.3,.25,1.),vec3(.1,.7,.8),vec3(1.,.3,.45),vec3(.9,.1,.25),vec3(.8,.08,.5),vec3(.2,.8,1.));
 vec3 aur(vec3 d,float t){
  if(d.y<.02)return vec3(0.);
  float k=clamp(uHt,0.,6.),fk=fract(k);int i0=int(k),i1=min(i0+1,6);
- vec3 lo=mix(mix(AL[i0],AL[i1],fk),vec3(1.,.78,.25),uGold),hi=mix(mix(AH[i0],AH[i1],fk),vec3(1.,.42,.06),uGold),a=vec3(0.);   // (over block 0: gold)
+ vec3 lo=mix(mix(mix(AL[i0],AL[i1],fk),mix(CL[i0],CL[i1],fk),uCalm),vec3(1.,.78,.25),uGold),hi=mix(mix(mix(AH[i0],AH[i1],fk),mix(CH[i0],CH[i1],fk),uCalm),vec3(1.,.42,.06),uGold),a=vec3(0.);   // (over block 0: gold)
  for(int i=0;i<8;i++){
   float fi=float(i)/7.;vec2 P=d.xz/d.y*(1.+fi*1.2);float s=P.y;
   float cx=.3+.3*sin(s*.45+t*.11)+.15*sin(s*1.17-t*.08+1.3)+.05*sin(s*3.3+t*.37),e1=P.x-cx,e2=e1+1.05+.2*sin(s*.6-t*.07);
@@ -873,7 +875,7 @@ if(k>.978){vec2 fc=fract(gs)-.5+(vec2(h(id+3.),h(id+7.))-.5)*.6;float tw=.5+.5*s
 c+=vec3(1.,.9,.75)*smoothstep(.08,0.,length(fc))*tw*.7;}
 c+=aur(ad,uNow);}
 else if(uSkyM<2.5){   // still: 1 a still starry night; 2 dusk, its glow the colour of the block's fees
- if(uSkyM>1.5){float kk=clamp(uHt,0.,6.);int i0=int(kk);vec3 hz=mix(AL[i0],AL[min(i0+1,6)],fract(kk));float el=clamp(ad.y,0.,1.);
+ if(uSkyM>1.5){float kk=clamp(uHt,0.,6.);int i0=int(kk);vec3 hz=mix(mix(AL[i0],AL[min(i0+1,6)],fract(kk)),mix(CL[i0],CL[min(i0+1,6)],fract(kk)),uCalm);float el=clamp(ad.y,0.,1.);
   c=mix(hz*.32+vec3(.05,.03,.06),vec3(.012,.012,.03),smoothstep(0.,.55,el));}
  if(k>.978){vec2 fc=fract(gs)-.5+(vec2(h(id+3.),h(id+7.))-.5)*.6;c+=vec3(1.,.9,.75)*smoothstep(.08,0.,length(fc))*(uSkyM>1.5?.35:.6);}}
 if(uGold>.01){   // over block 0: the first star, bright, with long glints
@@ -1015,7 +1017,7 @@ void carpetLook(){
   vec3 H=WU.y>uHall.x+.15?uHallB:WU.y<uHall.x-uHall.y-.15?uHallF:uHall;   // (this hall, the one behind or the one ahead: where its ribs and doors are)
   if(H.z>.5){vec3 nc=mix(vec3(1.),uNeonC/max(max(uNeonC.r,uNeonC.g),max(uNeonC.b,.01)),.3);   // the hall's neon falls on the carpet: a soft band under each rib, a pool at each doorway
    float rb=.5+.5*cos((WU.y-H.x+1.8)*2.41661),dd=min(abs(WU.y-H.x),abs(WU.y-H.x+H.y));
-   CG=nc*(.22*rb*rb*sh+.9*exp(-dd*.85)*smoothstep(2.9,.6,ax));}}
+   CG=nc*(.22*rb*rb*sh+.75*exp(-dd*.85)*smoothstep(2.9,.6,ax));}}
 }
 vec4 mat(int k,vec2 p,float t){if(uCalm>.5)return vec4(carpet(k),1.);if(k<=0)return ice(p,t);if(k==1)return water(p,t);if(k==2)return grass(p,t);if(k==3)return desert(p,t);if(k==4)return fire(p,t);if(k==5)return lava(p,t);return plasma(p,t);}
 void main(){vec2 p=vU/${SF}*4.*(uRm>.5?2.5:1.);float t=uNow,r=length(vU)/${SF},fade=uRm>.5?1.:exp(-r*r*.75)*(1.-smoothstep(1.15,1.85,r));
@@ -4945,7 +4947,7 @@ function drawFrame() {
   const si = sel ? inst.indexOf(sel) : -1;
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
-  gl.useProgram(bgP.p); gl.uniform1f(bgP.u.uSkyM, SET.sky); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
+  gl.useProgram(bgP.p); gl.uniform1f(bgP.u.uSkyM, SET.sky); gl.uniform1f(bgP.u.uCalm, SET.calm ? 1 : 0); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
   gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3);
   if (sprites.length) {
     const f = nrm(sub([0, ty, 0], eye)), rt3 = nrm(crs(f, [0, 1, 0])), up3 = crs(rt3, f), sd = spriteData(tn, VP, rt3, up3, uiRects().concat([cubeR]));
@@ -5874,7 +5876,7 @@ function roomFrame(W, H, tn, dpr) {
   };
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
-  gl.useProgram(bgP.p); gl.uniform1f(bgP.u.uSkyM, SET.sky); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
+  gl.useProgram(bgP.p); gl.uniform1f(bgP.u.uSkyM, SET.sky); gl.uniform1f(bgP.u.uCalm, SET.calm ? 1 : 0); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
   { const ty = Math.tan(fov / 2), rx = [Math.cos(p.yaw), 0, -Math.sin(p.yaw)], up = crs(rx, dir);   // the sky: which way each pixel looks
     gl.uniform1f(bgP.u.uSky, 1); gl.uniform3fv(bgP.u.uF, dir); gl.uniform3fv(bgP.u.uX, rx.map(v => v * ty * asp)); gl.uniform3fv(bgP.u.uY, up.map(v => v * ty)); }
   gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.uniform1f(bgP.u.uSky, 0);
