@@ -93,13 +93,73 @@
     }
     return o;
   }
-  // runestones: OP_RETURN OP_13, then LEB128 numbers in tag/value pairs; tag 0 starts the edicts (rune moves)
-  function runestone(s) {
-    const pay = catB(pushes(s, 2, s.length).filter(x => x[1]).map(x => x[1])), ints = [];
-    for (let i = 0; i < pay.length;) { let v = 0n, sh = 0n, c; do { c = pay[i++]; v |= BigInt(c & 127) << sh; sh += 7n; } while (c & 128 && i < pay.length); ints.push(v); }
-    const F = {}; let moves = false;
-    for (let k = 0; k < ints.length; k += 2) { const t = Number(ints[k]); if (t === 0) { moves = ints.length - k - 1 >= 4; break; } if (k + 1 < ints.length) (F[t] = F[t] || []).push(ints[k + 1]); }
-    return {F, moves};
+  // RUNES. A rune message (a runestone) is read the way ord reads it: ord is the Runes reference, and every rule here is its own
+  // (its runestone.rs, message.rs, varint.rs, tag.rs, flag.rs, rune_id.rs and edict.rs). A message that breaks a rule is a
+  // broken one (ord calls it a cenotaph): nothing it asks for happens, and any runes its transaction spends are burned.
+  const RUNES_START = 840000, ALK_START = 880000;   // (ord: runes count from block 840,000. Alkanes' own code: from block 880,000)
+  const RUNE_ONE = 'UNCOMMON•GOODS', runeNm = id => id === '1:0' ? RUNE_ONE : id;   // (rune 1:0 is built into ord under this name: the one rune its number alone can name)
+  // why a rune message is broken: ord's own names for the faults, said plainly
+  const RUNE_FLAW = {Opcode: 'its script holds a step that is not data', InvalidScript: 'its script is cut short', Varint: 'one of its numbers is cut off or too big',
+    TrailingIntegers: 'its list of moves has numbers left over', EdictRuneId: 'a move names a rune number that cannot be', EdictOutput: 'a move points at an output the transaction does not have',
+    TruncatedField: 'a field has no value', UnrecognizedEvenTag: 'it holds a field that runes does not know, or one that is out of place', UnrecognizedFlag: 'it sets a flag that runes does not know',
+    SupplyOverflow: 'the new rune\'s supply would be too big to count'};
+  // s: the output's script (it starts OP_RETURN OP_13); nout: how many outputs the transaction has. Gives back its fields (F, as
+  // before), and what it does: etch (a new rune: its number n, spacers sp, symbol sym), mint (a rune's id), ptr (the output any
+  // left-over runes go to), ed (its moves: rune id, amount, output), moves (it has moves that count), bad (why it is broken, or null)
+  function runestone(s, nout) {
+    const U64 = 18446744073709551615n, U32 = 4294967295n, U128 = (1n << 128n) - 1n, R = {F: {}, moves: false, bad: null, etch: null, mint: null, ptr: null, ed: []}, bad = f => { if (!R.bad) R.bad = f; return R; };
+    let i = 2; const pay = [];
+    while (i < s.length) {   // the data pushes, joined up (any other script step breaks it)
+      const op = s[i++]; let n;
+      if (op <= 75) n = op; else if (op === 76) { if (i + 1 > s.length) return bad('InvalidScript'); n = s[i++]; }
+      else if (op === 77) { if (i + 2 > s.length) return bad('InvalidScript'); n = s[i] | s[i + 1] << 8; i += 2; }
+      else if (op === 78) { if (i + 4 > s.length) return bad('InvalidScript'); n = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+      else return bad('Opcode');
+      if (i + n > s.length) return bad('InvalidScript');
+      for (let k = 0; k < n; k++) pay.push(s[i + k]); i += n;
+    }
+    const ints = [];
+    for (let p = 0; p < pay.length;) {   // its numbers (LEB128, 128 bits at most)
+      let v = 0n, j = 0, end = false;
+      for (; p + j < pay.length; j++) { if (j > 18) return bad('Varint'); const b = pay[p + j]; if (j === 18 && b & 0x7c) return bad('Varint'); v |= BigInt(b & 127) << BigInt(7 * j); if (!(b & 128)) { end = true; j++; break; } }
+      if (!end) return bad('Varint');
+      ints.push(v); p += j;
+    }
+    const M = new Map();
+    for (let k = 0; k < ints.length; k += 2) {   // tag and value pairs; tag 0 starts the moves (four numbers each)
+      const tag = ints[k];
+      if (tag === 0n) {
+        let ib = 0n, it = 0n;
+        for (let c = k + 1; c < ints.length; c += 4) {
+          if (c + 3 >= ints.length) { bad('TrailingIntegers'); break; }
+          const blk = ints[c], tx = ints[c + 1]; let nb, nt, ok = blk <= U64 && tx <= U32;
+          if (ok) { nb = ib + blk; nt = blk === 0n ? it + tx : tx; ok = nb <= U64 && nt <= U32 && !(nb === 0n && nt > 0n); }
+          if (!ok) { bad('EdictRuneId'); break; }
+          if (ints[c + 3] > U32 || ints[c + 3] > BigInt(nout)) { bad('EdictOutput'); break; }
+          ib = nb; it = nt; R.ed.push({id: nb + ':' + nt, amt: ints[c + 2], out: Number(ints[c + 3])});
+        }
+        break;
+      }
+      if (k + 1 >= ints.length) { bad('TruncatedField'); break; }
+      if (!M.has(tag)) M.set(tag, []); M.get(tag).push(ints[k + 1]); (R.F[tag] = R.F[tag] || []).push(ints[k + 1]);
+    }
+    // a field is taken only if it is whole and in range; what is left over decides whether the message is broken
+    const take = (tag, N, f) => { const a = M.get(tag); if (!a || a.length < N) return undefined; const v = f(a); if (v === undefined) return undefined; a.splice(0, N); if (!a.length) M.delete(tag); return v; };
+    const one = a => a[0], u64 = a => a[0] <= U64 ? a[0] : undefined;
+    let flags = take(2n, 1, one) || 0n, over = false; const flag = b => { const m = 1n << b, on = (flags & m) !== 0n; flags &= ~m & U128; return on; };
+    if (flag(0n)) {
+      const e = R.etch = {}; take(1n, 1, a => a[0] <= 38n ? a[0] : undefined);
+      const prem = take(6n, 1, one) || 0n; let cap = 0n, amt = 0n;
+      e.n = take(4n, 1, one); e.sp = take(3n, 1, a => a[0] <= 0x07ffffffn ? a[0] : undefined); e.sym = take(5n, 1, a => a[0] <= 0x10ffffn && !(a[0] >= 0xd800n && a[0] <= 0xdfffn) ? a[0] : undefined);
+      if (flag(1n)) { cap = take(8n, 1, one) || 0n; take(12n, 1, u64); take(14n, 1, u64); amt = take(10n, 1, one) || 0n; take(16n, 1, u64); take(18n, 1, u64); }
+      flag(2n); over = prem + cap * amt > U128;
+    }
+    R.mint = take(20n, 2, a => a[0] <= U64 && a[1] <= U32 && !(a[0] === 0n && a[1] > 0n) ? a[0] + ':' + a[1] : undefined) || null;
+    const ptr = take(22n, 1, a => a[0] <= U32 && a[0] < BigInt(nout) ? a[0] : undefined); if (ptr !== undefined) R.ptr = Number(ptr);
+    if (over) bad('SupplyOverflow'); if (flags !== 0n) bad('UnrecognizedFlag');
+    for (const t of M.keys()) if (t % 2n === 0n) { bad('UnrecognizedEvenTag'); break; }
+    R.moves = !R.bad && R.ed.length > 0;
+    return R;
   }
   function runeName(n, sp) {
     n += 1n; let s = '';
@@ -174,11 +234,16 @@
         if (!t) continue;
         if (X[q] === 0x6a) {
           if (X[q + 1] === 0x5d) {
-            const {F, moves} = runestone(X.subarray(q, p)); set(TF.rune);
-            if (F[2] && F[2][0] & 1n) { set(TF.etch); if (F[4]) r.rune = {etched: runeName(F[4][0], F[3] && F[3][0])}; const c = F[5] && F[5][0] <= 0x10ffffn ? Number(F[5][0]) : -1; if (c >= 32 && (c < 0xd800 || c > 0xdfff)) (r.rune = r.rune || {}).symbol = String.fromCodePoint(c); }
-            if (F[20]) { set(TF.rmint); if (F[20].length >= 2) (r.rune = r.rune || {}).minted = F[20][0] + ':' + F[20][1]; }
-            if (moves) set(TF.rmove);
-            if (F[16383]) set(TF.alkanes);
+            if (h < RUNES_START || r.rs) continue;   // (no runes before block 840,000; only a transaction's first rune message counts)
+            r.rs = 1; const R = runestone(X.subarray(q, p), nout), F = R.F; set(TF.rune);
+            if (R.bad) r.rune = {broken: R.bad, why: RUNE_FLAW[R.bad] || 'it breaks a rule', burns: 'any runes this transaction spends'};
+            else {
+              if (R.etch) { set(TF.etch); r.rune = {}; if (R.etch.n != null) r.rune.etched = runeName(R.etch.n, R.etch.sp); const c = R.etch.sym == null ? -1 : Number(R.etch.sym); if (c >= 32) r.rune.symbol = String.fromCodePoint(c); }
+              if (R.mint) { set(TF.rmint); (r.rune = r.rune || {}).minted = R.mint; if (R.mint === '1:0') r.rune.mintedName = RUNE_ONE; }
+              if (R.moves) { set(TF.rmove); const ids = [...new Set(R.ed.map(e => e.id))].filter(v => v !== '0:0'); if (ids.length) (r.rune = r.rune || {}).moved = ids; }
+              if (!r.rune) r.rune = R.ptr != null ? {pointerOnly: R.ptr} : {empty: true};
+              if (F[16383] && h >= ALK_START) set(TF.alkanes);   // (Alkanes reads only an unbroken rune message, from block 880,000)
+            }
           } else if (l > 1) {
             const d = catB(pushes(X, q + 1, p).filter(x => x[1]).map(x => x[1])), k = d.length > 8 ? cpKind(key, [d]) : -1;
             if (k >= 0) set(k);
@@ -198,12 +263,12 @@
         }
       }
       if (ms) { const k = cpKind(key, ms); if (k >= 0) set(k); }
-      if (mso && sc(r, TF.stamps)) try {
+      if (mso && sc(r, TF.stamps) && h >= 793068) try {   // (SRC-20's own start blocks: bare multisig from 793,068, P2WSH from 865,000)
         const D = rc4(key, catB(mso.flatMap(pk => pk.length < 2 ? [] : pk.slice(0, -1).map(k => k.subarray(1, k.length - 1))))), L = D[0] << 8 | D[1];
         if (L > 6 && L <= D.length - 2 && /^stamp:/i.test(L1D.decode(D.subarray(2, 8)))) { const o = JSON.parse(U8D.decode(D.subarray(8, 2 + L)));
           if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.sc &= ~(1 << TF.stamps); r.token = tok('SRC-20', {tick: s(o.tick, 16).toUpperCase(), op: s(o.op, 12).toLowerCase(), amount: amt(o)}); } }
       } catch (e) {}
-      if (wsh) { const W2 = catB(wsh), L = W2[0] << 8 | W2[1];
+      if (wsh && h >= 865000) { const W2 = catB(wsh), L = W2[0] << 8 | W2[1];
         if (L > 6 && L <= W2.length - 2 && /^stamp:/i.test(L1D.decode(W2.subarray(2, 8)))) try {
           const o = JSON.parse(U8D.decode(W2.subarray(8, 2 + L)));
           if (String(o.p || '').toLowerCase() === 'src-20') { r.src20 = true; r.token = tok('SRC-20', {tick: s(o.tick, 16).toUpperCase(), op: s(o.op, 12).toLowerCase(), amount: amt(o)}); }
@@ -250,20 +315,22 @@
             const bl = body.reduce((n, x) => n + x.length, 0);
             r.ins.push({index: ei++, contentType: ctype(ty) || (del ? 'delegate' : 'unknown'), bytes: bl, child: par, delegate: del, compressed: enc});
             if (onBody && bl) onBody(t, ei - 1, ty || (del ? 'delegate' : ''), body, enc);
-            if (!enc && bl && bl <= 1000) {
-              const txt = U8D.decode(catB(body)).trim();
-              if (/^\d{1,7}\.bitmap$/.test(txt)) { set(TF.bitmap); if (r.bitmap == null) r.bitmap = +txt.split('.')[0]; }
+            if (!enc && bl && bl <= 65536) {
+              const raw = U8D.decode(catB(body)), txt = raw.trim(), bm = /^(0|[1-9]\d{0,15})\.bitmap$/.exec(raw);
+              if (bm && !del && +bm[1] <= h) { if (r.bitmapClaim == null) r.bitmapClaim = {number: +bm[1], index: ei - 1}; }   // (a bitmap claim by bop's rules; it counts as a bitmap only once checked as the first claim: see checkBitmaps)
               else if (/^\/content\/[0-9a-f]{64}i\d+$/i.test(txt)) { set(TF.brc420); if (!r.token) r.token = tok('BRC-420', {link: txt.slice(9)}, {op: 'mint (not checked)'}); }
               else if (txt[0] === '{') try {
                 const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase();
                 if (pr === 'brc-420') { set(TF.brc420); if (!r.token) r.token = tok('BRC-420', {name: o.name != null ? s(o.name, 24) : null, amount: amt(o)}, {op: String(o.op || '').toLowerCase() === 'deploy' ? 'deploy' : 'mint (not checked)'}); }
-                else if (pr === 'brc-20' && o.p === 'brc-20') { set(TF.brc20); if (!r.token) r.token = tok('BRC-20', {tick: s(o.tick, 16), op: s(o.op, 12), amount: amt(o)}); }
-                else if (pr === 'tap') {
+                else if (pr === 'brc-20' && o.p === 'brc-20' && h >= 779832 && /^(text\/plain|application\/json)(;|$)/.test(ct) && i === 0 && ei === 1 && !pn) {   // (BRC-20's own filter: plain text or JSON, the transaction's first inscription, written the standard way, from block 779,832)
+                  set(TF.brc20); if (!r.token) r.token = tok('BRC-20', {tick: s(o.tick, 16), op: s(o.op, 12), amount: amt(o)}); }
+                else if (pr === 'tap' && h >= 801993) {   // (TAP's own start; DMT from 817,705; NAT mints not counted from 885,588)
                   set(TF.tap);
                   const items = Array.isArray(o.items) ? o.items : [], isNat = x => /^(dmt-)?nat$/i.test(String(x || ''));
                   const tick = s(o.tick || (items[0] && items[0].tick), 16);
-                  if (/^dmt-/i.test(String(o.op || ''))) set(TF.dmt);
+                  if (/^dmt-/i.test(String(o.op || '')) && h >= 817705) set(TF.dmt);
                   if (isNat(tick) || items.some(x => x && isNat(x.tick))) r.nat = true;
+                  if (r.nat && /^dmt-mint$/i.test(String(o.op || '')) && h >= 885588) r.natNotCounted = 'from block 885,588 TAP does not count NAT mints: NAT comes from each block\'s reward';
                   if (!r.token) r.token = tok(r.nat ? 'TAP · NAT' : 'TAP', {tick, op: s(o.op, 16), amount: items.length > 1 ? null : items.length ? (items[0].amt != null ? s(items[0].amt, 40) : null) : amt(o)},
                     Object.assign(items.length > 1 ? {items: items.length} : {}, /^dmt-/i.test(String(o.op || '')) && /^\d{1,8}$/.test(String(o.blk || '')) ? {dmtBlock: +o.blk} : {}));
                 }
@@ -295,6 +362,79 @@
     return {hash: blockHash, txs: out, coinbase: {words: cb, pool}};
   }
 
+
+  /* ---------- bitmaps: which claim is the real one (bop's rules) ----------
+     A bitmap counts only when it is the first proper "N.bitmap" claim of block N: below 942,000 bop's on-chain index (OCI, read
+     from ordinals.com the way bop's own module reads it) names it, and ord must agree (the body exactly "N.bitmap", made in block N
+     or later). From 942,000 the claim made in block N itself is the first; a later one needs blocks N onward read (earlier(n, h)).
+     checkBitmaps(scan, height, get, earlier) gives {N: the real claim's inscription id, or null when this block's claim is not it};
+     get(path) fetches a path from ordinals.com as text; earlier(n, h), if given, says whether blocks n to h - 1 hold a claim of n.
+     A claim it could not answer is left out, so it does not count, and it is tried again next time (no limit on how many). */
+  var OCI_LIMIT = 942000, WALK_MAX = 6, CHECK_MS = 30000;
+  var OCI_PAGES = ['01bba6c58af39d7f199aa2bceeaaba1ba91b23d2663bc4ef079a4b5e442dbf74i0',
+    'bb01dfa977a5cd0ee6e900f1d1f896b5ec4b1e3c7b18f09c952f25af6591809fi0', 'bb02e94f3062facf6aa2e47eeed348d017fd31c97614170dddb58fc59da304efi0',
+    'bb037ec98e6700e8415f95d1f5ca1fe1ba23a3f0c5cb7284d877e9ac418d0d32i0', 'bb9438f4345f223c6f4f92adf6db12a82c45d1724019ecd7b6af4fcc3f5786cei0',
+    'bb0542d4606a9e7eb4f31051e91f7696040db06ca1383dff98505618c34d7df7i0', 'bb06a4dffba42b6b513ddee452b40a67688562be4a1345127e4d57269e6b2ab6i0',
+    'bb076934c1c22007b315dd1dc0f8c4a2f9d52f348320cfbadc7c0bd99eaa5e18i0', 'bb986a1208380ec7db8df55a01c88c73a581069a51b5a2eb2734b41ba10b65c2i0',
+    'b907b51a239e3a37f29f8222fb274f828c6ebf7b93ce501a55b7171daaa75758i0', 'b942b6477c7da9090edb9751429ba9c3ba01b39ab972fc888d481f528e3e03c3i0'];
+  // Bitmaps below 840,000 that are not the first inscription on their sat (from the OCI module, credited there to @_lefrog).
+  var OCI_SATIDX = { 92871: 1, 92970: 1, 123132: 1, 365518: 1, 700181: 1, 826151: 1, 827151: 1, 828151: 1, 828239: 1, 828661: 1,
+    829151: 1, 830151: 1, 832104: 2, 832249: 2, 832252: 2, 832385: 4, 833067: 1, 833101: 3, 833105: 4, 833109: 4, 833121: 8,
+    834030: 2, 834036: 2, 834051: 17, 834073: 4, 836151: 1, 837115: 2, 837120: 2, 837151: 1, 837183: 3, 837188: 2, 838058: 5,
+    838068: 2, 838076: 2, 838096: 1, 838151: 1, 838821: 1, 839151: 1, 839377: 1, 839378: 2, 839382: 2, 839397: 1 };
+  function ociPageNo(n) { return n >= 907000 ? 10 : n >= 840000 ? 9 : Math.floor(n / 100000); }
+  function ociPos(n) { return n >= 907000 ? n - 907000 : n >= 840000 ? n - 840000 : n % 100000; }
+  // Read one OCI page the way the OCI module itself does, quirks included.
+  function ociDecode(p, text) {
+    var d, full = [], sats = [];
+    function pi(v) { return parseInt(String(v)); }
+    function undelta(list, out) { list.forEach(function (s, i) { out.push(i ? pi(out[i - 1]) + pi(s) : pi(s)); }); }
+    if (p >= 9) { d = JSON.parse(text); undelta(d.deltaEncodedSats, sats); return { sats: sats, map: d.satIndexMap || {} }; }
+    if (p === 2 || p === 3) { d = JSON.parse('[' + text + ']'); d = [d.slice(0, 99999), d.slice(100000, 199999)]; }
+    else {
+      d = text;
+      try { d = JSON.parse(d.split('\\n  ').join('')); } catch (e) {}
+      if (typeof d === 'string') try { d = JSON.parse(d.split('  ').join('')); } catch (e) {}
+    }
+    undelta(d[0], full);
+    d[1].forEach(function (pos, i) { sats[pos] = full[i]; });
+    return { sats: sats, map: null };
+  }
+  var ociPages = {};
+  function ociFirst(n, get) {
+    var p = ociPageNo(n);
+    if (!ociPages[p]) ociPages[p] = get('/content/' + OCI_PAGES[p]).then(function (t) { return ociDecode(p, t); });
+    return ociPages[p].then(function (pg) {
+      var sat = pg.sats[ociPos(n)], at = n >= 840000 ? (pg.map[String(n)] || 0) : (OCI_SATIDX[n] || 0);
+      if (typeof sat !== 'number' || !(sat > 0) || sat % 1 || sat > 9007199254740991) return null;
+      return get('/r/sat/' + sat + '/at/' + at).then(function (t) { var j = JSON.parse(t); return (j && j.id) || null; });
+    });
+  }
+  async function checkBitmaps(scan, height, get, earlier) {
+    const out = {};
+    for (let round = 0; round < 4; round++) {   // (a check that gets no answer is asked again, three more times, a little later each time)
+      const seen = new Set(); let missing = false;
+      for (const r of scan.txs) {
+        const c = r && r.bitmapClaim; if (!c || seen.has(c.number)) continue; seen.add(c.number);
+        if (c.number in out) continue;
+        const id0 = r.txid + 'i' + c.index;
+        try {
+          if (c.number < OCI_LIMIT) {
+            const id = await ociFirst(c.number, get); if (!id) { missing = true; continue; }
+            if (id !== id0) { out[c.number] = null; continue; }
+            const o = JSON.parse(await get('/r/inscription/' + id)), body = String(c.number) + '.bitmap';
+            if (o && !o.delegate && (typeof o.content_length !== 'number' || o.content_length === body.length) && o.height >= c.number) out[c.number] = id; else out[c.number] = null;
+          } else if (c.number === height) out[c.number] = id0;
+          else if (typeof earlier === 'function') { const e = await earlier(c.number, height); if (e === false) out[c.number] = id0; else if (e === true) out[c.number] = null; else missing = true; }
+          else missing = true;
+        } catch (e) { missing = true; }
+      }
+      if (!missing || round === 3) break;
+      await new Promise(r => setTimeout(r, 3000 * (round + 1)));
+    }
+    return out;
+  }
+
   /* ---------- the manifest: the reading joined with the sites' lists, and every item checked ---------- */
   // ordpool.space's tag numbers are too big for JSON numbers: keep them as text before reading the list
   function readSummary(text) { return JSON.parse(String(text).replace(/"flags"\s*:\s*(\d+)/g, '"flags":"$1"')); }
@@ -308,7 +448,8 @@
        summary: [{txid, fee, vsize, value, flags}] from mempool.space or a copy (readSummary), summarySite
        tags: ordpool.space's summary (readSummary) or null, tagSite
        ordIds: ordinals.com's list of the inscriptions made in the block, or null, ordSite
-       runesHtml: ordinals.com's /block/<height> page when the block has etchings (optional) */
+       runesHtml: ordinals.com's /block/<height> page when the block has etchings (optional)
+       bitmapFirst: checkBitmaps()'s answer (optional: without it no bitmap counts, and each claim says it was not checked) */
   function buildManifest(o) {
     const S = o.scan, txs = S.txs, N = txs.length, sum = o.summary || [], tagMap = new Map(), idsBy = new Map();
     for (const x of o.tags || []) if (x && x.txid) tagMap.set(x.txid, x.flags);
@@ -320,7 +461,8 @@
     for (let i = 0; i < N; i++) {
       const r = txs[i], m = sum[i] || null, f = tagMap.get(r.txid);
       const t = {sc: r.sc, dele: r.dele, nat: r.nat, src20: r.src20, cat21: r.cat21, labitbu: r.labitbu, op: null};
-      if (f != null) try { t.op = BigInt(f); } catch (e) {}
+      if (f != null) try { t.op = BigInt(f); if (o.height < RUNES_START) t.op &= ~(1n << 51n); } catch (e) {}
+      if (r.bitmapClaim && o.bitmapFirst && o.bitmapFirst[r.bitmapClaim.number] === r.txid + 'i' + r.bitmapClaim.index) t.sc |= 1 << TF.bitmap;
       if (r.rune && r.rune.etched && made) { r.rune.made = made.has(r.rune.etched.replace(/•/g, '')); if (!r.rune.made) t.sc &= ~(1 << TF.etch); }
       const kinds = [], ours = [], theirs = [], diff = [];
       for (const [name, , mine, op2] of KINDS) {
@@ -342,7 +484,9 @@
       if (r.ins.length || ids.length) it.inscriptions = (r.ins.length ? r.ins : ids.map((_, j) => ({index: j}))).map(x => Object.assign({id: ids.includes(r.txid + 'i' + x.index) ? r.txid + 'i' + x.index : null}, x));
       if (r.token) it.token = r.token;
       if (r.rune) it.rune = r.rune;
-      if (r.bitmap != null) it.bitmap = r.bitmap;
+      if (r.bitmapClaim) { const c = r.bitmapClaim, f1 = o.bitmapFirst ? o.bitmapFirst[c.number] : undefined; if (sc(t, TF.bitmap)) it.bitmap = c.number;
+        else it.bitmapClaim = {says: c.number + '.bitmap', real: f1 === undefined ? null : false, why: f1 === undefined ? 'not checked here: a bitmap counts only when checked as the first claim of its block (checkBitmaps)' : 'not the first claim of block ' + c.number + ', so not a bitmap'}; }
+      if (r.natNotCounted) it.natNotCounted = r.natNotCounted;
       if (r.message) it.message = {untrusted: r.message};
       if (r.cat21) it.cat21 = true;
       it.checked = {id: idMatch, size: sizeMatch, kinds: kc, inscriptions: ic};
@@ -384,5 +528,5 @@
     return rows.join('\n') + '\n';
   }
 
-  return {VERSION, KIND_NAMES, KIND_GROUPS, sha256, hashHex, scanBlock, readSummary, buildManifest, toCSV, runesMade};
+  return {VERSION, KIND_NAMES, KIND_GROUPS, sha256, hashHex, scanBlock, readSummary, buildManifest, toCSV, runesMade, checkBitmaps};
 });

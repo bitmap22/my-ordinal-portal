@@ -56,7 +56,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.24.0';
+const VERSION = '1.25.0';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://ordportal.com/';
 const GAME = PORTAL + 'block-cube.html';
@@ -193,6 +193,9 @@ async function mpFetch(path, ms) {
 }
 const mpJson = async (path, ms) => { const {r, site} = await mpFetch(path, ms); return {j: await r.json(), site}; };
 // an ord call, from the first site that answers it
+// the Bitmap Record (every bitmap claim of a block from 942,000 on, kept by a GitHub job: .github/bitmap-record), read once and kept for 10 minutes
+let bmRecP = null, bmRecAt = 0;
+const bitmapRecord = () => { if (!bmRecP || Date.now() - bmRecAt > 600000) { bmRecAt = Date.now(); bmRecP = fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json', null, 60000).then(r => r.json()).catch(() => { bmRecP = null; return null; }); } return bmRecP; };
 async function ordFetch(path, ms, list) {
   let err = null;
   for (const b of list || ORD_R) { try { return {r: await fetchT(b + path, null, ms), site: b}; } catch (e) { err = e; if (b === (list || ORD_R)[0] && /http 404/.test(String(e))) break; } }
@@ -481,12 +484,14 @@ async function readManifest(h) {
   if (raw.status !== 'fulfilled') throw new Error('the block\'s bytes could not be had right now: try again in a moment');
   if (sum.status !== 'fulfilled') throw new Error('the block\'s transaction list could not be had right now: try again in a moment');
   const scan = BM.scanBlock(raw.value.bytes, h);
+  // bitmaps count only when checked as the first claim of their block (bop's index below 942,000; the Bitmap Record from 942,000)
+  let bitmapFirst = null; if (scan.txs.some(t => t.bitmapClaim)) try { const rec = await (bitmapRecord()); bitmapFirst = await BM.checkBitmaps(scan, h, async p => (await ordFetch(p, 30000, [ORD_LIST])).r.text(), async (n, hh) => rec && rec.upTo >= hh - 1 ? (rec.claims[n] || []).some(c => c.block < hh) : undefined); } catch (e) {}
   let runesHtml = null;
   if (scan.txs.some(t => t.rune && t.rune.etched)) try { runesHtml = await (await ordFetch('/block/' + h, 45000, [ORD_LIST])).r.text(); } catch (e) {}
   const m = BM.buildManifest({height: h, time: meta.status === 'fulfilled' ? meta.value.j.timestamp : null, scan, rawSite: raw.value.site,
     hash, hashSite: H.site, secondHash: second.status === 'fulfilled' ? second.value.hash : null, secondSite: second.status === 'fulfilled' ? second.value.site : null,
     summary: sum.value.list, summarySite: sum.value.site, tags: tags.status === 'fulfilled' ? tags.value : null, tagSite: 'https://ordpool.space',
-    ordIds: ids.status === 'fulfilled' ? ids.value : null, ordSite: ORD_LIST, runesHtml});
+    ordIds: ids.status === 'fulfilled' ? ids.value : null, ordSite: ORD_LIST, runesHtml, bitmapFirst});
   manifests.set(h, {m, t: Date.now()}); while (manifests.size > 4) manifests.delete(manifests.keys().next().value);
   return m;
 }
