@@ -163,7 +163,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 #fs i{font-style:normal;min-width:20px;padding:3px 3px;text-align:center;color:#fff;background:var(--c);text-shadow:0 0 3px #000,0 1px 1px #000;border-radius:2px}
 #fs.off{display:none}
 #tools{position:fixed;top:20px;right:var(--tr,96px);display:flex;gap:8px}
-#tset{position:fixed;z-index:47;width:290px;max-width:calc(100vw - 16px);padding:12px 14px;border:1px solid rgba(247,147,26,.5);border-radius:12px;background:rgba(10,8,14,.97);box-shadow:0 10px 30px rgba(0,0,0,.6);color:#f0e6d6;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}#tset[hidden]{display:none}#tset b{display:block;color:#9a8a74;font-size:11px;letter-spacing:.14em;margin-bottom:8px}#tset .srow{display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer}#tset input{width:18px;height:18px;accent-color:#f7931a}#tset p{margin:8px 0 6px;color:#cdbca3}#tset .sm{font-size:11.5px;color:#9a8a74}#tset .cpts{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px}#tset .cpts i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+#tset{position:fixed;z-index:47;width:290px;max-width:calc(100vw - 16px);padding:12px 14px;border:1px solid rgba(247,147,26,.5);border-radius:12px;background:rgba(10,8,14,.97);box-shadow:0 10px 30px rgba(0,0,0,.6);color:#f0e6d6;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}#tset[hidden]{display:none}#tset .b2{margin-top:10px}#tset b{display:block;color:#9a8a74;font-size:11px;letter-spacing:.14em;margin-bottom:8px}#tset .srow{display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer}#tset input{width:18px;height:18px;accent-color:#f7931a}#tset p{margin:8px 0 6px;color:#cdbca3}#tset .sm{font-size:11.5px;color:#9a8a74}#tset .pats{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 8px}#tset .pats button{font:inherit;font-size:12px;padding:4px 8px;border-radius:8px;border:1px solid #6b5432;background:transparent;color:#f0e6d6;cursor:pointer}#tset .pats button[aria-pressed=true]{border-color:#f7931a;background:rgba(247,147,26,.25)}#tset .cpts{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px}#tset .cpts i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
 .tl{width:30px;height:30px;padding:0;border-radius:15px;border:1px solid rgba(247,147,26,.28);background:rgba(18,11,5,.62);color:#ffb04a;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s,color .2s,transform .15s}
 .tl:hover{border-color:rgba(247,147,26,.7)}.tl:active{transform:scale(.92)}
 .tl svg{width:15px;height:15px}
@@ -989,7 +989,7 @@ const SF = S.toFixed(1), LAYER = (S / 8).toFixed(3), LIFT = (S * 0.07).toFixed(3
 const FS_VS = V + `out vec2 vU;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);vU=p;gl_Position=vec4(p*2.-1.,0.,1.);}`;
 // background: near-black with a slow drifting orange glow, warm light behind the cube, a few stars (decoration only)
 // and northern lights: curtains of light that ripple slowly overhead, their colours set by how hot the block is (icy green to plasma pink)
-const bgP = prog(FS_VS, V + `in vec2 vU;uniform vec2 uR;uniform float uNow,uD,uSky,uHt,uGold;uniform vec3 uF,uX,uY;out vec4 o;
+const bgP = prog(FS_VS, V + `in vec2 vU;uniform vec2 uR;uniform float uNow,uD,uSky,uHt,uGold,uSkyM;uniform vec3 uF,uX,uY;out vec4 o;
 float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float n1(float x){float i=floor(x),f=fract(x);return mix(fract(sin(i*127.1)*43758.5453),fract(sin(i*127.1+127.1)*43758.5453),f*f*(3.-2.*f));}
 const vec3 AL[7]=vec3[7](vec3(.12,1.,.45),vec3(.1,.8,1.),vec3(.45,1.,.2),vec3(1.,.7,.2),vec3(1.,.4,.1),vec3(1.,.2,.1),vec3(1.,.3,.9));
@@ -1014,15 +1014,20 @@ if(uSky>.5){   // in the rooms: the sky stays where it is in the world as you lo
  vec2 s=vU*2.-1.;vec3 d=normalize(uF+s.x*uX+s.y*uY);float el=max(d.y,0.);
  q=d.xz/(el+.22)*.42;r=length(q)*.75;gs=d.xz/(el+.22)*34.;ad=d;}
 vec3 c=vec3(.016,.012,.016);
+vec2 id=floor(gs);float k=h(id);
+if(uSkyM<.5){   // the moving sky: glowing clouds, twinkling stars and the fee-coloured lights
 float f=fbm(q*1.5+vec2(t,-t*.6)),g=fbm(q*3.+vec2(-t*1.3,t*.5)+f*1.5);
 c+=vec3(.6,.22,.03)*pow(f*g,2.2)*1.6;
 c+=vec3(.3,.05,.12)*pow(g,4.)*.5;
 c+=vec3(1.,.48,.08)*exp(-r*r*5.)*.14;
 c*=1.-.5*smoothstep(.45,1.35,r);
-vec2 id=floor(gs);float k=h(id);
 if(k>.978){vec2 fc=fract(gs)-.5+(vec2(h(id+3.),h(id+7.))-.5)*.6;float tw=.5+.5*sin(uNow*(1.+k*2.)+k*80.);
 c+=vec3(1.,.9,.75)*smoothstep(.08,0.,length(fc))*tw*.7;}
-c+=aur(ad,uNow);
+c+=aur(ad,uNow);}
+else if(uSkyM<2.5){   // still: 1 a still starry night; 2 dusk, its glow the colour of the block's fees
+ if(uSkyM>1.5){float kk=clamp(uHt,0.,6.);int i0=int(kk);vec3 hz=mix(AL[i0],AL[min(i0+1,6)],fract(kk));float el=clamp(ad.y,0.,1.);
+  c=mix(hz*.32+vec3(.05,.03,.06),vec3(.012,.012,.03),smoothstep(0.,.55,el));}
+ if(k>.978){vec2 fc=fract(gs)-.5+(vec2(h(id+3.),h(id+7.))-.5)*.6;c+=vec3(1.,.9,.75)*smoothstep(.08,0.,length(fc))*(uSkyM>1.5?.35:.6);}}
 if(uGold>.01){   // over block 0: the first star, bright, with long glints
  vec2 sp=q-vec2(0.,.4);
  if(uSky>.5){vec3 S=normalize(vec3(.12,1.,.22)),X=normalize(cross(S,vec3(0.,0.,1.))),Y=cross(X,S);sp=dot(ad,S)>0.?vec2(dot(ad,X),dot(ad,Y)):vec2(9.);}
@@ -1115,7 +1120,7 @@ o=vec4(col*(1.-shd*.5),ln*fade*.75+foot*.12+ring*.9);}`);
 // floor seasons: the ground under the cube follows the fee heat of the block on screen
 // (uHeat 0..6 = ice, water, grass, desert, fire, lava storm, plasma; between two whole numbers it blends)
 const mtP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;uniform float uFS;uniform vec2 uFO;out vec2 vU;void main(){vec3 q=vec3(aP.x*max(uFS,1.)+uFO.x,0.,aP.z*max(uFS,1.)+uFO.y);vU=q.xz;gl_Position=uVP*vec4(q,1.);}`,
-  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm,uCalm;uniform vec2 uFO;out vec4 o;float G;
+  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm,uCalm,uPat;uniform vec2 uFO;out vec4 o;float G;
 float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h1(i),h1(i+vec2(1.,0.)),f.x),mix(h1(i+vec2(0.,1.)),h1(i+1.),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*ns(p);p=p*2.03+vec2(3.1,1.7);a*=.5;}return v;}
@@ -1140,7 +1145,24 @@ vec4 plasma(vec2 p,float t){float v=sin(p.x*1.25+t)+sin(p.y*1.05-t*1.3)+sin((p.x
 vec3 c=.5+.5*cos(vec3(0.,2.1,4.2)+v*1.15+t*.35);c=mix(c,vec3(.78,.22,1.),.35);float ar=pow(1.-abs(sin(v*5.+t*2.6)),18.);
 c=c*(.55+.35*abs(sin(v*3.14)))+vec3(.95,.85,1.)*ar*1.2;G=.45+ar*.8;return vec4(c,.78);}
 vec3 CPT(int k){if(k<=0)return vec3(.56,.70,.79);if(k==1)return vec3(.18,.44,.56);if(k==2)return vec3(.37,.54,.31);if(k==3)return vec3(.77,.60,.35);if(k==4)return vec3(.71,.33,.17);if(k==5)return vec3(.48,.14,.21);return vec3(.42,.25,.63);}
-vec4 carpet(int k,vec2 p){vec3 c=CPT(k);float wv=.94+.06*sin(p.x*95.)*sin(p.y*95.),fb=.95+.07*h1(floor(p*40.)),st=.92+.08*smoothstep(.45,.5,abs(fract(p.x*.35)-.5));return vec4(c*wv*fb*st,.92);}
+float sdB(vec2 q,vec2 b){vec2 d=abs(q)-b;return length(max(d,0.))+min(max(d.x,d.y),0.);}
+float bowl(vec2 q,vec2 c,float r,float w){vec2 a=q-c;return max(abs(length(a)-r)-w,-a.x);}
+float glyph(vec2 q,int g){float d=sdB(q-vec2(-.13,0.),vec2(.04,.3));
+if(g==6){d=min(d,bowl(q,vec2(-.05,.15),.13,.04));d=min(d,bowl(q,vec2(-.05,-.14),.15,.04));d=min(d,sdB(q-vec2(-.09,.26),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.09,.01),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.09,-.26),vec2(.05,.04)));
+d=min(d,sdB(q-vec2(-.1,.34),vec2(.02,.06)));d=min(d,sdB(q-vec2(-.02,.34),vec2(.02,.06)));d=min(d,sdB(q-vec2(-.1,-.34),vec2(.02,.06)));d=min(d,sdB(q-vec2(-.02,-.34),vec2(.02,.06)));}
+else{d=min(d,bowl(q,vec2(-.05,0.),.27,.04));d=min(d,sdB(q-vec2(-.09,.27),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.09,-.27),vec2(.05,.04)));d=min(d,sdB(q-vec2(-.15,0.),vec2(.09,.03)));}
+return d;}
+float paw(vec2 q){float d=length((q-vec2(0.,-.08))/vec2(.17,.13))-1.;d*=.13;d=min(d,length(q-vec2(-.18,.1))-.065);d=min(d,length(q-vec2(-.065,.21))-.065);d=min(d,length(q-vec2(.065,.21))-.065);d=min(d,length(q-vec2(.18,.1))-.065);return d;}
+float patM(int t,vec2 p){
+if(t==1)return step(.5,fract(p.x*.8));
+if(t==2)return mod(floor(p.x*1.4)+floor(p.y*1.4),2.);
+if(t==3){vec2 q=abs(fract(p*.9)-.5);return smoothstep(.035,0.,abs(q.x+q.y-.38));}
+if(t==4){vec2 g=p*vec2(2.,1.2);float cx=floor(g.x);float d=fract(g.y+(mod(cx,2.)<1.?fract(g.x):-fract(g.x))*.9);return step(.5,fract(d*2.));}
+if(t==5)return smoothstep(.42,.5,fract(p.y*1.2+.18*sin(p.x*2.6)))-smoothstep(.72,.8,fract(p.y*1.2+.18*sin(p.x*2.6)));
+if(t>=6){vec2 c=floor(p*.9);vec2 q=fract(p*.9)-.5;if(mod(c.x+c.y,2.)>.5)return 0.;float d=t==8?paw(q):glyph(q*1.15,t);return smoothstep(.012,-.012,d);}
+return 0.;}
+vec4 carpet(int k,vec2 p){vec3 c=CPT(k);float wv=.94+.06*sin(p.x*95.)*sin(p.y*95.),fb=.95+.07*h1(floor(p*40.));int t=int(uPat+.5);
+float st=t==0?.92+.08*smoothstep(.45,.5,abs(fract(p.x*.35)-.5)):1.;float m=patM(t,p);vec3 alt=t>=6?mix(c,vec3(.96,.9,.78),.55):c*.72;return vec4(mix(c,alt,m)*wv*fb*st,.92);}
 vec4 mat(int k,vec2 p,float t){if(uCalm>.5)return carpet(k,p);if(k<=0)return ice(p,t);if(k==1)return water(p,t);if(k==2)return grass(p,t);if(k==3)return desert(p,t);if(k==4)return fire(p,t);if(k==5)return lava(p,t);return plasma(p,t);}
 void main(){vec2 p=vU/${SF}*4.*(uRm>.5?2.5:1.);float t=uNow,r=length(vU)/${SF},fade=uRm>.5?1.:exp(-r*r*.75)*(1.-smoothstep(1.15,1.85,r));
 float hh=clamp(uHeat,0.,6.);int k=int(floor(hh));float b=k<6?smoothstep(.3,.7,fract(hh)):0.;
@@ -4319,17 +4341,27 @@ $fs.innerHTML = '<span class="fl2">FEE sat/vB</span>' + [['<1', 0.5], ['1', 1], 
 // (22 Nov 2026) settings (where the camera was): the calm carpet floor. The floor becomes a still woven carpet whose colour
 // still shows how much the block paid (the same bands as the moving floors), with no animation, so it is calmer and lighter on
 // the device. Kept in this browser only.
-const SET = {calm: false};
-try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; } catch (e) {}
+const SET = {calm: false, pat: 0, sky: 0};
+const SKIES = ['moving lights', 'still stars', 'dusk', 'plain dark'];   // (the moving lights' and the dusk's colours show the fees too)
+const PATS = ['plain', 'stripes', 'checks', 'diamonds', 'herringbone', 'waves', '₿ symbols', 'Ð symbols', 'paw prints'];   // (all drawn here, by this page's own code)
+try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; const n = +localStorage.getItem('blockhall.carpet'); if (n >= 0 && n < PATS.length) SET.pat = n; const k = +localStorage.getItem('blockhall.sky'); if (k >= 0 && k < SKIES.length) SET.sky = k; } catch (e) {}
 const CARPETS = [['ice', '#8fb3c9'], ['water', '#2f6f8f'], ['grass', '#5f8a4e'], ['desert', '#c49a5a'], ['fire', '#b5532b'], ['lava storm', '#7a2335'], ['plasma', '#6a3fa0']];
 const $tset = document.createElement('div'); $tset.id = 'tset'; $tset.hidden = true; $tset.setAttribute('role', 'dialog'); $tset.setAttribute('aria-label', 'Settings'); document.body.appendChild($tset);
 function setDraw() {
   $tset.innerHTML = '<b>SETTINGS</b><label class="srow"><input type="checkbox" id="setCalm"> <span>Calm carpet floor</span></label>'
-    + '<p>The floor becomes a still carpet, with no moving water, fire or plasma: calmer, and lighter on your device. Its colour still shows how much the block paid:</p>'
+    + '<p>The floor becomes a still carpet, with no moving water, fire or plasma: calmer, and lighter on your device. Pick its pattern; its colour still shows how much the block paid:</p>'
+    + '<div class="pats" role="group" aria-label="Carpet pattern">' + PATS.map((n, i) => '<button type="button" data-pat="' + i + '" aria-pressed="' + (SET.pat === i) + '">' + n + '</button>').join('') + '</div>'
     + '<div class="cpts">' + CARPETS.map(([n, c], i) => '<span><i style="background:' + c + '"></i>' + n.replace('lava storm', 'lava') + '</span>').join('') + '</div>'
+    + '<b class="b2">SKY</b><div class="pats" role="group" aria-label="Sky">' + SKIES.map((n, i) => '<button type="button" data-sky="' + i + '" aria-pressed="' + (SET.sky === i) + '">' + n + '</button>').join('') + '</div>'
+    + '<p class="sm">The moving lights and the dusk glow are the colour of the block\'s fees too. Only the moving lights move.</p>'
     + '<p class="sm">1 sat/vB and under is ice; then 1-2 water, 2-5 grass, 5-20 desert, 20-100 fire, 100-500 lava, 500 and up plasma.</p>';
   const c = $tset.querySelector('#setCalm'); c.checked = SET.calm;
   c.onchange = () => { SET.calm = c.checked; try { localStorage.setItem('blockhall.calm', SET.calm ? '1' : '0'); } catch (e) {} };
+  for (const b of $tset.querySelectorAll('[data-pat]')) b.onclick = () => { SET.pat = +b.dataset.pat; SET.calm = true; c.checked = true;   // (picking a pattern lays the carpet)
+    try { localStorage.setItem('blockhall.carpet', String(SET.pat)); localStorage.setItem('blockhall.calm', '1'); } catch (e) {}
+    for (const x of $tset.querySelectorAll('[data-pat]')) x.setAttribute('aria-pressed', String(x === b)); };
+  for (const b of $tset.querySelectorAll('[data-sky]')) b.onclick = () => { SET.sky = +b.dataset.sky; try { localStorage.setItem('blockhall.sky', String(SET.sky)); } catch (e) {}
+    for (const x of $tset.querySelectorAll('[data-sky]')) x.setAttribute('aria-pressed', String(x === b)); };
 }
 function setOpen(on) { if (on) setDraw(); $tset.hidden = !on; $ts.setAttribute('aria-expanded', on ? 'true' : 'false'); $ts.classList.toggle('on', on);
   if (on) { if (document.pointerLockElement) document.exitPointerLock(); const r = $ts.getBoundingClientRect(); $tset.style.top = Math.round(r.bottom + 8) + 'px'; $tset.style.left = Math.max(8, Math.min(innerWidth - 300, Math.round(r.right - 280))) + 'px'; if (r.top > innerHeight / 2) $tset.style.top = Math.max(8, Math.round(r.top - $tset.offsetHeight - 8)) + 'px'; } }
@@ -5051,6 +5083,7 @@ function lifeShadows(VP, eye, tn, LW) {
   });
 }
 function lifeDust(VP, tn, LW, H) {
+  if (SET.calm) return;   // (22 Nov 2026: the calm carpet has no snow, sparks or embers over it)
   let set = false;
   LW.forEach((w, k) => {
     if (w < 0.01) return;
@@ -5126,7 +5159,7 @@ function drawFrame() {
   const si = sel ? inst.indexOf(sel) : -1;
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
-  gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
+  gl.useProgram(bgP.p); gl.uniform1f(bgP.u.uSkyM, SET.sky); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
   gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3);
   if (sprites.length) {
     const f = nrm(sub([0, ty, 0], eye)), rt3 = nrm(crs(f, [0, 1, 0])), up3 = crs(rt3, f), sd = spriteData(tn, VP, rt3, up3, uiRects().concat([cubeR]));
@@ -5162,7 +5195,7 @@ function drawFrame() {
     const fa = tn - flashS; flash = storm * Math.exp(-fa * 6) * (fa < 0.25 ? 0.7 + 0.3 * Math.sin(fa * 90) : 1);
   }
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
-  gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, SET.calm ? 0 : flash); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0);
+  gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, SET.calm ? 0 : flash); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); gl.uniform1f(mtP.u.uPat, SET.pat);
   gl.bindVertexArray(flVAO);
   gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(false, false, false, true); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 1); gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -5959,7 +5992,7 @@ function roomFrame(W, H, tn, dpr) {
   };
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, W, H);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
-  gl.useProgram(bgP.p); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
+  gl.useProgram(bgP.p); gl.uniform1f(bgP.u.uSkyM, SET.sky); gl.uniform2f(bgP.u.uR, W, H); gl.uniform1f(bgP.u.uNow, tn); gl.uniform1f(bgP.u.uD, dpr); gl.uniform1f(bgP.u.uHt, heatS); goldS += ((room ? room.at && room.at.h === 0 : cur && cur.height === 0) ? 1 - goldS : -goldS) * .04; gl.uniform1f(bgP.u.uGold, goldS);
   { const ty = Math.tan(fov / 2), rx = [Math.cos(p.yaw), 0, -Math.sin(p.yaw)], up = crs(rx, dir);   // the sky: which way each pixel looks
     gl.uniform1f(bgP.u.uSky, 1); gl.uniform3fv(bgP.u.uF, dir); gl.uniform3fv(bgP.u.uX, rx.map(v => v * ty * asp)); gl.uniform3fv(bgP.u.uY, up.map(v => v * ty)); }
   gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.uniform1f(bgP.u.uSky, 0);
@@ -5976,7 +6009,7 @@ function roomFrame(W, H, tn, dpr) {
   if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, ft, LW, true));
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
-  gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0);
+  gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); gl.uniform1f(mtP.u.uPat, SET.pat);
   gl.uniform1f(mtP.u.uFS, 7); gl.uniform2f(mtP.u.uFO, p.x, p.z); gl.uniform1f(mtP.u.uRm, 1);
   gl.bindVertexArray(flVAO);
   gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
