@@ -2621,9 +2621,25 @@ function paintMark(x, k, fg, s) {
     x.strokeStyle = '#ffffff'; x.lineWidth = 3; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke();
     x.fillStyle = fg; for (const [a, b] of pts) { x.beginPath(); x.arc(a, b, 2.6, 0, 7); x.fill(); }
   } else if (k === 'cp') {
-    const bands = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc6a', '#3a86ff', '#9d4edd'];
-    x.lineWidth = 3.4; x.lineCap = 'butt';
-    bands.forEach((c, i) => { x.strokeStyle = c; x.beginPath(); x.arc(32, 50, 23 - i * 3.4, Math.PI, 2 * Math.PI); x.stroke(); });
+    // (22 Nov 2026) Counterparty: a colourful coin, its edge in six colours (reeded), a deep violet face with CP on it. Drawn here
+    // (not Counterparty's own logo)
+    const bands = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc6a', '#3a86ff', '#b25cff'], R = 22, sb = x.shadowBlur, sc = x.shadowColor;
+    x.save(); x.shadowBlur = 0;
+    x.fillStyle = 'rgba(0,0,0,.45)'; x.beginPath(); x.ellipse(32, 34.2, R + .6, R + .2, 0, 0, 7); x.fill();
+    bands.forEach((c, i) => { const a0 = -Math.PI / 2 + i * Math.PI / 3 - Math.PI / 6; x.fillStyle = c; x.beginPath(); x.moveTo(32, 32); x.arc(32, 32, R, a0, a0 + Math.PI / 3); x.closePath(); x.fill(); });
+    x.strokeStyle = 'rgba(0,0,0,.28)'; x.lineWidth = .5;
+    for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2; x.beginPath(); x.moveTo(32 + Math.cos(a) * R * .8, 32 + Math.sin(a) * R * .8); x.lineTo(32 + Math.cos(a) * R, 32 + Math.sin(a) * R); x.stroke(); }
+    x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1.1; x.beginPath(); x.arc(32, 32, R - .4, 0, 7); x.stroke();
+    const g = x.createRadialGradient(27, 26, 1, 32, 32, R * .78); g.addColorStop(0, '#4a3878'); g.addColorStop(1, '#140d26');
+    x.fillStyle = g; x.beginPath(); x.arc(32, 32, R * .76, 0, 7); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = .9; x.beginPath(); x.arc(32, 32, R * .76, 0, 7); x.stroke();
+    x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = .6; x.beginPath(); x.arc(32, 32, R * .66, 0, 7); x.stroke();
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 15px ui-monospace,Menlo,Consolas,monospace';
+    x.fillStyle = 'rgba(0,0,0,.5)'; x.fillText('CP', 32.6, 33.4);
+    const tg = x.createLinearGradient(0, 25, 0, 40); tg.addColorStop(0, '#ffffff'); tg.addColorStop(1, '#ffd98a'); x.fillStyle = tg; x.fillText('CP', 32, 32.6);
+    const sh = x.createLinearGradient(14, 12, 38, 38); sh.addColorStop(0, 'rgba(255,255,255,.38)'); sh.addColorStop(.45, 'rgba(255,255,255,.05)'); sh.addColorStop(.5, 'rgba(255,255,255,0)');
+    x.fillStyle = sh; x.beginPath(); x.arc(32, 32, R, 0, 7); x.fill();
+    x.restore(); x.shadowBlur = sb; x.shadowColor = sc;
   }
 }
 function fitFont(x, txt, max, min, w, weight) {
@@ -2669,12 +2685,14 @@ function paintWord(w, n) {
     }
   } else if (small) {   // small tile: only the main word or the logo, as big as it fits
     x.strokeStyle = fg; x.lineWidth = 4; x.strokeRect(2, 2, 60, 60);
-    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg, w.s); }
+    if (w.k === 'cp') paintMark(x, w.k, fg, w.s);
+    else if (w.k === 'rune' || w.k === 'alk') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg, w.s); }
     else say(w.a, 33, 30, 9, 800, '#ffffff');
   } else {
     x.strokeStyle = fg; x.lineWidth = 2; x.strokeRect(2, 2, 60, 60);
     if (label) { x.fillStyle = fg; fitFont(x, label, 10, 5, 56, 700); x.fillText(label, 32, 11); }
-    if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') paintMark(x, w.k, fg, w.s);
+    if (w.k === 'cp') { x.save(); x.translate(32, 33.5); x.scale(.74, .74); x.translate(-32, -32); paintMark(x, w.k, fg, w.s); x.restore(); }   // (the coin, a little smaller, under the label)
+    else if (w.k === 'rune' || w.k === 'alk') paintMark(x, w.k, fg, w.s);
     else say(w.a, label ? (w.x ? 28 : 31) : 28, w.x ? 16 : 24, 8, 800, '#ffffff');
     if (w.x) { x.fillStyle = fg; fitFont(x, w.x, 6.5, 4, 56, 700); x.fillText(w.x, 32, 41.5, 58); }   // (the dune message in the same transaction)
     if (w.b) { x.fillStyle = fg; fitFont(x, w.b, 11, 6, 56, 600); x.fillText(w.b, 32, 54, 58); }
@@ -2709,7 +2727,7 @@ function paintRich(w, n, cv, x, bg, fg, label) {
     x.fillStyle = '#4a3002'; fitFont(x, main, 11, 6, 24, 800); x.fillText(main, c[0], c[1] + .5);
   } else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') {
     const sc = main ? .64 : .82, cy = main ? 26 : 31;
-    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, w.k === 'cp' ? -40 : -31); glow(() => paintMark(x, w.k, fg, w.s), 4); x.restore();
+    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, -31); glow(() => paintMark(x, w.k, fg, w.s), 4); x.restore();
     if (main) { x.fillStyle = '#ffffff'; fitFont(x, main, 7, 3.4, 56, 800); glow(() => x.fillText(main, 32, 44.5, 58), 3); }
   } else if (main) {
     fitFont(x, main, 22, 6, 54, 800); glow(() => { x.fillStyle = '#ffffff'; x.fillText(main, 32, 31.5, 56); }, 6);
