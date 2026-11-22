@@ -26,7 +26,7 @@
 <meta name="twitter:site" content="@BitmapPlotz">
 <meta name="twitter:creator" content="@BitmapPlotz">
 <meta name="author" content="bitmap22">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Dataset", "name": "Agent Blockhall Blockspace Share", "url": "https://ordportal.com/blockspace-share.html", "description": "How Bitcoin's blockspace is shared between the kinds of use (Alkanes, runes, BRC-20, Stamps and Counterparty, other tokens, inscriptions, messages, coinbase, consolidations, batch payouts, payments), day by day from 1 October 2026: the bytes and the number of transactions of each kind, read from every block's own bytes, each transaction counted once.", "creator": {"@type": "Person", "name": "bitmap22", "url": "https://x.com/BitmapPlotz"}, "isAccessibleForFree": true, "license": "https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE", "temporalCoverage": "2026-10-01/..", "distribution": [{"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/space/index.json"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Dataset", "name": "Agent Blockhall Blockspace Share", "url": "https://ordportal.com/blockspace-share.html", "description": "How Bitcoin's blockspace is shared between the kinds of use (Alkanes, runes, BRC-20, SRC-20, Stamps, Counterparty, CRC-20, DMT mints, NAT, TAP, BRC-420, Atomicals, CAT-21, Labitbu, inscriptions, messages, coinbase, consolidations, batch payouts, and payments split by the coins they spend: multisig, taproot, segwit, legacy, other), day by day from 1 October 2026: the bytes and the number of transactions of each kind, read from every block's own bytes, each transaction counted once.", "creator": {"@type": "Person", "name": "bitmap22", "url": "https://x.com/BitmapPlotz"}, "isAccessibleForFree": true, "license": "https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE", "temporalCoverage": "2026-10-01/..", "distribution": [{"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/space/index.json"}]}</script>
 <style>
   :root { --orange: #f7931a; --blue: #00d4ff; --green: #3ddc84; --bg: #030303; --panel: rgba(12, 12, 12, .9); --surface: #0c0c0c; --line: rgba(247, 147, 26, .45); --dim: #a9a9a9; --muted: #7d7d7d; --grid: #262626; }
   * { box-sizing: border-box; }
@@ -70,6 +70,8 @@
   .keylist .sw { width: 12px; height: 12px; border-radius: 3px; }
   .keylist .pc { color: #fff; text-align: right; min-width: 58px; } .keylist .by2 { color: var(--dim); text-align: right; min-width: 78px; font-size: 13px; }
   .keylist li.off { color: var(--muted); } .keylist li.off .sw { opacity: .25; }
+  .keylist .openrest { font: inherit; font-size: 14px; margin: 0; padding: 2px 8px; border: 1px dashed var(--orange); border-radius: 8px; background: transparent; color: #fff; text-align: left; justify-self: start; }
+  #zoomBar:empty { display: none; } #zoomBar button { font-size: 14px; padding: 6px 12px; }
   .note { color: var(--orange); font-size: 13px; margin-top: 8px; }
   .chartwrap { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
   .chartwrap svg { display: block; }
@@ -138,6 +140,7 @@
     <div class="panel">
       <h2 id="splitTitle">The split</h2>
       <div class="pick"><label for="at" class="small">Showing</label><select id="at"></select></div>
+      <div class="pick" id="zoomBar" aria-live="polite"></div>
       <div class="split">
         <div class="donutwrap"><svg id="donut" viewBox="0 0 240 240" role="img" aria-labelledby="donutDesc"><desc id="donutDesc">Pie chart of the split</desc></svg><div class="centre"><b id="cBig">–</b><span id="cSmall"></span></div></div>
         <div><ul class="keylist" id="keylist"></ul><div class="note" id="splitNote"></div><div class="small" id="splitLinks" style="margin-top:10px"></div></div>
@@ -215,24 +218,41 @@
   const pct = v => v == null ? '–' : v > 0 && v < 0.1 ? '<0.1%' : v.toFixed(1) + '%';
   const fmtS = n => n == null ? '–' : n === 0 ? '0 BTC' : n < 1e5 ? '<0.001 BTC' : (n / 1e8).toFixed(3) + ' BTC';   // (one unit everywhere; the table has the exact sats)
   const r3 = v => v == null ? null : +v.toFixed(3);
-  // the chart's kinds: fixed colours that follow the kind (never its rank), stacked in this order from the bottom (money moves, then data)
-  const GROUPS = [
-    {key: 'payments', kinds: ['payments'], colour: '#3987e5'},
-    {key: 'consolidations', kinds: ['consolidations'], colour: '#d95926'},
-    {key: 'batch payouts', kinds: ['batch payouts'], colour: '#199e70'},
-    {key: 'messages', kinds: ['messages'], colour: '#c98500'},
-    {key: 'inscriptions', kinds: ['inscriptions'], colour: '#d55181'},
-    {key: 'BRC-20', kinds: ['BRC-20'], colour: '#0ca30c'},
-    {key: 'runes', kinds: ['runes'], colour: '#9085e9'},
-    {key: 'Alkanes', kinds: ['Alkanes'], colour: '#e66767'},
-    {key: 'everything else', kinds: ['Stamps & Counterparty', 'other tokens', 'coinbase', 'block header'], colour: '#77746c'}];
-  const GROUP_OF = {}; for (const g of GROUPS) for (const k of g.kinds) GROUP_OF[k] = g.key;
-  const S = {index: null, by: 'day', show: 'space', list: [], at: null, ticked: new Set(GROUPS.map(g => g.key)), byAgent: false};
+  // (22 Nov 2026) every kind is its own slice. A pie shows each kind with 10% or more of it; the kinds under 10% share one slice,
+  // "smaller kinds", and clicking it opens a pie of just those, with the same rule, so even a kind of 0.01% can be seen. The
+  // bars and lines follow the pie that is open. Colours come from one checked set of eight, given out in the kinds' own order
+  // within each pie (so the pie, the bars, the lines and the list beside them always match); "smaller kinds" is grey.
+  let KINDS = SP.NAMES; const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c', '#9085e9', '#e66767'], REST = '#77746c', MAXN = 8, CUT = 10;
+  const SMALL = 'smaller kinds';
+  const S = {index: null, by: 'day', show: 'space', list: [], at: null, ticked: new Set(KINDS), byAgent: false, zoom: []};
   // space or fees: what the charts and shares are of
   const FEES = () => S.show === 'fees';
   const valOf = P => (FEES() ? P.sats : P.bytes) || {}, totOf = P => FEES() ? P.fees : P.size;
   const wholeOf = P => FEES() ? P.feesWhole : P.whole, noteOf = P => FEES() ? P.feeNote : P.note;
   const fmtV = n => FEES() ? fmtS(n) : fmtB(n);
+  // the kinds the open pie is made of: those ticked, or the smaller kinds it was opened from
+  const levelKinds = () => S.zoom.length ? S.zoom[S.zoom.length - 1] : KINDS.filter(k => S.ticked.has(k));
+  // the open pie for a period: its named slices (each 10% or more of it, at most eight) and the smaller kinds folded into one
+  function view(P) {
+    const v = valOf(P), K = levelKinds(), tot = K.reduce((n, k) => n + (v[k] || 0), 0), share = k => tot ? 100 * (v[k] || 0) / tot : 0;
+    const has = K.filter(k => (v[k] || 0) > 0), bySize = has.slice().sort((a, b) => share(b) - share(a));
+    let named = bySize.filter(k => share(k) >= CUT).slice(0, MAXN);
+    if (!named.length) named = bySize.slice(0, Math.min(MAXN - 1, bySize.length));   // (nothing of 10% here: the biggest, so a click always opens more)
+    let rest = has.filter(k => !named.includes(k));
+    if (rest.length === 1 && named.length < MAXN) { named.push(rest[0]); rest = []; }
+    named = K.filter(k => named.includes(k));   // (the kinds' own order, so a kind keeps its place)
+    const colour = {}; named.forEach((k, i) => colour[k] = SLOTS[i % SLOTS.length]);
+    const restVal = rest.reduce((n, k) => n + (v[k] || 0), 0);
+    return {K, tot, all: totOf(P), named, rest, restVal, colour, share: Object.fromEntries(K.map(k => [k, tot ? share(k) : null])), restShare: tot ? 100 * restVal / tot : null};
+  }
+  // the series the bars and lines show: the open pie's named kinds and its smaller kinds, for every period
+  function series() { const P = S.list.find(x => x.period === S.at); const V = P ? view(P) : null; if (!V) return [];
+    return V.named.map(k => ({key: k, kinds: [k], colour: V.colour[k]})).concat(V.rest.length ? [{key: SMALL, kinds: V.rest, colour: REST}] : []); }
+  function seriesShares(P, ser) { const v = valOf(P), K = levelKinds(), tot = K.reduce((n, k) => n + (v[k] || 0), 0), o = {};
+    for (const x of ser) o[x.key] = tot ? 100 * x.kinds.reduce((n, k) => n + (v[k] || 0), 0) / tot : null; return {share: o, tot}; }
+  const allTicked = () => S.ticked.size === KINDS.length;
+  const levelName = () => S.zoom.length ? 'the smaller kinds' + (S.zoom.length > 1 ? ' (' + S.zoom.length + ' levels in)' : '') : allTicked() ? '' : 'the kinds ticked';
+
 
   function say(t) { $('status').textContent = t; }
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -243,15 +263,6 @@
     if (S.by === 'week') return (long ? 'Week of ' : '') + dayName(P.from) + (long ? ' to ' + dayName(P.to) + ' ' + P.to.slice(0, 4) : '');
     return long ? new Date(P.from + 'T12:00:00Z').toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'}) : dayName(P.from);
   }
-  // a period's bytes (or fees) by chart kind, and the shares of what is ticked
-  function groupVals(P) { const v = valOf(P), o = {}; for (const g of GROUPS) o[g.key] = g.kinds.reduce((n, k) => n + (v[k] || 0), 0); return o; }
-  function shares(P) {
-    const b = groupVals(P), on = GROUPS.filter(g => S.ticked.has(g.key)), tot = on.reduce((n, g) => n + b[g.key], 0), all = totOf(P), out = {};
-    for (const g of GROUPS) out[g.key] = S.ticked.has(g.key) && tot ? 100 * b[g.key] / tot : null;
-    return {share: out, ticked: tot, all, ofAll: all ? 100 * tot / all : null};
-  }
-  const allTicked = () => S.ticked.size === GROUPS.length;
-
   /* ---------- tooltip ---------- */
   const tip = $('tip');
   function showTip(e, title, rows, note) {
@@ -263,21 +274,22 @@
     tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
   }
   const hideTip = () => tip.classList.add('hidden');
-  const periodRows = P => { const s = shares(P).share; return GROUPS.filter(g => S.ticked.has(g.key)).slice().reverse().map(g => [g.colour, g.key, pct(s[g.key])]); };
-  const tipNote = P => (noteOf(P) ? noteOf(P) + ' ' : '') + (allTicked() ? '' : 'Shares of the kinds ticked (' + pct(shares(P).ofAll) + ' of all ' + (FEES() ? 'fees' : 'bytes') + ').');
+  const periodRows = P => { const ser = series(), sh = seriesShares(P, ser).share; return ser.slice().reverse().map(x => [x.colour, x.key, pct(sh[x.key])]); };
+  const tipNote = P => (noteOf(P) ? noteOf(P) + ' ' : '') + (levelName() ? 'Shares of ' + levelName() + '.' : '');
 
-  /* ---------- the tick boxes (they are the legend too) ---------- */
+  /* ---------- the tick boxes: which kinds the first pie is made of ---------- */
   function drawTicks() {
     const box = $('ticks'); box.textContent = '';
-    for (const g of GROUPS) {
-      const lab = el('label'); const inp = el('input'); inp.type = 'checkbox'; inp.checked = S.ticked.has(g.key); inp.dataset.k = g.key;
-      inp.setAttribute('aria-label', g.key + (g.key === 'everything else' ? ' (' + g.kinds.join(', ') + ')' : ''));
-      const t = el('span', 'tickbox'); const mk = el('span', 'mk', inp.checked ? '✓' : ''); const sw = el('span', 'sw'); sw.style.background = g.colour;
-      t.appendChild(mk); t.appendChild(sw); t.appendChild(el('span', null, g.key)); if (g.key === 'everything else') t.title = g.kinds.join(', ');
-      inp.addEventListener('change', () => { if (inp.checked) S.ticked.add(g.key); else if (S.ticked.size > 1) S.ticked.delete(g.key); else inp.checked = true; S.byAgent = false; drawAll(); });
+    for (const k of KINDS) {
+      const lab = el('label'); const inp = el('input'); inp.type = 'checkbox'; inp.checked = S.ticked.has(k); inp.dataset.k = k; inp.setAttribute('aria-label', k);
+      const t = el('span', 'tickbox'); const mk = el('span', 'mk', inp.checked ? '✓' : ''); t.appendChild(mk); t.appendChild(el('span', null, k)); t.title = SP.WHAT[k];
+      inp.addEventListener('change', () => { if (inp.checked) S.ticked.add(k); else if (S.ticked.size > 1) S.ticked.delete(k); else inp.checked = true; S.byAgent = false; S.zoom = []; drawAll(); });
       lab.appendChild(inp); lab.appendChild(t); box.appendChild(lab);
     }
   }
+  // opening the smaller kinds, and going back
+  function zoomIn() { const P = S.list.find(x => x.period === S.at); const V = P && view(P); if (!V || V.rest.length < 2) return false; S.zoom.push(V.rest.slice()); drawAll(); return true; }
+  function zoomOut(all) { if (!S.zoom.length) return false; if (all) S.zoom = []; else S.zoom.pop(); drawAll(); return true; }
 
   /* ---------- the pie (a ring) for one period ---------- */
   function arc(cx, cy, R, r, a0, a1) {
@@ -288,28 +300,42 @@
   }
   function drawSplit() {
     const P = S.list.find(x => x.period === S.at); if (!P) return;
-    const sh = shares(P), svg = $('donut'); [...svg.querySelectorAll('path,circle')].forEach(n => n.remove());
+    const V = view(P), v = valOf(P), svg = $('donut'); [...svg.querySelectorAll('path,circle,text')].forEach(n => n.remove());
     sv('circle', {cx: 120, cy: 120, r: 81, fill: 'none', stroke: '#1a1a1a', 'stroke-width': 38}, svg);
+    const parts = V.named.map(k => ({key: k, colour: V.colour[k], share: V.share[k], val: v[k] || 0}));
+    if (V.rest.length) parts.push({key: SMALL, colour: REST, share: V.restShare, val: V.restVal, rest: true});
     let a = -Math.PI / 2;
-    for (const g of GROUPS) {
-      const v = sh.share[g.key]; if (!v) continue;
-      const a1 = a + 2 * Math.PI * v / 100;
-      const path = sv('path', {d: arc(120, 120, 100, 62, a, a1), fill: g.colour, stroke: '#0c0c0c', 'stroke-width': 2, 'stroke-linejoin': 'round'}, svg);
-      path.addEventListener('mousemove', e => showTip(e, g.key, [[g.colour, 'share', pct(v)], [g.colour, FEES() ? 'fees' : 'bytes', fmtV(groupVals(P)[g.key])]], g.key === 'everything else' ? g.kinds.join(', ') : null));
+    for (const x of parts) {
+      if (!x.share) continue;
+      const a1 = a + 2 * Math.PI * x.share / 100, mid = (a + a1) / 2;
+      const path = sv('path', {d: arc(120, 120, 100, 62, a, a1), fill: x.colour, stroke: x.rest ? '#f7931a' : '#0c0c0c', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': x.rest ? '5 3' : 'none'}, svg);
+      const note = x.rest ? V.rest.length + ' kinds, each under ' + CUT + '% of this pie: ' + V.rest.join(', ') + '. Click to open them.' : SP.WHAT[x.key] || null;
+      path.addEventListener('mousemove', e => showTip(e, x.key, [[x.colour, 'share', pct(x.share)], [x.colour, FEES() ? 'fees' : 'bytes', fmtV(x.val)]], note));
       path.addEventListener('mouseleave', hideTip);
+      if (x.rest) { path.style.cursor = 'pointer'; path.setAttribute('tabindex', '0'); path.setAttribute('role', 'button'); path.setAttribute('aria-label', 'Open the smaller kinds: ' + V.rest.join(', '));
+        path.addEventListener('click', () => { hideTip(); S.byAgent = false; zoomIn(); }); path.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); zoomIn(); } }); }
+      if (x.share >= 7) { const t = sv('text', {x: 120 + 81 * Math.cos(mid), y: 120 + 81 * Math.sin(mid) + 4, 'text-anchor': 'middle', fill: '#fff', 'font-size': 11, 'pointer-events': 'none', style: 'paint-order:stroke;stroke:#000;stroke-width:3px'}, svg); t.textContent = x.share >= 99.95 ? '100%' : Math.round(x.share) + '%'; }
       a = a1;
     }
-    $('donutDesc').textContent = 'Pie chart of ' + (FEES() ? 'the fees paid in ' : 'the space in ') + periodName(P, true) + ': ' + (sh.all ? GROUPS.filter(g => sh.share[g.key] != null).map(g => g.key + ' ' + pct(sh.share[g.key])).join(', ') : 'no fees are saved for it');
-    const what = FEES() ? 'the fees' : 'the space', nb = FEES() ? P.feesRead : P.read;
-    $('cBig').textContent = FEES() && !P.feesRead ? 'no fees' : fmtV(allTicked() ? sh.all : sh.ticked);
-    $('cSmall').textContent = FEES() && !P.feesRead ? 'saved for\nthis ' + S.by : (allTicked() ? 'all ' + what : pct(sh.ofAll) + ' of all\n' + what) + '\n' + fmt(nb) + ' block' + (nb === 1 ? '' : 's');
+    $('donutDesc').textContent = 'Pie chart of ' + (FEES() ? 'the fees paid in ' : 'the space in ') + periodName(P, true) + (levelName() ? ', ' + levelName() : '') + ': ' + (V.tot ? parts.map(x => x.key + ' ' + pct(x.share)).join(', ') : 'nothing saved') + '.';
+    const what = FEES() ? 'the fees' : 'the space', nb = FEES() ? P.feesRead : P.read, ofAll = V.all ? 100 * V.tot / V.all : null;
+    $('cBig').textContent = FEES() && !P.feesRead ? 'no fees' : fmtV(V.tot);
+    $('cSmall').textContent = FEES() && !P.feesRead ? 'saved for\nthis ' + S.by : (levelName() ? pct(ofAll) + ' of all\n' + what : 'all ' + what) + '\n' + fmt(nb) + ' block' + (nb === 1 ? '' : 's');
     $('splitTitle').textContent = 'The split: ' + periodName(P, true);
-    const ul = $('keylist'); ul.textContent = '';
-    for (const g of GROUPS.slice().reverse()) {
-      const li = el('li', S.ticked.has(g.key) ? null : 'off'); const sw = el('span', 'sw'); sw.style.background = g.colour;
-      li.appendChild(sw); const nm = el('span', null, g.key); if (g.key === 'everything else') nm.title = g.kinds.join(', '); li.appendChild(nm);
-      li.appendChild(el('span', 'pc', S.ticked.has(g.key) ? pct(sh.share[g.key]) : 'off')); li.appendChild(el('span', 'by2', sh.all ? fmtV(groupVals(P)[g.key]) : '–')); ul.appendChild(li);
+    const back = $('zoomBar'); back.textContent = '';
+    if (S.zoom.length) {
+      const b1 = el('button', null, '← Back'); b1.type = 'button'; b1.onclick = () => { S.byAgent = false; zoomOut(); }; back.appendChild(b1);
+      if (S.zoom.length > 1) { const b2 = el('button', null, 'Back to the start'); b2.type = 'button'; b2.onclick = () => { S.byAgent = false; zoomOut(true); }; back.appendChild(b2); }
+      back.appendChild(el('span', 'small', ' Showing the smaller kinds: ' + pct(ofAll) + ' of all ' + what + '.'));
     }
+    const ul = $('keylist'); ul.textContent = '';
+    for (const x of parts.filter(x => !x.rest).sort((a, b) => b.share - a.share).concat(parts.filter(x => x.rest))) {   // (biggest first, the smaller kinds last)
+      const li = el('li'); const sw = el('span', 'sw'); sw.style.background = x.colour; li.appendChild(sw);
+      if (x.rest) { const b = el('button', 'openrest', SMALL + ' (' + V.rest.length + ') ›'); b.type = 'button'; b.title = V.rest.join(', '); b.onclick = () => { S.byAgent = false; zoomIn(); }; li.appendChild(b); }
+      else { const nm = el('span', null, x.key); nm.title = SP.WHAT[x.key] || ''; li.appendChild(nm); }
+      li.appendChild(el('span', 'pc', pct(x.share))); li.appendChild(el('span', 'by2', V.tot ? fmtV(x.val) : '–')); ul.appendChild(li);
+    }
+    const zero = V.K.filter(k => !(v[k] > 0)); if (zero.length) { const li = el('li', 'off'); li.appendChild(el('span', 'sw')); li.appendChild(el('span', null, 'none this ' + S.by + ': ' + zero.join(', '))); li.appendChild(el('span', 'pc', '0%')); li.appendChild(el('span', 'by2', '')); ul.appendChild(li); }
     $('splitNote').textContent = noteOf(P) || '';
     const L = $('splitLinks'); L.textContent = '';
     const days = (S.index.days || []).filter(d => d.day >= P.from && d.day <= P.to), lo = days.length ? days[0].firstBlock : null, hi = days.length ? days[days.length - 1].lastBlock : null;
@@ -319,9 +345,9 @@
     if (lo != null) { L.appendChild(document.createTextNode(S.by === 'day' ? ' · ' : '')); const a2 = el('a', null, 'Walk into block ' + fmt(lo) + ' in Agent Blockhall'); a2.href = 'block-cube.html#block=' + lo; a2.target = '_blank'; a2.rel = 'noopener'; L.appendChild(a2); $('goHall').href = 'block-cube.html#block=' + lo; }
     // the numbers: every kind, ticked or not
     const tb = $('rows'); tb.textContent = '';
-    for (const k of SP.NAMES) {
-      const tr = el('tr'); const g = GROUPS.find(x => x.key === GROUP_OF[k]);
-      const c0 = el('td', 'left'); const sw = el('span'); sw.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;background:' + g.colour; c0.appendChild(sw); c0.appendChild(document.createTextNode(k)); tr.appendChild(c0);
+    for (const k of KINDS) {
+      const tr = el('tr'), col = V.colour[k] || (V.rest.includes(k) ? REST : 'transparent');
+      const c0 = el('td', 'left'); const sw = el('span'); sw.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;border:1px solid #333;background:' + col; c0.appendChild(sw); c0.appendChild(document.createTextNode(k)); tr.appendChild(c0);
       tr.appendChild(el('td', 'left', SP.WHAT[k])); tr.appendChild(el('td', 'num', pct(P.size ? 100 * (P.bytes[k] || 0) / P.size : null)));
       tr.appendChild(el('td', 'num', fmt(P.bytes[k] || 0))); tr.appendChild(el('td', 'num', fmt(P.txs[k] || 0)));
       tr.appendChild(el('td', 'num', P.fees ? pct(100 * (P.sats[k] || 0) / P.fees) : '–')); tr.appendChild(el('td', 'num', P.feesRead ? fmt(P.sats[k] || 0) : '–')); tb.appendChild(tr);
@@ -351,9 +377,9 @@
     const svg = $('bars'), wrap = $('barsWrap'), g = slotGeom(S.list.length, wrap); svg.textContent = ''; sv('desc', {id: 'barsDesc'}, svg).textContent = 'Stacked bars: each bar is 100% of the ' + (FEES() ? 'fees paid in' : 'space of') + ' one ' + S.by + ', split into the kinds ticked';
     svg.setAttribute('width', g.W); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + g.W + ' ' + H);
     axisY(svg, g.W, 100); axisX(svg, g);
-    const ph = H - PAD.t - PAD.b, on = GROUPS.filter(x => S.ticked.has(x.key));
+    const ph = H - PAD.t - PAD.b, on = series();
     S.list.forEach((P, i) => {
-      const sh = shares(P).share, x = PAD.l + g.w * i + (g.w - g.bw) / 2, grp = sv('g', {class: 'bar', opacity: wholeOf(P) ? 1 : .5}, svg);
+      const sh = seriesShares(P, on).share, x = PAD.l + g.w * i + (g.w - g.bw) / 2, grp = sv('g', {class: 'bar', opacity: wholeOf(P) ? 1 : .5}, svg);
       let y = PAD.t + ph; const parts = on.map(x2 => [x2, sh[x2.key] || 0]).filter(p => p[1] > 0), last = parts.length - 1;
       parts.forEach(([gr, v], j) => { const h = ph * v / 100; y -= h; const hh = h > 3 ? h - 2 : h;
         if (j === last) sv('path', {d: roundTop(x, y + (h - hh), g.bw, hh, 4), fill: gr.colour}, grp); else sv('rect', {x, y: y + (h - hh), width: g.bw, height: hh, fill: gr.colour}, grp); });
@@ -371,7 +397,7 @@
     $('linesTitle').textContent = 'Each kind\'s share of the ' + (FEES() ? 'fees' : 'space') + ' over time';
     $('linesNote').textContent = 'One line for each kind you\'ve ticked: its share of the ' + (FEES() ? 'fees paid' : 'space') + '. Untick the big ones to see the small ones more clearly.';
     svg.setAttribute('width', g.W); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + g.W + ' ' + H);
-    const on = GROUPS.filter(x => S.ticked.has(x.key)), sh = S.list.map(P => shares(P).share);
+    const on = series(), sh = S.list.map(P => seriesShares(P, on).share);
     const top = Math.max(1, ...sh.flatMap(s => on.map(x => s[x.key] || 0))), max = top <= 10 ? Math.ceil(top / 2) * 2 : top <= 40 ? Math.ceil(top / 10) * 10 : Math.ceil(top / 25) * 25;
     axisY(svg, g.W, max); axisX(svg, g);
     const ph = H - PAD.t - PAD.b, X = i => PAD.l + g.w * (i + .5), Y = v => PAD.t + ph * (1 - v / max);
@@ -395,8 +421,7 @@
 
   /* ---------- putting it together ---------- */
   function ofWhat() {
-    const P = S.list.find(x => x.period === S.at);
-    $('ofwhat').textContent = allTicked() ? (FEES() ? 'Shares are of all the fees paid.' : 'Shares are of all the space.') : 'Shares are of the kinds ticked' + (P ? ': ' + pct(shares(P).ofAll) + ' of all the ' + (FEES() ? 'fees paid' : 'bytes') + ' in ' + periodName(P, true) : '') + '. The numbers below are of everything.';
+    $('ofwhat').textContent = (FEES() ? 'Shares are of the fees paid' : 'Shares are of the space') + (levelName() ? ' by ' + levelName() + '.' : '.') + ' Kinds under ' + CUT + '% share one grey slice: click it to open them.';
   }
   function drawAll() { for (const i of $('ticks').querySelectorAll('input')) { i.checked = S.ticked.has(i.dataset.k); i.nextSibling.firstChild.textContent = i.checked ? '✓' : ''; }
     for (const b of document.querySelectorAll('#showBox button')) b.setAttribute('aria-pressed', String(b.dataset.show === S.show));
@@ -421,11 +446,12 @@
     say('Reading the saved days…');
     S.index = await SP.fetchIndex();
     if (!S.index.days || !S.index.days.length) throw new Error('no days are saved yet: the first are being filled in now');
+    { const was = allTicked(); KINDS = SP.namesOf(S.index.days); if (was) S.ticked = new Set(KINDS); drawTicks(); }   // (a day counted before 22 Nov 2026 has a few kinds of its own)
     $('how').textContent = '';
     for (const t of ['What is counted: every transaction’s bytes, as the block holds them (its witness data included), and each block’s 80-byte header with its count of transactions ("block header"). So for every block, the kinds add up to its exact size.',
       'Each transaction is counted once. ' + SP.ORDER + ' So a rune mint that also carries an inscription counts as runes, and an Alkanes transaction (which rides inside a rune message) counts as Alkanes.',
       'The fees: each transaction’s fee in sats, from mempool.space’s list for its block (or one of its copies). A block’s fees are kept only if they add up exactly to what its coinbase pays the miner (read from the block’s own bytes) less the new coins, so every sat is checked. The coinbase itself pays no fee. A block whose fees could not be had or checked is left out of the fee shares and said so.',
-      'Where the kinds come from: this portal’s own reader (the same as the Block Manifest’s) reading each block’s own bytes. Every day is read the same way. The table lists all the kinds; in the charts, the small ones (' + GROUPS[GROUPS.length - 1].kinds.join(', ') + ') share one colour as "everything else".',
+      'Where the kinds come from: this portal’s own reader (the same as the Block Manifest’s) reading each block’s own bytes. Every day is read the same way. Every kind is its own slice. A pie shows each kind with ' + CUT + '% or more of it; the kinds under ' + CUT + '% share one grey slice, and clicking it opens a pie of just those, with the same rule, as many times as needed. The table lists every kind.',
       'From ' + new Date(SP.FIRST_DAY + 'T12:00:00Z').toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric'}) + '. Days are UTC, by the time written in each block. Weeks run Monday to Sunday. A block that could not be read is left out and said so, never counted as zero.',
       'Bitcoin only. Dogecoin’s free sites can’t give every transaction’s bytes, so its kinds would be missing.',
       'Last saved: ' + (S.index.updated || '–').replace('T', ' ').replace('Z', ' UTC') + '.']) $('how').appendChild(el('p', null, t));
@@ -446,15 +472,15 @@
     return S.list.find(P => P.period === S.at);
   }
   function setTicked(kinds) {
-    const want = (Array.isArray(kinds) ? kinds : String(kinds).split(',')).map(k => String(k).trim()).filter(Boolean).map(k => GROUP_OF[k] || k);
-    const bad = want.filter(k => !GROUPS.some(g => g.key === k)); if (bad.length) throw new Error('unknown kind: ' + bad.join(', ') + ' (kinds: ' + GROUPS.map(g => g.key).join(', ') + ')');
+    const want = (Array.isArray(kinds) ? kinds : String(kinds).split(',')).map(k => String(k).trim()).filter(Boolean);
+    const bad = want.filter(k => !KINDS.includes(k)); if (bad.length) throw new Error('unknown kind: ' + bad.join(', ') + ' (kinds: ' + KINDS.join(', ') + ')');
     if (!want.length) throw new Error('tick at least one kind');
-    S.ticked = new Set(want);
+    S.ticked = new Set(want); S.zoom = [];
   }
   for (const b of document.querySelectorAll('.by button[data-by]')) b.addEventListener('click', () => { open({by: b.dataset.by}).catch(e => say(String(e.message || e))); });
   for (const b of document.querySelectorAll('#showBox button')) b.addEventListener('click', () => { open({show: b.dataset.show}).catch(e => say(String(e.message || e))); });
   $('at').addEventListener('change', e => { S.byAgent = false; select(e.target.value); });
-  $('tickAll').addEventListener('click', () => { S.ticked = new Set(GROUPS.map(g => g.key)); S.byAgent = false; drawAll(); });
+  $('tickAll').addEventListener('click', () => { S.ticked = new Set(KINDS); S.zoom = []; S.byAgent = false; drawAll(); });
   let rz = null; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (S.at) { drawBars(); drawLines(); } }, 150); });
   drawTicks();
 
@@ -462,25 +488,31 @@
   const PERIOD = {name: 'period', does: 'day, week (Monday to Sunday, UTC) or month', type: 'string'};
   const plainP = P => ({period: P.period, from: P.from, to: P.to, whole: P.whole, note: P.note || null, days: P.days, daysExpected: P.daysExpected, blocks: P.blocks, blocksRead: P.read, blocksNotRead: P.notRead, bytes: P.size, shareOfAll: P.share,
     fees: P.feesRead ? P.fees : null, feesWhole: P.feesWhole, feeNote: P.feeNote || null, blocksWithFees: P.feesRead, shareOfFees: P.feeShare});
-  const tickedShares = P => { const sh = shares(P); return {shareOfTicked: Object.fromEntries(GROUPS.filter(g => S.ticked.has(g.key)).map(g => [g.key, r3(sh.share[g.key])])), tickedShareOfAll: r3(sh.ofAll)}; };
+  // the open pie, as an agent reads it: each slice's share of the pie, the smaller kinds in it, and the pie's share of all
+  const pieOf = P => { const V = view(P); return {level: S.zoom.length, kinds: V.K, slices: V.named.map(k => ({kind: k, share: r3(V.share[k])})).concat(V.rest.length ? [{kind: SMALL, share: r3(V.restShare), holds: V.rest}] : []), pieShareOfAll: V.all ? r3(100 * V.tot / V.all) : null}; };
+  const tickedShares = P => { const V = view(P), T = KINDS.filter(k => S.ticked.has(k)), v = valOf(P), t = T.reduce((n, k) => n + (v[k] || 0), 0);
+    return {shareOfTicked: Object.fromEntries(T.map(k => [k, t ? r3(100 * (v[k] || 0) / t) : null])), tickedShareOfAll: V.all ? r3(100 * t / V.all) : null, pie: pieOf(P)}; };
   const cmds = [
-    {name: 'kinds', does: 'The kinds the space is split into, what each holds, which chart colour group it is in, and the rule for a transaction that is several kinds at once. Gives back {kinds[{kind, what, chartGroup}], order, chartGroups}.', args: [],
-      run: async () => ({kinds: SP.NAMES.map(k => ({kind: k, what: SP.WHAT[k], chartGroup: GROUP_OF[k]})), order: SP.ORDER, chartGroups: GROUPS.map(g => ({group: g.key, kinds: g.kinds}))})},
+    {name: 'kinds', does: 'The kinds the space is split into (every token is its own kind, and payments are split by the coins they spend), what each holds, and the rule for a transaction that is several kinds at once. Gives back {kinds[{kind, what}], order, pieRule}.', args: [],
+      run: async () => ({kinds: KINDS.map(k => ({kind: k, what: SP.WHAT[k]})), order: SP.ORDER, pieRule: 'A pie shows each kind with ' + CUT + '% or more of it; the kinds under ' + CUT + '% share one slice, "' + SMALL + '", which opens a pie of just those (zoom).'})},
     {name: 'periods', does: 'Every saved day, week or month, oldest first, with each kind’s share of all the bytes and of all the fees paid (percent), its bytes, fees (sats) and blocks, and whether the period is whole (a period not over yet, or with a day or block missing, says so in note; feeNote says the same for the fees). Shows that view on the page. Gives back {period, periods[{period, from, to, whole, note, days, daysExpected, blocks, blocksRead, blocksNotRead, bytes, shareOfAll{kind: percent}, fees, feesWhole, feeNote, blocksWithFees, shareOfFees{kind: percent}}], data}.', args: [PERIOD],
       run: async ({period}) => { await open({by: period}, true); return {period: S.by, periods: S.list.map(plainP), data: S.index.from}; }},
-    {name: 'split', does: 'Open one day, week or month on the page (as picking it does) and give its split: every kind’s bytes, transactions and fees (sats), and its share of all the bytes and of all the fees paid; and the shares of the kinds ticked on the page, of what the page shows (showing: space or fees). at: a day (YYYY-MM-DD) for day; a week’s Monday or any day in it for week; YYYY-MM for month. Leave at out for the newest. Gives back {period, from, to, whole, note, bytes, blocksRead, fees, feesWhole, feeNote, blocksWithFees, kinds[{kind, what, bytes, transactions, shareOfAll, sats, shareOfFees}], showing, ticked, shareOfTicked{group: percent}, tickedShareOfAll, links{dailyData, agentBlockhall, data}}.', args: [PERIOD, {name: 'at', does: 'which one: YYYY-MM-DD, or YYYY-MM for a month', type: 'string'}],
+    {name: 'split', does: 'Open one day, week or month on the page (as picking it does) and give its split: every kind’s bytes, transactions and fees (sats), and its share of all the bytes and of all the fees paid; and the shares of the kinds ticked on the page, of what the page shows (showing: space or fees). at: a day (YYYY-MM-DD) for day; a week’s Monday or any day in it for week; YYYY-MM for month. Leave at out for the newest. Gives back {period, from, to, whole, note, bytes, blocksRead, fees, feesWhole, feeNote, blocksWithFees, kinds[{kind, what, bytes, transactions, shareOfAll, sats, shareOfFees}], showing, ticked, shareOfTicked{kind: percent}, tickedShareOfAll, pie{level, slices[{kind, share, holds}], pieShareOfAll}, links{dailyData, agentBlockhall, data}}.', args: [PERIOD, {name: 'at', does: 'which one: YYYY-MM-DD, or YYYY-MM for a month', type: 'string'}],
       run: async ({period, at}) => {
         const P = await open({by: period, at}, true), days = S.index.days.filter(d => d.day >= P.from && d.day <= P.to), lo = days.length ? days[0].firstBlock : null;
-        return Object.assign(plainP(P), {kinds: SP.NAMES.map(k => ({kind: k, what: SP.WHAT[k], bytes: P.bytes[k] || 0, transactions: P.txs[k] || 0, shareOfAll: P.share[k], sats: P.feesRead ? P.sats[k] || 0 : null, shareOfFees: P.feeShare[k]})),
+        return Object.assign(plainP(P), {kinds: KINDS.map(k => ({kind: k, what: SP.WHAT[k], bytes: P.bytes[k] || 0, transactions: P.txs[k] || 0, shareOfAll: P.share[k], sats: P.feesRead ? P.sats[k] || 0 : null, shareOfFees: P.feeShare[k]})),
           showing: S.show, ticked: [...S.ticked]}, tickedShares(P), {
           links: {dailyData: S.by === 'day' ? 'https://ordportal.com/daily.html?day=' + P.from : 'https://ordportal.com/daily.html', agentBlockhall: lo != null ? 'https://ordportal.com/block-cube.html#block=' + lo : 'https://ordportal.com/block-cube.html', data: S.index.from, page: location.origin + location.pathname + location.search}});
       }},
-    {name: 'tick', does: 'Tick only these chart kinds on the page (as the tick boxes do), so the charts share out 100% between them: payments, consolidations, batch payouts, messages, inscriptions, BRC-20, runes, Alkanes, everything else. Leave kinds out to tick them all. Gives back {ticked, tickedShareOfAll}.', args: [{name: 'kinds', does: 'the chart kinds to keep, as a list or comma-separated', type: 'string'}],
-      run: async ({kinds}) => { await open({}, true); S.ticked = kinds ? (setTicked(kinds), S.ticked) : new Set(GROUPS.map(g => g.key)); drawAll(); const P = S.list.find(x => x.period === S.at); say('An AI agent ticked: ' + [...S.ticked].join(', ') + '.'); return {ticked: [...S.ticked], showing: S.show, tickedShareOfAll: tickedShares(P).tickedShareOfAll}; }},
+    {name: 'tick', does: 'Tick only these kinds on the page (as the tick boxes do), so the charts share out 100% between them (kinds() lists them). Leave kinds out to tick them all. Gives back {ticked, tickedShareOfAll, pie}.', args: [{name: 'kinds', does: 'the kinds to keep, as a list or comma-separated', type: 'string'}],
+      run: async ({kinds}) => { await open({}, true); if (kinds) setTicked(kinds); else { S.ticked = new Set(KINDS); S.zoom = []; } drawAll(); const P = S.list.find(x => x.period === S.at); say('An AI agent ticked: ' + [...S.ticked].join(', ') + '.'); return {ticked: [...S.ticked], showing: S.show, tickedShareOfAll: tickedShares(P).tickedShareOfAll, pie: pieOf(P)}; }},
+    {name: 'zoom', does: 'Open the pie\'s grey "' + SMALL + '" slice (as clicking it does: a pie of just the kinds under ' + CUT + '% of the open pie), or go back. to: in, out, or top. The bars and lines follow. Gives back {pie{level, slices[{kind, share, holds}], pieShareOfAll}}.', args: [{name: 'to', does: 'in, out or top', type: 'string'}],
+      run: async ({to}) => { await open({}, true); const ok = to === 'out' ? zoomOut() : to === 'top' ? zoomOut(true) : zoomIn(); const P = S.list.find(x => x.period === S.at);
+        say('An AI agent ' + (to === 'out' || to === 'top' ? 'went back' : 'opened the smaller kinds') + '.'); return Object.assign({ok, pie: pieOf(P)}, ok ? {} : {note: to === 'out' || to === 'top' ? 'already at the first pie' : 'this pie has no smaller kinds to open'}); }},
     {name: 'show', does: 'Show the split of the space or of the fees paid (as the Share of space and Share of fees buttons do): the pie, the bars, the lines and every share on the page then follow it. what: space or fees. Gives back {showing, at, ticked, shareOfTicked, tickedShareOfAll}.', args: [{name: 'what', does: 'space or fees', type: 'string'}],
       run: async ({what}) => { if (what !== 'space' && what !== 'fees') throw new Error('what is space or fees'); const P = await open({show: what}, true); return Object.assign({showing: S.show, at: S.at, ticked: [...S.ticked]}, tickedShares(P)); }},
-    {name: 'see', does: 'What the page shows now: the status line, day/week/month, space or fees, the period open, the kinds ticked and the shares of what is ticked. Gives back {status, period, showing, at, ticked, shareOfTicked}.', args: [],
-      run: async () => { const P = S.list.find(x => x.period === S.at); return {status: $('status').textContent, period: S.by, showing: S.show, at: S.at, ticked: [...S.ticked], shareOfTicked: P ? tickedShares(P).shareOfTicked : null}; }}
+    {name: 'see', does: 'What the page shows now: the status line, day/week/month, space or fees, the period open, the kinds ticked, the shares of what is ticked, and the pie open. Gives back {status, period, showing, at, ticked, shareOfTicked, pie}.', args: [],
+      run: async () => { const P = S.list.find(x => x.period === S.at); return {status: $('status').textContent, period: S.by, showing: S.show, at: S.at, ticked: [...S.ticked], shareOfTicked: P ? tickedShares(P).shareOfTicked : null, pie: P ? pieOf(P) : null}; }}
   ];
   const plain = r => JSON.parse(JSON.stringify(r));
   const api = {};

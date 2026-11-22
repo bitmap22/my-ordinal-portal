@@ -1,8 +1,9 @@
 /* Blockspace Share, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/block-cube.html
    How Bitcoin's blockspace splits between the kinds of use, as a share of the bytes, by day, week or month.
    - Every transaction is counted once, under the first of these kinds it is (in the halls a transaction can be several kinds
-     at once): Alkanes, runes, BRC-20, Stamps & Counterparty, other tokens, inscriptions, messages, coinbase, consolidations,
-     batch payouts, payments.
+     at once): Alkanes, runes, BRC-20, SRC-20, Stamps, Counterparty, CRC-20, DMT mints, NAT, TAP, BRC-420, Atomicals, CAT-21,
+     Labitbu, inscriptions, messages, coinbase, consolidations, batch payouts, and payments by the coins they spend (multisig,
+     taproot, segwit, legacy, other). From 2.0.0 (22 Nov 2026) every token is its own kind; every saved day was read again.
    - Its bytes are its size as the block holds it (its witness data included). The block's own header and transaction count
      are "block header". So the kinds add up to the block's exact size: every byte is counted once.
    - The kinds come from the Block Manifest's reader (manifest.js, in this folder) reading each block's own bytes, and from
@@ -18,7 +19,7 @@
   else root.BlockspaceShare = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.1.1';
+  const VERSION = '2.0.0';
   const PORTAL = 'https://ordportal.com/';
   const DATA_URLS = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/daily-data/space/index.json',
     'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@daily-data/space/index.json'];   // (the second is a copy that can be some hours old)
@@ -27,28 +28,48 @@
   const FIRST_DAY = '2026-10-01';
 
   // [kind, what it holds, the hall kinds (Block Manifest kinds) that put a transaction here]: the first one that fits wins
+  // (2.0.0, 22 Nov 2026) every token is its own kind, and payments are split by the kind of coins they spend
   const KINDS = [
     ['Alkanes', 'Alkanes token transactions (they ride inside a rune message, so they come before runes)', ['Alkanes']],
     ['runes', 'rune etchings, mints and moves', ['runes', 'runes etched', 'runes minted', 'runes moved']],
     ['BRC-20', 'BRC-20 token inscriptions', ['BRC-20']],
-    ['Stamps & Counterparty', 'Stamps, SRC-20 and Counterparty', ['Stamps', 'SRC-20', 'Counterparty']],
-    ['other tokens', 'TAP, DMT, NAT, BRC-420, CRC-20, Atomicals, CAT-21 and Labitbu', ['TAP', 'DMT mints', 'NAT', 'BRC-420', 'CRC-20 · LEAF', 'Atomicals', 'CAT-21', 'Labitbu']],
+    ['SRC-20', 'SRC-20 tokens (written as Stamps, so they come before Stamps)', ['SRC-20']],
+    ['Stamps', 'Bitcoin Stamps (data kept in the coins themselves)', ['Stamps']],
+    ['Counterparty', 'Counterparty transactions that are not Stamps', ['Counterparty']],
+    ['CRC-20', 'CRC-20 tokens (LEAF), the covenant token protocol', ['CRC-20 · LEAF']],
+    ['DMT mints', 'Digital Matter Theory mints (TAP dmt-mint, so they come before TAP and NAT)', ['DMT mints']],
+    ['NAT', 'NAT, the TAP token of Digital Matter Theory', ['NAT']],
+    ['TAP', 'other TAP protocol tokens', ['TAP']],
+    ['BRC-420', 'BRC-420 inscriptions', ['BRC-420']],
+    ['Atomicals', 'Atomicals', ['Atomicals']],
+    ['CAT-21', 'CAT-21 cats', ['CAT-21']],
+    ['Labitbu', 'Labitbu', ['Labitbu']],
     ['inscriptions', 'ordinal inscriptions that are not tokens: pictures, text, HTML, bitmaps and every other file', ['inscriptions', 'bitmaps', 'images', 'text', 'HTML', 'JSON', 'audio / video', '3D models', 'other files', 'delegates', 'children', 'cursed']],
     ['messages', 'data written in OP_RETURN that is not a token', ['messages', 'OpenTimestamps']],
     ['coinbase', 'each block\'s first transaction, which pays its miner', ['coinbase']],
     ['consolidations', 'three or more coins joined into one', ['consolidations']],
     ['batch payouts', 'one payment to ten or more addresses', ['batch payouts']],
-    ['payments', 'every other transaction: ordinary payments', ['regular', 'taproot', 'segwit', 'legacy', 'multisig']]];
+    ['multisig payments', 'payments that spend coins needing several signatures', ['multisig']],
+    ['taproot payments', 'payments that spend at least one taproot coin (addresses starting bc1p)', ['taproot']],
+    ['segwit payments', 'payments with segwit signatures but no taproot coin (most addresses starting bc1q)', ['segwit']],
+    ['legacy payments', 'payments with no segwit signatures at all, the oldest way (addresses starting 1, and some starting 3)', ['legacy']],
+    ['other payments', 'any other transaction', ['regular']]];
   const HEADER = 'block header';
   const NAMES = KINDS.map(k => k[0]).concat([HEADER]);
-  const WHAT = Object.assign(Object.fromEntries(KINDS.map(k => [k[0], k[1]])), {[HEADER]: 'each block\'s 80-byte header and its count of transactions'});
+  // the kinds of days counted before 2.0.0 (22 Nov 2026), so a day not yet read again still adds up; each is several of today's
+  const OLD = {'Stamps & Counterparty': 'Stamps, SRC-20 and Counterparty together (a day counted before 22 Nov 2026)',
+    'other tokens': 'CRC-20, TAP, DMT, NAT, BRC-420, Atomicals, CAT-21 and Labitbu together (a day counted before 22 Nov 2026)',
+    'payments': 'every other payment, not split by coins (a day counted before 22 Nov 2026)'};
+  // the kinds some of these days have: today's, and an old one only where a day still has it
+  const namesOf = days => { const seen = new Set(); for (const d of days || []) for (const k of Object.keys(d.bytes || {})) if (OLD[k] && d.bytes[k] > 0) seen.add(k); return NAMES.concat(Object.keys(OLD).filter(k => seen.has(k))); };
+  const WHAT = Object.assign(Object.fromEntries(KINDS.map(k => [k[0], k[1]])), {[HEADER]: 'each block\'s 80-byte header and its count of transactions'}, OLD);
   const ORDER = 'A transaction that is several kinds at once is counted under the first that fits, in this order: ' + KINDS.map(k => k[0]).join(', ') + '.';
 
   // the kind of one transaction, from its hall kinds (the Block Manifest's item.kinds)
   function kindOf(hallKinds) {
     const h = hallKinds || [];
     for (const [name, , from] of KINDS) if (from.some(k => h.includes(k))) return name;
-    return 'payments';
+    return 'other payments';
   }
   // the new coins a block at this height makes: 50 BTC, halved every 210,000 blocks
   const newCoins = h => h >= 6930000 ? 0 : Number(5000000000n >> BigInt(Math.floor(h / 210000)));
@@ -126,14 +147,14 @@
       P.days++; P.blocks += d.blocks; P.read += d.read; P.notRead += (d.notRead || []).length; P.size += d.size; addInto(P.bytes, d.bytes); addInto(P.txs, d.txs);
       const fr = d.feesRead || 0; P.feesRead += fr; P.feesNotRead += d.read - fr; P.fees += d.fees || 0; addInto(P.sats, d.sats);   // (a day saved before fees were counted has none)
     }
-    const out = [...by.values()].sort((a, b) => a.from < b.from ? -1 : 1);
+    const out = [...by.values()].sort((a, b) => a.from < b.from ? -1 : 1), ALL = namesOf(days);
     for (const P of out) {
       P.whole = P.days === P.daysExpected && !P.notRead;
-      P.share = {}; for (const k of NAMES) P.share[k] = P.size ? +(100 * (P.bytes[k] || 0) / P.size).toFixed(3) : null;
+      P.share = {}; for (const k of ALL) P.share[k] = P.size ? +(100 * (P.bytes[k] || 0) / P.size).toFixed(3) : null;
       if (!P.whole) P.note = (P.days < P.daysExpected ? P.days + ' of its ' + P.daysExpected + ' days are saved' : '') + (P.days < P.daysExpected && P.notRead ? '; ' : '') +
         (P.notRead ? P.notRead + ' block' + (P.notRead === 1 ? ' was' : 's were') + ' not read' : '') + ': its shares are of the bytes that were read.';
-      for (const k of NAMES) P.sats[k] = P.sats[k] || 0;
-      P.feeShare = {}; for (const k of NAMES) P.feeShare[k] = P.fees ? +(100 * P.sats[k] / P.fees).toFixed(3) : null;
+      for (const k of ALL) P.sats[k] = P.sats[k] || 0;
+      P.feeShare = {}; for (const k of ALL) P.feeShare[k] = P.fees ? +(100 * P.sats[k] / P.fees).toFixed(3) : null;
       P.feesWhole = P.whole && !P.feesNotRead;
       if (!P.feesRead) P.feeNote = 'no fees are saved for it';
       else if (!P.feesWhole) P.feeNote = (P.days < P.daysExpected ? P.days + ' of its ' + P.daysExpected + ' days are saved' : '') + (P.days < P.daysExpected && P.feesNotRead ? '; ' : '') +
@@ -158,7 +179,8 @@
   /* ---------- writing (the nightly job and the fill-in job, in Node) ---------- */
   function writeDay(outDir, rec) {
     const fs = require('fs'), path = require('path');
-    const dir = path.join(outDir, 'space', 'days');
+    const SPACE = process.env.SPACE_DIR || 'space';   // (a full recount is written to another folder first, then swapped in)
+    const dir = path.join(outDir, SPACE, 'days');
     fs.mkdirSync(dir, {recursive: true});
     fs.writeFileSync(path.join(dir, rec.day + '.json'), JSON.stringify(Object.assign({data: 'Agent Blockhall Blockspace Share ' + VERSION, licence: LICENCE}, rec)));
     // the index: every saved day, rebuilt from the day files (so two jobs can never leave it short of a day)
@@ -172,9 +194,9 @@
       what: 'How Bitcoin\'s blockspace splits between the kinds of use, day by day: for each UTC day, the bytes (size), the number of transactions and the fees paid in sats (sats) of each kind, read from every block\'s own bytes by the Block Manifest\'s reader. ' + ORDER + ' "block header" is each block\'s header and transaction count, so the kinds add up to the bytes read (size). notRead lists any block that could not be read: its bytes are not in the day. Fees: each transaction\'s fee from mempool.space\'s list (or a copy\'s), kept for a block only if they add up to what its coinbase pays out (read from its own bytes) less the new coins; fees is the day\'s total, feesRead the blocks whose fees are in it, feesNotRead the read blocks whose fees are not. Bitcoin only.',
       kinds: NAMES.map(k => ({kind: k, what: WHAT[k]})), firstDay: FIRST_DAY, days,
       links: {page: PORTAL + 'blockspace-share.html', dailyData: PORTAL + 'daily.html', blockManifest: PORTAL + 'block-manifest.html?block=<height>', agentBlockhall: PORTAL + 'block-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (blockspaceShare)', dayFile: RAW + 'space/days/<day>.json'}};
-    fs.writeFileSync(path.join(outDir, 'space', 'index.json'), JSON.stringify(index));
+    fs.writeFileSync(path.join(outDir, SPACE, 'index.json'), JSON.stringify(index));
     return index;
   }
 
-  return {VERSION, KINDS, NAMES, HEADER, WHAT, ORDER, FIRST_DAY, DATA_URLS, LICENCE, kindOf, newCoins, coinbaseOut, feesOf, splitBlock, dayRecord, periodOf, periods, fetchIndex, writeDay};
+  return {VERSION, KINDS, NAMES, OLD, namesOf, HEADER, WHAT, ORDER, FIRST_DAY, DATA_URLS, LICENCE, kindOf, newCoins, coinbaseOut, feesOf, splitBlock, dayRecord, periodOf, periods, fetchIndex, writeDay};
 });

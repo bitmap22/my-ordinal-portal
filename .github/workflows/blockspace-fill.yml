@@ -1,7 +1,8 @@
 # Blockspace Share's fill-in: reads the Bitcoin blocks of past days from their own bytes and saves only each day's bytes by kind
 # on the daily-data branch (space/). It is for days from before Daily Data counted bytes; each night Daily Data adds the day
 # before by itself. Free: GitHub runs it. Only by hand: Actions > Blockspace Share fill-in > Run workflow (give the first and
-# last day). It never runs at the same time as Daily Data (they write to the same branch).
+# last day). It never runs at the same time as Daily Data (they write to the same branch). A full recount (folder: space2) is
+# saved apart, then swapped into space/ when it is all done.
 name: Blockspace Share fill-in
 
 on:
@@ -17,6 +18,10 @@ on:
       redo:
         description: 'yes: read days that are already saved again. Leave empty to skip them.'
         required: false
+      folder:
+        description: 'The folder to save into (space). A full recount is saved into another folder first (space2), then swapped in.'
+        required: false
+        default: 'space'
 
 permissions:
   contents: write
@@ -45,13 +50,14 @@ jobs:
           FROM: ${{ github.event.inputs.from }}
           TO: ${{ github.event.inputs.to }}
           REDO: ${{ github.event.inputs.redo }}
+          SPACE_DIR: ${{ github.event.inputs.folder || 'space' }}
           GH_TOKEN: ${{ github.token }}
         run: |
           [ -n "$TO" ] || TO="$(date -u -d '2 days ago' +%F)"
           for d in "$FROM" "$TO"; do case "$d" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "Days must be YYYY-MM-DD"; exit 1;; esac; done
           START=$(date +%s); DAY="$FROM"; LEFT=""
           while [ ! "$DAY" \> "$TO" ]; do
-            if [ -f "data/space/days/$DAY.json" ] && [ "$REDO" != "yes" ]; then echo "$DAY is already saved"; else
+            if [ -f "data/$SPACE_DIR/days/$DAY.json" ] && [ "$REDO" != "yes" ]; then echo "$DAY is already saved"; else
               # (stop starting new days after 4 hours 50 minutes, well inside the job's time, and start again for the rest)
               if [ $(( $(date +%s) - START )) -gt 17400 ]; then LEFT="$DAY"; break; fi
               node .github/daily-data/space-day.js "$DAY" data || echo "$DAY could not be read"
@@ -62,5 +68,10 @@ jobs:
           done
           if [ -n "$LEFT" ]; then
             echo "Time is short: starting again from $LEFT to $TO."
-            gh workflow run blockspace-fill.yml --ref "${GITHUB_REF_NAME}" -f from="$LEFT" -f to="$TO" -f redo="$REDO"
+            gh workflow run blockspace-fill.yml --ref "${GITHUB_REF_NAME}" -f from="$LEFT" -f to="$TO" -f redo="$REDO" -f folder="$SPACE_DIR"
+          fi
+          # (a recount into another folder, all done: swap it into space, so the links never change)
+          if [ -z "$LEFT" ] && [ "$SPACE_DIR" != "space" ]; then
+            node .github/daily-data/space-swap.js data "$SPACE_DIR"
+            (cd data && git add -A && { git commit -qm "Blockspace Share: the recount swapped in" || true; } && git push -q origin daily-data)
           fi
