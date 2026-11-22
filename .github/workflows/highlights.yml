@@ -1,0 +1,69 @@
+# Highlights: once a day, one real fact for each tool on the front page (.github/highlights/build-highlights.js), saved on
+# the highlights branch (remade each time, so it holds only the newest copy). Free: GitHub runs it. It only writes to the
+# highlights branch. To run it by hand: Actions > Highlights > Run workflow.
+# © 2026 bitmap22. All rights reserved.
+name: Highlights
+
+on:
+  schedule:
+    # After Daily Data and Doge Daily Data have saved yesterday (they run until about 10:00 UTC). GitHub starts timed jobs
+    # late, sometimes by hours, so it is asked several times a day and skips if today's facts are already saved.
+    - cron: '35 10,12,14,17,21 * * *'
+  workflow_dispatch:
+    inputs:
+      ifDue:
+        description: 'yes: only make them if they were not made in the last 20 hours. Leave empty to always make them.'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: highlights
+  cancel-in-progress: false
+
+jobs:
+  make:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Were they made in the last 20 hours?
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/highlights" --jq .commit.committer.date 2>/dev/null || true)
+          age=999999
+          if [ -n "$last" ]; then age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) )); fi
+          if { [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.ifDue }}" = "yes" ]; } && [ "$age" -lt 72000 ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "Made $((age / 3600)) hours ago: not due yet."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.due.outputs.go == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.due.outputs.go == 'true'
+        with:
+          node-version: 20
+      - name: The last facts (kept for any that can't be found today)
+        if: steps.due.outputs.go == 'true'
+        run: |
+          mkdir -p hl
+          if git fetch -q --depth 1 origin highlights; then git show FETCH_HEAD:highlights.json > hl/highlights.json || rm -f hl/highlights.json; fi
+      - name: Find today's facts
+        if: steps.due.outputs.go == 'true'
+        run: node .github/highlights/build-highlights.js hl
+      - name: Save them
+        if: steps.due.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp .github/highlights/README.md hl/README.md
+          cd hl
+          git init -q -b highlights
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Highlights: $(date -u +%FT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" highlights
