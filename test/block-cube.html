@@ -1715,20 +1715,20 @@ async function s721Block(B) {
   const L = B.txs.filter(t => t.s721 && t.s721.op === 'mint' && t.s721.c && t.s721.ts && !t.s721.try); if (!L.length) return;
   let n = 0;
   const one = async t => { t.s721.try = 1; const p = await s721Pic(t.s721); t.s721.pic = p; if (p.name && t.word) t.word = Object.assign({}, t.word, {b: p.name}); if (p.png) { t.art = {ct: 'image/png', bytes: p.png, s721: true}; t._k = null; n++; } };
-  for (let i = 0; i < L.length; i += 4) { await Promise.all(L.slice(i, i + 4).map(t => one(t).catch(() => {}))); if (cur !== B) break; }
-  if (!n || cur !== B) return;
-  loadArt(B);
-  if (room) { for (const R of room.rooms) if (R) R.nl = null; near.rk = ''; room.dirty = true; }
+  for (let i = 0; i < L.length; i += 4) await Promise.all(L.slice(i, i + 4).map(t => one(t).catch(() => {})));   // (kept even while another hall is open: it is there when this one opens)
+  if (!n) return;
+  s7Redraw(B);
 }
 // an SRC-101 name's ending (.btc and the like) is in the note that started those names; read once from that note's own bytes
 const s101Roots = new Map();
 const s101Root = h => { if (!s101Roots.has(h)) s101Roots.set(h, txSure(h).then(T => { const o = stampNote(T); return o && String(o.p || '').toLowerCase() === 'src-101' && String(o.op || '').toLowerCase() === 'deploy' ? String(o.root || '').toLowerCase().slice(0, 24) || null : null; })); return s101Roots.get(h); };
 async function s101Block(B) {
   const L = B.txs.filter(t => t.s101 && t.s101.hash && t.s101.op !== 'deploy' && !t.s101.root); if (!L.length) return;
-  for (const h of [...new Set(L.map(t => t.s101.hash))]) { const root = await s101Root(h).catch(() => null); if (cur !== B) return; if (!root) continue; for (const t of L) if (t.s101.hash === h) { t.s101.root = root; t.word = s101Word(t.s101); t._k = null; } }
-  loadArt(B);
-  if (room) { for (const R of room.rooms) if (R) R.nl = null; near.rk = ''; room.dirty = true; }
+  for (const h of [...new Set(L.map(t => t.s101.hash))]) { const root = await s101Root(h).catch(() => null); if (!root) continue; for (const t of L) if (t.s101.hash === h) { t.s101.root = root; t.word = s101Word(t.s101); t._k = null; } }
+  s7Redraw(B);
 }
+// the boxes drawn again with what was just learned, if that hall is the one open
+function s7Redraw(B) { if (cur !== B) return; loadArt(B); if (room) { for (const R of room.rooms) if (R) R.nl = null; near.rk = ''; room.dirty = true; } }
 function stampArt(key, mso, wsh) {
   let b = null;
   if (mso) {
