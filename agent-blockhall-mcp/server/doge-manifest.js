@@ -147,21 +147,42 @@
     let o = ''; for (let i = 0; i < s.length; i++) { o += s[i]; if (i < s.length - 1 && (sp >> BigInt(i)) & 1n) o += '•'; }
     return o;
   }
-  // a dunestone (Dogecoin's runestone, from ord-with-dunes, as Doge Cube reads it): OP_RETURN, a push of the letter D, then LEB128
-  // numbers in tag/value pairs; tag 0 starts the edicts (each: a step to the dune's id, an amount, an output). An edict whose id has
-  // the claim bit is a mint
-  const DUNE_CLAIM = 1n << 48n;
-  function dunestone(s) {
-    const pay = catB(pushes(s, 3, s.length).filter(x => x[1]).map(x => x[1])), ints = [];
-    for (let i = 0; i < pay.length;) { let v = 0n, sh = 0n, c; do { c = pay[i++]; v |= BigInt(c & 127) << sh; sh += 7n; } while (c & 128 && i < pay.length); ints.push(v); }
-    const F = {}; let mint = false, move = false;
-    for (let k = 0; k < ints.length; k += 2) {
-      if (ints[k] === 0n) { let id = 0n; for (let j = k + 1; j + 2 < ints.length; j += 3) { id += ints[j]; if ((id & DUNE_CLAIM) !== 0n) mint = true; else move = true; } break; }
-      if (k + 1 < ints.length) (F[ints[k]] = F[ints[k]] || []).push(ints[k + 1]);
+  // a dunestone (Dogecoin's runestone), read the way the Dunes reference reads it (sirduney/ord-with-dunes): OP_RETURN, a push of the
+  // letter D, then numbers in Bitcoin Core's VARINT form (big-endian, 7 bits a byte, each carried byte adds one) in tag/value pairs;
+  // tag 0 starts the edicts. A message that breaks a rule is broken: nothing it asks for happens. Dunes count from block 5,084,000
+  const DUNES_START = 5084000, DUNE_CLAIM = 1n << 48n, D128 = (1n << 128n) - 1n, dsat = n => n > D128 ? D128 : n;
+  const DUNE_FLAW = {edict: 'a move names a dune that cannot be, or an output the transaction does not have', overflow: 'the new dune\'s supply would be too big to count',
+    flag: 'it sets a flag that dunes does not know', even: 'it holds a field that dunes does not know'};
+  function dunestone(s, nout) {
+    let i = 3; const pay = [];
+    while (i < s.length) {
+      const op = s[i++]; let n = -1;
+      if (op <= 75) n = op; else if (op === 76) { if (i + 1 > s.length) return null; n = s[i++]; } else if (op === 77) { if (i + 2 > s.length) return null; n = s[i] | s[i + 1] << 8; i += 2; } else if (op === 78) { if (i + 4 > s.length) return null; n = (s[i] | s[i + 1] << 8 | s[i + 2] << 16 | s[i + 3] << 24) >>> 0; i += 4; }
+      if (n < 0) continue;   // (any other step is skipped)
+      if (i + n > s.length) return null;   // (a push that runs off the end: no dune message at all)
+      for (let k = 0; k < n; k++) pay.push(s[i + k]); i += n;
     }
-    const fl = F[2] ? F[2][0] : 0n, prem = F[22] ? F[22][0] : 0n, etch = !!((fl & 1n) || F[4] || prem > 0n);
-    const c = F[5] && F[5][0] <= 0x10ffffn ? Number(F[5][0]) : -1;
-    return {etch, mint, move, name: F[4] ? duneName(F[4][0], F[3] && F[3][0]) : null, symbol: c >= 32 && (c < 0xd800 || c > 0xdfff) ? String.fromCodePoint(c) : null};
+    const ints = [];
+    for (let p = 0; p < pay.length;) { let v = 0n; for (;;) { if (p >= pay.length) break; const b = BigInt(pay[p++]); v = dsat(v * 128n); if (b < 128n) { v = dsat(v + b); break; } v = dsat(v + b - 127n); } ints.push(v); }
+    const F = new Map(), ed = []; let bad = null;
+    for (let k = 0; k < ints.length; k += 2) {
+      const tag = ints[k];
+      if (tag === 0n) { let id = 0n; for (let j = k + 1; j + 2 < ints.length; j += 3) { id = dsat(id + ints[j]); const hh = id >> 16n, ix = id & 0xffffn, out = ints[j + 2];
+          if (hh > (1n << 64n) - 1n || (hh === 0n && ix > 0n) || out > BigInt(nout)) { bad = bad || 'edict'; continue; }
+          const c = (id & DUNE_CLAIM) !== 0n, b = c ? id ^ DUNE_CLAIM : id; ed.push({id: (b >> 16n) + ':' + (b & 0xffffn), claim: c, zero: id === 0n, amt: ints[j + 1], out: Number(out)}); } break; }
+      if (k + 1 >= ints.length) break;
+      if (!F.has(tag)) F.set(tag, ints[k + 1]);
+    }
+    const take = t => { const v = F.get(t); F.delete(t); return v; };
+    const ptr = take(12n), div = take(1n), lim = take(6n), dn = take(4n), cap = take(20n), prem = take(22n), sp = take(3n), sym = take(5n); take(14n); take(18n); take(16n); take(8n);
+    let flags = take(2n) || 0n; const fl = b => { const m = 1n << b, on = (flags & m) !== 0n; flags &= ~m & D128; return on; }, etch = fl(0n); fl(1n); fl(2n);
+    if (!bad && (prem || 0n) + (cap || 0n) * (lim || 0n) > D128) bad = 'overflow';
+    if (!bad && flags !== 0n) bad = 'flag';
+    if (!bad && [...F.keys()].some(t => t % 2n === 0n)) bad = 'even';
+    const c = sym != null && sym <= 0x10ffffn && !(sym >= 0xd800n && sym <= 0xdfffn) ? Number(sym) : -1, good = bad ? [] : ed;
+    const mintIds = [...new Set(good.filter(e => e.claim).map(e => e.id))], moveIds = [...new Set(good.filter(e => !e.claim && !e.zero).map(e => e.id))];
+    return {bad, etch: !bad && etch, mint: mintIds.length > 0, move: moveIds.length > 0, mintIds, moveIds, ed: good, ptr: !bad && ptr != null && ptr <= 0xffffffffn ? Number(ptr) : null,
+      div: div != null && div <= 38n ? Number(div) : 0, name: etch && dn != null ? duneName(dn, sp != null && sp <= 0x07ffffffn ? sp : 0n) : null, sym: c >= 32 ? String.fromCodePoint(c) : null};
   }
   // a name in the Dogecoin Names System (as Doge Cube reads it): label.namespace, each 1-63 letters, digits or hyphens
   function dnsName(tok) {
@@ -180,7 +201,7 @@
     if (/^image\//.test(ty) || !u.length) return;
     const s = U8D.decode(u.subarray(0, 8000)).trim(), plain = ty.startsWith('text/plain') || ty.startsWith('application/json');
     const dm = /^(0|[1-9]\d{0,9})\.dogemap$/i.exec(s);
-    if (dm) { r.kinds.add('dogemaps'); r.dogemap = +dm[1]; return; }
+    if (dm) { r.dogemapClaim = +dm[1]; return; }   // (a dogemap claim: it counts as a dogemap only once the explorer's dogemap index names it)
     if (s[0] === '{') {
       let o = null; try { o = JSON.parse(s); } catch (e) {}
       const p = o && typeof o === 'object' ? String(o.p || '') : '';
@@ -256,9 +277,14 @@
       if (s[0] !== 0x6a) continue;
       r.kinds.add('OP_RETURN data');
       if (s.length >= 3 && s[1] === 1 && s[2] === 0x44) {
-        const d = dunestone(s); r.kinds.add('dunes');
-        if (d.etch) r.kinds.add('dunes etched'); if (d.mint) r.kinds.add('dunes minted'); if (d.move) r.kinds.add('dunes moved');
-        r.dune = {etched: d.etch ? d.name : undefined, symbol: d.etch ? d.symbol || undefined : undefined, minted: d.mint || undefined, moved: d.move || undefined};
+        if (r.dSeen) continue; r.dSeen = true;   // (only the first dune message counts)
+        const d = dunestone(s, outs.length); if (!d) continue; r.kinds.add('dunes');
+        if (d.bad) r.dune = {broken: DUNE_FLAW[d.bad] || 'it breaks a rule', burns: 'any dunes this transaction spends'};
+        else {
+          if (d.etch) r.kinds.add('dunes etched'); if (d.mint) r.kinds.add('dunes minted'); if (d.move) r.kinds.add('dunes moved');
+          r.dune = {etched: d.etch ? d.name || undefined : undefined, symbol: d.etch ? d.sym || undefined : undefined, minted: d.mint ? d.mintIds : undefined, moved: d.move ? d.moveIds : undefined};
+          if (!d.etch && !d.mint && !d.move) r.dune.pointerOnly = d.ptr != null ? d.ptr : undefined;
+        }
       } else if (s.length > 1) { const w = words(catB(pushes(s, 1, s.length).filter(x => x[1]).map(x => x[1]))); if (w && !r.message) r.message = w; }
     }
     if (r.outTypes.includes('multisig')) r.kinds.add('multisig');
@@ -303,6 +329,8 @@
       const ek = explorerKinds(x, l, cb), kinds = new Set(ek), diff = [];
       if (r) {
         // the kinds read in the bytes, added (and, where both readings can see a kind, compared)
+        if (o.height < DUNES_START) { for (const k of ['dunes', 'dunes etched', 'dunes minted', 'dunes moved']) r.kinds.delete(k); r.dune = null; }   // (no dunes before block 5,084,000)
+        if (r.dogemapClaim != null && o.dogemapFirst && o.dogemapFirst[r.dogemapClaim] === l.txid) { r.kinds.add('dogemaps'); r.dogemap = r.dogemapClaim; }
         for (const k of r.kinds) kinds.add(k);
         if (!cb) { for (const k of ['pay to script', 'pay to address', 'pay to key']) kinds.delete(k); kinds.add(r.payKind); if (r.nin >= 3 && r.nout === 1) kinds.add('consolidations'); if (r.outTypes.filter(t => t !== 'nulldata').length >= 10) kinds.add('batch payouts'); }
         if (x || cb) {
@@ -330,6 +358,7 @@
       if (r && r.piece) { it.piece = r.piece; pieces++; }
       if (r && r.token) it.token = r.token;
       if (r && r.dogemap != null) it.dogemap = r.dogemap;
+      else if (r && r.dogemapClaim != null) { const f1 = o.dogemapFirst ? o.dogemapFirst[r.dogemapClaim] : undefined; it.dogemapClaim = {says: r.dogemapClaim + '.dogemap', real: f1 === undefined ? null : false, why: f1 === undefined ? 'not checked: a dogemap counts only when the explorer\'s dogemap index names it' : 'not the claim of block ' + r.dogemapClaim + ' (the explorer\'s dogemap index), so not a dogemap'}; }
       if (r && r.name) it.name = r.name;
       if (r && r.dune) { it.dune = r.dune; if (r.dune.etched) etchTried.push(it); }
       if (r && r.message) it.message = {untrusted: r.message};
@@ -437,7 +466,14 @@
     if (tried.length) { dunesMade = new Map();
       for (const nm of tried) { const key = nm.replace(/•/g, ''); try { const j = await io.dx('/v1/dune/' + encodeURIComponent(key)); dunesMade.set(key, j && j.dune ? j.dune.dune_id : null); } catch (e) { if (/404/.test(String(e))) dunesMade.set(key, null); else { dunesMade = null; break; } } }
       say('dunes', !!dunesMade); } else say('dunes', true);
-    const m = buildManifest({height: h, header: B, headerSite: 'https://thedoginalsexplorer.com', list, listSite: 'https://thedoginalsexplorer.com', details, second, secondHash, secondSite: secondSite || 'no second site',
+    // 6. dogemaps: each claim against the explorer's dogemap index (asked again, three more times, if it gives no answer)
+    const dogemapFirst = {}, claims = [];
+    for (const [id, u] of raw) { try { const r = readTx(u, false); if (r.dogemapClaim != null) claims.push(r.dogemapClaim); } catch (e) {} }
+    for (let round = 0; round < 4 && claims.some(n => !(n in dogemapFirst)); round++) {
+      if (round) await new Promise(r => setTimeout(r, 3000 * round));
+      for (const n of [...new Set(claims)]) { if (n in dogemapFirst) continue; try { const j = await io.dx('/v1/dogemap/' + n); if (j && j.txid) dogemapFirst[n] = j.txid; } catch (e) {} }
+    }
+    const m = buildManifest({height: h, header: B, dogemapFirst, headerSite: 'https://thedoginalsexplorer.com', list, listSite: 'https://thedoginalsexplorer.com', details, second, secondHash, secondSite: secondSite || 'no second site',
       raw, rawSite: io.raw ? (rawFrom.size ? [...rawFrom].join(' and ') : 'https://api.blockchair.com') : null, rawWanted: io.raw ? carry.length : 0, dunesMade});
     if (list.length > DETAIL_CAP) m.checked.note = 'A very big block: the first ' + DETAIL_CAP.toLocaleString('en-GB') + ' transactions were read one by one; the rest are from the lists only.';
     if (rawStop) m.checked.ownBytes.stopped = 'Blockchair asked us to slow down (30 asks a minute): the rest were not read from their bytes this time. Try again in a minute.';

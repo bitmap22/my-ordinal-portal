@@ -50,6 +50,9 @@ async function ordFetch(p, ms, list) {
   throw err || new Error('no site answered');
 }
 
+// the Bitmap Record (every bitmap claim of a block from 942,000 on: .github/bitmap-record), read once a run
+let bmRecP = null;
+const bitmapRecord = () => bmRecP || (bmRecP = fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json', 60000).then(r => r.json()).catch(() => null));
 /* ---------- one block, read the Block Manifest way ---------- */
 async function rawBlockOf(h, hash) {
     try { const {r, site} = await mpFetch('/api/block/' + hash + '/raw', 120000); return {bytes: new Uint8Array(await r.arrayBuffer()), site}; } catch (e) {}
@@ -79,12 +82,14 @@ async function readBlock(h, hash) {
   if (raw.status !== 'fulfilled') throw new Error('its bytes could not be had: ' + (raw.reason && raw.reason.message));
   if (sum.status !== 'fulfilled') throw new Error('its transaction list could not be had: ' + (sum.reason && sum.reason.message));
   const scan = BM.scanBlock(raw.value.bytes, h);
+  // bitmaps count only when checked as the first claim of their block (bop's index below 942,000; the Bitmap Record from 942,000)
+  let bitmapFirst = null; if (scan.txs.some(t => t.bitmapClaim)) try { const rec = await bitmapRecord(); bitmapFirst = await BM.checkBitmaps(scan, h, async p => (await ordFetch(p, 30000, [ORD_LIST])).r.text(), async (n, hh) => rec && rec.upTo >= hh - 1 ? (rec.claims[n] || []).some(c => c.block < hh) : undefined); } catch (e) {}
   let runesHtml = null; if (scan.txs.some(t => t.rune && t.rune.etched)) try { runesHtml = await (await ordFetch('/block/' + h, 45000, [ORD_LIST])).r.text(); } catch (e) {}
   let space = null; try { space = spaceOfBlock(scan, raw.value.bytes, hash, sum.value.list, h); } catch (e) { console.log('  ' + h + ': blockspace not counted (' + e.message + ')'); }
   const M = BM.buildManifest({height: h, time: null, scan, rawSite: raw.value.site, hash, hashSite: 'https://mempool.space',
     secondHash: second.status === 'fulfilled' ? second.value.hash : null, secondSite: second.status === 'fulfilled' ? second.value.site : null,
     summary: sum.value.list, summarySite: sum.value.site, tags: tags.status === 'fulfilled' ? tags.value : null, tagSite: 'https://ordpool.space',
-    ordIds: list.status === 'fulfilled' ? list.value : null, ordSite: ORD_LIST, runesHtml});
+    ordIds: list.status === 'fulfilled' ? list.value : null, ordSite: ORD_LIST, runesHtml, bitmapFirst});
   Object.defineProperty(M, 'space', {value: space, enumerable: false});   // (kept out of the Block Manifest's own output)
   return M;
 }

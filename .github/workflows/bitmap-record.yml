@@ -1,0 +1,43 @@
+# Agent Blockhall's Bitmap Record: every bitmap claim of a block from 942,000 on (where bop's on-chain index stops), read from
+# every block from 942,000 on, with the real (first) claim of each number and every later copy. Saved as record.json on the
+# bitmap-record branch. Free: GitHub runs it. Each run reads for up to 50 minutes and saves; it runs every hour, so it catches
+# up with the newest block in a day or so, then keeps up. It only writes to the bitmap-record branch.
+name: Bitmap Record
+
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bitmap-record
+  cancel-in-progress: false
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Open the bitmap-record branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin bitmap-record:bitmap-record; then git worktree add data bitmap-record; else
+            git worktree add --detach data && cd data && git checkout --orphan bitmap-record && git rm -rfq . && cd ..; fi
+      - name: Read the blocks
+        run: node .github/bitmap-record/build.js data 50
+      - name: Save it
+        if: always()
+        run: |
+          cd data
+          [ -f record.json ] || exit 0
+          git add -A
+          git commit -qm "Bitmap Record: up to block $(node -e "console.log(require('./record.json').upTo)")" || exit 0
+          git push origin bitmap-record

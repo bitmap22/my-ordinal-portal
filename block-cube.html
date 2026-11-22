@@ -1942,6 +1942,8 @@ function loadEtch(B) {
 // again (after 2 s, 4 s, 8 s… up to a minute apart) until it is answered, with no limit on how many claims or how long.
 // A claim's answer is kept on this device (bmStore), so a hall visited again is answered at once.
 const bmWait = ms => new Promise(r => setTimeout(r, ms));
+let bmRecP = null, bmRecAt = 0;   // (the Bitmap Record: .github/bitmap-record; read once and kept for 10 minutes)
+const bmRecord = () => { if (!bmRecP || Date.now() - bmRecAt > 600000) { bmRecAt = Date.now(); bmRecP = fetch('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json').then(r => r.ok ? r.json() : null).catch(() => null); } return bmRecP; };
 function bmMark(B) {
   if (!B || !B.txs) return Promise.resolve();
   if (B.bmP) return B.bmP;
@@ -1963,7 +1965,9 @@ function bmMark(B) {
       const c = await BM.check(id, t.bmN); if (!c || !c.ok) throw new Error('not confirmed');
       bmStore.set(t.bmN, {id, h: c.h, num: c.num}); ok(t); return;
     }
-    for (let h = t.bmN; h < H; h++) {   // 942,000 and up: an earlier claim of N in blocks N to this one's makes this a copy
+    const rec = await bmRecord();   // 942,000 and up: the Bitmap Record (every claim from 942,000 on, kept by a GitHub job), when it reaches this far
+    if (rec && rec.upTo >= H - 1) { if ((rec.claims[t.bmN] || []).some(c => c.block < H)) t.bmNo = 'copy'; else ok(t); return; }
+    for (let h = t.bmN; h < H; h++) {   // (beyond the record: an earlier claim of N in blocks N to this one's makes this a copy)
       let got = bmBlk.get(h);
       if (!got) { const w = bmLastDl + 1000 - performance.now(); if (w > 0) await bmWait(w); const b = await BM.bytes(h); bmLastDl = performance.now(); got = await BM.allClaims(b); bmBlk.set(h, got); }
       if (got[t.bmN]) { t.bmNo = 'copy'; return; }
