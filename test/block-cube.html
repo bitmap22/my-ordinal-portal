@@ -1952,7 +1952,7 @@ function bmMark(B) {
     seen.add(t.bmN); if (t.bmReal || t.bmNo === 'copy') continue;
     t.bmNo = 'checking'; (t.bmN < BM.OCI_LIMIT ? small : big).push(t);
   }
-  const shown = () => { if (cur === B && !room) { rebuild(); head(); } else if (room) room.dirty = true; if (sel && sel.bmN != null) try { select(sel); } catch (e) {} };
+  const shown = () => { if (cur === B && !room) { rebuild(); head(); } else if (room) { room.dirty = true; for (const R of room.rooms) if (R && R.B === B) rmReplanSoon(R); } if (sel && sel.bmN != null) try { select(sel); } catch (e) {} };
   const ok = t => { t.bmReal = true; t.bmNo = null; t.sc |= 1 << TF.bitmap; t._k = null; if (!t.word || t.word.k === 'text') t.word = {k: 'bitmap', a: String(t.bmN), b: '.bitmap'}; };
   const one = async t => {
     const id0 = t.id + 'i' + t.bmI, kept = bmStore.get(t.bmN);
@@ -1970,7 +1970,8 @@ function bmMark(B) {
     }
     ok(t);
   };
-  const tryHard = async t => { for (let a = 0; ; a++) { try { await one(t); shown(); return; } catch (e) { await bmWait(Math.min(60000, 2000 * 2 ** a)); } } };
+  let nDone = 0; const nAll = small.length + big.length, note = () => { if (nAll) hallNote = 'CHECKING BITMAPS ' + nDone + ' OF ' + nAll; };
+  const tryHard = async t => { for (let a = 0; ; a++) { try { note(); await one(t); nDone++; note(); shown(); return; } catch (e) { await bmWait(Math.min(60000, 2000 * 2 ** a)); } } };
   let k = 0;
   const work = async () => { while (k < small.length) await tryHard(small[k++]); };
   (async () => { for (const t of big) await tryHard(t); })();   // (block reads, one at a time, a second apart: answered in the background)
@@ -5879,6 +5880,7 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
   const p = (async () => {
     const B = cur && cur.height === h && cur.txs ? cur : await viaSources((s, b) => s.block(b, h));
     for (let k = 0; k < 4; k++) {
+      hallNote = 'READING THE BLOCK';
       await Promise.allSettled([loadTags(B), scanBlock(B)]);
       if (B.scan && B.scan.ok) await Promise.all([loadEtch(B), bmMark(B)]);
       if (B.scan && B.scan.ok && B.etch && B.etch.ok && (!B.fees || !B.hash || (B.tags && B.tags.ok))) break;
@@ -5926,6 +5928,29 @@ function rmMake(h, of, side) {
     rmSigns();
   }, () => { R.failed = true; rmSigns(); });
   return R;
+}
+// (22 Nov 2026) a hall whose parcels changed shelf after it was built (a bitmap confirmed late): its shelves are planned again where
+// it stands, the parcels set straight onto their new shelves. If the hall would change length, the hall you are in is walked into
+// again (a short fade), so every shelf is right
+const rmReplanT = new Map();
+function rmReplanSoon(R) { clearTimeout(rmReplanT.get(R)); rmReplanT.set(R, setTimeout(() => { rmReplanT.delete(R); rmReplan(R).catch(() => {}); }, 1500)); }
+async function rmReplan(R) {
+  if (!room || !room.rooms.includes(R) || !R.ready || !R.B || R.common || R.gal || R.gd || R.cl) return;
+  const P = roomPlan(R.B);
+  if (P.L !== R.L) { if (room.at === R && !(room.held && !room.held.back)) roomEnter(R.h, {x: room.p.x, z: room.p.z - R.z0}); return; }
+  const h = R.h; R.plan = P;
+  P.items.forEach(it => {
+    const p = bayAt(P, it.bay);
+    it.w = [p.s * (RW / 2 - DEEP + it.e / 2 + .05), PLANKS[it.row] + it.e / 2, R.z0 + p.zs + p.dz * (.05 + it.u)]; it.t0 = now() - 5; it.m = 1;
+    if (h === 0 && it === P.items[0]) { it.e = .26; it.w = [0, 1.44, R.z0 - R.L / 2]; }
+    else if (h === I0_H && it.t && it.t.id === I0_TX) { it.e = .3; it.w = [0, 1.5, R.z0 - R.L / 2]; it.ins0 = true; R.ins0 = it; }
+  });
+  R.nl = null;
+  for (const _ of rmLabelsG(R)) { await yieldNow(); if (!room || !room.rooms.includes(R)) return; }
+  rmFix(R); rmSignPaint(R, true);
+  for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); }
+  gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D);
+  room.dirty = room.fixDirty = true;
 }
 function rmFree(R) { if (R && rmSlots[R.slot] === R) rmSlots[R.slot] = null; }
 // the room you are in becomes the block on screen: header, tiles and pictures follow it
@@ -10974,6 +10999,7 @@ async function showBack() {
   if (b.gal) { await galTravel(b.gal, b.focus); if (room && room.at && room.at.gal && b.from != null) { room.at.gal.from = b.from; head(); } }
   else srTravel(b.h);
 }
+let hallNote = '';   // (what the hall being built is doing right now: shown on the loading screen)
 async function roomEnter(h, spot, opt) {
   cmPrewarm();
   if (h !== COMMON && (!(h >= 0) || h > tipH)) h = mode === 'block' && want >= 0 ? want : tipH;
@@ -10988,7 +11014,16 @@ async function roomEnter(h, spot, opt) {
   head(h === COMMON ? 'walking into the common room…' : 'walking into block ' + fmt(h) + '…');
   const t = performance.now();
   const mine = room;
-  while (room === mine && !C.ready && !C.failed && performance.now() - t < (opt && opt.wait ? 45000 : 20000)) await new Promise(r => setTimeout(r, 120));
+  // (22 Nov 2026) the dark loading screen stays up until the hall is fully built, however long a busy block takes: never a bare
+  // carpet with no hall. It says what is being done, and how far it has got
+  const say0 = $rf.dataset.say;
+  while (room === mine && !C.ready && !C.failed) {
+    const s = Math.round((performance.now() - t) / 1000);
+    $rf.dataset.say = (h === COMMON ? 'THE COMMON ROOM' : 'BLOCK ' + fmt(h)) + ' · ' + (hallNote || 'BUILDING THE HALL') + (s >= 4 ? ' · ' + s + ' S' : '');
+    await new Promise(r => setTimeout(r, 150));
+  }
+  if (say0 != null) $rf.dataset.say = say0; else delete $rf.dataset.say;
+  hallNote = '';
   if (!room || room !== mine) return;   // (another trip started meanwhile: that one carries on)
   if (C.failed) { roomExit(); head('block ' + fmt(h) + ' not reachable'); return; }
   if (spot && spot.cm && C.common) { const [wx, wz] = cmW(C, spot.cm[0], spot.cm[1]); room.p.x = wx; room.p.z = C.z0 + wz; room.p.lv = spot.cm[2] || 0; room.p.y = cmH(spot.cm[0], spot.cm[1], room.p.lv); if (spot.face) { room.p.yaw = cmYaw(C); room.p.pitch = spot.pitch != null ? spot.pitch : .02; }
