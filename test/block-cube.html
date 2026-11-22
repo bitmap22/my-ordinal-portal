@@ -1942,6 +1942,8 @@ function loadEtch(B) {
 // again (after 2 s, 4 s, 8 s… up to a minute apart) until it is answered, with no limit on how many claims or how long.
 // A claim's answer is kept on this device (bmStore), so a hall visited again is answered at once.
 const bmWait = ms => new Promise(r => setTimeout(r, ms));
+let bmRecP = null, bmRecAt = 0;   // (the Bitmap Record: .github/bitmap-record; read once and kept for 10 minutes)
+const bmRecord = () => { if (!bmRecP || Date.now() - bmRecAt > 600000) { bmRecAt = Date.now(); bmRecP = fetch('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json').then(r => r.ok ? r.json() : null).catch(() => null); } return bmRecP; };
 function bmMark(B) {
   if (!B || !B.txs) return Promise.resolve();
   if (B.bmP) return B.bmP;
@@ -1963,7 +1965,9 @@ function bmMark(B) {
       const c = await BM.check(id, t.bmN); if (!c || !c.ok) throw new Error('not confirmed');
       bmStore.set(t.bmN, {id, h: c.h, num: c.num}); ok(t); return;
     }
-    for (let h = t.bmN; h < H; h++) {   // 942,000 and up: an earlier claim of N in blocks N to this one's makes this a copy
+    const rec = await bmRecord();   // 942,000 and up: the Bitmap Record (every claim from 942,000 on, kept by a GitHub job), when it reaches this far
+    if (rec && rec.upTo >= H - 1) { if ((rec.claims[t.bmN] || []).some(c => c.block < H)) t.bmNo = 'copy'; else ok(t); return; }
+    for (let h = t.bmN; h < H; h++) {   // (beyond the record: an earlier claim of N in blocks N to this one's makes this a copy)
       let got = bmBlk.get(h);
       if (!got) { const w = bmLastDl + 1000 - performance.now(); if (w > 0) await bmWait(w); const b = await BM.bytes(h); bmLastDl = performance.now(); got = await BM.allClaims(b); bmBlk.set(h, got); }
       if (got[t.bmN]) { t.bmNo = 'copy'; return; }
@@ -3006,9 +3010,25 @@ function paintMark(x, k, fg, s) {
     for (const [a, b] of pts) { const r = 3.95, g = x.createRadialGradient(a - r * .36, b - r * .42, r * .05, a, b, r); g.addColorStop(0, hi); g.addColorStop(.32, fg); g.addColorStop(1, lo); x.fillStyle = g; x.beginPath(); x.arc(a, b, r, 0, 7); x.fill(); }
     x.shadowBlur = sb;
   } else if (k === 'cp') {
-    const bands = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc6a', '#3a86ff', '#9d4edd'];
-    x.lineWidth = 3.4; x.lineCap = 'butt';
-    bands.forEach((c, i) => { x.strokeStyle = c; x.beginPath(); x.arc(32, 50, 23 - i * 3.4, Math.PI, 2 * Math.PI); x.stroke(); });
+    // (22 Nov 2026) Counterparty: a colourful coin, its edge in six colours (reeded), a deep violet face with CP on it. Drawn here
+    // (not Counterparty's own logo)
+    const bands = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc6a', '#3a86ff', '#b25cff'], R = 22, sb = x.shadowBlur, sc = x.shadowColor;
+    x.save(); x.shadowBlur = 0;
+    x.fillStyle = 'rgba(0,0,0,.45)'; x.beginPath(); x.ellipse(32, 34.2, R + .6, R + .2, 0, 0, 7); x.fill();
+    bands.forEach((c, i) => { const a0 = -Math.PI / 2 + i * Math.PI / 3 - Math.PI / 6; x.fillStyle = c; x.beginPath(); x.moveTo(32, 32); x.arc(32, 32, R, a0, a0 + Math.PI / 3); x.closePath(); x.fill(); });
+    x.strokeStyle = 'rgba(0,0,0,.28)'; x.lineWidth = .5;
+    for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2; x.beginPath(); x.moveTo(32 + Math.cos(a) * R * .8, 32 + Math.sin(a) * R * .8); x.lineTo(32 + Math.cos(a) * R, 32 + Math.sin(a) * R); x.stroke(); }
+    x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1.1; x.beginPath(); x.arc(32, 32, R - .4, 0, 7); x.stroke();
+    const g = x.createRadialGradient(27, 26, 1, 32, 32, R * .78); g.addColorStop(0, '#4a3878'); g.addColorStop(1, '#140d26');
+    x.fillStyle = g; x.beginPath(); x.arc(32, 32, R * .76, 0, 7); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = .9; x.beginPath(); x.arc(32, 32, R * .76, 0, 7); x.stroke();
+    x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = .6; x.beginPath(); x.arc(32, 32, R * .66, 0, 7); x.stroke();
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 15px ui-monospace,Menlo,Consolas,monospace';
+    x.fillStyle = 'rgba(0,0,0,.5)'; x.fillText('CP', 32.6, 33.4);
+    const tg = x.createLinearGradient(0, 25, 0, 40); tg.addColorStop(0, '#ffffff'); tg.addColorStop(1, '#ffd98a'); x.fillStyle = tg; x.fillText('CP', 32, 32.6);
+    const sh = x.createLinearGradient(14, 12, 38, 38); sh.addColorStop(0, 'rgba(255,255,255,.38)'); sh.addColorStop(.45, 'rgba(255,255,255,.05)'); sh.addColorStop(.5, 'rgba(255,255,255,0)');
+    x.fillStyle = sh; x.beginPath(); x.arc(32, 32, R, 0, 7); x.fill();
+    x.restore(); x.shadowBlur = sb; x.shadowColor = sc;
   }
 }
 function fitFont(x, txt, max, min, w, weight) {
@@ -3056,7 +3076,8 @@ function paintWord(w, n) {
     x.strokeStyle = fg; x.lineWidth = 4; x.strokeRect(2, 2, 60, 60);
     if (w.k === 'alk' && w.m) alkMol(x, w.m, 32, 32, 50, 44, fg, n / 64, 16);
     else if (w.k === 'alk') paintMark(x, w.k, fg, w.s);
-    else if (w.k === 'rune' || w.k === 'cp') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg, w.s); }
+    else if (w.k === 'cp') paintMark(x, w.k, fg, w.s);
+    else if (w.k === 'rune') { x.translate(32, 32); x.scale(1.25, 1.25); x.translate(-32, -32); paintMark(x, w.k, fg, w.s); }
     else say(w.a, 33, 30, 9, 800, '#ffffff');
   } else {
     x.strokeStyle = fg; x.lineWidth = 2; x.strokeRect(2, 2, 60, 60);
@@ -3102,7 +3123,7 @@ function paintRich(w, n, cv, x, bg, fg, label) {
     if (main) { x.fillStyle = mix(fg, '#ffffff', .35); fitFont(x, main, 5.4, 3.4, 54, 800); x.fillText(main, 32, 46.6, 56); }
   } else if (w.k === 'rune' || w.k === 'alk' || w.k === 'cp') {
     const sc = w.k === 'alk' ? (main ? 1 : 1.06) : main ? .64 : .82, cy = main ? 26 : 31;   // (the carbon chain is wide and low: it is drawn larger than the other logos)
-    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, w.k === 'cp' ? -40 : -31); glow(() => paintMark(x, w.k, fg, w.s), 4); x.restore();
+    x.save(); x.translate(32, cy); x.scale(sc, sc); x.translate(-32, -31); glow(() => paintMark(x, w.k, fg, w.s), 4); x.restore();
     if (main) { x.fillStyle = '#ffffff'; fitFont(x, main, 7, 3.4, 56, 800); glow(() => x.fillText(main, 32, 44.5, 58), 3); }
   } else if (main) {
     fitFont(x, main, 22, 6, 54, 800); glow(() => { x.fillStyle = '#ffffff'; x.fillText(main, 32, 31.5, 56); }, 6);
