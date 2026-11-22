@@ -1434,7 +1434,7 @@ function classifyBody(t, ct, u) {
   const all = U8D.decode(u.subarray(0, 8000)), s = all.trim(), plain = ty.startsWith('text/plain') || ty.startsWith('application/json');
   if (/^text\/(plain|markdown)/.test(ty) || /json/.test(ty)) { t.txt = all.slice(0, 1500); t.txtT = ty; }
   const dm = /^(0|[1-9]\d{0,9})\.dogemap$/i.exec(s);   // a dogemap: "<number>.dogemap", any text type, no leading zeros
-  if (dm) { set(TF.dogemap); t.dmN = +dm[1]; t.word = {k: 'dogemap', a: dm[1], b: '.dogemap'}; }
+  if (dm) { t.dmN = +dm[1]; t.dmNo = null; }   // (a dogemap claim: it shows as a dogemap only once the explorer's dogemap index says it is the claim of that block: see dmMark)
   else if (s[0] === '{') {
     let o = null; try { o = JSON.parse(s); } catch (e) {}
     const p = o && typeof o === 'object' ? String(o.p || '') : '';
@@ -1548,6 +1548,22 @@ async function contentOf(id, maxB) {
   }
   throw err || new Error('no content');
 }
+// (22 Nov 2026) DOGEMAPS, no fakes: a parcel shows as a dogemap only if the explorer's dogemap index (thedoginalsexplorer.com,
+// /v1/dogemap/N) names its transaction as the claim of block N. A later copy, or a claim that can't be checked, stays plain text.
+async function dmMark(B) {
+  const seen = new Set(), todo = [];
+  for (const t of B.txs) { if (t.dmN == null || !t.id || t.dmOk || t.dmNo) continue; if (seen.has(t.dmN)) { t.dmNo = 'copy'; continue; } seen.add(t.dmN); todo.push(t); }
+  const T0 = Date.now();
+  await poolMap(todo.slice(0, 300), 4, async t => {
+    if (Date.now() - T0 > 40000) { t.dmNo = 'unchecked'; return; }
+    try { const j = await dj(DX + '/v1/dogemap/' + t.dmN, 15000);
+      if (j && j.txid === t.id) { t.dmOk = true; t.scC = (t.scC || 0) | 1 << TF.dogemap; if (!t.word || t.word.k === 'text') t.word = {k: 'dogemap', a: String(t.dmN), b: '.dogemap'}; t.sc = dgFlags(t); t._k = null; }
+      else t.dmNo = j && j.txid ? 'copy' : 'unchecked';
+    } catch (e) { t.dmNo = 'unchecked'; }
+  });
+  for (const t of todo) if (!t.dmOk && !t.dmNo) t.dmNo = 'unchecked';
+}
+const dmSay = t => t.dmOk ? t.dmN + '.dogemap: the claim of block ' + fmt(t.dmN) + ' (the explorer’s dogemap index)' : t.dmNo === 'copy' ? 'it says ' + t.dmN + '.dogemap, but it is not the claim of block ' + fmt(t.dmN) + ', so it is not a dogemap (the explorer’s dogemap index)' : 'it says ' + t.dmN + '.dogemap: whether it is the claim of block ' + fmt(t.dmN) + ' could not be checked, so it is not shown as a dogemap';
 async function dxContent(B) {
   if (!B || B.cont) return B && B.contP;
   B.cont = {loading: true};
@@ -1561,6 +1577,7 @@ async function dxContent(B) {
       const img = /^image\//.test(t.dxi.contentType), mdlF = MDL_RE.test(String(t.dxi.contentType || '').toLowerCase());
       try { const c = await contentOf(t.dxi.id, img ? 400000 : mdlF ? 1500000 : 8000); bytes += c.u.length; classifyBody(t, t.dxi.contentType, c.u); } catch (e) { if (t.scC == null) t.scC = 0; }
     });
+    await dmMark(B);
     B.cont = {ok: true, n: list.length, of: list.length};
     mdlBlock(B).catch(() => {});   // (its 3D models, drawn into pictures one at a time)
   })();
@@ -3561,6 +3578,7 @@ function select(t) {
     if (has(TF.part)) rows.push(['inscription', 'a piece of a bigger file, written over several transactions']);
     const tok = [has(TF.drc20) && 'DRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.tap) && 'TAP', has(TF.dogemap) && 'dogemap' + (t.dmN != null ? ' ' + fmt(t.dmN) : ''), has(TF.dns) && 'name' + (t.word && t.word.k === 'dns' ? ' ' + t.word.a + t.word.b.split(' ')[0] : '')].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
+    if (t.dmN != null && (t.dmOk || t.dmNo)) rows.push([t.dmOk ? 'dogemap' : 'not a dogemap', dmSay(t)]);
     if (has(TF.dune)) rows.push(['dune', duneSay(t, has(TF.detch) && 'etched' + (t.rn ? ' ' + t.rn : '')), t.dbad ? '#ff5a7a' : undefined]);
     if (t.rnLost) rows.push(['new dune', 'tried for ' + t.rnLost + ' · it never came into being (thedoginalsexplorer.com)']);
     if (t.msg) rows.push(['message', '“' + t.msg + '”']);
@@ -10171,6 +10189,7 @@ window.AgentKit = window.AgentKit || (() => {
     try { if (t.sc != null && ((t.sc >> TF.part) & 1)) o.inscriptionPiece = 'a piece of a bigger file, written over several transactions (as its card says)'; } catch (e) {}
     if (o.types.includes('dunes') && !o.types.some(k => /^dunes (etched|minted|moved)$/.test(k)))   // a dunestone that made, minted and moved nothing: what it is, as its card says
       o.dunestone = t.rnLost ? 'it tried to make a new dune, which never came into being (thedoginalsexplorer.com): the name it tried for is untrusted.duneTried' : duneSay(t, '');
+    if (t.dmN != null && (t.dmOk || t.dmNo)) o.dogemap = dmSay(t);
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.dune = t.rn; if (t.rnLost) u.duneTried = t.rnLost;
     if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a DRC-20 token's own word: deploy, mint…)
     const lab = t.word ? [t.word.a, t.word.b, t.word.x].filter(Boolean).join(' · ') : ''; if (lab) u.label = lab;   // (the words painted on its box)
