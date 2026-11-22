@@ -2,7 +2,8 @@
 
 The portal's own counter, on Cloudflare at `ordportal.com/hall-count`. Agent Blockhall and Doge Cube tell it what a visitor
 does (each thing once a visit), and it keeps only anonymous daily totals in a free Cloudflare database (D1, `hall-visits`).
-No IP address, cookie, wallet or id is kept.
+No IP address, cookie, wallet or id is kept. Against fake counts, one visitor may count at most 40 things a minute; more are
+ignored (Cloudflare's own rate limiter counts by address for that minute only; the counter never keeps it).
 
 - `GET /hall-count?s=btc|doge&e=walk|stay|hold|look&b=<block or common>&k=<parcel kind>&t=<seconds>&w=p|a` counts one thing.
   Anything not on the worker's lists is ignored.
