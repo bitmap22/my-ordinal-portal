@@ -247,9 +247,9 @@ async function main() {
 
   /* ---------- the two tools that check your own files: what they check (not data) ---------- */
   facts['ordinal-view-tester.html'] = {tool: 'Ordinal View Tester', page: PORTAL + 'ordinal-view-tester.html', about: true,
-    text: 'Not a chain tool: it tests your own ordinal HTML file on every screen size, from tiny tiles to phones and computers, before you inscribe it.', link: PORTAL + 'ordinal-view-tester.html', linkText: 'Test a file'};
+    text: 'No fact of the day for this one: it tests your own HTML file before you inscribe it, not the chain.', link: PORTAL + 'ordinal-view-tester.html', linkText: 'Test a file'};
   facts['sentinel-id-viewer.html'] = {tool: 'Sentinel ID Viewer', page: PORTAL + 'sentinel-id-viewer.html', about: true,
-    text: 'Not a chain fact: it takes you through a list of inscriptions one by one, reading each one\'s code as text (never running it) so you can mark it keep, maybe or skip.', link: PORTAL + 'sentinel-id-viewer.html', linkText: 'Go through a list'};
+    text: 'No fact of the day for this one: it checks a list of inscriptions you give it, not the chain.', link: PORTAL + 'sentinel-id-viewer.html', linkText: 'Go through a list'};
 
   const out = {data: 'Ord Portal Highlights ' + VERSION, licence: LICENCE, made: now.toISOString().replace(/\.\d{3}/, ''), day: D,
     what: 'One real fact for each tool on the Ord Portal\'s front page, made each day by GitHub with the tool\'s own code (the Agent Blockhall MCP tool), on yesterday\'s (UTC) blocks or a real example from them, or from the tool\'s own saved data. period: the day or time the fact is about. kept: true when today\'s could not be found, so the last one is kept, with its own date. about: true for the two tools that check your own files: their line says what they check (not data).',
