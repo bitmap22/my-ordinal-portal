@@ -1850,7 +1850,8 @@ async function scanBytes(X, h) {
             r.txt = U8D.decode(all.subarray(0, 1500)); r.txtT = ty;   // (read out in full on the tablet)
             if (t0 && !/^<|^\{?\s*$/.test(t0)) r.word = {k: 'text', a: t0.slice(0, 140), b: ''};
           }
-          if (!enc && bl && bl <= 1000) {
+          if (!enc && bl && bl <= 65536) {   // (token and bitmap files read whole up to 64 KB: BRC-20's rules set no size)
+           
             const raw = U8D.decode(catB(body)), txt = raw.trim(), bm = /^(0|[1-9]\d{0,15})\.bitmap$/.exec(raw);
             if (bm && !del && +bm[1] <= h) { if (r.bmN == null) { r.bmN = +bm[1]; r.bmI = ei - 1; } }   // (a bitmap claim by bop's rules: exactly "N.bitmap", no compression, no delegate, N no higher than its block. It shows as a bitmap only once bop's index says it is the real, first claim: see bmMark)
             // BRC-420: a mint is only a link to the original (/content/ and its id). The block can't show it was paid for or
@@ -1921,7 +1922,8 @@ function loadEtch(B) {
       try { const h = await (await fetchT(base + '/block/' + B.height, null, 45000)).text(); if (h.includes('<h1>Block ')) { html = h; break; } } catch (e) {}
     }
     if (!html) { await new Promise(r => setTimeout(r, 1500)); try { const h = await (await fetchT('https://ordinals.com/block/' + B.height, null, 45000)).text(); if (h.includes('<h1>Block ')) html = h; } catch (e) {} }
-    if (!html) { hl('runes', false); for (const t of tries) t.rnUnsure = true; B.etch = {failed: true}; return; }   // (the etchings stay attempts: whether each made its rune is not known)
+    if (!html) { hl('runes', false); for (const t of tries) t.rnUnsure = true; B.etch = {failed: true};   // (asked again in a minute, and again, until ordinals.com answers)
+      setTimeout(() => { if (B.etch && B.etch.failed) { B.etch = null; B.etchP = null; loadEtch(B).then(() => { if (cur === B && !room) { rebuild(); head(); } if (room) room.dirty = true; }); } }, 60000); return; }   // (the etchings stay attempts: whether each made its rune is not known)
     hl('runes', true, 'https://ordinals.com'); for (const t of tries) t.rnUnsure = false;
     const made = new Set([...html.matchAll(/href=\/rune\/([^> ]+)>/g)].map(m => decodeURIComponent(m[1]).replace(/•/g, ''))), first = new Set();
     for (const t of tries) {   // (in block order: a name made twice in one block goes to the first)
@@ -1933,28 +1935,51 @@ function loadEtch(B) {
     B.etch = {ok: true};
   })();
 }
-// (22 Nov 2026) BITMAPS, no fakes: a parcel shows as a bitmap only if it is the real claim of its block, the first proper
-// "N.bitmap" (bop's rules, as the Bitmap Garden checks them). Below 942,000 bop's on-chain index (OCI) says which inscription that
-// is, and ord must agree; from 942,000 a claim made in block N itself is the real one when it is that block's first. A later copy, or a claim that
-// can't be checked, stays a plain text inscription.
+// (22 Nov 2026) BITMAPS, no fakes and none missed: a parcel shows as a bitmap only if it is the real claim of its block, the first
+// proper "N.bitmap" (bop's rules, as the Bitmap Garden checks them). Below 942,000 bop's on-chain index (OCI) says which inscription
+// that is, and ord must agree; from 942,000 the blocks from N up to this one are read (as the bitmap search reads them) for an
+// earlier claim. A later copy stays a plain text inscription. A claim not yet answered is "being checked": every check is tried
+// again (after 2 s, 4 s, 8 s… up to a minute apart) until it is answered, with no limit on how many claims or how long.
+// A claim's answer is kept on this device (bmStore), so a hall visited again is answered at once.
+const bmWait = ms => new Promise(r => setTimeout(r, ms));
 function bmMark(B) {
   if (!B || !B.txs) return Promise.resolve();
   if (B.bmP) return B.bmP;
-  return B.bmP = (async () => {
-    const seen = new Set(), todo = [];
-    for (const t of B.txs) { if (t.bmN == null || !t.id) continue; if (seen.has(t.bmN)) { t.bmNo = 'copy'; continue; } seen.add(t.bmN); todo.push(t); }   // (a second claim of N in one block is never the first)
-    const ok = t => { t.bmReal = true; t.sc |= 1 << TF.bitmap; t._k = null; if (!t.word || t.word.k === 'text') t.word = {k: 'bitmap', a: String(t.bmN), b: '.bitmap'}; };
-    const small = [];
-    for (const t of todo) { if (t.bmN < BM.OCI_LIMIT) small.push(t); else if (t.bmN === B.height) ok(t); else t.bmNo = 'unchecked'; }
-    let k = 0; const T0 = Date.now();
-    // (bop's index names the claim, and ord itself must agree: the body exactly "N.bitmap", made in block N or later)
-    const work = async () => { while (k < small.length && k < 1500 && Date.now() - T0 < 40000) { const t = small[k++]; try { const id = await BM.ociFirst(t.bmN); if (id && id === t.id + 'i' + t.bmI) { const c = await BM.check(id, t.bmN); if (c && c.ok) ok(t); else t.bmNo = 'unchecked'; } else t.bmNo = id ? 'copy' : 'unchecked'; } catch (e) { t.bmNo = 'unchecked'; } } };
-    await Promise.all([work(), work(), work(), work(), work(), work(), work(), work()]);
-    for (const t of small) if (!t.bmReal && !t.bmNo) t.bmNo = 'unchecked';
-  })();
+  const H = B.height, seen = new Set(), small = [], big = [];
+  for (const t of B.txs) {
+    if (t.bmN == null || !t.id) continue;
+    if (seen.has(t.bmN)) { t.bmNo = 'copy'; continue; }   // (a second claim of N in one block is never the first)
+    seen.add(t.bmN); if (t.bmReal || t.bmNo === 'copy') continue;
+    t.bmNo = 'checking'; (t.bmN < BM.OCI_LIMIT ? small : big).push(t);
+  }
+  const shown = () => { if (cur === B && !room) { rebuild(); head(); } else if (room) { room.dirty = true; for (const R of room.rooms) if (R && R.B === B) rmReplanSoon(R); } if (sel && sel.bmN != null) try { select(sel); } catch (e) {} };
+  const ok = t => { t.bmReal = true; t.bmNo = null; t.sc |= 1 << TF.bitmap; t._k = null; if (!t.word || t.word.k === 'text') t.word = {k: 'bitmap', a: String(t.bmN), b: '.bitmap'}; };
+  const one = async t => {
+    const id0 = t.id + 'i' + t.bmI, kept = bmStore.get(t.bmN);
+    if (kept && kept.id) { if (kept.id === id0) ok(t); else t.bmNo = 'copy'; return; }
+    if (t.bmN < BM.OCI_LIMIT) {   // bop's index names the claim, and ord itself must agree (the body exactly "N.bitmap", made in block N or later)
+      const id = await BM.ociFirst(t.bmN); if (!id) throw new Error('no answer');
+      if (id !== id0) { t.bmNo = 'copy'; return; }
+      const c = await BM.check(id, t.bmN); if (!c || !c.ok) throw new Error('not confirmed');
+      bmStore.set(t.bmN, {id, h: c.h, num: c.num}); ok(t); return;
+    }
+    for (let h = t.bmN; h < H; h++) {   // 942,000 and up: an earlier claim of N in blocks N to this one's makes this a copy
+      let got = bmBlk.get(h);
+      if (!got) { const w = bmLastDl + 1000 - performance.now(); if (w > 0) await bmWait(w); const b = await BM.bytes(h); bmLastDl = performance.now(); got = await BM.allClaims(b); bmBlk.set(h, got); }
+      if (got[t.bmN]) { t.bmNo = 'copy'; return; }
+    }
+    ok(t);
+  };
+  let nDone = 0; const nAll = small.length + big.length, note = () => { if (nAll) hallNote = 'CHECKING BITMAPS ' + nDone + ' OF ' + nAll; };
+  const tryHard = async t => { for (let a = 0; ; a++) { try { note(); await one(t); nDone++; note(); shown(); return; } catch (e) { await bmWait(Math.min(60000, 2000 * 2 ** a)); } } };
+  let k = 0;
+  const work = async () => { while (k < small.length) await tryHard(small[k++]); };
+  (async () => { for (const t of big) await tryHard(t); })();   // (block reads, one at a time, a second apart: answered in the background)
+  // the hall waits for the index answers (they are quick), up to a minute and a half; any still out are shown as being checked and answered as they come
+  return B.bmP = Promise.race([Promise.all([work(), work(), work(), work(), work(), work(), work(), work()]), bmWait(90000)]);
 }
 // what a bitmap claim is, said plainly (its card and the agent kit)
-const bmSay = t => t.bmReal ? t.bmN + '.bitmap: the real claim of block ' + fmt(t.bmN) + ', its first proper claim (bop’s on-chain index)' : t.bmNo === 'copy' ? 'it says ' + t.bmN + '.bitmap, but it is not the first claim of block ' + fmt(t.bmN) + ', so it is not a bitmap (bop’s on-chain index)' : 'it says ' + t.bmN + '.bitmap: whether it is the first claim of block ' + fmt(t.bmN) + ' could not be checked, so it is not shown as a bitmap';
+const bmSay = t => t.bmReal ? t.bmN + '.bitmap: the real claim of block ' + fmt(t.bmN) + ', its first proper claim (bop’s on-chain index' + (t.bmN < BM.OCI_LIMIT ? ', with ord agreeing)' : ' rules: no earlier claim in blocks ' + fmt(t.bmN) + ' onward)') : t.bmNo === 'copy' ? 'it says ' + t.bmN + '.bitmap, but it is not the first claim of block ' + fmt(t.bmN) + ', so it is not a bitmap (bop’s rules)' : 'it says ' + t.bmN + '.bitmap: being checked now (whether it is the first claim of block ' + fmt(t.bmN) + '). Its card updates when the answer comes';
 async function scanBlock(B) {
   if (!B || B.scan) return;
   overpays(B);   // (from its fees alone: there even if its bytes can't be read)
@@ -4032,6 +4057,7 @@ function select(t) {
     const tok = [has(TF.brc20) && 'BRC-20', has(TF.brc420) && (t.b4 === 'deploy' ? 'BRC-420 deploy' : 'BRC-420 mint? (not checked)'), has(TF.tap) && (has(TF.dmt) ? 'TAP · DMT mint' : 'TAP'), has(TF.crc20) && 'CRC-20' + (t.op2 ? ' ' + t.op2 : ''), has(TF.bitmap) && 'bitmap', has(TF.atom) && 'Atomicals', has(TF.stamps) && 'Stamps', t.src20 && 'SRC-20', has(TF.cp) && 'Counterparty'].filter(Boolean);
     if (tok.length) rows.push(['token', tok.join(' · ') + (t.tick ? ' · ' + t.tick : '')]);
     if (t.bmN != null && (t.bmReal || t.bmNo)) rows.push([t.bmReal ? 'bitmap' : 'not a bitmap', bmSay(t)]);
+    if (has(TF.brc20)) rows.push(['BRC-20 rules', 'checked here: its file type, that it is its transaction’s first inscription, written the standard way, and made from block 779,832. Checked when you pick it up: whether ord marks it cursed or a re-inscription (BRC-20 does not count those). The token’s own limits are the BRC-20 ledger’s to say']);
     if (t.natOff) rows.push(['NAT', 'a NAT mint: from block 885,588 TAP does not count these (NAT comes from each block’s reward)']);
     if (has(TF.rune)) {
       const ra = [has(TF.etch) && (t.rnUnsure ? 'tries to etch' + (t.rn ? ' ' + t.rn : '') + ' (whether it made the rune is not known right now: ordinals.com did not answer)' : 'etched' + (t.rn ? ' ' + t.rn : '')), has(TF.rmint) && 'minted' + (t.mint ? ' ' + runeNm(t.mint) : ''), has(TF.rmove) && 'moved' + (t.rmv && t.rmv.length ? ' ' + t.rmv.slice(0, 3).map(runeNm).join(', ') + (t.rmv.length > 3 ? ' and ' + (t.rmv.length - 3) + ' more' : '') : '')].filter(Boolean).join(' · ');
@@ -5854,6 +5880,7 @@ function rmLoad(h) {   // a block, with its ordinal tags and its raw read (kept 
   const p = (async () => {
     const B = cur && cur.height === h && cur.txs ? cur : await viaSources((s, b) => s.block(b, h));
     for (let k = 0; k < 4; k++) {
+      hallNote = 'READING THE BLOCK';
       await Promise.allSettled([loadTags(B), scanBlock(B)]);
       if (B.scan && B.scan.ok) await Promise.all([loadEtch(B), bmMark(B)]);
       if (B.scan && B.scan.ok && B.etch && B.etch.ok && (!B.fees || !B.hash || (B.tags && B.tags.ok))) break;
@@ -5901,6 +5928,29 @@ function rmMake(h, of, side) {
     rmSigns();
   }, () => { R.failed = true; rmSigns(); });
   return R;
+}
+// (22 Nov 2026) a hall whose parcels changed shelf after it was built (a bitmap confirmed late): its shelves are planned again where
+// it stands, the parcels set straight onto their new shelves. If the hall would change length, the hall you are in is walked into
+// again (a short fade), so every shelf is right
+const rmReplanT = new Map();
+function rmReplanSoon(R) { clearTimeout(rmReplanT.get(R)); rmReplanT.set(R, setTimeout(() => { rmReplanT.delete(R); rmReplan(R).catch(() => {}); }, 1500)); }
+async function rmReplan(R) {
+  if (!room || !room.rooms.includes(R) || !R.ready || !R.B || R.common || R.gal || R.gd || R.cl) return;
+  const P = roomPlan(R.B);
+  if (P.L !== R.L) { if (room.at === R && !(room.held && !room.held.back)) roomEnter(R.h, {x: room.p.x, z: room.p.z - R.z0}); return; }
+  const h = R.h; R.plan = P;
+  P.items.forEach(it => {
+    const p = bayAt(P, it.bay);
+    it.w = [p.s * (RW / 2 - DEEP + it.e / 2 + .05), PLANKS[it.row] + it.e / 2, R.z0 + p.zs + p.dz * (.05 + it.u)]; it.t0 = now() - 5; it.m = 1;
+    if (h === 0 && it === P.items[0]) { it.e = .26; it.w = [0, 1.44, R.z0 - R.L / 2]; }
+    else if (h === I0_H && it.t && it.t.id === I0_TX) { it.e = .3; it.w = [0, 1.5, R.z0 - R.L / 2]; it.ins0 = true; R.ins0 = it; }
+  });
+  R.nl = null;
+  for (const _ of rmLabelsG(R)) { await yieldNow(); if (!room || !room.rooms.includes(R)) return; }
+  rmFix(R); rmSignPaint(R, true);
+  for (let y = 0; y < LSLOT; y += 128) { labUp(0, R.slot * LSLOT + y, LT, 128, true); await yieldNow(); }
+  gl.bindTexture(gl.TEXTURE_2D, labTex); gl.generateMipmap(gl.TEXTURE_2D);
+  room.dirty = room.fixDirty = true;
 }
 function rmFree(R) { if (R && rmSlots[R.slot] === R) rmSlots[R.slot] = null; }
 // the room you are in becomes the block on screen: header, tiles and pictures follow it
@@ -8779,6 +8829,13 @@ async function heldInfo(t) {
     if (!(n > 4200000)) { const u = new Uint8Array(await resp.arrayBuffer()); if (u.length <= 4200000) show(await mediaRows(u, resp.headers.get('content-type'))); }
   } catch (e) {}
   const has = f => t.sc != null && ((t.sc >> f) & 1) === 1;
+  // (22 Nov 2026) BRC-20, checked as you pick it up: ord's own marks on the inscription. BRC-20 does not count one ord marks cursed,
+  // vindicated (it would have been cursed before the jubilee) or a re-inscription (its sat already held an inscription)
+  if (has(TF.brc20) && t.id) try {
+    const o = await (await ordFetch('/r/inscription/' + t.id + 'i0', 15000)).json(), bad = (o.charms || []).filter(c => /^(cursed|vindicated|reinscription)$/.test(c));
+    t.brcOff = bad.length ? bad : null;
+    show([['BRC-20 check', bad.length ? 'not counted by BRC-20: ord marks this inscription ' + bad.join(' and ') + ', and BRC-20 does not count those (ordinals.com)' : 'counted by BRC-20’s rules: ord marks it neither cursed nor a re-inscription (ordinals.com). Whether the token’s own limits allow this step is the BRC-20 ledger’s to say', bad.length ? '#ff5a7a' : undefined]]);
+  } catch (e) {}
   const q = has(TF.etch) && t.rn ? t.rn : t.mint || null;
   if (q) try {   // the rune it makes, or mints: read from the rune's page on ordinals.com
     const h = await (await ordFetch('/rune/' + encodeURIComponent(q), 15000, ['https://ordinals.com', 'https://ordinals.com'])).text(), D = {};   // (only ordinals.com has rune pages: asked twice)
@@ -10949,6 +11006,7 @@ async function showBack() {
   if (b.gal) { await galTravel(b.gal, b.focus); if (room && room.at && room.at.gal && b.from != null) { room.at.gal.from = b.from; head(); } }
   else srTravel(b.h);
 }
+let hallNote = '';   // (what the hall being built is doing right now: shown on the loading screen)
 async function roomEnter(h, spot, opt) {
   cmPrewarm();
   if (h !== COMMON && (!(h >= 0) || h > tipH)) h = mode === 'block' && want >= 0 ? want : tipH;
@@ -10963,7 +11021,16 @@ async function roomEnter(h, spot, opt) {
   head(h === COMMON ? 'walking into the common room…' : 'walking into block ' + fmt(h) + '…');
   const t = performance.now();
   const mine = room;
-  while (room === mine && !C.ready && !C.failed && performance.now() - t < (opt && opt.wait ? 45000 : 20000)) await new Promise(r => setTimeout(r, 120));
+  // (22 Nov 2026) the dark loading screen stays up until the hall is fully built, however long a busy block takes: never a bare
+  // carpet with no hall. It says what is being done, and how far it has got
+  const say0 = $rf.dataset.say;
+  while (room === mine && !C.ready && !C.failed) {
+    const s = Math.round((performance.now() - t) / 1000);
+    $rf.dataset.say = (h === COMMON ? 'THE COMMON ROOM' : 'BLOCK ' + fmt(h)) + ' · ' + (hallNote || 'BUILDING THE HALL') + (s >= 4 ? ' · ' + s + ' S' : '');
+    await new Promise(r => setTimeout(r, 150));
+  }
+  if (say0 != null) $rf.dataset.say = say0; else delete $rf.dataset.say;
+  hallNote = '';
   if (!room || room !== mine) return;   // (another trip started meanwhile: that one carries on)
   if (C.failed) { roomExit(); head('block ' + fmt(h) + ' not reachable'); return; }
   if (spot && spot.cm && C.common) { const [wx, wz] = cmW(C, spot.cm[0], spot.cm[1]); room.p.x = wx; room.p.z = C.z0 + wz; room.p.lv = spot.cm[2] || 0; room.p.y = cmH(spot.cm[0], spot.cm[1], room.p.lv); if (spot.face) { room.p.yaw = cmYaw(C); room.p.pitch = spot.pitch != null ? spot.pitch : .02; }
@@ -17039,6 +17106,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (o.types.includes('runes') && !o.types.some(k => /^runes (etched|minted|moved)$/.test(k)))   // a runestone that made, minted and moved nothing: what it is, as its card says
       o.runestone = t.rnLost ? 'it tried to make a new rune, which never came into being (ordinals.com): the name it tried for is untrusted.runeTried' : runePlain(t);
     if (t.bmN != null && (t.bmReal || t.bmNo)) o.bitmap = bmSay(t);
+    if (t.sc != null && (t.sc >> TF.brc20) & 1) o.brc20Rules = 'checked: file type, first inscription of its transaction, standard writing, from block 779,832. Checked when held (hold() shows it): whether ord marks it cursed or a re-inscription, which BRC-20 does not count. The token’s own limits are the BRC-20 ledger’s to say';
     if (t.natOff) o.nat = 'a NAT mint that TAP does not count (from block 885,588 NAT comes from each block’s reward)';
     const u = {}; if (t.tick) u.token = t.tick; if (t.rn) u.rune = t.rn; if (t.rnLost) u.runeTried = t.rnLost;
     if (typeof t.op === 'string' && t.op) u.tokenOp = t.op;   // (a CRC-20 token's own word: deploy, mint…)
