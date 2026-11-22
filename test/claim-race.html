@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Claim Race (test): bitmap claims waiting to be mined | Ord Portal</title>
+<link rel="icon" href="https://ordportal.com/brand/icon-ordportal.ico" sizes="any">
+<style>
+  /* (22 Nov 2026) A test page only, not linked from the portal: watches the waiting transactions for bitmap claims, live.
+     © 2026 bitmap22. All rights reserved. */
+  :root { --night: #0a0f1c; --wall: #111a2c; --line: #23304a; --amber: #f3a530; --hot: #ffcf7a; --cyan: #63d2d6; --pink: #e0629a;
+    --mint: #6fd39a; --text: #eef2f8; --muted: #9aa8be; --sign: ui-monospace, Menlo, Consolas, monospace; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--night); color: var(--text); font: 16px/1.5 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 26px 18px 60px; }
+  .test { display: inline-block; font: 600 12px var(--sign); color: var(--night); background: var(--hot); border-radius: 4px; padding: 2px 8px; }
+  h1 { font-size: 30px; margin: 10px 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 18px; max-width: 760px; }
+  .status { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 0 0 18px; }
+  .stat { background: var(--wall); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .stat b { display: block; font: 600 22px var(--sign); color: var(--hot); }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .live { width: 9px; height: 9px; border-radius: 50%; background: #666; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .live.on { background: var(--mint); box-shadow: 0 0 8px var(--mint); }
+  h2 { font-size: 19px; margin: 26px 0 10px; }
+  .empty { color: var(--muted); background: var(--wall); border: 1px dashed var(--line); border-radius: 10px; padding: 16px; }
+  .race { background: var(--wall); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 0 0 12px; }
+  .race.lose { border-color: var(--pink); } .race.clash { border-color: var(--amber); }
+  .race h3 { margin: 0 0 6px; font: 600 20px var(--sign); }
+  .verdict { margin: 0 0 10px; }
+  .verdict.bad { color: #ff9cc4; } .verdict.warn { color: var(--hot); } .verdict.ok { color: var(--mint); } .verdict.wait { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font: 13px var(--sign); }
+  th, td { text-align: left; padding: 5px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td a { color: var(--cyan); }
+  .log { font: 12px/1.6 var(--sign); color: var(--muted); background: #070b15; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; max-height: 260px; overflow: auto; }
+  .log div b { color: var(--text); font-weight: 500; }
+  .note { color: var(--muted); font-size: 14px; }
+  .note li { margin: 4px 0; }
+  .sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 10px 0 14px; }
+  .pick { background: #1a1408; border: 1px solid var(--amber); border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; }
+  .pick b { color: var(--hot); }
+  button { font: 600 14px var(--sign); color: var(--night); background: var(--amber); border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="test">TEST PAGE: NOT ON THE PORTAL YET</span>
+  <h1>Claim Race</h1>
+  <p class="lead">Bitmap claims waiting to be mined, watched live. For each one: is its number already taken, and is another claim for the same number waiting with a higher fee? Only the first claim of a number is a bitmap; a later one is a copy.</p>
+
+  <div class="status">
+    <div class="stat"><b id="s-live"><span class="live" id="dot"></span>…</b><span>live feed (mempool.space)</span></div>
+    <div class="stat"><b id="s-tip">–</b><span>newest block</span></div>
+    <div class="stat"><b id="s-seen">0</b><span>waiting transactions watched</span></div>
+    <div class="stat"><b id="s-insc">0</b><span>inscriptions among them</span></div>
+    <div class="stat"><b id="s-claims">0</b><span>bitmap claims among them</span></div>
+  </div>
+
+  <h2>Claims waiting now</h2>
+  <div id="races"><div class="empty">Watching… a claim shows here within about 10 seconds of mempool.space seeing it. Claims already waiting before this page opened are not shown (the live feed only sends new ones).</div></div>
+
+  <h2>The last 50 blocks: what claims paid</h2>
+  <p class="note">Reads the last 50 blocks from their own bytes: every claim of a number in that window, the fee it paid (from mempool.space's fee list for each block), and which one won. About 75 MB to download, so it starts when you ask. <button id="hist">Read the last 50 blocks</button></p>
+  <div id="histout"></div>
+
+  <h2>What happened</h2>
+  <div class="log" id="log"></div>
+
+  <h2>Check it reads claims right</h2>
+  <p class="note">Reads three real claims already on the chain the same way, and compares with the Bitmap Record (two of them are a race from block 942,005: both in the same block, only the first counts). <button id="selftest">Run the check</button></p>
+  <div class="log" id="selflog" hidden></div>
+
+  <h2>How it works, and what it can't see</h2>
+  <ul class="note">
+    <li>The live feed is mempool.space's: new waiting transactions arrive in batches about every 10 seconds, each with its bytes. Each claim is read from its own bytes by the Block Manifest's reader (the halls' rules: the body exactly "N.bitmap", no delegate, no compression).</li>
+    <li>Each claim is also looked up on a second site (mempool.emzy.de, its own node) to show it is really waiting there too.</li>
+    <li>Taken or not: below block 942,000, bop's on-chain index (checked with ord); from 942,000, the portal's Bitmap Record, and for the newest blocks the blocks themselves.</li>
+    <li>Fee: what the claim pays per vbyte, counting any child transaction paying for it. Higher usually wins, but a miner decides: nothing here is certain until it is mined.</li>
+    <li>It can't see transactions sent straight to a miner, the first seconds before mempool.space hears of one, or claims that were already waiting before the page opened.</li>
+  </ul>
+  <p class="note">© 2026 bitmap22. All rights reserved. Free, for information only, not financial advice.</p>
+</div>
+
+<script src="../agent-blockhall-mcp/server/site-order.js"></script>
+<script src="../agent-blockhall-mcp/server/manifest.js"></script>
+<script src="../agent-blockhall-mcp/server/traits.js"></script>
+<script>
+(function () {
+  'use strict';
+  const BM = window.BlockManifest, ET = window.EarnedTraits;
+  const $ = id => document.getElementById(id), fmt = n => n == null ? '–' : Number(n).toLocaleString('en-GB');
+  const RECORD = 'https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json', OCI_LIMIT = 942000;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+  function log(t, el) { const d = document.createElement('div'); d.innerHTML = '<b>' + new Date().toLocaleTimeString('en-GB') + '</b> ' + t; (el || $('log')).prepend(d); }
+
+  /* ---------- gentle fetching, the portal's usual way ---------- */
+  const MIRRORS = ['https://mempool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space'];
+  const ORD_R = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const pace = new Map();
+  async function fetchT(url, ms) {
+    const host = new URL(url).host, last = pace.get(host) || 0, wait = last + 170 - Date.now(); pace.set(host, Math.max(Date.now(), last + 170));
+    if (wait > 0) await sleep(wait);
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms || 20000);
+    try { const r = await fetch(url, {signal: ctl.signal}); if (!r.ok) throw new Error('http ' + r.status + ' from ' + host); return r; }
+    catch (e) { throw /http/.test(e.message) ? e : new Error('no answer from ' + host); } finally { clearTimeout(timer); }
+  }
+  async function mpFetch(path, ms) { let err; for (const b of MIRRORS) { try { return {r: await fetchT(b + path, ms), site: b}; } catch (e) { err = e; if (/http 404/.test(e.message)) throw e; } } throw err; }
+  async function ordFetch(path, ms) { let err; for (const b of ORD_R) { try { return {r: await fetchT(b + path, ms), site: b}; } catch (e) { err = e; } } throw err; }
+  const io = {
+    ordJson: async p => { const x = await ordFetch(p, 15000); return {j: await x.r.json(), site: x.site}; },
+    ordText: async p => { const x = await ordFetch(p, 30000); return {t: await x.r.text(), site: x.site}; },
+    mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; },
+    mpText: async p => { const x = await mpFetch(p, 20000); return {t: await x.r.text(), site: x.site}; },
+    mpBytes: async p => { const x = await mpFetch(p, 90000); return {bytes: new Uint8Array(await x.r.arrayBuffer()), site: x.site}; },
+    sleep, progress: () => {}};
+
+  /* ---------- reading one waiting transaction with the halls' reader (wrapped as a little block) ---------- */
+  const hexToBytes = h => { const b = new Uint8Array(h.length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16); return b; };
+  const FAKE_CB = hexToBytes('01000000' + '01' + '00'.repeat(32) + 'ffffffff' + '00' + 'ffffffff' + '00' + '00000000');
+  function claimInTx(rawHex, height) {
+    const tx = hexToBytes(rawHex), X = new Uint8Array(80 + 1 + FAKE_CB.length + tx.length);
+    X[80] = 2; X.set(FAKE_CB, 81); X.set(tx, 81 + FAKE_CB.length);
+    const s = BM.scanBlock(X, height), r = s.txs[1];
+    return {txid: r.txid, inscriptions: r.ins.length, claim: r.bitmapClaim || null};
+  }
+
+  /* ---------- is the number taken? ---------- */
+  let record = null, recordAt = 0;
+  async function getRecord() { if (!record || Date.now() - recordAt > 600000) { record = await (await fetchT(RECORD + '?t=' + Date.now(), 60000)).json(); recordAt = Date.now(); } return record; }
+  const blockClaims = new Map();
+  async function claimsOfBlock(h) {
+    if (blockClaims.has(h)) return blockClaims.get(h);
+    const hash = String((await io.mpText('/api/block-height/' + h)).t).trim(), bytes = (await io.mpBytes('/api/block/' + hash + '/raw')).bytes;
+    const got = {}; for (const r of BM.scanBlock(bytes, h).txs) if (r.bitmapClaim && got[r.bitmapClaim.number] == null) got[r.bitmapClaim.number] = r.txid + 'i' + r.bitmapClaim.index;
+    blockClaims.set(h, got); return got;
+  }
+  const taken = new Map();
+  async function takenState(n) {
+    if (taken.has(n)) return taken.get(n);
+    let st;
+    try {
+      if (n < OCI_LIMIT) {
+        const C = await ET.claimOf(n, io);
+        st = C.none ? {free: true, why: C.why + ' (bop\'s on-chain index, checked with ord)'} : {by: C.id, block: C.block, why: 'bop\'s on-chain index, checked with ord'};
+      } else {
+        const R = await getRecord(), c = R.claims && R.claims[n];
+        if (c && c.length) st = {by: c[0].id, block: c[0].block, why: 'the Bitmap Record'};
+        else if (tip - n <= 11) {
+          // the newest numbers: read blocks N to the newest ourselves
+          let found = null; for (let h = n; h <= tip && !found; h++) { const g = await claimsOfBlock(h); if (g[n]) found = {by: g[n], block: h}; }
+          st = found ? Object.assign(found, {why: 'read from the blocks themselves'}) : {free: true, why: 'no claim of it in blocks ' + fmt(n) + ' to ' + fmt(tip) + ' (read from the blocks themselves)'};
+        } else if (n <= R.upTo) st = {free: true, why: 'no claim of it in the Bitmap Record (read to block ' + fmt(R.upTo) + ')'};
+        else st = {unsure: true, why: 'not checked yet: the Bitmap Record has reached block ' + fmt(R.upTo) + ' and this number is ' + fmt(n - R.upTo) + ' blocks past it'};
+      }
+    } catch (e) { st = {unsure: true, why: 'could not be checked right now (' + e.message + ')'}; return st; }
+    taken.set(n, st); return st;
+  }
+
+  /* ---------- the races ---------- */
+  let tip = null, seen = 0, inscCount = 0;
+  const claims = new Map();   // txid -> {txid, n, rate, pos, firstSeen, second, state}
+  function render() {
+    const byN = new Map();
+    for (const c of claims.values()) { if (!byN.has(c.n)) byN.set(c.n, []); byN.get(c.n).push(c); }
+    $('s-claims').textContent = fmt([...claims.values()].length);
+    if (!byN.size) return;
+    const parts = [];
+    for (const [n, list] of [...byN.entries()].sort((a, b) => b[0] - a[0])) {
+      const waiting = list.filter(c => !c.gone), T = taken.get(n);
+      waiting.sort((a, b) => b.rate - a.rate);
+      let cls = '', verdict, vcls;
+      if (!T) { verdict = 'Checking whether ' + n + '.bitmap is already taken…'; vcls = 'wait'; }
+      else if (T.by) { cls = 'lose'; vcls = 'bad'; verdict = 'Already taken in block ' + fmt(T.block) + ' (' + esc(T.why) + '). Every claim below can only be a copy, not a bitmap.'; }
+      else if (T.unsure) { vcls = 'wait'; verdict = 'Taken or not: ' + esc(T.why) + '.'; }
+      else if (waiting.length > 1) { cls = 'clash'; vcls = 'warn'; verdict = 'Not taken yet (' + esc(T.why) + '). ' + waiting.length + ' claims are racing for it: the one paying most is likeliest to be mined first, and only that one would count.'; }
+      else { vcls = 'ok'; verdict = 'Not taken yet (' + esc(T.why) + '), and no other claim for it is waiting.'; }
+      const rows = list.slice().sort((a, b) => (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || b.rate - a.rate).map((c, i) =>
+        '<tr><td><a href="https://mempool.space/tx/' + c.txid + '" target="_blank" rel="noopener noreferrer">' + c.txid.slice(0, 10) + '…</a></td><td>' + c.rate.toFixed(1) + ' sat/vB</td><td>' +
+        (c.gone ? esc(c.gone) : (c.pos != null ? 'heading for the ' + (c.pos === 0 ? 'next block' : (c.pos + 1) + 'th block from now') : '–')) + '</td><td>' +
+        (c.second == null ? 'checking…' : c.second ? '✓ waiting on mempool.emzy.de too' : '‼ not found on mempool.emzy.de') + '</td><td>' + (!c.gone && waiting.length > 1 ? (c === waiting[0] ? 'ahead' : 'behind') : '') + '</td></tr>').join('');
+      parts.push('<div class="race ' + cls + '"><h3>' + n + '.bitmap</h3><p class="verdict ' + vcls + '">' + verdict + '</p><table><tr><th>claim</th><th>fee</th><th>where it is</th><th>second site</th><th></th></tr>' + rows + '</table></div>');
+    }
+    $('races').innerHTML = parts.join('');
+  }
+
+  async function onAdded(t) {
+    seen++; $('s-seen').textContent = fmt(seen);
+    const hasEnv = (t.vin || []).some(v => (v.witness || []).some(w => w.indexOf('0063036f7264') >= 0));
+    if (!hasEnv) return;
+    inscCount++; $('s-insc').textContent = fmt(inscCount);
+    // (only a transaction whose witness holds the words ".bitmap" can be a claim: its bytes are read only then, to stay gentle)
+    if (!(t.vin || []).some(v => (v.witness || []).some(w => w.indexOf('2e6269746d6170') >= 0))) return;
+    if (tip == null) try { tip = +(await io.mpText('/api/blocks/tip/height')).t; } catch (e) { return; }
+    let got;
+    try { got = claimInTx(String((await io.mpText('/api/tx/' + t.txid + '/hex')).t).trim(), (tip || 0) + 1); }
+    catch (e) { log('Could not read ' + t.txid.slice(0, 10) + '… (' + esc(e.message) + ')'); return; }
+    if (got.txid !== t.txid) { log('‼ ' + t.txid.slice(0, 10) + '… read back as a different transaction: skipped'); return; }
+    if (!got.claim) return;
+    const n = got.claim.number, c = {txid: t.txid, n, rate: +(t.effectiveFeePerVsize || t.adjustedFeePerVsize || t.feePerVsize || 0), pos: t.position ? t.position.block : null, firstSeen: t.firstSeen, second: null, gone: null};
+    claims.set(t.txid, c);
+    log('Claim seen: <b>' + n + '.bitmap</b> at ' + c.rate.toFixed(1) + ' sat/vB (' + t.txid.slice(0, 10) + '…)');
+    render();
+    fetchT('https://mempool.emzy.de/api/tx/' + t.txid + '/status', 15000).then(() => { c.second = true; }, () => { c.second = false; }).then(render);
+    takenState(n).then(st => { log(n + '.bitmap: ' + (st.by ? 'already taken in block ' + fmt(st.block) : st.free ? 'not taken yet' : 'taken or not unknown') + ' (' + esc(st.why) + ')'); render(); });
+  }
+  async function onRemoved(txid) {
+    const c = claims.get(txid); if (!c || c.gone) return;
+    try { const s = (await io.mpJson('/api/tx/' + txid + '/status')).j; c.gone = s.confirmed ? 'mined in block ' + fmt(s.block_height) : 'left the queue (replaced or dropped)'; }
+    catch (e) { c.gone = 'left the queue (replaced or dropped)'; }
+    log(c.n + '.bitmap claim ' + txid.slice(0, 10) + '…: ' + c.gone); taken.delete(c.n); takenState(c.n).then(render); render();
+  }
+
+  /* ---------- the live feed ---------- */
+  let ws = null, batches = 0;
+  function connect() {
+    ws = new WebSocket('wss://mempool.space/api/v1/ws');
+    ws.onopen = () => { ws.send(JSON.stringify({action: 'want', data: ['blocks']})); ws.send(JSON.stringify({'track-mempool': true})); $('dot').classList.add('on'); $('s-live').lastChild.textContent = 'on'; log('Live feed connected.'); };
+    ws.onmessage = e => {
+      let j; try { j = JSON.parse(e.data); } catch (er) { return; }
+      if (j.blocks && j.blocks.length && tip == null) { tip = j.blocks[j.blocks.length - 1].height; $('s-tip').textContent = fmt(tip); }
+      if (j.block) { tip = j.block.height; $('s-tip').textContent = fmt(tip); log('New block <b>' + fmt(tip) + '</b> mined.'); }
+      const d = j['mempool-transactions'];
+      if (d) { batches++; (d.added || []).forEach(t => onAdded(t)); (d.removed || []).forEach(x => onRemoved(typeof x === 'string' ? x : x.txid)); (d.mined || []).forEach(x => onRemoved(typeof x === 'string' ? x : x.txid)); (d.replaced || []).forEach(x => onRemoved(x.old ? (x.old.txid || x.old) : x)); }
+    };
+    ws.onclose = () => { $('dot').classList.remove('on'); $('s-live').lastChild.textContent = 'off'; log('Live feed closed: reconnecting in 10 seconds.'); setTimeout(connect, 10000); };
+  }
+  io.mpText('/api/blocks/tip/height').then(x => { if (tip == null) { tip = +x.t; $('s-tip').textContent = fmt(tip); } }).catch(() => {});
+  connect();
+
+  /* ---------- the check: three real claims, read the same way ---------- */
+  $('selftest').onclick = async () => {
+    const L = $('selflog'); L.hidden = false; L.innerHTML = '';
+    try {
+      const R = await getRecord(), tests = [['942005', 0], ['942005', 1], ['942000', 0]];
+      for (const [n, k] of tests) {
+        const e = R.claims[n][k], txid = e.id.slice(0, 64);
+        const got = claimInTx(String((await io.mpText('/api/tx/' + txid + '/hex')).t).trim(), e.block);
+        const okRead = got.claim && String(got.claim.number) === n && got.txid === txid;
+        log((okRead ? '✓ ' : '‼ ') + 'block ' + fmt(e.block) + ', ' + txid.slice(0, 10) + '…: read as ' + (got.claim ? got.claim.number + '.bitmap' : 'no claim') + '; the Bitmap Record says ' + n + '.bitmap, ' + (k === 0 ? 'the real (first) claim' : 'copy number ' + k), L);
+      }
+      log('Done.', L);
+    } catch (e) { log('‼ The check could not finish: ' + esc(e.message), L); }
+  };
+
+  /* ---------- the last 50 blocks: every fresh claim race, with what each claim paid ---------- */
+  let history = null;
+  const pct = (a, p) => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(p * (b.length - 1) + 0.5))]; };
+  $('hist').onclick = async () => {
+    const out = $('histout'); $('hist').disabled = true;
+    try {
+      if (tip == null) tip = +(await io.mpText('/api/blocks/tip/height')).t;
+      const top = tip, from = top - 49, races = new Map();
+      for (let h = from; h <= top; h++) {
+        out.innerHTML = '<div class="empty">Reading block ' + fmt(h) + ' (' + (h - from + 1) + ' of 50)…</div>';
+        const hash = String((await io.mpText('/api/block-height/' + h)).t).trim();
+        const [raw, sum] = await Promise.all([io.mpBytes('/api/block/' + hash + '/raw'), io.mpJson('/api/v1/block/' + hash + '/summary')]);
+        const rate = new Map(); for (const x of sum.j) rate.set(x.txid, x.rate != null ? +x.rate : x.fee / x.vsize);
+        BM.scanBlock(raw.bytes, h).txs.forEach((r, order) => {
+          const c = r.bitmapClaim; if (!c || c.number < from) return;   // (only numbers whose whole claim window is in these 50 blocks)
+          if (!races.has(c.number)) races.set(c.number, []);
+          races.get(c.number).push({block: h, order, txid: r.txid, rate: rate.get(r.txid)});
+        });
+      }
+      const R = [...races.entries()].map(([n, L]) => ({n, claims: L, win: L[0], after: L[0].block - n, contested: L.length > 1}));   // (already in Bitcoin order: block, then place in the block)
+      const all = R.map(r => r.win.rate).filter(x => x != null), hot = R.filter(r => r.contested), hotWin = hot.map(r => r.win.rate).filter(x => x != null);
+      const maxRate = Math.max(...R.flatMap(r => r.claims.map(c => c.rate || 0)), 0);
+      let fees = null; try { fees = (await io.mpJson('/api/v1/fees/recommended')).j; } catch (e) {}
+      const unclaimed = 50 - R.length;
+      const sugg = hotWin.length ? Math.max(pct(hotWin, 0.9), fees ? fees.fastestFee : 0) : (fees ? fees.fastestFee : null);
+      history = {from, to: top, numbers: R.length, contested: hot.length, unclaimed, winnerRates: all, contestedWinnerRates: hotWin, maxRate, nextBlockFee: fees && fees.fastestFee, suggested: sugg};
+      const rows = R.sort((a, b) => b.n - a.n).map(r => '<tr><td>' + r.n + '.bitmap</td><td>' + (r.win.rate != null ? r.win.rate.toFixed(1) : '–') + ' sat/vB</td><td>block ' + fmt(r.win.block) + (r.after ? ' (' + r.after + ' after)' : ' (the same block)') + '</td><td>' +
+        (r.contested ? (r.claims.length - 1) + ' lost: ' + r.claims.slice(1).map(c => (c.rate != null ? c.rate.toFixed(1) : '–') + (c.block === r.win.block ? ' (same block)' : ' (block ' + fmt(c.block) + ')')).join(', ') : 'no race') + '</td></tr>').join('');
+      out.innerHTML = '<div class="sum">' +
+        '<div class="stat"><b>' + R.length + ' of 50</b><span>numbers claimed (blocks ' + fmt(from) + ' to ' + fmt(top) + ')</span></div>' +
+        '<div class="stat"><b>' + hot.length + '</b><span>of them raced (two or more claims)</span></div>' +
+        '<div class="stat"><b>' + (all.length ? pct(all, 0.5).toFixed(1) : '–') + '</b><span>sat/vB: the middle winning fee</span></div>' +
+        '<div class="stat"><b>' + (hotWin.length ? pct(hotWin, 0.9).toFixed(1) : '–') + '</b><span>sat/vB: 9 in 10 raced winners paid this or less</span></div>' +
+        '<div class="stat"><b>' + maxRate.toFixed(1) + '</b><span>sat/vB: the most any claim paid</span></div></div>' +
+        (sugg != null ? '<div class="pick">A fee to aim for, to win the next number: <b>about ' + Math.ceil(sugg) + ' sat/vB</b>. That is the higher of: what 9 in 10 raced winners paid here' + (hotWin.length ? ' (' + pct(hotWin, 0.9).toFixed(1) + ')' : ' (no races in these blocks)') + ', and the fee to get into the next block right now (' + (fees ? fees.fastestFee : '–') + ', mempool.space). An estimate from these 50 blocks only: a rival can always pay more, and nothing is certain until it is mined.</div>' : '') +
+        (R.length ? '<table><tr><th>number</th><th>winner paid</th><th>won in</th><th>claims that lost (fee)</th></tr>' + rows + '</table>' : '<div class="empty">No numbers in these blocks were claimed.</div>');
+      log('Read the last 50 blocks: ' + R.length + ' numbers claimed, ' + hot.length + ' raced.');
+    } catch (e) { out.innerHTML = '<div class="empty">Could not finish: ' + esc(e.message) + '. Try again in a minute.</div>'; }
+    $('hist').disabled = false;
+  };
+
+  /* ---------- for agents ---------- */
+  window.__claimRace = {state: () => ({tip, watched: seen, inscriptions: inscCount, live: !!(ws && ws.readyState === 1),
+    history: () => history,
+    claims: [...claims.values()].map(c => ({number: c.n, txid: c.txid, feeRate: c.rate, projectedBlock: c.pos, secondSite: c.second, gone: c.gone, taken: taken.get(c.n) || null}))})};
+})();
+</script>
+</body>
+</html>
