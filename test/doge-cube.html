@@ -170,6 +170,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 .tl.on{color:#e3b341;border-color:rgba(227,179,65,.8);box-shadow:0 0 12px rgba(227,179,65,.45)}
 @media (max-width:640px){#fs{flex-wrap:nowrap}#fs i{flex:1;min-width:0;padding:3px 0}#fs .fl2{margin-right:4px}#tools{top:auto;right:auto;left:50%;transform:translateX(-50%);bottom:68px}#kinds{bottom:110px}#card{bottom:calc(122px + var(--kh,0px))}#feed{bottom:max(178px,calc(110px + var(--kh,0px)))}}
 @media (min-width:1500px) and (min-height:820px){#tools{top:22px;gap:9px}.tl{width:34px;height:34px;border-radius:17px}.tl svg{width:17px;height:17px}#fs{font-size:11px;margin-top:10px}#fs i{min-width:25px;padding:4px 4px}}
+#zzz{position:absolute;top:6px;right:14px;pointer-events:none;font:800 20px/1 ui-monospace,Menlo,Consolas,monospace;color:#bfe3ff;text-shadow:0 0 8px rgba(120,190,255,.8)}#zzz i{display:inline-block;font-style:normal;opacity:0;animation:zzz 2.6s ease-in infinite}#zzz i:nth-child(2){animation-delay:.85s;font-size:.8em}#zzz i:nth-child(3){animation-delay:1.7s;font-size:.65em}@keyframes zzz{0%{opacity:0;transform:translate(0,10px)}25%{opacity:1}100%{opacity:0;transform:translate(10px,-22px)}}@media (prefers-reduced-motion:reduce){#zzz i{animation:none;opacity:1}}
 #card{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(227,179,65,.25) transparent}
 #cp{display:none}
 #cp img.pa{display:block;width:100%;height:clamp(120px,24vh,230px);object-fit:contain;border-radius:8px;background:#000;margin-top:10px}#cp img.pa.px{image-rendering:pixelated}#cp audio,#cp video{display:block;width:100%;margin-top:10px;border-radius:8px}#cp video{max-height:clamp(120px,24vh,230px);background:#000}.pvx{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:120px;margin-top:10px;padding:12px 16px;border-radius:8px;background:#000;text-align:center;font-size:11.5px;line-height:1.5;color:#d8c6ad;height:auto!important}.pvx b{color:#ff8a7a;letter-spacing:.12em}.pvx a{color:#ffb04a;text-decoration:none;border:1px solid rgba(247,147,26,.4);border-radius:9px;padding:6px 11px;font-weight:700;letter-spacing:.06em}#vwc .pvx{height:100%!important;margin:0;font-size:13px;gap:12px}#vwc audio{width:min(92%,520px)}#vwc video{width:100%;height:100%;background:#000}
@@ -1183,9 +1184,18 @@ const TYPES = [
   {g: 3, name: 'with pictures', css: '#e0aaff', test: t => etchPic(t)},
   {g: 2, name: 'pay to script', css: '#a78bfa', test: tfl(TF.p2sh)}, {g: 2, name: 'pay to address', css: '#4cc9f0', test: tfl(TF.p2pkh)}, {g: 2, name: 'pay to key', css: '#9aa5b1', test: tfl(TF.p2pk)},
   {g: 2, name: 'consolidations', css: '#ffd166', test: tfl(TF.consol)}, {g: 2, name: 'batch payouts', css: '#06d6a0', test: tfl(TF.batch)}, {g: 2, name: 'multisig', css: '#ef476f', test: tfl(TF.msig)},
-  {g: 2, name: 'OP_RETURN data', css: '#f7efe3', test: tfl(TF.msg)}, {g: 2, name: 'coinbase', css: '#e3b341', test: tfl(TF.cb)},
+  {g: 2, name: 'OP_RETURN data', css: '#f7efe3', test: tfl(TF.msg)}, {g: 2, name: 'big overpays', css: '#ff3b3b', test: t => t.over > 0}, {g: 2, name: 'coinbase', css: '#e3b341', test: tfl(TF.cb)},
   {g: 2, name: 'regular', css: REG_CSS, test: t => !kmask(t), glow: false}];
 const REG = TYPES.length - 1;
+// (22 Nov 2026) big overpays: a fee rate at least 100 times its block's middle one, and at least 1 DOGE/kB. Worked out once a
+// block's fees are in, from those fees alone; the card says how many times the middle it paid, and never guesses why.
+const OVER_X = 100, OVER_MIN = 1e5;   // (rates here are koinu a byte: 1e5 is 1 DOGE/kB)
+function overpays(B) {
+  if (!B || !B.txs) return;
+  const R = B.txs.slice(1).map(t => t.rate).filter(r => r > 0).sort((a, b) => a - b), med = R.length ? R[R.length >> 1] : 0;
+  B.medRate = med;
+  if (med > 0) for (const t of B.txs.slice(1)) { const k = t.rate > 0 ? t.rate / med : 0; t.over = t.rate >= OVER_MIN && k >= OVER_X ? k : 0; t.med = med; t._k = null; }
+}
 // TOKENS: each transaction belongs to one token chip only (the most specific one it is), so hovering a chip shows that token and
 // nothing else. 'dunes' is the dune family: new dunes, mints, moves, and dunestones that do none of those.
 const TOK_ORDER = ['TAP', 'DRC-20', 'dunes etched', 'dunes minted', 'dunes moved', 'dunes'];
@@ -1391,6 +1401,7 @@ async function relayout(B) {
 // a little summary of each block's fees once they are all known (the strip along the top shows it)
 const BFEE = new Map();
 function keepBfee(B) {
+  overpays(B);   // (22 Nov 2026: the big overpays, from the same fees)
   const r = B.txs.filter(t => t.idx > 0 && t.fee >= 0 && t.vsize).map(t => t.fee / t.vsize).sort((a, b) => a - b);
   if (r.length) BFEE.set(B.height, {med: medianRate(B.txs), lo: r[0], hi: r[r.length - 1], total: B.txs.reduce((s, t) => s + (t.idx > 0 && t.fee > 0 ? t.fee : 0), 0)});
   else BFEE.set(B.height, {med: 0, lo: 0, hi: 0, total: 0});
@@ -3421,6 +3432,7 @@ function select(t) {
   if (hadFoc && !foc) rebuild();
   document.body.classList.toggle('cardon', !!t);
   cardLinks(t);   // (the portal's Doge tools, opened on this parcel)
+  zzzShow(t);   // (the sleeping coins' z's go with the parcel the card shows)
   if (!t) { $card.classList.remove('on', 'st', 'big'); const cm = document.getElementById('cm'); if (cm) cm.innerHTML = 'more &#9662;'; $cp.innerHTML = ''; $cp.style.display = 'none'; return; }
   if (t.show) { showCard(t); return; }
   $cn.textContent = t.live ? 'waiting in the next block' : 'transaction ' + fmt(t.idx) + ' in block ' + fmt(t.bh != null ? t.bh : room && room.at && !cmOn(room.at) ? room.at.h : cur.height);
@@ -3431,6 +3443,8 @@ function select(t) {
     const k = feeCol(t), sw = `rgb(${k.map(x => Math.round(x * 255)).join(',')})`;
     rows.push(['fee rate', rateWords(ownRate(t)), sw]);
     rows.push(['fee', doge(t.fee)]);
+    if (!t.live && t.med > 0 && t.rate > 0) { const k = t.rate / t.med;   // (how it paid next to the rest of its own block)
+      rows.push([t.over ? 'big overpay' : 'next to its block', (k >= 10 ? fmt(Math.round(k)) : k.toFixed(1)) + '× this block\'s middle fee rate (' + rateWords(t.med) + ')', t.over ? '#ff3b3b' : undefined]); }
   } else if (t.est) rows.push(['fee', 'still being read…']);
   rows.push(['size', t.est ? '~' + vb(t.vsize) + ' (still being read)' : vb(t.vsize)]);
   rows.push(['outputs total', doge(t.value)]);
@@ -7847,6 +7861,21 @@ async function checkedRow(t, tx) {
   } catch (e) {}
   return [['checked', 'not checked this time: the second sites did not answer']];
 }
+// (22 Nov 2026) sleeping coins: how long the coins a parcel spends sat untouched, from when each was made (asked only when it is
+// picked up, at most 5 earlier transactions, so a hall never slows). z for a year or more, zz for 5 years, zzz for 10 years.
+function sleepWords(sec) {
+  const d = sec / 86400;
+  if (d < 1) return sec < 3600 ? Math.max(1, Math.round(sec / 60)) + ' min' : Math.round(sec / 3600) + ' hours';
+  if (d < 61) return Math.round(d) + ' days';
+  const m = Math.floor(d / 30.44), y = Math.floor(m / 12), mm = m % 12;
+  return y ? y + (y === 1 ? ' year' : ' years') + (mm ? ' ' + mm + (mm === 1 ? ' month' : ' months') : '') : m + ' months';
+}
+function zzzShow(t) {
+  let z = document.getElementById('zzz'); const sec = t && t._zzz, n = sec >= 10 * 31557600 ? 3 : sec >= 5 * 31557600 ? 2 : sec >= 31557600 ? 1 : 0;
+  if (!n) { if (z) z.remove(); return; }
+  if (!z) { z = document.createElement('div'); z.id = 'zzz'; z.setAttribute('aria-hidden', 'true'); $card.appendChild(z); }
+  z.innerHTML = '<i>z</i>'.repeat(n); z.title = 'its coins slept ' + sleepWords(sec);
+}
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
   t._held = [];
@@ -7867,6 +7896,15 @@ async function heldInfo(t) {
     show(rows);
     heldSized(t, tx.fee_satoshis != null ? +tx.fee_satoshis : tx.total_in_satoshis != null && tx.total_out_satoshis != null ? tx.total_in_satoshis - tx.total_out_satoshis : -1, tx.size, cb, still());
     try { show(await checkedRow(t, tx)); } catch (e) {}   // (against fake data: see checkedRow)
+    if (!cb && tx.block_height >= 0 && tx.time > 0) try {   // sleeping coins: when each earlier transaction it spends from was mined (at most 5: the explorer's free asks are few)
+      const prev = [...new Set(ins.map(i => i.txid).filter(Boolean))], ask = prev.slice(0, 5);
+      const got = (await Promise.all(ask.map(id => djP(DX + '/v1/tx/' + id, 15000).catch(() => null)))).filter(x => x && x.block_height >= 0 && x.time > 0);
+      if (got.length) {
+        const old = got.reduce((a, x) => x.time < a.time ? x : a), sec = Math.max(0, tx.time - old.time);
+        t._zzz = sec; if (still()) zzzShow(t);
+        show([['coins slept', 'up to ' + sleepWords(sec) + ' (the oldest made ' + new Date(old.time * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) + ', in block ' + fmt(old.block_height) + ')' + (got.length < prev.length || tx.inputs_truncated ? ' · ' + got.length + ' of the ' + (tx.inputs_truncated ? 'more than ' : '') + prev.length + ' earlier transactions it spends from asked' : ''), sec >= 31557600 ? '#bfe3ff' : undefined]]);
+      }
+    } catch (e) {}
   } else try {   // the explorer has no copy (block 0's coinbase is one): BlockCypher's
     raw = await rawTxRead(t); const b = raw && raw.basics;
     if (b) {
