@@ -14,7 +14,7 @@ const KINDS = new Set(['inscriptions', 'images', 'text', 'HTML', 'JSON', 'audio 
   'runes minted', 'runes moved', 'Alkanes', 'Atomicals', 'SRC-20', 'Stamps', 'Counterparty', 'CAT-21', 'Labitbu', 'OpenTimestamps',
   'with pictures', 'taproot', 'segwit', 'legacy', 'consolidations', 'batch payouts', 'multisig', 'messages', 'coinbase', 'regular',
   'dogemaps', 'names', 'DRC-20', 'dunes', 'dunes etched', 'dunes minted', 'dunes moved', 'pay to script', 'pay to address',
-  'pay to key', 'OP_RETURN data']);
+  'pay to key', 'OP_RETURN data', 'Lightning closes', 'big overpays']);
 // browsers that say they are automated: counted as agents whatever the page says
 const AUTO = /HeadlessChrome|Playwright|Puppeteer|PhantomJS|Selenium|bot\b|crawler|spider/i;
 
