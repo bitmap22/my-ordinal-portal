@@ -169,6 +169,7 @@ body.fo #st,body.fo #ot{max-width:calc(100vw - 480px)}
 .tl.on{color:#f7931a;border-color:rgba(247,147,26,.8);box-shadow:0 0 12px rgba(247,147,26,.45)}
 @media (max-width:640px){#fs{flex-wrap:nowrap}#fs i{flex:1;min-width:0;padding:3px 0}#fs .fl2{margin-right:4px}#tools{top:auto;right:auto;left:50%;transform:translateX(-50%);bottom:68px}#kinds{bottom:110px}#card{bottom:calc(122px + var(--kh,0px))}#feed{bottom:max(178px,calc(110px + var(--kh,0px)))}}
 @media (min-width:1500px) and (min-height:820px){#tools{top:22px;gap:9px}.tl{width:34px;height:34px;border-radius:17px}.tl svg{width:17px;height:17px}#fs{font-size:11px;margin-top:10px}#fs i{min-width:25px;padding:4px 4px}}
+#zzz{position:fixed;z-index:40;pointer-events:none;white-space:nowrap;font:800 30px/1 ui-monospace,Menlo,Consolas,monospace;color:#bfe3ff;text-shadow:0 0 8px rgba(120,190,255,.8)}#zzz i{display:inline-block;font-style:normal;opacity:0;animation:zzz 2.6s ease-in infinite}#zzz i:nth-child(2){animation-delay:.85s;font-size:.8em}#zzz i:nth-child(3){animation-delay:1.7s;font-size:.65em}@keyframes zzz{0%{opacity:0;transform:translate(0,14px) scale(.7)}20%{opacity:1}100%{opacity:0;transform:translate(18px,-40px) scale(1.15)}}@media (prefers-reduced-motion:reduce){#zzz i{animation:none;opacity:1}}
 #card{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(247,147,26,.25) transparent}
 #cp{display:none}
 #cp img.pa{display:block;width:100%;height:clamp(120px,24vh,230px);object-fit:contain;border-radius:8px;background:#000;margin-top:10px}#cp img.pa.px{image-rendering:pixelated}#cp audio,#cp video{display:block;width:100%;margin-top:10px;border-radius:8px}#cp video{max-height:clamp(120px,24vh,230px);background:#000}.pvx{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:120px;margin-top:10px;padding:12px 16px;border-radius:8px;background:#000;text-align:center;font-size:11.5px;line-height:1.5;color:#d8c6ad;height:auto!important}.pvx b{color:#ff8a7a;letter-spacing:.12em}.pvx a{color:#ffb04a;text-decoration:none;border:1px solid rgba(247,147,26,.4);border-radius:9px;padding:6px 11px;font-weight:700;letter-spacing:.06em}#vwc .pvx{height:100%!important;margin:0;font-size:13px;gap:12px}#vwc audio{width:min(92%,520px)}#vwc video{width:100%;height:100%;background:#000}
@@ -1350,9 +1351,18 @@ const TYPES = [
   {g: 2, name: 'taproot', css: '#a78bfa', test: tfl(TF.taproot)}, {g: 2, name: 'segwit', css: '#4cc9f0', test: tfl(TF.segwit)},
   {g: 2, name: 'legacy', css: '#9aa5b1', test: tfl(TF.legacy)}, {g: 2, name: 'consolidations', css: '#ffd166', test: tfl(TF.consol)},
   {g: 2, name: 'batch payouts', css: '#06d6a0', test: tfl(TF.batch)}, {g: 2, name: 'multisig', css: '#ef476f', test: tfl(TF.msig)},
-  {g: 2, name: 'messages', css: '#f7efe3', test: tfl(TF.msg)}, {g: 2, name: 'coinbase', css: '#f7931a', test: tfl(TF.cb)},
+  {g: 2, name: 'messages', css: '#f7efe3', test: tfl(TF.msg)}, {g: 2, name: 'Lightning closes', css: '#ffe14d', test: t => t.lnc === true}, {g: 2, name: 'big overpays', css: '#ff3b3b', test: t => t.over > 0}, {g: 2, name: 'coinbase', css: '#f7931a', test: tfl(TF.cb)},
   {g: 2, name: 'regular', css: REG_CSS, test: t => !kmask(t), glow: false}];
 const REG = TYPES.length - 1;
+// (22 Nov 2026) big overpays: a fee of at least 0.001 BTC, at a fee rate at least 100 times its block's middle one. Worked out
+// once a block's fees are in, from those fees alone; the card says how many times the middle it paid, and never guesses why.
+const OVER_X = 100, OVER_FEE = 100000;   // (fees here are in sats)
+function overpays(B) {
+  if (!B || !B.txs) return;
+  const R = B.txs.slice(1).map(t => t.rate).filter(r => r > 0).sort((a, b) => a - b), med = R.length ? R[R.length >> 1] : 0;
+  B.medRate = med;
+  if (med > 0) for (const t of B.txs.slice(1)) { const k = t.rate > 0 ? t.rate / med : 0; t.over = t.fee >= OVER_FEE && k >= OVER_X ? k : 0; t.med = med; t._k = null; }
+}
 // TOKENS: each transaction belongs to one token chip only (the most specific one it is), so hovering a chip shows that token
 // and nothing else. An Alkanes action that also mints a rune counts as Alkanes (its tile still says '+ rune mint'); NAT is NAT,
 // not TAP; SRC-20 is SRC-20, not Stamps. 'runes' is the rune family: new runes, mints, moves, and runestones that do none of those.
@@ -1727,6 +1737,9 @@ async function scanBytes(X, h) {
       if (ll > 3 && X[lw[1] - 1] === 0xae && X[lw[0]] >= 0x51 && X[lw[0]] <= 0x60) set(TF.msig);   // P2WSH multisig
     }
     p += 4; r.z = p;
+    // (22 Nov 2026) a Lightning channel closed by force: Lightning's own rules (BOLT 3) put 0x20 in its lock time's top byte and
+    // 0x80 in its one input's sequence's top byte, so it is read from the bytes alone
+    if (t && nin === 1 && X[p - 1] === 0x20 && X[isc[0][1] + 3] === 0x80) r.lnc = true;
     if (t && h >= 824205 && ((X[p - 4] | X[p - 3] << 8 | X[p - 2] << 16 | X[p - 1] << 24) >>> 0) === 21) { r.cat21 = true; r.w = (8 + r.e - r.s) * 3 + (r.z - r.a); }   // (a CAT-21 mint: lock time 21)
     if (!t) { set(TF.cb); cb = isc[0] ? coinbaseWords(X.subarray(isc[0][0], isc[0][1])) : ''; }
     else {
@@ -1771,6 +1784,7 @@ function loadEtch(B) {
 }
 async function scanBlock(B) {
   if (!B || B.scan) return;
+  overpays(B);   // (from its fees alone: there even if its bytes can't be read)
   B.scan = {loading: true}; head();
   try {
     const X = await blockBytes(B), S = await scanBytes(X, B.height);
@@ -1783,8 +1797,9 @@ async function scanBlock(B) {
       if (r.art) t.art = r.art; if (r.word) t.word = r.word;
       if (r.txt) { t.txt = r.txt; t.txtT = r.txtT; }
       if (t.id && r.ins.length && !t.ordIds) t.ordIds = r.ins.map(e => t.id + 'i' + e.i);
-      if (r.labitbu) t.labitbu = true; if (r.cat21) { t.cat21 = true; t.catW = r.w; } if (r.mdl) t.mdl = r.mdl;
+      if (r.labitbu) t.labitbu = true; if (r.cat21) { t.cat21 = true; t.catW = r.w; } if (r.mdl) t.mdl = r.mdl; if (r.lnc) t.lnc = true;
     });
+    overpays(B);
     // each CAT-21 cat, drawn by the CAT-21 reference code from its transaction id, its block's hash and its fee rate (as Ordpool draws it)
     if (window.Cat21 && B.hash) for (let i = 0; i < B.txs.length; i++) { const t = B.txs[i]; if (!t.cat21 || t.art || !(t.fee >= 0) || !t.catW) continue;
       try { const id = t.id || await rawTxid(X, S.txs[i]), hash = B.hash, rate = t.fee / (t.catW / 4);   // (drawn each time it is wanted, about 0.1 ms, and not kept: a block of a thousand cats would hold 41 MB)
@@ -3734,6 +3749,7 @@ function select(t) {
   if (hadFoc && !foc) rebuild();
   document.body.classList.toggle('cardon', !!t);
   cardLinks(t);   // (the portal's tools, opened on this parcel)
+  zzzShow(t);   // (the sleeping coins' z's go with the parcel the card shows)
   if (!t) { $card.classList.remove('on', 'st', 'big'); const cm = document.getElementById('cm'); if (cm) cm.innerHTML = 'more &#9662;'; $cp.innerHTML = ''; $cp.style.display = 'none'; return; }
   if (t.show) { showCard(t); return; }
   if (t.gal) { galCard(t); return; }
@@ -3746,6 +3762,8 @@ function select(t) {
     rows.push(['fee rate', rateWords(ownRate(t)), sw]);
     if (Math.abs(t.rate - ownRate(t)) > 0.05) rows.push(['effective fee rate', rateWords(t.rate)]);
     rows.push(['fee', fmt(t.fee) + ' sats']);
+    if (!t.live && t.med > 0 && t.rate > 0) { const k = t.rate / t.med;   // (how it paid next to the rest of its own block)
+      rows.push([t.over ? 'big overpay' : 'next to its block', (k >= 10 ? fmt(Math.round(k)) : k.toFixed(1)) + '× this block\'s middle fee rate (' + rateWords(t.med) + ')', t.over ? '#ff3b3b' : undefined]); }
   }
   rows.push(['size', vb(t.vsize)]);
   rows.push(['outputs total', btc(t.value)]);
@@ -3758,6 +3776,7 @@ function select(t) {
   if (t.sc != null) {
     const has = f => ((t.sc >> f) & 1) === 1;
     if (has(TF.cb) && cur && cur.cb && cur.cb.words) rows.push(['miner says', '“' + cur.cb.words + '”']);
+    if (t.lnc) rows.push(['Lightning', 'a channel closed by force: its lock time and its one input carry Lightning\'s own marks (BOLT 3)', '#ffe14d']);
     const ty = [has(TF.taproot) ? 'taproot' : has(TF.segwit) ? 'segwit' : has(TF.legacy) ? 'legacy' : null, has(TF.consol) && 'consolidation', has(TF.batch) && 'batch payout', has(TF.msig) && 'multisig'].filter(Boolean);
     if (ty.length) rows.push(['kind', ty.join(' · ')]);
     if (t.ins && t.ins.length) rows.push(['inscription', [...new Set(t.ins.map(e => e.ct))].join(', ') + (t.ins.length > 1 ? ' × ' + t.ins.length : '') + (has(TF.child) ? ' · child of a parent' : '') + (has(TF.cursed) ? ' · cursed' : '')]);
@@ -8211,6 +8230,23 @@ async function checkedRow(t, tx) {
   for (const get of tries) { try { const [h, site] = await get(); return [['checked', checkedWords(id, await txFromBytes(h), want, site, btc)]]; } catch (e) {} }
   return [['checked', 'not checked this time: the second sites did not answer']];
 }
+// (22 Nov 2026) sleeping coins: how long the coins a parcel spends sat untouched, from when each was made (asked only when it is
+// picked up, at most 25 earlier transactions, so a hall never slows). z for a year or more, zz for 5 years, zzz for 10 years.
+function sleepWords(sec) {
+  const d = sec / 86400;
+  if (d < 1) { if (sec < 3600) return Math.max(1, Math.round(sec / 60)) + ' min'; const hh = Math.round(sec / 3600); return hh + (hh === 1 ? ' hour' : ' hours'); }
+  if (d < 61) return Math.round(d) + ' days';
+  const m = Math.floor(d / 30.44), y = Math.floor(m / 12), mm = m % 12;
+  return y ? y + (y === 1 ? ' year' : ' years') + (mm ? ' ' + mm + (mm === 1 ? ' month' : ' months') : '') : m + ' months';
+}
+function zzzShow(t) {
+  let z = document.getElementById('zzz'); const sec = t && t._zzz, n = sec >= 10 * 31557600 ? 3 : sec >= 5 * 31557600 ? 2 : sec >= 31557600 ? 1 : 0;
+  if (!n) { if (z) z.remove(); return; }
+  if (!z) { z = document.createElement('div'); z.id = 'zzz'; z.setAttribute('aria-hidden', 'true'); document.body.appendChild(z); }
+  z.innerHTML = '<i>z</i>'.repeat(n); z.title = 'its coins slept ' + sleepWords(sec);
+  const place = () => { const r = $card.getBoundingClientRect(); if (!r.width) return; z.style.left = Math.round(r.right - 70) + 'px'; z.style.top = Math.round(r.top - 34) + 'px'; };   // (just above the tablet's top corner, floating up off it)
+  place(); requestAnimationFrame(place); setTimeout(place, 400);
+}
 async function heldInfo(t) {
   if (t._held) return;   // (fetched before: the tablet shows it again)
   t._held = [];
@@ -8230,6 +8266,15 @@ async function heldInfo(t) {
       if (tx.status && tx.status.confirmed) rows.push(['confirmed', new Date(tx.status.block_time * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
       show(rows);
       try { show(await checkedRow(t, tx)); } catch (e) {}   // (against fake data: see checkedRow)
+      if (!cb && tx.status && tx.status.confirmed) try {   // sleeping coins: when each earlier transaction it spends from was mined
+        const prev = [...new Set(tx.vin.map(i => i.txid))], ask = prev.slice(0, 25);
+        const got = (await Promise.all(ask.map(id => mpFetch('/api/tx/' + id + '/status', null, 15000).then(r => r.json()).catch(() => null)))).filter(x => x && x.confirmed && x.block_time > 0);
+        if (got.length) {
+          const old = got.reduce((a, x) => x.block_time < a.block_time ? x : a), sec = Math.max(0, tx.status.block_time - old.block_time);
+          t._zzz = sec; if (still()) zzzShow(t);
+          show([['coins slept', 'up to ' + sleepWords(sec) + ' (the oldest made ' + new Date(old.block_time * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) + ', in block ' + fmt(old.block_height) + ')' + (got.length < prev.length ? ' · ' + got.length + ' of the ' + prev.length + ' earlier transactions it spends from asked' : ''), sec >= 31557600 ? '#bfe3ff' : undefined]]);
+        }
+      } catch (e) {}
     }
   } catch (e) {}
   const ids = t.ordIds || (t.id && t.ins && t.ins.length ? t.ins.map(e => t.id + 'i' + e.i) : []);
