@@ -1120,7 +1120,7 @@ o=vec4(col*(1.-shd*.5),ln*fade*.75+foot*.12+ring*.9);}`);
 // floor seasons: the ground under the cube follows the fee heat of the block on screen
 // (uHeat 0..6 = ice, water, grass, desert, fire, lava storm, plasma; between two whole numbers it blends)
 const mtP = prog(V + `layout(location=0) in vec3 aP;uniform mat4 uVP;uniform float uFS;uniform vec2 uFO;out vec2 vU;void main(){vec3 q=vec3(aP.x*max(uFS,1.)+uFO.x,0.,aP.z*max(uFS,1.)+uFO.y);vU=q.xz;gl_Position=uVP*vec4(q,1.);}`,
-  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm,uCalm,uPat;uniform sampler2D uGly;uniform vec2 uFO;out vec4 o;float G;
+  V + `in vec2 vU;uniform float uNow,uHeat,uPass,uFlash,uRm,uCalm,uAccM,uLitM;uniform sampler2D uCpt;uniform vec2 uFO,uTile;uniform vec3 uAccC;out vec4 o;float G;
 float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h1(i),h1(i+vec2(1.,0.)),f.x),mix(h1(i+vec2(0.,1.)),h1(i+1.),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*ns(p);p=p*2.03+vec2(3.1,1.7);a*=.5;}return v;}
@@ -1144,76 +1144,32 @@ c+=vec3(.75,.8,1.)*(bolt*2.5+uFlash*.22);G=cr*pu*.75+bolt;return vec4(c,.88);}
 vec4 plasma(vec2 p,float t){float v=sin(p.x*1.25+t)+sin(p.y*1.05-t*1.3)+sin((p.x+p.y)*.85+t*.7)+sin(length(p)*2.1-t*2.);
 vec3 c=.5+.5*cos(vec3(0.,2.1,4.2)+v*1.15+t*.35);c=mix(c,vec3(.78,.22,1.),.35);float ar=pow(1.-abs(sin(v*5.+t*2.6)),18.);
 c=c*(.55+.35*abs(sin(v*3.14)))+vec3(.95,.85,1.)*ar*1.2;G=.45+ar*.8;return vec4(c,.78);}
-vec3 CPT(int k){if(k<=0)return vec3(.45,.57,.67);if(k==1)return vec3(.13,.33,.39);if(k==2)return vec3(.26,.38,.28);if(k==3)return vec3(.66,.52,.34);if(k==4)return vec3(.58,.29,.18);if(k==5)return vec3(.40,.11,.14);return vec3(.31,.18,.37);}   // heritage tones: slate blue, deep teal, forest, camel, rust, oxblood, aubergine
-vec2 WU;
-float sdB(vec2 q,vec2 b){vec2 d=abs(q)-b;return length(max(d,0.))+min(max(d.x,d.y),0.);}
-float sdRB(vec2 q,vec2 b,float r){return sdB(q,b-r)-r;}
-float bowl(vec2 q,vec2 c,vec2 r,float w){vec2 a=(q-c)/r;float d=(length(a)-1.)*min(r.x,r.y);return max(abs(d)-w,c.x-q.x);}
-float glyph(vec2 q,int g){float w=.034,d=sdRB(q-vec2(-.1,0.),vec2(w,.27),.01);
- if(g==6){d=min(d,bowl(q,vec2(-.02,.125),vec2(.105,.12),w));d=min(d,bowl(q,vec2(-.02,-.13),vec2(.125,.14),w));
-  d=min(d,sdRB(q-vec2(-.065,.235),vec2(.05,w),.01));d=min(d,sdRB(q-vec2(-.065,.005),vec2(.05,w),.01));d=min(d,sdRB(q-vec2(-.065,-.235),vec2(.05,w),.01));
-  for(int i=0;i<2;i++){float x=i==0?-.085:-.015;d=min(d,sdRB(q-vec2(x,.3),vec2(.017,.065),.008));d=min(d,sdRB(q-vec2(x,-.3),vec2(.017,.065),.008));}}
- else{d=min(d,bowl(q,vec2(-.04,0.),vec2(.2,.235),w));d=min(d,sdRB(q-vec2(-.07,.235),vec2(.035,w),.01));d=min(d,sdRB(q-vec2(-.07,-.235),vec2(.035,w),.01));d=min(d,sdRB(q-vec2(-.13,0.),vec2(.085,.026),.01));}
- return d;}
-float paw(vec2 q){float d=length((q-vec2(0.,-.06))/vec2(.15,.12))-1.;d*=.12;
- d=min(d,length((q-vec2(-.15,.09))/vec2(.055,.07))*.06-.06);d=min(d,length((q-vec2(-.055,.18))/vec2(.055,.072))*.06-.06);
- d=min(d,length((q-vec2(.055,.18))/vec2(.055,.072))*.06-.06);d=min(d,length((q-vec2(.15,.09))/vec2(.055,.07))*.06-.06);return d;}
-mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
-float fill(float d){float aa=max(fwidth(d),1e-4);return 1.-smoothstep(-aa,aa,d);}
-float line(float d,float w){return fill(abs(d)-w);}
-// the field: u in metres along the floor; F the fee colour; gives the colour
-vec3 field(int t,vec2 u,vec3 F,vec3 dk,vec3 lt,vec3 cr,vec3 gd){
- vec3 c=F;
- if(t==1){float y=fract(u.y/.9)*.9;   // regimental stripes, across the runner
-  c=mix(c,dk,fill(abs(y-.45)-.13));c=mix(c,lt,fill(abs(y-.12)-.05));c=mix(c,gd,fill(abs(y-.29)-.006));c=mix(c,gd,fill(abs(y-.61)-.006));}
- else if(t==2){vec2 g=fract(u/.6)*.6;   // tartan: bands both ways, woven in a twill
-  float b1=fill(abs(g.x-.3)-.09),b2=fill(abs(g.y-.3)-.09),l1=fill(abs(g.x-.08)-.012),l2=fill(abs(g.y-.08)-.012);
-  float tw=step(.5,fract((u.x+u.y)*36.));c=mix(F*.86,F*1.02,tw*.6);c=mix(c,dk*(tw>.5?1.05:.9),(b1+b2)*.55);c=mix(c,dk*.7,b1*b2*.6);
-  c=mix(c,gd*(tw>.5?1.:.86),max(l1*(1.-b2*.5),l2*(1.-b1*.5))*.55);}
- else if(t==3){vec2 s=vec2(.36,.54),g=u/s,id=floor(g),f=fract(g)-.5;float dm=abs(f.x)+abs(f.y);   // argyle
-  float alt=mod(id.x+id.y,2.);c=mix(F,alt>.5?mix(F,dk,.7):lt,fill(dm-.47));
-  vec2 h=fract(u/s+.5)-.5;float cx=min(abs(h.x*s.x*1.5-h.y*s.y),abs(h.x*s.x*1.5+h.y*s.y));float dash=step(.5,fract((u.y)/.06));
-  c=mix(c,gd,line(cx,.004)*dash*.8);c=mix(c,gd,fill(length(f*s)-.016));}
- else if(t==4){float cw=.16,col=floor(u.x/cw),xf=fract(u.x/cw),dir=mod(col,2.)<1.?1.:-1.;   // herringbone
-  float d=(u.y+dir*xf*cw*1.1)/.07,band=fract(d);float aa=fwidth(d)*1.5;float two=smoothstep(.5-aa,.5+aa,band)-smoothstep(1.-aa,1.,band)+1.-smoothstep(0.,aa,band);
-  c=mix(F*1.02,mix(F,dk,.55),1.-two);float seam=min(xf,1.-xf)*cw;c=mix(c,cr*.85,fill(seam-.006));}
- else if(t==5){float R=.2,rh=R*.5;float j0=floor(u.y/rh);vec3 cc=F*.9;   // seigaiha: fans in rows, each row laid over the one before
-  for(int k=2;k>=-1;k--){float jj=j0+float(k);float off=mod(jj,2.)<1.?0.:R;float cx=floor((u.x-off)/(2.*R)+.5)*2.*R+off;vec2 d=u-vec2(cx,jj*rh);float r=length(d);
-   if(r<R){float b=r/R*4.;float ring=fract(b),band=floor(b);vec3 rc=mod(band,2.)<1.?lt:mix(F,dk,.35);float aa=fwidth(b)*1.2;
-    cc=mix(gd,rc,smoothstep(0.,aa+.03,ring)*smoothstep(1.,1.-aa-.03,ring));cc=mix(cc,dk,smoothstep(R-.004,R,r));break;}}
-  c=cc;}
- else if(t>=6&&t<=7){vec2 s=vec2(1.05,1.05),g=u/s,id=floor(g),f=(fract(g)-.5)*s;   // medallions
-  c=mix(F,F*.9,line(f.x+f.y,.004)+line(f.x-f.y,.004));   // a fine trellis
-  vec2 h=(fract(g+.5)-.5)*s;c=mix(c,dk,fill(abs(h.x)+abs(h.y)-.045));c=mix(c,gd,line(abs(h.x)+abs(h.y)-.045,.004));
-  float r=length(f);vec3 coin=t==6?vec3(.92,.55,.12):vec3(.74,.62,.24);   // (Bitcoin's orange, Dogecoin's gold)
-  c=mix(c,dk,fill(r-.2));c=mix(c,coin,fill(r-.185));c=mix(c,coin*1.08,fill(r-.155)*(.5+.5*smoothstep(.16,-.16,f.y-f.x)));c=mix(c,gd,line(r-.2,.005));c=mix(c,coin*.74,line(r-.163,.003));
-  vec2 gu=(t==6?rot(-.244)*f:f)/.29+.5;float gm=(gu.x>0.&&gu.x<1.&&gu.y>0.&&gu.y<1.)?texture(uGly,vec2((gu.x+float(t-6))/3.,1.-gu.y)).r:0.;
-  vec2 su=gu-vec2(.025,-.035);float sm=(su.x>0.&&su.x<1.&&su.y>0.&&su.y<1.)?texture(uGly,vec2((su.x+float(t-6))/3.,1.-su.y)).r:0.;c=mix(c,coin*.6,sm*(1.-gm)*.7);c=mix(c,vec3(.97,.94,.88),gm);}   // (white, with a soft edge of shade)
- else if(t==8){vec2 s=vec2(.9,.5),g=u/s,id=floor(g);vec2 f=(fract(g)-.5)*s;   // a trail of paw prints, left then right
-  float side=mod(id.y,2.)<1.?-1.:1.;vec2 q=rot(side*.22)*(f-vec2(side*.17,0.));vec2 gu=q/.34+.5;
-  float pm=(gu.x>0.&&gu.x<1.&&gu.y>0.&&gu.y<1.)?texture(uGly,vec2((gu.x+2.)/3.,1.-gu.y)).r:0.;c=mix(c,mix(F,dk,.8),pm);}
- return c;}
-vec4 carpet(int k,vec2 p){
- vec3 F=CPT(k),dk=F*.66,lt=mix(F,vec3(.9,.85,.72),.22),cr=vec3(.86,.8,.66),gd=mix(vec3(.76,.6,.33),F,.2);int t=int(uPat+.5);   // (deep tone, light tone, cream and gold)
- bool rm=uRm>.5;vec2 u=rm?WU:WU*.42;float ax=abs(WU.x);
- vec3 c=field(t,u,F,dk,lt,cr,gd);
- if(rm){   // a runner: the field, then a border with a twisted rope of diamonds, then the bare edge under the shelves
-  float b0=2.3,b1=3.15,gb=b0-.16;
-  if(ax>gb&&ax<b0)c=mix(dk,F,step(.5,fract(u.y/.08))*.5);   // a guard band of little bars
-  if(ax>b0&&ax<b1){float y=fract(u.y/.4)-.5,x=(ax-b0)-(b1-b0)*.5,dm=abs(x)*1.25+abs(y)*.4;c=dk;   // the border: a chain of diamonds with a jewel in each
-   c=mix(c,F,fill(dm-.17));c=mix(c,dk*1.15,fill(dm-.12));c=mix(c,lt,fill(dm-.07));c=mix(c,gd,line(dm-.17,.005));c=mix(c,gd,fill(length(vec2(x,y*.4))-.018));
-   c=mix(c,gd,fill(length(vec2(abs(x)-.22,(fract(u.y/.4+.5)-.5)*.4))-.014));}
-  c=mix(c,gd,clamp(line(ax-gb,.006)+line(ax-b0,.009)+line(ax-b0-.05,.004)+line(ax-b1,.009)+line(ax-b1+.05,.004),0.,1.));
-  if(ax>b1+.012)c=dk*.55;
-  c*=1.-.22*smoothstep(2.9,3.6,ax);}   // (a little shade where the carpet runs under the shelves)
- float fw=fwidth(u.x)*140.,tuft=ns(u*140.)*.6+ns(u*310.+7.)*.4,fine=mix(tuft,.5,clamp(fw,0.,1.));   // the pile: fine tufts close up, smooth far off
- float row=mix(.5+.5*sin(u.y*700.),.5,clamp(fwidth(u.y)*110.,0.,1.));
- c*=.9+.12*fine+.04*row;c*=.93+.1*ns(u*.8);   // (and a soft mottle in the pile, as real wool has)
- return vec4(c,.94);}
-vec4 mat(int k,vec2 p,float t){if(uCalm>.5)return carpet(k,p);if(k<=0)return ice(p,t);if(k==1)return water(p,t);if(k==2)return grass(p,t);if(k==3)return desert(p,t);if(k==4)return fire(p,t);if(k==5)return lava(p,t);return plasma(p,t);}
+vec2 WU;vec3 CM;float CS;
+// the calm carpet: one woven tile (drawn once by the page into three masks: the deeper tone, the light tone, the accent),
+// coloured by the block's fees: sapphire, teal, emerald, amber, flame, crimson, violet (field, deeper tone, light tone)
+const vec3 PF[7]=vec3[7](vec3(.106,.239,.478),vec3(.039,.298,.333),vec3(.086,.333,.196),vec3(.612,.408,.102),vec3(.612,.200,.059),vec3(.400,.047,.102),vec3(.231,.098,.404));
+const vec3 PD[7]=vec3[7](vec3(.047,.118,.275),vec3(.016,.153,.176),vec3(.035,.176,.098),vec3(.380,.231,.043),vec3(.365,.094,.024),vec3(.208,.020,.051),vec3(.114,.039,.224));
+const vec3 PL[7]=vec3[7](vec3(.698,.827,.949),vec3(.561,.851,.816),vec3(.682,.851,.635),vec3(1.,.914,.706),vec3(1.,.776,.553),vec3(.949,.647,.671),vec3(.808,.714,1.));
+vec3 carpet(int k){
+ vec3 L=mix(PL[k],vec3(1.,.957,.863),uLitM),A=mix(vec3(.863,.694,.333),uAccC,uAccM);
+ vec3 c=mix(PF[k],PD[k],CM.r);c=mix(c,A,CM.b);c=mix(c,L,CM.g);
+ return c*CS;}
+// (in main, once for the pixel: the masks, and the pile and the hall's light on it)
+void carpetLook(){
+ bool rm=uRm>.5;vec2 u=rm?WU:WU*.42;
+ CM=texture(uCpt,vec2(u.x/uTile.x+.5,u.y/uTile.y)).rgb;
+ float px=max(fwidth(u.x),fwidth(u.y));vec2 w=vec2(u.x,mod(u.y,96.));   // (the grain keeps to a short stretch of floor, so it stays fine however far the halls run)
+ float g1=mix(ns(w*210.),.5,clamp(px*150.,0.,1.)),g2=mix(ns(w*85.+7.),.5,clamp(px*60.,0.,1.)),g3=mix(ns(w*26.+3.),.5,clamp(px*18.,0.,1.));
+ CS=(.86+.10*g1+.10*g2+.08*g3)*(.93+.14*ns(u*.9+3.));   // the pile: fine tufts close up, smooth far off; soft clouds in the wool
+ if(rm){float ax=abs(WU.x);vec2 dv=WU-uFO;float gz=1.-1.62/sqrt(dot(dv,dv)+2.62);
+  CS*=mix(.6,1.,smoothstep(3.5,1.7,ax));   // the tall shelves shade its edges
+  CS*=1.+.8*exp(-max(3.33-ax,0.)*6.);   // (the lights along their feet wash over it)
+  CS*=1.+.35*gz*gz*gz;}   // (and it catches the light where you look along it, as velvet does)
+}
+vec4 mat(int k,vec2 p,float t){if(uCalm>.5)return vec4(carpet(k),1.);if(k<=0)return ice(p,t);if(k==1)return water(p,t);if(k==2)return grass(p,t);if(k==3)return desert(p,t);if(k==4)return fire(p,t);if(k==5)return lava(p,t);return plasma(p,t);}
 void main(){vec2 p=vU/${SF}*4.*(uRm>.5?2.5:1.);float t=uNow,r=length(vU)/${SF},fade=uRm>.5?1.:exp(-r*r*.75)*(1.-smoothstep(1.15,1.85,r));
 float hh=clamp(uHeat,0.,6.);int k=int(floor(hh));float b=k<6?smoothstep(.3,.7,fract(hh)):0.;
-G=0.;WU=vU;vec4 a=mat(k,p,t);float ga=G;if(b>.001){G=0.;vec4 d=mat(k+1,p,t);a=mix(a,d,b);ga=mix(ga,G,b);}
+G=0.;WU=vU;carpetLook();vec4 a=mat(k,p,t);float ga=G;if(b>.001){G=0.;vec4 d=mat(k+1,p,t);a=mix(a,d,b);ga=mix(ga,G,b);}
 if(uRm>.5){float fd=length(vU-uFO);a.rgb=mix(a.rgb,vec3(.022,.013,.01),1.-exp(-fd*.034));ga*=exp(-fd*.03);}
 if(uPass<.5)o=vec4(a.rgb,a.a*fade);else o=vec4(0.,0.,0.,clamp(ga*fade,0.,1.)*.55);}`);
 // glow (bloom) passes
@@ -4396,7 +4352,7 @@ const WOODS = [['walnut (the hall\'s own)', '#3b2313', '#1e120a'], ['oak', '#6b4
 const PATS = ['plain', 'stripes', 'checks', 'diamonds', 'herringbone', 'waves', '₿ symbols', 'Ð symbols', 'paw prints'];   // (all drawn here, by this page's own code)
 try { SET.calm = localStorage.getItem('blockhall.calm') === '1'; SET.deco = localStorage.getItem('blockhall.deco') !== '0'; SET.specks = localStorage.getItem('blockhall.specks') !== '0'; const n = +localStorage.getItem('blockhall.carpet'); if (n >= 0 && n < PATS.length) SET.pat = n; const k = +localStorage.getItem('blockhall.sky'); if (k >= 0 && k < SKIES.length) SET.sky = k;
   const ne = +localStorage.getItem('blockhall.neon'), wo = +localStorage.getItem('blockhall.wood'); if (ne >= 0 && ne < NEONS.length) SET.neon = ne; if (wo >= 0 && wo < WOODS.length) SET.wood = wo; } catch (e) {}
-const CARPETS = [['ice', '#7391ab'], ['water', '#215463'], ['grass', '#426147'], ['desert', '#a88557'], ['fire', '#944a2e'], ['lava storm', '#661c24'], ['plasma', '#4f2e5e']];
+const CARPETS = [['ice', '#1b3d7a'], ['water', '#0a4c55'], ['grass', '#165532'], ['desert', '#9c681a'], ['fire', '#9c330f'], ['lava storm', '#660c1a'], ['plasma', '#3b1967']];   // (sapphire, teal, emerald, amber, flame, crimson, violet: the carpets' own colours)
 const $tset = document.createElement('div'); $tset.id = 'tset'; $tset.hidden = true; $tset.setAttribute('role', 'dialog'); $tset.setAttribute('aria-label', 'Settings'); document.body.appendChild($tset);
 function setDraw() {
   $tset.innerHTML = '<b>SETTINGS</b><label class="srow"><input type="checkbox" id="setCalm"> <span>Calm carpet floor</span></label>'
@@ -4424,30 +4380,119 @@ function setDraw() {
   for (const b of $tset.querySelectorAll('[data-sky]')) b.onclick = () => { SET.sky = +b.dataset.sky; try { localStorage.setItem('blockhall.sky', String(SET.sky)); } catch (e) {}
     for (const x of $tset.querySelectorAll('[data-sky]')) x.setAttribute('aria-pressed', String(x === b)); };
 }
-// (22 Nov 2026) the carpet's symbols, drawn once into a small picture with the browser's own fonts and shapes: the Bitcoin sign
-// (a bold B with its two bars), the Eth D (Ð) and a paw print. Mipmapped, so they stay crisp near and far.
-let GLY = null;
-function glyTex() {
-  if (GLY) return GLY;
-  const c = document.createElement('canvas'), N = 256; c.width = N * 3; c.height = N; const x = c.getContext('2d');
-  x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height); x.fillStyle = '#fff'; x.strokeStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  const font = 'bold ' + Math.round(N * .74) + 'px "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif';
-  x.font = font; x.fillText('B', N * .5, N * .53);   // the Bitcoin sign: a B, and two bars that stand above and below its stem
-  const m = x.measureText('B'), bw = m.width, bl = N * .5 - bw / 2 + bw * .2, bar = N * .045;
-  for (const dx of [0, bw * .27]) { x.fillRect(bl + dx - bar / 2, N * .07, bar, N * .14); x.fillRect(bl + dx - bar / 2, N * .79, bar, N * .14); }
-  x.fillText('Ð', N * 1.5, N * .53);
-  // a paw print: a big pad and four toes
-  const P = (cx, cy, rx, ry, a) => { x.beginPath(); x.ellipse(N * 2 + cx * N, cy * N, rx * N, ry * N, a, 0, 6.2832); x.fill(); };
-  x.beginPath(); x.moveTo(N * 2.5, N * .46); x.bezierCurveTo(N * 2.74, N * .44, N * 2.8, N * .78, N * 2.62, N * .82); x.bezierCurveTo(N * 2.54, N * .85, N * 2.46, N * .85, N * 2.38, N * .82);
-  x.bezierCurveTo(N * 2.2, N * .78, N * 2.26, N * .44, N * 2.5, N * .46); x.fill();
-  P(.24, .4, .07, .095, -.35); P(.4, .24, .075, .1, -.12); P(.6, .24, .075, .1, .12); P(.76, .4, .07, .095, .35);
-  const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, t);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c); gl.generateMipmap(gl.TEXTURE_2D);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.activeTexture(gl.TEXTURE0); return GLY = t;
+// (22 Nov 2026) the carpets. Each is one repeating tile, drawn once with the browser's own drawing tools into three masks (red: the
+// deeper tone, green: the light tone, blue: the accent, gold or a coin's own colour); the floor's shader colours it by the block's
+// fees. Mipmapped, so it stays clean near and far. Everything on them is drawn here, by this page: no borrowed pictures.
+const CPT = {tex: null, one: null, pat: -1, tw: 1, th: 1, acc: [0, 0, 0], accM: 0, litM: 0};
+function cptPaint(pat, N) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const x = cv.getContext('2d', {alpha: false}), T = 6.2832;
+  let q = 7 + pat * 977; const rnd = () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296;
+  // ink(k, a): the shapes that follow add a of mask k; rub(k): they rub mask k out (k < 0: all three); put: set mask k to a
+  const ink = (k, a) => { const v = Math.round(255 * a); x.globalCompositeOperation = 'lighter'; x.fillStyle = x.strokeStyle = 'rgb(' + (k ? 0 : v) + ',' + (k === 1 ? v : 0) + ',' + (k === 2 ? v : 0) + ')'; };
+  const rub = k => { x.globalCompositeOperation = k < 0 ? 'source-over' : 'multiply'; x.fillStyle = x.strokeStyle = k < 0 ? '#000' : ['#0ff', '#f0f', '#ff0'][k]; };
+  const put = (k, a, f) => { rub(k); f(); ink(k, a); f(); };
+  const disc = (cx, cy, r) => { x.beginPath(); x.arc(cx, cy, r, 0, T); x.fill(); };
+  const ring = (cx, cy, r, w) => { x.lineWidth = w; x.beginPath(); x.arc(cx, cy, r, 0, T); x.stroke(); };
+  const SIZE = [[1, 1], [.8, .6], [.9, .9], [.66, .98], [.56, .56], [.88, .88], [.8, 1.04], [.8, 1.04], [.72, .72]][pat] || [1, 1], tw = SIZE[0], th = SIZE[1];
+  const metres = () => x.setTransform(N / tw, 0, 0, N / th, 0, 0);
+  const wrap = f => { for (const dx of [-tw, 0, tw]) for (const dy of [-th, 0, th]) { x.save(); x.translate(dx, dy); f(); x.restore(); } };
+  // the weave: flecks of deeper and lighter wool, and a faint rib across it
+  const weave = k => { x.setTransform(1, 0, 0, 1, 0, 0);
+    for (let i = 0, n = N * N / 46 * k; i < n; i++) { const g = rnd() < .28; ink(g ? 1 : 0, g ? .02 + rnd() * .05 : .05 + rnd() * .14); x.fillRect(rnd() * N, rnd() * N, 2, 2); }
+    ink(0, .05); for (let y = 0; y < N; y += 4) x.fillRect(0, y, N, 1); metres(); };
+  // a small four-pointed star, and a flower of n petals
+  const star = (cx, cy, r) => { x.beginPath(); for (let i = 0; i < 4; i++) { const a = i * T / 4, b = a + T / 8; x.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); x.quadraticCurveTo(cx, cy, cx + Math.cos(a + T / 4) * r, cy + Math.sin(a + T / 4) * r); } x.closePath(); x.fill(); };
+  const flower = (cx, cy, r, n) => { for (let i = 0; i < n; i++) { const a = i * T / n; x.beginPath(); x.ellipse(cx + Math.cos(a) * r * .56, cy + Math.sin(a) * r * .56, r * .46, r * .24, a, 0, T); x.fill(); } };
+  x.fillStyle = '#000'; x.fillRect(0, 0, N, N);
+  const out = {c: cv, tw, th, acc: [.863, .694, .333], accM: 0, litM: 0};
+  weave(1);
+  if (pat === 1) {   // stripes, running the length of the hall: a broad deeper band edged in gold with a row of gold stars down it, fine light lines between
+    const c0 = tw / 2, pair = (k, a, d, w) => { ink(k, a); for (const s of [-1, 1]) x.fillRect(c0 + s * d - w / 2, 0, w, th); };
+    put(0, .8, () => x.fillRect(c0 - .15, 0, .3, th));
+    pair(2, 1, .178, .009); pair(1, .62, .385, .014); pair(1, .5, .352, .005); pair(0, .4, .25, .05);
+    ink(2, 1); for (let i = 0; i < 3; i++) star(c0, th * (i + .5) / 3, .028);
+    ink(2, .9); for (let i = 0; i <= 3; i++) for (const s of [-1, 1]) disc(c0 + s * .09, th * i / 3, .0065);
+  } else if (pat === 2) {   // checks: a tartan of its own, the same sett both ways (each band is laid at half strength, so where two cross the colour is whole)
+    const band = (k, a, c, w) => { ink(k, a); for (const d of [-tw, 0, tw]) { x.fillRect(c + d - w / 2, 0, w, th); x.fillRect(0, c + d - w / 2, tw, w); } };
+    band(0, .5, 0, .26); band(0, .5, .2, .034); band(0, .5, -.2, .034);   // the broad deeper band and its two guards
+    band(0, .3, tw / 2 - .07, .016); band(0, .3, tw / 2 + .07, .016);
+    band(1, .46, tw / 2, .014); band(2, .55, 0, .011); band(2, .4, .2, .006); band(2, .4, -.2, .006);   // a light line through each square, gold through each band
+    x.lineWidth = .0026; ink(0, .1); for (let d = -th; d < tw; d += .0095) { x.beginPath(); x.moveTo(d, 0); x.lineTo(d + th, th); x.stroke(); }   // the twill
+  } else if (pat === 3) {   // diamonds: a gold trellis, a rosette where its lines meet, every other diamond deeper, a small flower in each
+    const dia = () => { x.beginPath(); x.moveTo(tw / 2, 0); x.lineTo(tw, th / 2); x.lineTo(tw / 2, th); x.lineTo(0, th / 2); x.closePath(); };
+    ink(0, .4); dia(); x.fill();
+    x.lineJoin = 'miter'; ink(2, .5); x.lineWidth = .026; dia(); x.stroke(); ink(2, .5); x.lineWidth = .008; dia(); x.stroke();
+    wrap(() => { for (const [px, py] of [[tw / 2, 0], [0, th / 2]]) { put(2, 1, () => disc(px, py, .04)); put(0, .9, () => disc(px, py, .017)); rub(2); disc(px, py, .017); ink(1, .9); ring(px, py, .0285, .004); }
+      for (const [px, py] of [[tw / 2, th / 2], [0, 0]]) { ink(1, .78); flower(px, py, .062, 4); x.save(); x.translate(px, py); x.rotate(T / 8); ink(1, .4); flower(0, 0, .045, 4); x.restore(); put(2, 1, () => disc(px, py, .013)); } });
+  } else if (pat === 4) {   // herringbone: slanting bands that turn at every column and step half a band as they turn, a light thread along each
+    const w = tw / 2, P = th / 4, t = P / 2, off = P / 2;
+    for (let k = -8; k < 10; k++) { const y = k * P;
+      ink(0, .56); x.beginPath(); x.moveTo(0, y); x.lineTo(w, y + w); x.lineTo(w, y + w + t); x.lineTo(0, y + t); x.closePath(); x.fill();
+      x.beginPath(); x.moveTo(w, y + off); x.lineTo(2 * w, y + off - w); x.lineTo(2 * w, y + off - w + t); x.lineTo(w, y + off + t); x.closePath(); x.fill();
+      ink(1, .3); x.beginPath(); x.moveTo(0, y + t); x.lineTo(w, y + w + t); x.lineTo(w, y + w + t + .007); x.lineTo(0, y + t + .007); x.closePath(); x.fill();
+      x.beginPath(); x.moveTo(w, y + off + t); x.lineTo(2 * w, y + off - w + t); x.lineTo(2 * w, y + off - w + t + .007); x.lineTo(w, y + off + t + .007); x.closePath(); x.fill(); }
+    ink(0, .45); for (const c of [0, w, 2 * w]) x.fillRect(c - .004, 0, .008, th);   // the spine between two columns
+  } else if (pat === 5) {   // waves (the old sea-wave pattern of fans in rows, each row laid over the one behind): arcs a tone lighter, a fine gold edge
+    const R = tw / 4;
+    for (let j = -3; j <= th / (R / 2) + 3; j++) for (let i = -1; i <= tw / (2 * R) + 1; i++) { const cx = i * 2 * R + (j & 1 ? R : 0), cy = j * R / 2 + R;
+      rub(-1); disc(cx, cy, R);
+      const g = x.createRadialGradient(cx, cy, R * .55, cx, cy, R); g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, 'rgba(255,0,0,.62)'); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; disc(cx, cy, R);   // deeper towards its rim
+      ink(2, .95); ring(cx, cy, R - .006, .0085);
+      ink(1, .5); for (const f of [.74, .5, .26]) ring(cx, cy, R * f, R * .085); ink(1, .62); disc(cx, cy, R * .075); }
+    weave(.6);
+  } else if (pat === 6 || pat === 7) {   // coins: Bitcoin's orange, or Dogecoin's gold, each with its own sign, in a trellis of ogee curves; a small flower where the curves meet
+    out.acc = pat === 6 ? [.969, .576, .102] : [.761, .651, .2]; out.accM = 1; out.litM = 1;
+    const k = th * .29, og = () => { x.beginPath(); x.moveTo(tw / 2, 0); x.bezierCurveTo(tw / 2, k, tw, th / 2 - k, tw, th / 2); x.bezierCurveTo(tw, th / 2 + k, tw / 2, th - k, tw / 2, th); x.bezierCurveTo(tw / 2, th - k, 0, th / 2 + k, 0, th / 2); x.bezierCurveTo(0, th / 2 - k, tw / 2, k, tw / 2, 0); x.closePath(); };
+    const r = .15, cell = () => {
+      x.save(); x.translate(tw / 2, th / 2); x.scale(.8, .8); x.translate(-tw / 2, -th / 2); ink(0, .34); og(); x.fill(); x.restore();   // the deeper ground inside each ogee
+      const cx = tw / 2, cy = th / 2, g = x.createRadialGradient(cx + .012, cy + .018, r * .9, cx + .012, cy + .018, r * 1.36); g.addColorStop(0, 'rgba(255,0,0,.8)'); g.addColorStop(1, 'rgba(255,0,0,0)');
+      x.globalCompositeOperation = 'lighter'; x.fillStyle = g; disc(cx + .012, cy + .018, r * 1.36);   // the coin's soft shadow in the pile
+      rub(-1); disc(cx, cy, r); ink(1, 1); disc(cx, cy, r);   // its light rim
+      rub(1); disc(cx, cy, r - .012); ink(2, 1); disc(cx, cy, r - .012);   // its face, in the coin's own colour
+      rub(2); ring(cx, cy, r - .031, .0045); ink(0, .85); ring(cx, cy, r - .031, .0045);   // a fine groove
+      x.save(); x.translate(cx, cy); if (pat === 6) x.rotate(.2422); x.scale(.0019, .0019); x.font = 'bold 100px Arial, "Helvetica Neue", Helvetica, "Liberation Sans", Roboto, sans-serif'; x.textAlign = 'left'; x.textBaseline = 'alphabetic';
+      const ch = pat === 6 ? 'B' : 'Ð', m = x.measureText(ch), l = m.actualBoundingBoxLeft || 0, w = l + (m.actualBoundingBoxRight || m.width), a = m.actualBoundingBoxAscent || 72, d = m.actualBoundingBoxDescent || 0, h = a + d;
+      ink(1, 1); x.fillText(ch, l - w / 2, a - h / 2);
+      if (pat === 6) for (const f of [.3, .56]) { x.fillRect(-w / 2 + f * w - w * .055, -h / 2 - h * .16, w * .11, h * .17); x.fillRect(-w / 2 + f * w - w * .055, h / 2 - h * .01, w * .11, h * .17); }   // the Bitcoin sign's two bars, above and below
+      x.restore();
+      for (const s of [-1, 1]) { ink(1, .9); star(cx, cy + s * (r + .115), .024); ink(1, .55); disc(cx, cy + s * (r + .062), .0055); disc(cx, cy + s * (r + .168), .0045); } };
+    wrap(() => { cell(); x.save(); x.translate(-tw / 2, -th / 2); cell(); x.restore(); });
+    x.lineJoin = 'round'; ink(0, .5); x.lineWidth = .032; og(); x.stroke(); put(1, .92, () => { x.lineWidth = .0075; og(); x.stroke(); });
+    wrap(() => { for (const [px, py] of [[tw / 2, 0], [0, th / 2]]) { rub(-1); disc(px, py, .042); ink(0, .5); disc(px, py, .042); ink(1, .95); flower(px, py, .036, 4); put(2, 1, () => disc(px, py, .0105)); rub(1); disc(px, py, .0105); } });
+  } else if (pat === 8) {   // paw prints: tracks walking the length of the hall, left then right; a gold dot between
+    const paw = (cx, cy, a, s) => { x.save(); x.translate(cx, cy); x.rotate(a); x.scale(s, s);
+      const shape = () => { x.beginPath(); x.moveTo(0, -.06); x.bezierCurveTo(.33, -.09, .42, .36, .17, .42); x.bezierCurveTo(.06, .46, -.06, .46, -.17, .42); x.bezierCurveTo(-.42, .36, -.33, -.09, 0, -.06); x.fill();
+        for (const [ex, ey, rx, ry, ea] of [[-.37, -.12, .098, .135, -.4], [-.14, -.34, .105, .142, -.13], [.14, -.34, .105, .142, .13], [.37, -.12, .098, .135, .4]]) { x.beginPath(); x.ellipse(ex, ey, rx, ry, ea, 0, T); x.fill(); } };
+      x.save(); x.translate(.035, .05); ink(0, .6); shape(); x.restore(); rub(0); shape(); ink(1, .93); shape(); x.restore(); };
+    wrap(() => { paw(tw / 2 - .14, th * .25, -.2, .2); paw(tw / 2 + .14, th * .75, .2, .2);
+      for (const py of [0, th / 2]) put(2, 1, () => disc(0, py, .011)); });
+  }
+  return out;
 }
-function glyBind() { const t = glyTex(); gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(mtP.u.uGly, 6); gl.activeTexture(gl.TEXTURE0); }
+// the carpet's tile on the floor's shader (made again only when another pattern is picked; with the moving floor it is a blank)
+function cptBind() {
+  gl.activeTexture(gl.TEXTURE9);
+  if (!SET.calm) {
+    if (!CPT.one) { CPT.one = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, CPT.one); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); }
+    gl.bindTexture(gl.TEXTURE_2D, CPT.one);
+  } else {
+    if (CPT.pat !== SET.pat || !CPT.tex) {
+      const P = cptPaint(SET.pat, matchMedia('(pointer: coarse)').matches ? 512 : 1024), fy = gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL), pm = gl.getParameter(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL);
+      if (!CPT.tex) CPT.tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, CPT.tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, P.c); gl.generateMipmap(gl.TEXTURE_2D);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, fy); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, pm);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      const an = gl.getExtension('EXT_texture_filter_anisotropic'); if (an) gl.texParameterf(gl.TEXTURE_2D, an.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(an.MAX_TEXTURE_MAX_ANISOTROPY_EXT) || 1));
+      Object.assign(CPT, {pat: SET.pat, tw: P.tw, th: P.th, acc: P.acc, accM: P.accM, litM: P.litM});
+    }
+    gl.bindTexture(gl.TEXTURE_2D, CPT.tex);
+  }
+  gl.uniform2f(mtP.u.uTile, CPT.tw, CPT.th); gl.uniform3fv(mtP.u.uAccC, CPT.acc); gl.uniform1f(mtP.u.uAccM, CPT.accM); gl.uniform1f(mtP.u.uLitM, CPT.litM);
+  gl.uniform1i(mtP.u.uCpt, 9); gl.activeTexture(gl.TEXTURE0);
+}
 function hallColours(now) {
   const L = h => LC(h), sc = (k, m) => k.map(v => v * m), [, nc] = NEONS[SET.neon], [, wc, pc] = WOODS[SET.wood], n = L(nc);
   RC.neon = n; RC.neon2 = sc(n, .8); RC.dim = sc(n, .38); RC.trim = L(nc).map(v => Math.min(1, v * 1.12)); RC.wood = L(wc); RC.post = L(pc);
@@ -5272,7 +5317,7 @@ function drawFrame() {
   // reflection in the glass floor: how shiny depends on the season
   const LW = lifeWeights(heatS), rfNow = [2.1, 2.3, 0.6, 0.7, 1, 1.1, 1.5].reduce((a, r, k) => a + r * LW[k], 0);
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
-  if (nInst) { gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.frontFace(gl.CW); boxes(1); gl.frontFace(gl.CCW); gl.disable(gl.BLEND); }
+  if (nInst && !SET.calm) { gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.frontFace(gl.CW); boxes(1); gl.frontFace(gl.CCW); gl.disable(gl.BLEND); }
   // fish swim under the water, so they are drawn before its surface
   if (LW[1] > 0.01) { gl.disable(gl.CULL_FACE); gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); lifeDraw(VP, eye, tn, LW, true); }
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
@@ -5287,7 +5332,7 @@ function drawFrame() {
     const fa = tn - flashS; flash = storm * Math.exp(-fa * 6) * (fa < 0.25 ? 0.7 + 0.3 * Math.sin(fa * 90) : 1);
   }
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
-  gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, SET.calm ? 0 : flash); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); gl.uniform1f(mtP.u.uPat, SET.pat); if (SET.calm) glyBind();
+  gl.uniform1f(mtP.u.uNow, tn); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, SET.calm ? 0 : flash); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); cptBind();
   gl.bindVertexArray(flVAO);
   gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(false, false, false, true); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 1); gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -6092,7 +6137,7 @@ function roomFrame(W, H, tn, dpr) {
   // the reflection, then the heat floor over it (as shiny as its season makes it)
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.frontFace(gl.CW);
-  all(1);
+  if (!SET.calm) all(1);   // (a carpet shows no reflection, so the mirrored hall is not drawn under it)
   gl.frontFace(gl.CCW); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
   // the floor's life: both copies of the ring, laid along the hall (fish first: they swim under the water)
   const ft = flTime(tn);   // (the floor's own clock: it waits while a hall is built)
@@ -6102,7 +6147,7 @@ function roomFrame(W, H, tn, dpr) {
   if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, ft, LW, true));
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
-  gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); gl.uniform1f(mtP.u.uPat, SET.pat); if (SET.calm) glyBind();
+  gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); cptBind();
   gl.uniform1f(mtP.u.uFS, 7); gl.uniform2f(mtP.u.uFO, p.x, p.z); gl.uniform1f(mtP.u.uRm, 1);
   gl.bindVertexArray(flVAO);
   gl.colorMask(true, true, true, false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 0); gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -16405,8 +16450,8 @@ window.AgentKit = window.AgentKit || (() => {
   const PICK = 'button,[role=button],a[href],input,select,textarea,summary';
   const label = el => { const P = []; const lab = el.labels && el.labels.length ? [...el.labels].map(l => text(l)).join(' ') : ''; for (const v of [el.getAttribute('aria-label'), text(el), el.title, el.placeholder, lab]) { const w = String(v || '').replace(/\s+/g, ' ').trim(); if (w && !P.some(q => q.toLowerCase().includes(w.toLowerCase()))) P.push(w); } return P.join(' · '); };
   // never for agents: anything that wipes, deletes or removes, and the "Are you sure?" answer (a person must press those)
-  const NO_AGENT = /\b(wipe|delete|remove|erase|forget|clear all|this wall|this place|everything|family mode|microphone|open mic|push to talk|show in crew list|invite|add friend|download)\b/i;
-  const NO_AGENT_IDS = new Set(['asky', 'd_clear', 'ragents', 'tf', 'mic', 'rmic', 'ropen', 'sea', 'rinvite', 'rbycode']);   // (and: Family mode, the microphone, showing the crew in the list, the open hall, saving a picture, invites)   // (ragents: the crew host's "Let AI agents play" switch is the host's own)
+  const NO_AGENT = /\b(wipe|delete|remove|erase|forget|clear all|this wall|this place|everything|family mode|microphone|open mic|push to talk|show in crew list|invite|add friend|download|save a picture)\b/i;
+  const NO_AGENT_IDS = new Set(['asky', 'd_clear', 'ragents', 'tf', 'mic', 'rmic', 'ropen', 'sea', 'ts', 'rinvite', 'rbycode']);   // (and: Family mode, the microphone, showing the crew in the list, the open hall, saving a picture, invites)   // (ragents: the crew host's "Let AI agents play" switch is the host's own)
   const forbidden = el => NO_AGENT_IDS.has(el.id) || !!(el.closest && el.closest('#ask, .wipe, [data-w], [data-agentbox], #ragentsw, .fg-note, [data-talk], [data-person], [download]')) || el.hasAttribute('data-w') || NO_AGENT.test(label(el)) || NO_AGENT.test(el.title || '');
   // crew chat: an agent may send one message every 5 seconds (shared by every frame of the page)
   const CHAT_GAP = 5000, CHAT_SEND = new Set(['send', 'cwsend', 'rsend']), CHAT_BOX = new Set(['msg', 'cwmsg', 'rmsg']);
