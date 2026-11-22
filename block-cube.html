@@ -1842,6 +1842,7 @@ async function scanBytes(X, h) {
           const ty = (ct.split(';')[0] || '').trim().toLowerCase();
           if (!(del && !ty)) set(/^image\//.test(ty) ? TF.img : /html/.test(ty) ? TF.html : /json/.test(ty) ? TF.json : /^text\//.test(ty) ? TF.txt : /^(audio|video)\//.test(ty) ? TF.media : /^model\//.test(ty) ? TF.model : TF.other);
           if (del) r.dele = true;
+          if (/html/.test(ty) && !del && !r.word) r.word = {k: 'html', a: 'HTML', b: ''};   // (an HTML page: its box says so, in matrix green; the page is never run)
           r.ins.push({i: ei++, ct: ty || (del ? 'delegate (shows another inscription)' : 'unknown'), par, del});
           const bl = body.reduce((n, x) => n + x.length, 0);
           // the words, for painting: the first text-like inscription in the transaction
@@ -3040,10 +3041,35 @@ function fitFont(x, txt, max, min, w, weight) {
   return f;
 }
 setTimeout(() => { try { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); x.font = '800 20px ui-monospace,Menlo,Consolas,monospace'; x.fillText('\u{1F440}\u{1F4B8}\u25E8\u2726', 2, 20); } catch (e) {} }, 2500);
+// (22 Nov 2026) an HTML inscription's box: HTML in matrix green over falling code (the page itself is never run here)
+function paintHtml(x, n) {
+  const k = n / 64, G = '#00ff41', gl = k * (n >= 128 ? 1 : n >= 64 ? .4 : .15); x.setTransform(k, 0, 0, k, 0, 0); x.shadowBlur = 0;   // (gl: the glow, kept low on small boxes so it does not bleed)
+  let g = x.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, '#04140a'); g.addColorStop(1, '#010603'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  const glyphs = '01<>/=;{}#', rnd = i => { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); };
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 4.2px ui-monospace,Menlo,Consolas,monospace';
+  for (let c = 0; c < 13; c++) {   // the rain: columns of code, each trail brightest at its head
+    const cx = 3 + c * 4.85, head = 6 + rnd(c + 1) * 62, len = 7 + Math.floor(rnd(c + 7) * 8);
+    for (let j = 0; j < len; j++) {
+      const y = head - j * 4.4; if (y < -2 || y > 66) continue;
+      const a = j === 0 ? .95 : .55 * (1 - j / len);
+      x.fillStyle = j === 0 ? 'rgba(200,255,210,' + a + ')' : 'rgba(0,255,65,' + a * .7 + ')';
+      x.fillText(glyphs[Math.floor(rnd(c * 31 + j * 7) * glyphs.length)], cx, y);
+    }
+  }
+  g = x.createLinearGradient(0, 18, 0, 46); g.addColorStop(0, 'rgba(1,8,3,0)'); g.addColorStop(.3, 'rgba(1,8,3,.82)'); g.addColorStop(.7, 'rgba(1,8,3,.82)'); g.addColorStop(1, 'rgba(1,8,3,0)'); x.fillStyle = g; x.fillRect(0, 16, 64, 32);
+  x.strokeStyle = 'rgba(0,255,65,.85)'; x.lineWidth = 1.4; x.shadowColor = G; x.shadowBlur = 3 * gl; x.strokeRect(2, 2, 60, 60); x.shadowBlur = 0;
+  x.strokeStyle = 'rgba(0,255,65,.25)'; x.lineWidth = .5; x.strokeRect(4.2, 4.2, 55.6, 55.6);
+  x.font = '700 7px ui-monospace,Menlo,Consolas,monospace'; x.fillStyle = 'rgba(0,255,65,.75)'; x.fillText('</>', 32, 23);
+  x.font = '900 15px ui-monospace,Menlo,Consolas,monospace';
+  x.shadowColor = G; x.shadowBlur = 6 * gl; x.fillStyle = G; x.fillText('HTML', 32, 34.5);
+  x.shadowBlur = 2 * gl; x.fillStyle = '#b8ffc8'; x.fillText('HTML', 32, 34.5); x.shadowBlur = 0;
+  x.setTransform(1, 0, 0, 1, 0, 0);
+}
 function paintWord(w, n) {
   n = n || 64;
   if (window.FamilyWords && w) { const T = v => typeof v === 'string' ? FamilyWords.clean(v) : v; w = Object.assign({}, w, {a: T(w.a), b: T(w.b)}); }   // (the Family Guard: rude words starred out)
   const [cv, x] = artCanvas(n), [bg, fg, label0] = (w.k === 'rune' ? WSTYLE['rune' + (w.s || 4)] : WSTYLE[w.k]) || WSTYLE.text, small = n <= 32;
+  if (w.k === 'html') { paintHtml(x, n); return cv; }
   const label = w.dmt ? (w.k === 'nat' ? 'DMT · NAT' : 'DMT · TAP') : label0;
   if (n >= 128 && w.k !== 'text') return paintRich(w, n, cv, x, bg, fg, label);
   x.setTransform(n / 64, 0, 0, n / 64, 0, 0);   // drawn in a 64 x 64 space at the tile's real size, so text is sharp at every size
