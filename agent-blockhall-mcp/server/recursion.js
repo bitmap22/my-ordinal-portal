@@ -118,6 +118,7 @@
     q = String(q == null ? '' : q).trim().toLowerCase().replace(/^#/, '').replace(/[,\s]/g, '');
     if (isInsId(q)) return q;
     if (!/^-?\d+$/.test(q)) throw new Error('give an inscription number (#1000) or its ID (64 hex characters, i, a number)');
+    if (io.byNumber) return io.byNumber(q);   // (the MCP tool's own number lookup, with its checked back-up when ordinals.com refuses)
     let html; try { html = (await io.ordText('/inscription/' + q)).t; } catch (e) { throw new Error(/404/.test(String(e)) ? 'there is no inscription #' + fmt(q) + ' (yet)' : 'ordinals.com did not answer: try again in a moment'); }
     const m = html.match(/<dt>id<\/dt>\s*<dd[^>]*>(?:<[^>]+>)*\s*([0-9a-f]{64}i\d+)/);
     if (!m) throw new Error('ordinals.com\'s page for #' + q + ' could not be read');
