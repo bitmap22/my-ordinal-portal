@@ -56,7 +56,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.27.2';
+const VERSION = '1.27.3';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://ordportal.com/';
 const GAME = PORTAL + 'block-cube.html';
@@ -369,7 +369,16 @@ async function insByNumber(n) {
     try { const D = dl(await (await fetchT(b + '/inscription/' + n, null, 12000)).text()); if (isInsId(D.id || '') && +D.height >= 0) return D.id; }
     catch (e) { if (b === ORD_R[0] && /404/.test(String(e))) { nf = true; break; } }   // (ordinals.com says there is none: no need to ask the others)
   }
-  throw new Error(nf ? 'there is no inscription #' + fmt(n) + ' (yet)' : 'ordinals.com (and its back-ups) did not answer: try again in a moment');
+  if (nf) throw new Error('there is no inscription #' + fmt(n) + ' (yet)');
+  // (23 Nov 2026) the back-up: only ordinals.com answers a number in ord's own form, and its bot check (Cloudflare) sometimes refuses
+  // cloud computers. ordiscan.com's and ord.xverse.app's own pages for the number name the inscription; an ID found there is
+  // used only when an ord site's record for it gives exactly this number (so a wrong ID on those pages can never get through).
+  for (const b of ['https://ordiscan.com', 'https://ord.xverse.app']) {
+    let html = ''; try { html = await (await fetchT(b + '/inscription/' + n, null, 15000)).text(); } catch (e) { continue; }
+    const ids = [...new Set(html.match(/[0-9a-f]{64}i\d{1,7}/g) || [])].slice(0, 6);
+    for (const id of ids) { try { const j = (await ordJson('/r/inscription/' + id, 12000)).j; if (j && +j.number === +n) return id; } catch (e) {} }
+  }
+  throw new Error('ordinals.com (and its back-ups) did not answer: try again in a moment');
 }
 async function resolveIns(q) {
   q = String(q == null ? '' : q).trim().toLowerCase().replace(/^#/, '').replace(/,/g, '');
@@ -529,7 +538,7 @@ async function provenanceCheck({id}) {
   const io = {
     ordJson: async p => { const x = await ordFetch(p, 15000); if (p.startsWith('/r/inscription/')) ordAt = x.site; return {j: await x.r.json(), site: x.site}; },
     ord2Json: async p => { const x = await ordFetch(p, 15000, ORD_R.filter(b => b !== (ordAt || ORD_R[0]))); return {j: await x.r.json(), site: x.site}; },
-    ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
+    byNumber: q => insByNumber(q), ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
     ordBytes: async p => { const x = await ordFetch(p, 60000); return {bytes: new Uint8Array(await x.r.arrayBuffer()), site: x.site}; },
     mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; },
     mpText: async p => { const x = await mpFetch(p, 60000); return {t: await x.r.text(), site: x.site}; },
@@ -558,7 +567,7 @@ function collIo() {
   return {
     ordJson: async p => { const x = await ordFetch(p, 15000); if (!ordAt && /^\/r\/(inscription|children)\//.test(p)) ordAt = x.site; return {j: await x.r.json(), site: x.site}; },
     ord2Json: async p => { const x = await ordFetch(p, 15000, ORD_R.filter(b => b !== (ordAt || ORD_R[0]))); return {j: await x.r.json(), site: x.site}; },
-    ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
+    byNumber: q => insByNumber(q), ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
     mpJson: async p => { const x = await mpSpread(p, 12000); return {j: await x.r.json(), site: x.site}; }};
 }
 async function collectionCheck({parent, ids, filter, from = 0, limit = 100}) {
@@ -595,7 +604,7 @@ async function recursionMap({id, depth}) {
   const iid = await resolveIns(id);
   const io = {
     ordJson: async p => { const x = await ordFetch(p, 15000); return {j: await x.r.json(), site: x.site}; },
-    ordText: async p => { const x = await ordFetch(p, 60000); return {t: await x.r.text(), site: x.site}; },
+    byNumber: q => insByNumber(q), ordText: async p => { const x = await ordFetch(p, 60000); return {t: await x.r.text(), site: x.site}; },
     ord2Head: async p => { let err = null; for (const b of SECOND_CONTENT) { try { const r = await fetchT(b + p, {method: 'HEAD'}, 15000); return {ok: true, status: r.status, site: b}; } catch (e) { err = e; if (/http 404/.test(String(e))) return {ok: false, status: 404, site: b}; } } throw err || new Error('no second site'); },
     ordStatus: async p => { try { await fetchT(ORD_R[0] + p, null, 15000); return {status: 200, site: ORD_R[0]}; } catch (e) { const m = String(e).match(/http (\d+)/); if (m) return {status: +m[1], site: ORD_R[0]}; throw e; } }};
   const out = await RMP.map(iid, io, null, {depth: depth == null ? 3 : Math.max(1, Math.min(5, +depth || 3))});
@@ -673,7 +682,7 @@ async function safetyScan({chain, block, id, kind, contentType, text, address}) 
 async function earnedTraits({bitmap, address}) {
   const io = {
     ordJson: async p => { const x = await ordFetch(p, 30000); return {j: await x.r.json(), site: x.site}; },
-    ordText: async p => { const x = await ordFetch(p, 30000); return {t: await x.r.text(), site: x.site}; },
+    byNumber: q => insByNumber(q), ordText: async p => { const x = await ordFetch(p, 30000); return {t: await x.r.text(), site: x.site}; },
     mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; },
     mpText: async p => { const x = await mpFetch(p, 20000); return {t: await x.r.text(), site: x.site}; },
     mpBytes: async p => { const x = await mpFetch(p, 90000); return {bytes: new Uint8Array(await x.r.arrayBuffer()), site: x.site}; },
@@ -756,7 +765,7 @@ async function stuckTx({txid}) {
 /* ---------- code read: what an inscription's code asks for, read without running it ---------- */
 async function codeRead({id}) {
   if (id == null || String(id).trim() === '') throw new Error('give an inscription number (#1000) or its ID');
-  const io = {ordJson: async p => { const x = await ordFetch(p, 15000); return {j: await x.r.json(), site: x.site}; }, ordText: async p => { const x = await ordFetch(p, 30000); return {t: await x.r.text(), site: x.site}; }};
+  const io = {ordJson: async p => { const x = await ordFetch(p, 15000); return {j: await x.r.json(), site: x.site}; }, byNumber: q => insByNumber(q), ordText: async p => { const x = await ordFetch(p, 30000); return {t: await x.r.text(), site: x.site}; }};
   const r = await CR.read(id, io);
   return Object.assign(r, {cite: CI.make('code', r), page: PORTAL + 'code-read.html?id=' + r.id,
     seeIt: {recursionMap: 'recursionMap({id: "' + r.id + '"}) lists everything it loads from the chain, each checked.', provenanceCheck: 'provenanceCheck({id: "' + r.id + '"}) proves where it came from.', agentBlockhall: GAME + '#find=' + r.id},
@@ -827,7 +836,7 @@ async function secondOpinion({claim, kind, subject, value}) {
   const io = {
     ordJson: async p => { const x = await ordFetch(p, 15000); if (!ordAt && /^\/r\/inscription\//.test(p)) ordAt = x.site; return {j: await x.r.json(), site: x.site}; },
     ord2Json: async p => { const x = await ordFetch(p, 15000, ORD_R.filter(b => b !== (ordAt || ORD_R[0])).reverse()); return {j: await x.r.json(), site: x.site}; },
-    ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
+    byNumber: q => insByNumber(q), ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
     ordList: h => blockInscriptions(h),
     mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; },
     mp2Json: async (p, not) => { let err = null; for (const m of inOrder(MIRRORS.filter(m => m !== not))) { if (resting(new URL(m).host)) continue; try { const r = await fetchT(m + p, null, 20000); return {j: await r.json(), site: m}; } catch (e) { err = e; } } throw err || new Error('no second site answered'); },
@@ -862,7 +871,7 @@ async function watch({what, value, since, wait = 0}) {
       throw err || new Error('no second site answered');
     },
     ordJson: async p => { const x = await ordFetch(p, 15000); return {j: await x.r.json(), site: x.site}; },
-    ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
+    byNumber: q => insByNumber(q), ordText: async p => { const x = await ordFetch(p, 15000); return {t: await x.r.text(), site: x.site}; },
     manifest: h => readManifest(h), resolveIns, kindNames: BM.KIND_NAMES
   };
   let w, s, looked = 0;
@@ -1086,6 +1095,100 @@ async function dogeDailyData({day, block}) {
 }
 
 /* ---------- the rare sats board (read each day from ordiscan.com by the portal) ---------- */
+// (23 Nov 2026) the price, the inscription cost, Hall Visits and bitmap claims: what the pages have, for agents without a browser
+const CURS = ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY'];
+const jget = async (u, ms) => (await fetchT(u, null, ms || 12000)).json();
+const middle = a => { const b = a.slice().sort((x, y) => x - y), k = b.length >> 1; return b.length % 2 ? b[k] : (b[k - 1] + b[k]) / 2; };
+function midOf(got, digits) {
+  const o = {}, from = {}, agree = {};
+  for (const c of CURS) { const v = got.filter(([, x]) => x && x[c] > 0).map(([n, x]) => [n, +x[c]]); if (!v.length) continue; const m = middle(v.map(x => x[1]));
+    o[c] = +m.toPrecision(digits); from[c] = v.map(x => x[0]); agree[c] = v.filter(x => Math.abs(x[1] - m) <= m * 0.01).length + ' of ' + v.length; }
+  return {o, from, agree};
+}
+async function price({chain, date, currency} = {}) {
+  const doge = /^d/i.test(String(chain || ''));
+  if (date != null && String(date).trim()) {
+    const d = String(date).trim().slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || isNaN(Date.parse(d + 'T00:00:00Z'))) throw new Error('date: a day like 2026-11-01');
+    const t0 = Date.parse(d + 'T00:00:00Z') / 1000; if (t0 * 1000 > Date.now()) throw new Error('that day has not come yet');
+    if (!doge) {
+      const c = String(currency || 'USD').toUpperCase(); if (!CURS.includes(c)) throw new Error('currency: ' + CURS.join(', '));
+      const j = await mpJson('/api/v1/historical-price?currency=' + c + '&timestamp=' + (t0 + 43200), 20000), q = j.j.prices && j.j.prices[0];
+      if (!q || typeof q[c] !== 'number') throw new Error('no price for that day');
+      const checks = [];
+      if (c === 'USD') await Promise.all([jget('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400&start=' + d + 'T00:00:00Z&end=' + d + 'T23:59:59Z').then(L => { const k = (L || []).find(x => x[0] === t0); if (k) checks.push({source: 'Coinbase', low: k[1], high: k[2], within: q[c] >= k[1] && q[c] <= k[2]}); }, () => {}),
+        jget('https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1&start=' + t0).then(j2 => { const k = j2 && j2.data && j2.data.ohlc && j2.data.ohlc[0]; if (k && +k.timestamp === t0) checks.push({source: 'Bitstamp', low: +k.low, high: +k.high, within: q[c] >= +k.low && q[c] <= +k.high}); }, () => {})]);
+      return {chain: 'Bitcoin', oneBitcoin: {[c]: q[c]}, on: d, from: j.site.replace('https://', ''), checkedAgainst: checks, checked: checks.length ? checks.every(x => x.within) : null,
+        note: c === 'USD' ? (checks.length ? 'Checked against each exchange\'s low and high for that day.' : 'No exchange answered, so it was not checked.') : 'Only mempool.space gives past prices in ' + c + ': not checked against a second source.'};
+    }
+    const L = await jget('https://api.exchange.coinbase.com/products/DOGE-USD/candles?granularity=86400&start=' + d + 'T00:00:00Z&end=' + d + 'T23:59:59Z'), cb = (L || []).find(x => x[0] === t0);
+    if (!cb) throw new Error('Coinbase has no Dogecoin price for that day');
+    let kr = null; try { const k = await jget('https://api.kraken.com/0/public/OHLC?pair=XDGUSD&interval=1440&since=' + (t0 - 86400)); const row = Object.values(k.result).find(Array.isArray).find(x => x[0] === t0); if (row) kr = {low: +row[3], high: +row[2]}; } catch (e) {}
+    const close = cb[4], within = kr ? close >= kr.low * 0.99 && close <= kr.high * 1.01 : null;
+    return {chain: 'Dogecoin', oneDogecoin: {USD: close}, on: d, what: 'Coinbase\'s close for that day (UTC)', from: 'Coinbase', checkedAgainst: kr ? [{source: 'Kraken', low: kr.low, high: kr.high, within}] : [], checked: within,
+      note: kr ? 'Checked against Kraken\'s low and high for that day.' : 'Kraken had no row for that day (it keeps about 720 days), so it was not checked.'};
+  }
+  const S = doge ? [['CoinGecko', () => jget('https://api.coingecko.com/api/v3/simple/price?ids=dogecoin&vs_currencies=' + CURS.join(',').toLowerCase()).then(j => Object.fromEntries(CURS.map(c => [c, j.dogecoin[c.toLowerCase()]])))],
+      ['Coinbase', () => jget('https://api.coinbase.com/v2/exchange-rates?currency=DOGE').then(j => Object.fromEntries(CURS.map(c => [c, +j.data.rates[c]])))],
+      ['Kraken', () => jget('https://api.kraken.com/0/public/Ticker?pair=XDGUSD').then(j => ({USD: +Object.values(j.result)[0].c[0]}))],
+      ['Gemini', () => jget('https://api.gemini.com/v1/pubticker/dogeusd').then(j => ({USD: +j.last}))]]
+    : [['mempool.space', () => mpJson('/api/v1/prices', 15000).then(x => x.j)],
+      ['CoinGecko', () => jget('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=' + CURS.join(',').toLowerCase()).then(j => Object.fromEntries(CURS.map(c => [c, j.bitcoin[c.toLowerCase()]])))],
+      ['Coinbase', () => jget('https://api.coinbase.com/v2/exchange-rates?currency=BTC').then(j => Object.fromEntries(CURS.map(c => [c, +j.data.rates[c]])))],
+      ['blockchain.com', () => jget('https://blockchain.info/ticker').then(j => Object.fromEntries(CURS.map(c => [c, j[c] && j[c].last])))],
+      ['Kraken', () => jget('https://api.kraken.com/0/public/Ticker?pair=XBTUSD').then(j => ({USD: +Object.values(j.result)[0].c[0]}))],
+      ['Gemini', () => jget('https://api.gemini.com/v1/pubticker/btcusd').then(j => ({USD: +j.last}))]];
+  const got = (await Promise.all(S.map(([n, f]) => f().then(v => [n, v], () => null)))).filter(Boolean);
+  if (!got.length) throw new Error('none of the ' + S.length + ' price sites answered just now: try again');
+  const {o, from, agree} = midOf(got, doge ? 6 : 8);
+  if (!o.USD) throw new Error('no price in US dollars came just now: try again');
+  return {chain: doge ? 'Dogecoin' : 'Bitcoin', [doge ? 'oneDogecoin' : 'oneBitcoin']: o, at: new Date().toISOString().slice(0, 19) + 'Z', sources: from, sourcesAgreeWithin1pc: agree, checked: +agree.USD.split(' ')[0] >= 2,
+    note: 'Each value is the middle of what the sources said; checked is true when at least two agree within 1% in USD. ' + (doge ? 'Kraken and Gemini give USD only. Koinu to money: koinu / 100,000,000 x price.' : 'Kraken and Gemini give USD only. Sats to money: sats / 100,000,000 x price.'), seeIt: PORTAL + 'inscription-cost-calculator.html'};
+}
+// the Inscription Cost Calculator's own sum: the file goes in the witness (a quarter of the cost) in 520-byte pieces, each with a 3-byte marker
+async function inscriptionCost({bytes, feeRate, currency, extraVbytes, postage, service} = {}) {
+  const b = Math.round(+bytes); if (!(b > 0)) throw new Error('bytes: the file size in bytes, a whole number above 0');
+  const SP = {fastest: 'fastestFee', 'half hour': 'halfHourFee', halfhour: 'halfHourFee', hour: 'hourFee', economy: 'economyFee', 'no rush': 'economyFee', lowest: 'minimumFee'};
+  let rate = null, follows = null, feesFrom = null;
+  if (feeRate != null && String(feeRate).trim() !== '' && !isNaN(+feeRate)) { rate = +feeRate; if (!(rate > 0)) throw new Error('feeRate: above 0 sat/vB'); }
+  else { const k = SP[String(feeRate || 'half hour').trim().toLowerCase()]; if (!k) throw new Error('feeRate: a number (sat/vB) or a live speed: fastest, half hour, hour, economy or lowest');
+    const f = await mpJson('/api/v1/fees/recommended', 15000); rate = +f.j[k]; follows = k; feesFrom = f.site.replace('https://', ''); }
+  const ov = extraVbytes == null || extraVbytes === '' ? 200 : Math.max(0, Math.round(+extraVbytes) || 0), pg = postage == null || postage === '' ? 330 : Math.max(0, Math.round(+postage) || 0), sv = Math.max(0, Math.round(+service) || 0);
+  const dataVb = Math.ceil(b / 4), markVb = Math.ceil(Math.ceil(b / 520) * 3 / 4), vb = dataVb + markVb + ov, fee = Math.ceil(vb * rate - 1e-9), total = fee + pg + sv;
+  let money = null; const c = String(currency || '').toUpperCase();
+  if (c) { if (!CURS.includes(c)) throw new Error('currency: ' + CURS.join(', ')); try { const P = await price({}); if (P.oneBitcoin[c]) money = {currency: c, value: +(total / 1e8 * P.oneBitcoin[c]).toFixed(2), oneBitcoin: P.oneBitcoin[c], priceFrom: P.sources[c], agree: P.sourcesAgreeWithin1pc[c]}; } catch (e) { money = {currency: c, value: null, note: 'the price did not come just now'}; } }
+  return {bytes: b, vbytes: {file: dataVb, markers: markVb, extra: ov, total: vb}, feeRate: rate, followsLive: follows, feesFrom, feeSats: fee, postageSats: pg, serviceSats: sv, totalSats: total, btc: +(total / 1e8).toFixed(8), money,
+    breakdown: b.toLocaleString('en-US') + ' bytes ÷ 4 = ' + dataVb + ' vB for the file + ' + markVb + ' vB data markers' + (ov ? ' + ' + ov + ' vB extra' : '') + ' = ' + vb + ' vB. ' + vb + ' vB × ' + rate + ' sat/vB = ' + fee + ' sats fee' + (pg ? ' + ' + pg + ' postage' : '') + (sv ? ' + ' + sv + ' service' : '') + ' = ' + total + ' sats.',
+    note: 'The same sum as the Inscription Cost Calculator. A guide to the fee only, never advice: the tool or service you inscribe with may add its own.', seeIt: PORTAL + 'inscription-cost-calculator.html'};
+}
+// Hall Visits: anonymous daily totals of what people and agents do in the two halls (GitHub's job keeps them)
+const VISITS = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/hall-visits/', 'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@hall-visits/'];
+async function visitsGet(f) { let err = null; for (const b of VISITS) { try { return await jget(b + f + (f === 'index.json' && b.includes('raw.') ? '?t=' + Math.floor(Date.now() / 600000) : ''), 15000); } catch (e) { err = e; } } throw new Error('Hall Visits could not be read just now (' + String(err && err.message || err).slice(0, 80) + ')'); }
+async function hallVisits({day, month, hall} = {}) {
+  const ix = await visitsGet('index.json'), H = hall ? String(hall).toLowerCase().replace(/^bitcoin$|^agent blockhall$/, 'btc').replace(/^dogecoin$|^doge cube$/, 'doge') : null;
+  if (H && !['btc', 'doge'].includes(H)) throw new Error('hall: btc (Agent Blockhall) or doge (Doge Cube)');
+  const pick = j => H ? {[H]: j[H], note: j.note} : j;
+  if (month) { const m = String(month).trim(); if (!(ix.months || []).includes(m)) throw new Error('no month ' + m + ' is saved: ' + ((ix.months || []).join(', ') || 'none yet')); return Object.assign({month: m}, pick(await visitsGet('months/' + m + '.json'))); }
+  const days = (ix.days || []).map(x => x.day);
+  if (!day) return {days: ix.days || [], months: ix.months || [], note: (ix.note ? ix.note + ' ' : '') + 'Give day (like ' + (days[days.length - 1] || '2026-11-23') + ') for one day in full. Anonymous daily totals only: nothing personal is kept.', seeIt: PORTAL + 'hall-visits.html'};
+  const d = String(day).trim(); if (!days.includes(d)) throw new Error('no day ' + d + ' is saved (' + days.length + ' days, from ' + days[0] + ' to ' + days[days.length - 1] + ')');
+  return Object.assign({day: d}, pick(await visitsGet('days/' + d + '.json')), {seeIt: PORTAL + 'hall-visits.html'});
+}
+// bitmap claims: who won a number, from the Bitmap Record (GitHub reads every block from 942,000 by bop's rules); the live waiting claims are on the Claim Race page
+async function bitmapClaims({number, recent} = {}) {
+  const rec = await bitmapRecord(), upTo = rec.upTo, from = rec.from;
+  const show = (n, L) => ({number: n, bitmap: n + '.bitmap', claims: L.length, winner: L[0] ? {inscription: L[0].id, block: L[0].block} : null, copies: L.slice(1).map(x => ({inscription: x.id, block: x.block}))});
+  const live = 'The claims still waiting to be mined are on the Claim Race page (' + PORTAL + 'claim-race.html): reading them all takes minutes, so it is not done here.';
+  if (number != null && String(number).trim() !== '') {
+    const n = +String(number).replace(/\.bitmap$/i, '').replace(/,/g, '').trim(); if (!(n >= 0) || n % 1) throw new Error('number: a block number, like 977246 or 977246.bitmap');
+    if (n < from) return {number: n, known: null, note: 'Below block ' + from + ', bop\'s on-chain index says which claim is real: use blockManifest({height: ' + n + '}) or earnedTraits({bitmap: "' + n + '"}).'};
+    const L = (rec.claims && rec.claims[n]) || [];
+    if (L.length) return Object.assign(show(n, L), {taken: true, note: 'The first claim mined is the bitmap; every later one is a copy.', record: {from, upTo}});
+    if (n > upTo) return {number: n, taken: null, note: 'The Bitmap Record has read every block up to ' + upTo + ' (it is still catching up). A claim of ' + n + ' could be in any block from ' + n + ' on, so it is not known here yet. ' + live, record: {from, upTo}};
+    return {number: n, taken: false, note: 'No claim of ' + n + '.bitmap in any block up to ' + upTo + '. A claim made after that, or still waiting, would not show here. ' + live, record: {from, upTo}};
+  }
+  const k = Math.max(1, Math.min(200, +recent || 50)), nums = Object.keys(rec.claims || {}).map(Number).filter(n => n > upTo - 5000).sort((a, b) => b - a).slice(0, k);
+  return {newestFirst: nums.map(n => show(n, rec.claims[n])), counts: rec.counts, record: {from, upTo, updated: rec.updated}, note: 'Numbers claimed in the last blocks the record has read. ' + live};
+}
 async function rareSats() {
   let j = null; try { j = await (await fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/rare-sats/rare-sats.json', null, 15000)).json(); } catch (e) {}   // (the newest prices live on the rare-sats branch)
   if (!j || !j.prices) j = await (await fetchT(PORTAL + 'rare-sats.json', null, 15000)).json();
@@ -1137,6 +1240,10 @@ const TOOLS = [
   {name: 'runeProof', title: 'Rune Proof: a rune\'s rules, read from the chain itself, and ordinals.com checked against them', description: 'Give a rune: its name (DOG•GO•TO•THE•MOON; the dots are optional), its ID (840000:3), its number, a transaction ID, or "newest". Reads the etching transaction\'s own bytes and decodes its runestone with ord\'s own rules (ord is the runes protocol\'s reference). Proves the bytes are that transaction (their double SHA-256 is its ID) and that it sits in its block at the rune ID\'s place (the header hashes to the block hash that mempool.space and ordinals.com both give, and the merkle path leads to it). Checks the name\'s rules: not reserved, unlocked at that height, committed to in a taproot spend with at least 6 confirmations. Then compares ordinals.com field by field (name, ID, etching, time, divisibility, symbol, premine, turbo, mint terms, parent). answer: proven, set in ord\'s code (UNCOMMON•GOODS), differs, not made (a transaction that tried, and why not: name taken, not unlocked, not committed), not etched (a name nobody has: when it unlocks), no etching, waiting (not mined yet) or not found. Mints, supply now and burned need an index: they come from ordinals.com alone, and it checks they add up. Nothing is sent or signed.', inputSchema: {type: 'object', properties: {rune: {type: 'string', description: 'a rune name, ID (840000:3) or number, a transaction ID, or "newest"'}}, required: ['rune']}, run: runeProof},
   {name: 'authenticityCheck', title: 'Authenticity Check: is an inscription what it is said to be?', description: 'Is a Bitcoin inscription or a Doginal what it is said to be? GO, STOP or NOT SURE, with every reason in plain words. It runs the portal\'s own checks and judges what they found: where it came from (provenanceCheck: its file, transaction and block read from the chain\'s own bytes, and who holds it now), whether the address it is said to be held by holds it (if given), whether it is a real member of its collection (the Second Opinion\'s parent check: it names the parent in its own transaction and the parent was spent to make it), and for code what it asks for (codeRead) and whether everything it loads is on the chain (recursionMap). For a Doginal, dogeProvenanceCheck (Doginals have no parents, so no collection can be proven). STOP: proven not as said. NOT SURE: a check could not be made, something needs care, or no collection was given (anyone can make a parent, so the parent it names proves nothing alone). GO: every check made and agrees, including the collection given; its words list exactly what was checked. GO is never advice on what it is worth. (tradeCheck is its older name, and still answers.)', inputSchema: {type: 'object', properties: {id: {type: 'string', description: 'the inscription\'s number (#1000) or ID'}, holder: {type: 'string', description: 'the address it is said to be held by (optional): is it held there? (seller is the older name)'}, collection: {type: 'string', description: 'the collection it is said to be in: its parent\'s number or ID (optional; Bitcoin)'}, chain: {type: 'string', description: 'bitcoin (the default) or doge'}}, required: ['id']}, run: tradeCheck},
   {name: 'checkAgain', title: 'Check again: is a cited check still the same?', description: 'Every check these tools make gives cite: a link to cite it (blockManifest, provenanceCheck, collectionCheck when finished, recursionMap, secondOpinion, sourceHealth, truthLeague (with now: true) and dailyData for a day, and for Dogecoin dogeBlockManifest, dogeProvenanceCheck and dogeDailyData for a day). The link carries when the check was made, which sites it asked, its main facts and a fingerprint (SHA-256) of its core, the part from the chain itself. checkAgain takes such a link, makes the same check again now, and says whether it is the same, or what changed (each fact then and now, e.g. a holder that moved). Opening the link in a browser does the same on the portal\'s page.', inputSchema: {type: 'object', properties: {link: {type: 'string', description: 'a citation link from a check\'s cite'}}, required: ['link']}, run: checkAgain},
+  {name: 'price', title: 'Price: one bitcoin or one dogecoin, from several sources', description: 'The price of one bitcoin (or one dogecoin: chain "doge") now, in USD, EUR, GBP, CAD, CHF, AUD and JPY: the middle of 6 separate sources for Bitcoin (mempool.space, CoinGecko, Coinbase, blockchain.com, Kraken, Gemini) or 4 for Dogecoin (CoinGecko, Coinbase, Kraken, Gemini), and how many agree within 1%. Or on a past day (date): Bitcoin from mempool.space, checked against Coinbase\'s and Bitstamp\'s low and high for that day; Dogecoin from Coinbase, checked against Kraken\'s.', inputSchema: {type: 'object', properties: {chain: {type: 'string', description: '"bitcoin" (default) or "doge"'}, date: {type: 'string', description: 'a past day, like 2026-11-01 (leave out for now)'}, currency: {type: 'string', description: 'for a past Bitcoin day: USD (default), EUR, GBP, CAD, CHF, AUD or JPY'}}}, run: price},
+  {name: 'inscriptionCost', title: 'Inscription cost: what inscribing a file of this size costs', description: 'The Inscription Cost Calculator\'s sum: a file of this many bytes goes in the witness (a quarter of the cost) in 520-byte pieces with 3-byte markers, plus extra vbytes for the rest of the transaction (200 unless given), times the fee rate (a number, or a live speed from mempool.space: fastest, half hour (default), hour, economy, lowest), plus postage (330 sats unless given) and any service fee. In sats, BTC and a currency if asked. A guide to the fee only, never advice.', inputSchema: {type: 'object', properties: {bytes: {type: 'integer', description: 'the file\'s size in bytes'}, feeRate: {type: 'string', description: 'sat/vB (like 2.5), or fastest, half hour, hour, economy, lowest'}, currency: {type: 'string', description: 'USD, EUR, GBP, CAD, CHF, AUD or JPY (optional)'}, extraVbytes: {type: 'integer', description: 'extra vbytes (default 200; 0 for none)'}, postage: {type: 'integer', description: 'postage in sats (default 330; 0 for none)'}, service: {type: 'integer', description: 'a service\'s fee in sats (default 0)'}}, required: ['bytes']}, run: inscriptionCost},
+  {name: 'hallVisits', title: 'Hall Visits: what people and agents do in the halls', description: 'Anonymous daily totals of what people and AI agents do in Agent Blockhall (hall btc) and Doge Cube (hall doge): blocks walked into, time stayed, kinds picked up, time held, each split into person and agent. Nothing personal is kept. With nothing given: the saved days and months. With day (or month): that one in full.', inputSchema: {type: 'object', properties: {day: {type: 'string', description: 'a day, like 2026-11-23'}, month: {type: 'string', description: 'a finished month, like 2026-12'}, hall: {type: 'string', description: 'btc or doge (both if left out)'}}}, run: hallVisits},
+  {name: 'bitmapClaims', title: 'Bitmap claims: who won a bitmap number', description: 'Whether a bitmap number (block N) is taken, and if so which inscription won it (the first claim mined, by bop\'s rules) and the later copies; or, with nothing given, the numbers claimed in the newest blocks read. From the Bitmap Record, which GitHub builds by reading every block from 942,000 on (below that, bop\'s on-chain index: use earnedTraits). Claims still waiting to be mined are on the Claim Race page, not here: reading them all takes minutes.', inputSchema: {type: 'object', properties: {number: {type: 'string', description: 'a block number, like 977246 or 977246.bitmap'}, recent: {type: 'integer', description: 'with no number: how many numbers to give (default 50, most 200)'}}}, run: bitmapClaims},
   {name: 'rareSats', title: 'The rare sats board', description: 'The rare sats board from Agent Blockhall\'s common room: each kind of rare sat and the price listed for one sat, read once a day.', inputSchema: {type: 'object', properties: {}}, run: rareSats}
 ].map(t => Object.assign(t, {annotations: RO}));
 const byName = new Map(TOOLS.map(t => [t.name, t]));

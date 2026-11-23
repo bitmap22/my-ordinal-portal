@@ -44,6 +44,10 @@ Use the first one you have.
 | How is Bitcoin's space, or the fees paid, shared between runes, inscriptions, payments and the rest? | `agent-blockhall:blockspaceShare` `{period?, at?}` | `https://ordportal.com/blockspace-share.html?by=<day\|week\|month>&show=fees` |
 | Which data sites are up, and which tell the truth? | `agent-blockhall:sourceHealth` `{}`, `agent-blockhall:truthLeague` `{}` | `https://ordportal.com/source-health.html`, `https://ordportal.com/truth-league.html` |
 | Check a block or an inscription with more sites (slower) | `agent-blockhall:moreSources` `{chain?, height?, id?}` | the Ask more sources button on `https://ordportal.com/block-manifest.html?block=<height>`, `https://ordportal.com/doge-block-manifest.html?block=<height>` or `https://ordportal.com/provenance-check.html?id=<id>` |
+| What does a bitcoin (or a dogecoin) cost now, or on a day? | `agent-blockhall:price` `{chain?, date?, currency?}` | `https://ordportal.com/block-cube.html` (agent.price()) |
+| What does inscribing a file cost? | `agent-blockhall:inscriptionCost` `{bytes, feeRate?, currency?}` | `https://ordportal.com/inscription-cost-calculator.html` |
+| Is a bitmap number taken, and who won it? | `agent-blockhall:bitmapClaims` `{number?}` | `https://ordportal.com/claim-race.html` (waiting claims, live) |
+| What do people and agents do in the halls? | `agent-blockhall:hallVisits` `{day?, hall?}` | `https://ordportal.com/hall-visits.html` |
 | Walk into a block | - | `https://ordportal.com/block-cube.html#block=<height>` |
 
 For Dogecoin, use the twins: `agent-blockhall:dogeBlockManifest`, `agent-blockhall:dogeProvenanceCheck`, `agent-blockhall:dogeCollectionCheck`, `agent-blockhall:dogeWatch`, `agent-blockhall:dogeDailyData` and `agent-blockhall:safetyScan` with `{chain: "doge"}`. Their pages are `doge-block-manifest.html?block=<height>`, `doge-provenance-check.html?id=<id>`, `doge-collection-check.html?collection=<name>`, `doge-watch.html`, `doge-daily.html` and `doge-safety-scan.html`, and Doge Cube walks in at `doge-cube.html#block=<height>`.
