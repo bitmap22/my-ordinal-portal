@@ -233,5 +233,31 @@
     © 2026 bitmap22. All rights reserved.
   </footer>
 </div>
+<script>
+// the kit for AI agents: the terms as data (help, commands, see, terms, section), and WebMCP tools named legal_*
+(() => {
+  const secs = () => [...document.querySelectorAll('section')].map(x => { const h = x.querySelector('h2'); return {title: h ? h.textContent.trim() : '', text: x.innerText.replace(h ? h.textContent : '', '').replace(/\n{3,}/g, '\n\n').trim()}; });
+  const short = () => [...document.querySelectorAll('.short li')].map(l => l.textContent.trim());
+  const updated = () => { const m = (document.querySelector('.sub') || {}).textContent || ''; const d = m.match(/last updated (.+)$/); return d ? d[1].trim() : null; };
+  const cmds = [
+    {name: 'see', does: 'The terms in short, when they were last updated, and the titles of their sections. Gives back {updated, inShort[], sections[]}.', run: () => ({updated: updated(), inShort: short(), sections: secs().map(x => x.title)})},
+    {name: 'terms', does: 'The whole terms, section by section. Gives back {updated, inShort[], sections[{title, text}]}.', run: () => ({updated: updated(), inShort: short(), sections: secs()})},
+    {name: 'section', does: 'One section, by its number (1 to 12) or a word in its title (e.g. "privacy", "AI agents"). Gives back {title, text} (or {ok: false, error}).', args: [{name: 'which', does: 'a number or a word in the title'}],
+      run: ({which}) => { const L = secs(), w = String(which == null ? '' : which).trim().toLowerCase(); const x = /^\d+$/.test(w) ? L[+w - 1] : L.find(y => y.title.toLowerCase().includes(w)); return x || {ok: false, error: 'no such section: the sections are ' + L.map(y => y.title).join('; ')}; }}
+  ];
+  const api = {};
+  for (const c of cmds) api[c.name] = async (...a) => { const args = a[0] && typeof a[0] === 'object' ? a[0] : Object.fromEntries((c.args || []).map((d, k) => [d.name, a[k]])); try { return c.run(args || {}); } catch (e) { return {ok: false, error: String(e && e.message || e)}; } };
+  api.help = async () => ['The Ord Portal\'s terms and disclaimer, by bitmap22, for every page and tool of the portal, and for AI agents (section 7). Every command returns a promise.', '', 'Commands:']
+    .concat(cmds.map(c => '  agent.' + c.name + '(' + (c.args || []).map(d => d.name).join(', ') + ') - ' + c.does)).concat(['', 'The portal: https://ordportal.com/ · its agent guide: https://ordportal.com/llms.txt']).join('\n');
+  api.commands = () => cmds.map(c => c.name);
+  api.page = 'Terms and disclaimer';
+  window.agent = api;
+  const mc = (typeof document !== 'undefined' && document.modelContext) || (typeof navigator !== 'undefined' && navigator.modelContext) || null;
+  if (mc && typeof mc.registerTool === 'function' && window.top === window) for (const c of cmds) {
+    const props = {}; for (const d of c.args || []) props[d.name] = {type: 'string', description: d.does};
+    try { const p = mc.registerTool({name: 'legal_' + c.name, description: c.does, inputSchema: {type: 'object', properties: props}, annotations: {readOnlyHint: true}, execute: async args => (await api[c.name](args || {})) ?? null}); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  }
+})();
+</script>
 </body>
 </html>

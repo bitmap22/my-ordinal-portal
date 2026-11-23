@@ -263,7 +263,7 @@
     const out0 = (t.vout || [])[0] || {}, r0 = +(extra && extra.rate != null ? extra.rate : (t.effectiveFeePerVsize || t.adjustedFeePerVsize || t.feePerVsize || (t.fee && t.weight ? t.fee / (t.weight / 4) : NaN))), rate = Number.isFinite(r0) ? r0 : null;
     for (const k of got.claims) {
       const n = k.number, c = {id: t.txid + 'i' + k.index, txid: t.txid, n, rate, pos: extra && extra.pos != null ? extra.pos : t.position ? t.position.block : null, firstSeen: t.firstSeen, second: 'checking', gone: null, to: out0.scriptpubkey_address || null};
-      claims.set(c.id, c);
+      claims.set(c.id, c); claimWaiters.splice(0).forEach(f => f(c.n));   // (agent.wait(): a new claim has come)
       log('Claim seen: <b>' + n + '.bitmap</b> at ' + (rate != null ? rate.toFixed(1) + ' sat/vB' : 'an unknown fee') + ' (' + esc(t.txid.slice(0, 10)) + '…)');
       second(c, 1);
       takenState(n).then(st => { log(n + '.bitmap: ' + (st.by ? 'already taken in block ' + fmt(st.block) : st.free ? 'not taken yet' : 'taken or not unknown') + ' (' + esc(st.why) + ')'); render(); });
@@ -314,6 +314,9 @@
   }
   /* ---------- claims already waiting when the page opens: mempool.space's next 8 projected blocks, every transaction it flags as
      an inscription (its flag 1<<26), then only those whose bytes hold ".bitmap" are read ---------- */
+  // (for agents: whether the claims already waiting are still being read, and how far; see() and wait() give it)
+  const reading = {now: true, stage: 'finding the inscriptions already waiting (up to 8 blocks ahead, about 15 s each at most)', read: 0, of: null};
+  const claimWaiters = [];
   const INSC = 2 ** 26, hasBit = (f, b) => Math.floor(f / b) % 2 === 1;
   async function snapshot() {
     const found = new Map();
@@ -327,13 +330,14 @@
         i++; next(); };
     });
     log('Already waiting: ' + found.size + ' inscriptions in the next 8 projected blocks. Reading the ones that could be claims…');
+    reading.stage = 'reading the inscriptions already waiting, to find the claims'; reading.of = found.size;
     let k = 0;
     for (const [txid, ex] of found) {
       k++;
       try { const t = (await io.mpJson('/api/tx/' + txid)).j; if (!t.status || !t.status.confirmed) await onAdded(t, ex); } catch (e) {}
-      if (k % 20 === 0) log('…' + k + ' of ' + found.size + ' read');
+      reading.read = k; if (k % 20 === 0) log('…' + k + ' of ' + found.size + ' read');
     }
-    log('Done reading what was already waiting.');
+    log('Done reading what was already waiting.'); reading.now = false; reading.stage = 'done'; claimWaiters.splice(0).forEach(f => f(null));
   }
   io.mpText('/api/blocks/tip/height').then(x => { if (tip == null) { tip = +x.t; $('s-tip').textContent = fmt(tip); } }).catch(() => {});
   connect();
@@ -458,8 +462,12 @@
     return {number: c.n, bitmap: c.n + '.bitmap', id: c.id, txid: c.txid, feeRate: c.rate, projectedBlock: c.pos, wentTo: c.to, secondSite: c.second, gone: c.gone,
       taken: T ? (T.by ? {by: T.by, block: T.block, why: T.why, thisClaimWon: T.by === c.id} : T.free ? {free: true, why: T.why} : {unknown: true, why: T.why}) : {checking: true}}; });
   const cmds = [
-    {name: 'see', does: 'What the page shows now: whether the live feed is on, the newest block, how many waiting transactions were watched, and every bitmap claim seen (number, fee, where it is heading, the second site\'s answer, and whether its number is already taken). Gives back {live, newestBlock, watched, inscriptions, claims[], note}.',
-      run: () => ({live: !!(ws && ws.readyState === 1), newestBlock: tip, watched: seen, inscriptions: inscCount, claims: claimList(), note: UNTRUSTED})},
+    {name: 'see', does: 'What the page shows now: whether the live feed is on, the newest block, how many waiting transactions were watched, and every bitmap claim seen (number, fee, where it is heading, the second site\'s answer, and whether its number is already taken). After the page opens, readingWaiting says it is still reading the claims already waiting, with how far it has got (read of of); claims[] is not whole until then. That can take several minutes when thousands of inscriptions are waiting. Then it is false. Gives back {live, newestBlock, readingWaiting, watched, inscriptions, claims[], note}.',
+      run: () => ({live: !!(ws && ws.readyState === 1), newestBlock: tip, readingWaiting: reading.now ? {stage: reading.stage, read: reading.read, of: reading.of, note: 'the claims already waiting when the page opened are still being read: claims[] is not whole yet. wait() returns when this is done or a claim comes.'} : false, watched: seen, inscriptions: inscCount, claims: claimList(), note: UNTRUSTED})},
+    {name: 'wait', does: 'Waits until a new claim is seen, or (while the page is still reading the claims already waiting) until that reading is done, or until the seconds run out. Then gives back the same as see(), plus {why: "new claim" | "done reading" | "time"}.', args: [{name: 'seconds', type: 'number', does: 'how long to wait at most (default 60, at most 600)'}],
+      run: async ({seconds}) => { const ms = Math.max(1, Math.min(600, +seconds || 60)) * 1000; let why = 'time';
+        await new Promise(res => { const t = setTimeout(() => { const i = claimWaiters.indexOf(f); if (i >= 0) claimWaiters.splice(i, 1); res(); }, ms); const f = n => { clearTimeout(t); why = n == null ? 'done reading' : 'new claim'; res(); }; claimWaiters.push(f); });
+        return Object.assign({why}, cmds[0].run()); }},
     {name: 'claims', does: 'The claims seen for one number, or all of them. Gives back {claims[]}.', args: [{name: 'number', type: 'number', does: 'a bitmap number, e.g. 977246 (optional)'}],
       run: ({number}) => ({claims: claimList().filter(c => number == null || c.number === +number), note: UNTRUSTED})},
     {name: 'history', does: 'Reads the last 50 blocks from their own bytes (about 75 MB and 2 minutes, as the button does) and gives back who won each number, what each claim paid, the fake bitmaps (claims after the first for a number) and who took part. Gives back the history (or {ok: false, error}).',
@@ -468,7 +476,7 @@
       run: async () => { await $('selftest').onclick(); return {lines: [...$('selflog').children].map(d => d.textContent).reverse()}; }}
   ];
   const api = {};
-  for (const c of cmds) api[c.name] = async (...a) => {
+  for (const c of cmds) api[c.name] = async (...a) => {   
     const args = a[0] && typeof a[0] === 'object' && !Array.isArray(a[0]) ? a[0] : Object.fromEntries((c.args || []).map((d, i) => [d.name, a[i]]));
     try { return JSON.parse(JSON.stringify(await c.run(args || {}))); } catch (e) { return {ok: false, error: String(e && e.message || e)}; }
   };
