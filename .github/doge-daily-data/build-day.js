@@ -91,8 +91,10 @@ async function readBlock(h) {
   });
   return {height: h, dogemap: h + '.dogemap', hash: B.hash, time: new Date(B.time * 1000).toISOString().replace('.000', ''), mergeMined: ((+B.version) & 0x100) !== 0,
     minedBy: cb && cb.ok ? DM.poolOf(cb.words) : null, coinbaseWords: cb && cb.ok && cb.words ? {untrusted: cb.words} : null,
-    transactions: list.length, size: B.size, totalFees: second ? fees : null,
-    feesNote: second ? null : (((+B.version) & 0x100) ? 'Merge-mined: no fee figure from the second site, so none is shown.' : 'No fee figure from the second site, so none is shown.'), counts,
+    // (23 Nov 2026) the fee total is known only when the second site lists every transaction of the block; otherwise it is left blank, with the reason
+    transactions: list.length, size: B.size, totalFees: second && inSecond === list.length ? fees : null,
+    feesNote: !second ? 'No fee figure: the second site (Bitcore), which gives each transaction\'s fee, did not answer for this block, so none is shown.'
+      : inSecond < list.length ? 'No fee figure: the second site (Bitcore) listed ' + inSecond + ' of the block\'s ' + list.length + ' transactions, so its fee total is not known and none is shown.' : null, counts,
     checked: {hashFromItsHeader: own === B.hash, secondSite: secondHash ? {against: 'https://api.bitcore.io', agrees: secondHash === B.hash} : null, listProved: root === B.merkle_root,
       secondList: second ? [inSecond, list.length] : null, coinbaseFromItsBytes: cb ? cb.ok : null},
     dogeBlockManifest: PORTAL + 'doge-block-manifest.html?block=' + h};
@@ -118,13 +120,14 @@ async function main() {
     const b = list[k], {rec, err} = got[k];
     if (!rec) { console.log('  ' + b.height + ': not read (' + (err && err.message) + ')'); T.checked.notRead++; blocks.push({height: b.height, hash: b.hash, time: new Date(b.time * 1000).toISOString().replace('.000', ''), notRead: String(err && err.message || err)}); continue; }
     blocks.push(rec);
-    T.transactions += rec.transactions; if (rec.totalFees != null) T.totalFees += rec.totalFees; sumInto(T.counts, rec.counts); if (rec.minedBy) T.pools[rec.minedBy] = (T.pools[rec.minedBy] || 0) + 1;
+    T.transactions += rec.transactions; if (rec.totalFees != null) T.totalFees += rec.totalFees; else T.checked.feesMissing = (T.checked.feesMissing || 0) + 1; sumInto(T.counts, rec.counts); if (rec.minedBy) T.pools[rec.minedBy] = (T.pools[rec.minedBy] || 0) + 1;
     const K = T.checked, C = rec.checked;
     if (C.hashFromItsHeader) K.hashFromItsHeader++; if (C.secondSite) { K.secondSiteAsked++; if (C.secondSite.agrees) K.secondSiteAgrees++; }
     if (C.listProved) K.listProved++; if (C.secondList) { K.secondList[0] += C.secondList[0]; K.secondList[1] += C.secondList[1]; }
     if (C.coinbaseFromItsBytes) K.coinbaseFromItsBytes++; else K.coinbaseNotRead++;
   }
   const K = T.checked, notes = [], read = blocks.length - K.notRead;
+  if (K.feesMissing) notes.push('Fees: ' + K.feesMissing + ' block' + (K.feesMissing === 1 ? ' has' : 's have') + ' no fee figure (see feesNote on each), so the day\'s fee total leaves ' + (K.feesMissing === 1 ? 'it' : 'them') + ' out and is lower than the real total.');
   if (K.notRead) notes.push(K.notRead + ' block' + (K.notRead === 1 ? ' was' : 's were') + ' not read at all: see notRead on each.');
   if (K.hashFromItsHeader < read) notes.push((read - K.hashFromItsHeader) + ' block' + (read - K.hashFromItsHeader === 1 ? '\'s hash does' : 's\' hashes do') + ' not match their own header: open them in the Doge Block Manifest.');
   if (K.secondSiteAsked < read) notes.push('For ' + (read - K.secondSiteAsked) + ' block' + (read - K.secondSiteAsked === 1 ? '' : 's') + ', the second site did not answer, so the hash was only checked against its own header.');
