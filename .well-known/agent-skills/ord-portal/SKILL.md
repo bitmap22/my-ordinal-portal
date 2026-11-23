@@ -38,6 +38,7 @@ Use the first one you have.
 | What fee should I pay? | `agent-blockhall:feeAdvice` `{}` | `https://ordportal.com/block-cube.html` (the common room's big screen) |
 | Why is my transaction stuck? | `agent-blockhall:stuckTx` `{txid}` | `https://ordportal.com/stuck-transaction.html?tx=<txid>` |
 | Tell me when something happens | `agent-blockhall:watch` `{what, value?, since?, wait?}` | `https://ordportal.com/watch.html?watch=<what>&value=<value>` |
+| Which bitmap claims are waiting, and who is racing for a number? | - (in a browser only) | `https://ordportal.com/claim-race.html` (window.agent.see(), agent.history()) |
 | What should I watch out for in new inscriptions? | `agent-blockhall:safetyScan` `{block?, id?, address?}` | `https://ordportal.com/safety-scan.html` |
 | Every block of a day | `agent-blockhall:dailyData` `{day}` | `https://ordportal.com/daily.html?day=<YYYY-MM-DD>` |
 | How is Bitcoin's space, or the fees paid, shared between runes, inscriptions, payments and the rest? | `agent-blockhall:blockspaceShare` `{period?, at?}` | `https://ordportal.com/blockspace-share.html?by=<day\|week\|month>&show=fees` |

@@ -325,7 +325,7 @@
             if (onBody && bl) onBody(t, ei - 1, ty || (del ? 'delegate' : ''), body, enc);
             if (!enc && bl && bl <= 65536) {
               const raw = U8D.decode(catB(body)), txt = raw.trim(), bm = /^(0|[1-9]\d{0,15})\.bitmap$/.exec(raw);
-              if (bm && !del && +bm[1] <= h) { if (r.bitmapClaim == null) r.bitmapClaim = {number: +bm[1], index: ei - 1}; }   // (a bitmap claim by bop's rules; it counts as a bitmap only once checked as the first claim: see checkBitmaps)
+              if (bm && !del && +bm[1] <= h) { (r.bitmapClaims = r.bitmapClaims || []).push({number: +bm[1], index: ei - 1}); if (r.bitmapClaim == null) r.bitmapClaim = {number: +bm[1], index: ei - 1}; }   // (a bitmap claim by bop's rules; it counts as a bitmap only once checked as the first claim: see checkBitmaps)
               else if (/^\/content\/[0-9a-f]{64}i\d+$/i.test(txt)) { set(TF.brc420); if (!r.token) r.token = tok('BRC-420', {link: txt.slice(9)}, {op: 'mint (not checked)'}); }
               else if (txt[0] === '{') try {
                 const o = JSON.parse(txt), pr = String(o.p || '').toLowerCase();
