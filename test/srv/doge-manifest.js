@@ -481,5 +481,18 @@
   }
 
   const poolOf = words => { for (const [re, nm] of POOLS) if (re.test(words || '')) return nm; return null; };   // (only where the coinbase's own words name one)
-  return {VERSION, KIND_NAMES, KIND_GROUPS, MERGE_MINED_FROM, sha256, hashHex, fromHex, headerHash, merkleRoot, readTx, explorerKinds, fileKind, buildManifest, toCSV, gather, poolOf};
+  /* (23 Nov 2026) more sources, at the asker's own wait: every separate Dogecoin site that gives a block's hash by its height, and those
+     that give its fee total. get(url) -> the answer's text. Gives {hashes[{site, says, agrees}], fees[{site, says, agrees}]} */
+  const MORE_DOGE = [
+    ['bitcore.io (BitPay)', h => 'https://api.bitcore.io/api/DOGE/mainnet/block/' + h, j => [j.hash, null]],
+    ['blockcypher.com', h => 'https://api.blockcypher.com/v1/doge/main/blocks/' + h + '?txstart=0&limit=1', j => [j.hash, j.fees], true],
+    ['3xpl.com', h => 'https://sandbox-api.3xpl.com/dogecoin/block/' + h + '?data=block', j => [j.data.block.hash, null]],
+    ['blockchair.com', h => 'https://api.blockchair.com/dogecoin/blocks?q=id(' + h + ')', j => [j.data[0].hash, j.data[0].fee_total], true]];
+  async function moreSources(height, hash, totalFees, get) {
+    const got = await Promise.all(MORE_DOGE.map(async ([site, url, pick]) => { try { const [h, f] = pick(JSON.parse(await get(url(height)))); return {site, h: h ? String(h).toLowerCase() : null, f: f != null ? +f : null}; } catch (e) { return {site, h: null, f: null}; } }));
+    return {hashes: got.map(x => ({site: x.site, says: x.h, agrees: x.h ? x.h === String(hash).toLowerCase() : null})),
+      fees: got.filter(x => MORE_DOGE.find(m => m[0] === x.site)[3]).map(x => ({site: x.site, says: x.f, agrees: x.f != null && totalFees != null ? x.f === totalFees : null}))};
+  }
+
+  return {VERSION, KIND_NAMES, KIND_GROUPS, MERGE_MINED_FROM, sha256, hashHex, fromHex, headerHash, merkleRoot, readTx, explorerKinds, fileKind, buildManifest, toCSV, gather, poolOf, moreSources, MORE_SITES: MORE_DOGE.map(x => x[0])};
 });
