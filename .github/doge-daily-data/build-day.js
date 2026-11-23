@@ -91,7 +91,8 @@ async function readBlock(h) {
   });
   return {height: h, dogemap: h + '.dogemap', hash: B.hash, time: new Date(B.time * 1000).toISOString().replace('.000', ''), mergeMined: ((+B.version) & 0x100) !== 0,
     minedBy: cb && cb.ok ? DM.poolOf(cb.words) : null, coinbaseWords: cb && cb.ok && cb.words ? {untrusted: cb.words} : null,
-    transactions: list.length, size: B.size, totalFees: second ? fees : null, counts,
+    transactions: list.length, size: B.size, totalFees: second ? fees : null,
+    feesNote: second ? null : (((+B.version) & 0x100) ? 'Merge-mined: no fee figure from the second site, so none is shown.' : 'No fee figure from the second site, so none is shown.'), counts,
     checked: {hashFromItsHeader: own === B.hash, secondSite: secondHash ? {against: 'https://api.bitcore.io', agrees: secondHash === B.hash} : null, listProved: root === B.merkle_root,
       secondList: second ? [inSecond, list.length] : null, coinbaseFromItsBytes: cb ? cb.ok : null},
     dogeBlockManifest: PORTAL + 'doge-block-manifest.html?block=' + h};
