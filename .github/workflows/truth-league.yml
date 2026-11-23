@@ -51,7 +51,9 @@ jobs:
         if: steps.due.outputs.go == 'true'
         run: |
           mkdir -p league
-          if git fetch -q --depth 1 origin truth-league; then git show FETCH_HEAD:league.json > league/league.json || rm -f league/league.json; fi
+          # (23 Nov 2026) if the branch is there but can't be read, stop: saving now would start the record again and wipe it
+          if git fetch -q --depth 1 origin truth-league; then git show FETCH_HEAD:league.json > league/league.json || { echo "Couldn't read the record so far, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }
+          else h=$(git ls-remote --heads origin truth-league) || { echo "Couldn't read the record so far, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }; [ -z "$h" ] || { echo "Couldn't read the record so far, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }; fi
       - name: Prove the blocks and ask each site
         if: steps.due.outputs.go == 'true'
         run: node .github/truth-league/check.js league
