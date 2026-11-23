@@ -9,7 +9,7 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const BM = require(path.join(__dirname, '..', '..', 'agent-blockhall-mcp', 'server', 'manifest.js'));
-const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/bitmap-record-' + VERSION, FROM = 942000, SAFE = 6;
+const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/bitmap-record-' + VERSION + ' (+https://ordportal.com/block-cube.html)', FROM = 942000, SAFE = 6;
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal)';
 
 /* ---------- being gentle with the sites (the same way as Daily Data): 6 a second per site, rest any site that asks ---------- */

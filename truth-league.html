@@ -234,7 +234,7 @@
 <script src="agent-blockhall-mcp/server/provenance.js?v=20261123j"></script>
 <script src="agent-blockhall-mcp/server/doge-provenance.js"></script>
 <script src="agent-blockhall-mcp/server/health.js?v=20261123g"></script>
-<script src="agent-blockhall-mcp/server/league.js?v=20261123g"></script>
+<script src="agent-blockhall-mcp/server/league.js?v=20261123n"></script>
 <script src="agent-blockhall-mcp/server/cite.js"></script>
 <script>
 'use strict';
@@ -347,6 +347,19 @@
     }
     if (!SUM) { item(ul, false, recErr ? 'GitHub’s record could not be read just now.' : 'Reading GitHub’s record…'); return; }
     for (const f of L.findings(SUM, chain, HSUM)) item(ul, f.trouble, f.says);
+    if (chain === 'bitcoin') numbersLine(ul);
+  }
+  // inscription numbers: no block's bytes can prove one (each site counts every inscription ever made), so they are never
+  // marked right or wrong; this only says whether the ord sites gave the same number for the same inscription
+  function numbersLine(ul) {
+    const why = ' (Numbers are not marked right or wrong: no block’s bytes can prove one, because each site counts every inscription ever made.)';
+    const n = NOW && NOW.numbers;
+    if (n && n.sites) item(ul, n.agree === false, 'Inscription numbers, from your browser just now: ' + (n.agree === false ? 'the ord sites gave different numbers for the same inscription: ' + Object.entries(n.said).map(([k, v]) => k + ' #' + fmt(v)).join(', ') : n.sites + ' ord site' + (n.sites === 1 ? '' : 's') + ' gave #' + fmt(Object.values(n.said)[0]) + (n.sites >= 2 ? ', the same number' : ' (only one answered, so nothing to compare)')) + '.' + why);
+    const from = Date.parse(SUM ? SUM.lastCheck : Date.now()) / 1000 - days * 86400, L2 = (REC && REC.numbers || []).filter(x => x.t > from && x.agree !== null);
+    if (!REC) return;
+    if (!L2.length) { if (!n) item(ul, false, 'Inscription numbers: GitHub’s record has no comparisons in the last ' + days + ' days yet (they started on 23 Nov 2026).' + why); return; }
+    const bad = L2.filter(x => x.agree === false);
+    item(ul, !!bad.length, 'Inscription numbers, GitHub’s record: in the last ' + days + ' days the ord sites were asked the number of ' + fmt(L2.length) + ' inscription' + (L2.length === 1 ? '' : 's') + ' and ' + (bad.length ? 'disagreed ' + fmt(bad.length) + ' time' + (bad.length === 1 ? '' : 's') + ', last on ' + day(new Date(bad[bad.length - 1].t * 1000).toISOString()) + ': ' + Object.entries(bad[bad.length - 1].said).map(([k, v]) => k + ' #' + fmt(v)).join(', ') : 'always gave the same number') + '.' + why);
   }
   function wrongList() { if (!REC || !REC.wrong) return []; const from = Date.parse(SUM ? SUM.lastCheck : Date.now()) / 1000 - days * 86400; return REC.wrong.filter(w => w.t > from && (L.site(w.site) || {}).chain === chain); }
   function wrongs() {
@@ -365,7 +378,7 @@
   $('now').addEventListener('click', () => { checkNow(false).catch(e => say(String(e && e.message || e))); });
   const LIC = L.LICENCE;
   function all() { return {licence: LIC, days, league: SUM ? L.rank(SUM, HSUM) : null, findings: SUM ? {bitcoin: L.findings(SUM, 'bitcoin', HSUM), doge: L.findings(SUM, 'doge', HSUM)} : null,
-    wrong: REC && REC.wrong ? REC.wrong.map(w => Object.assign({}, w, {at: new Date(w.t * 1000).toISOString(), words: L.wrongWords(w)})) : [], record: REC ? {readFrom: REC.readFrom, checks: REC.checks.length, made: REC.made} : null, now: NOW}; }
+    wrong: REC && REC.wrong ? REC.wrong.map(w => Object.assign({}, w, {at: new Date(w.t * 1000).toISOString(), words: L.wrongWords(w)})) : [], record: REC ? {readFrom: REC.readFrom, checks: REC.checks.length, made: REC.made} : null, numbers: REC && REC.numbers || [], now: NOW}; }
   const save = (text, type, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); };
   $('dlJson').addEventListener('click', () => save(JSON.stringify(all(), null, 1), 'application/json', 'truth-league.json'));
   $('dlCsv').addEventListener('click', () => {

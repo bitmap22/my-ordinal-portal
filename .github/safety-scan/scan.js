@@ -18,7 +18,7 @@
 const fs = require('fs'), path = require('path'), zlib = require('zlib'), os = require('os'), {spawnSync} = require('child_process');
 const SRV = path.join(__dirname, '..', '..', 'agent-blockhall-mcp', 'server');
 const BM = require(path.join(SRV, 'manifest.js')), SR = require(path.join(SRV, 'safety.js'));
-const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/safety-scan-' + VERSION, PORTAL = 'https://ordportal.com/';
+const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/safety-scan-' + VERSION + ' (+https://ordportal.com/safety-scan.html)', PORTAL = 'https://ordportal.com/';
 const CHAIN = process.argv[2], OUT = path.join(process.argv[3] || 'data', CHAIN || 'x');
 if (!/^(btc|doge)$/.test(CHAIN || '')) { console.log('usage: node scan.js btc|doge <folder>'); process.exit(2); }
 const WINDOW = 144;                                                        // blocks kept, on both chains (about a day of Bitcoin; about 2.4 hours of Dogecoin, so it keeps up even when Dogecoin is full)
