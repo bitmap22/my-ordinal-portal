@@ -656,7 +656,7 @@ const HEALTH = {
   mempool: {what: 'blocks, transactions, fees and prices', from: 'mempool.space and 6 copies', many: true},
   ord: {what: 'inscriptions: their content, owner and records', from: 'ordinals.com and 3 copies', many: true},
   feed: {what: 'the live feed: new blocks and the waiting transactions', from: 'mempool.space and 3 copies', many: true},
-  tags: {what: 'ordinal tags for mined blocks', from: 'ordpool.space (no copy)', whileDown: 'CAT-21, Labitbu and OpenTimestamps are not shown (only ordpool.space tags them); every other kind is read from the block itself'},
+  tags: {what: 'ordinal tags for mined blocks', from: 'ordpool.space (no copy)', whileDown: 'OpenTimestamps is not shown (only ordpool.space tags it); CAT-21, Labitbu and every other kind are read from the block itself'},
   runes: {what: 'rune pages, and which etchings made their rune', from: 'ordinals.com (no copy)', whileDown: 'rune() cannot read a rune (its alsoSee link to ordiscan.com still works); a new rune in a block shows as an attempt, its outcome not known'},
   stamps: {what: 'Stamp numbers and SRC-20 token totals', from: 'stampchain.io (no copy)', whileDown: 'a Stamp\'s card shows its Counterparty asset instead, without a Stamp number; no SRC-20 holders or progress'},
   counterparty: {what: 'Counterparty messages', from: 'api.counterparty.io (no copy)', whileDown: 'no Counterparty details on cards'},
@@ -1367,21 +1367,22 @@ const TF = {insc: 0, img: 1, txt: 2, html: 3, json: 4, media: 5, model: 6, other
 const KINDS = [
   {name: 'BRC-20', bit: 52n, sf: TF.brc20, col: 0x4aa8ff}, {name: 'TAP', sf: TF.tap, col: 0x36f1ff}, {name: 'CRC-20', sf: TF.crc20, col: 0x7cff6b}, {name: 'BRC-420', sf: TF.brc420, col: 0xff4ff0},
   {name: 'SRC-20', bit: 53n, sx: 'src20', col: 0x2fe0c0}, {name: 'Stamps', sf: TF.stamps, col: 0xd9d9d9}, {name: 'Counterparty', sf: TF.cp, col: 0xb08cff},
-  {name: 'CAT-21', bit: 49n, col: 0xff6fb1}, {name: 'Atomicals', bit: 48n, sf: TF.atom, col: 0x9be15d}, {name: 'Labitbu', bit: 54n, col: 0xffe066}, {name: 'OpenTimestamps', bit: 81n, col: 0xe8c9a0},
+  {name: 'CAT-21', bit: 49n, sx: 'cat21', col: 0xff6fb1}, {name: 'Atomicals', bit: 48n, sf: TF.atom, col: 0x9be15d}, {name: 'Labitbu', bit: 54n, sx: 'labitbu', col: 0xffe066}, {name: 'OpenTimestamps', bit: 81n, col: 0xe8c9a0},
   {name: 'Alkanes', sf: TF.alkanes, col: 0xff7a45}, {name: 'bitmaps', sf: TF.bitmap, col: 0xff3b5c},
   {name: 'runes', bit: 51n, sf: TF.rune, col: 0xc86bff}, {name: 'inscriptions', bit: 50n, sf: TF.insc, col: 0xffa53a}];
 KINDS.forEach(k => { k.lin = lin(hexc(k.col)); k.css = '#' + k.col.toString(16).padStart(6, '0'); });
 const INSC = KINDS.length - 1;
 // which kinds a transaction has, as a bit mask (worked out again whenever its tags change)
 function kmask(t) {
-  if (t._k != null && t._ko === t.op && t._ks === t.sc && t._ki === t.insc) return t._k;
+  const kx = (t.cat21 ? 1 : 0) + (t.labitbu ? 2 : 0);   // (23 Nov 2026: CAT-21 and Labitbu are also read from the block's own bytes, so they show without ordpool.space)
+  if (t._k != null && t._ko === t.op && t._ks === t.sc && t._ki === t.insc && t._kx === kx) return t._k;
   let m = 0;
   for (let i = 0; i < KINDS.length; i++) {
     const k = KINDS[i];
     if ((k.bit != null && t.op != null && (t.op >> k.bit) & 1n) || (k.sf != null && t.sc != null && (t.sc >> k.sf) & 1) || (k.sx && t[k.sx])) m |= 1 << i;
   }
   if (!m && t.insc && t.op == null && t.sc == null) m = 1 << INSC;
-  t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._t = null; t._tk = t._tx = undefined;
+  t._ko = t.op; t._ks = t.sc; t._ki = t.insc; t._kx = kx; t._t = null; t._tk = t._tx = undefined;
   return t._k = m;
 }
 const isInsc = t => ((kmask(t) >> INSC) & 1) === 1;
