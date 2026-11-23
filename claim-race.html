@@ -137,7 +137,7 @@
 </div>
 
 <script src="agent-blockhall-mcp/server/site-order.js"></script>
-<script src="agent-blockhall-mcp/server/manifest.js?v=20261123f"></script>
+<script src="agent-blockhall-mcp/server/manifest.js?v=20261123h"></script>
 <script src="agent-blockhall-mcp/server/traits.js?v=20261123"></script>
 <script>
 (function () {
@@ -182,7 +182,7 @@
 
   /* ---------- is the number taken? ---------- */
   let record = null, recordAt = 0;
-  async function getRecord() { if (!record || Date.now() - recordAt > 600000) { record = await (await fetchT(RECORD + '?t=' + Date.now(), 60000)).json(); recordAt = Date.now(); } return record; }
+  async function getRecord() { if (!record || Date.now() - recordAt > 600000) { try { record = await (await fetchT(RECORD + '?t=' + Date.now(), 60000)).json(); } catch (e) { record = await (await fetchT('https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@bitmap-record/record.json', 60000)).json(); } recordAt = Date.now(); } return record; }   // (jsDelivr's copy as a back-up; only blocks up to its upTo are trusted)
   const blockClaims = new Map();
   async function claimsOfBlock(h) {
     if (blockClaims.has(h)) return blockClaims.get(h);
@@ -297,9 +297,12 @@
 
   /* ---------- the live feed ---------- */
   let ws = null, batches = 0;
+  // (23 Nov 2026) the live feed: mempool.space, then its copies in turn when one closes or can't be reached
+  const FEEDS = ['wss://mempool.space/api/v1/ws', 'wss://mempool.emzy.de/api/v1/ws', 'wss://mempool.ninja/api/v1/ws', 'wss://mempool.fra.mempool.space/api/v1/ws'];
+  let feedAt = 0, feedOpened = false;
   function connect() {
-    ws = new WebSocket('wss://mempool.space/api/v1/ws');
-    ws.onopen = () => { ws.send(JSON.stringify({action: 'want', data: ['blocks']})); ws.send(JSON.stringify({'track-mempool': true})); $('dot').classList.add('on'); $('s-live').lastChild.textContent = 'on'; log('Live feed connected.'); };
+    feedOpened = false; ws = new WebSocket(FEEDS[feedAt]);
+    ws.onopen = () => { ws.send(JSON.stringify({action: 'want', data: ['blocks']})); ws.send(JSON.stringify({'track-mempool': true})); $('dot').classList.add('on'); $('s-live').lastChild.textContent = 'on'; feedOpened = true; const fh = FEEDS[feedAt].replace(/^wss:\/\/|\/api.*$/g, ''); $('s-live').nextElementSibling.textContent = 'live feed (' + fh + ')'; log('Live feed connected (' + fh + ').'); };
     ws.onmessage = e => {
       let j; try { j = JSON.parse(e.data); } catch (er) { return; }
       if (j.blocks && j.blocks.length && tip == null) { tip = j.blocks[j.blocks.length - 1].height; $('s-tip').textContent = fmt(tip); }
@@ -307,7 +310,7 @@
       const d = j['mempool-transactions'];
       if (d) { batches++; (d.added || []).forEach(t => onAdded(t)); (d.removed || []).forEach(x => onRemoved(typeof x === 'string' ? x : x.txid)); (d.mined || []).forEach(x => onRemoved(typeof x === 'string' ? x : x.txid)); (d.replaced || []).forEach(x => onRemoved(x.old ? (x.old.txid || x.old) : x)); }
     };
-    ws.onclose = () => { $('dot').classList.remove('on'); $('s-live').lastChild.textContent = 'off'; log('Live feed closed: reconnecting in 10 seconds.'); setTimeout(connect, 10000); };
+    ws.onclose = () => { $('dot').classList.remove('on'); $('s-live').lastChild.textContent = 'off'; if (!feedOpened) feedAt = (feedAt + 1) % FEEDS.length; log('Live feed closed: ' + (feedOpened ? 'reconnecting' : 'trying ' + FEEDS[feedAt].replace(/^wss:\/\/|\/api.*$/g, '')) + ' in 10 seconds.'); setTimeout(connect, 10000); };
   }
   /* ---------- claims already waiting when the page opens: mempool.space's next 8 projected blocks, every transaction it flags as
      an inscription (its flag 1<<26), then only those whose bytes hold ".bitmap" are read ---------- */

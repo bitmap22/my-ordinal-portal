@@ -52,7 +52,7 @@ async function ordFetch(p, ms, list) {
 
 // the Bitmap Record (every bitmap claim of a block from 942,000 on: .github/bitmap-record), read once a run
 let bmRecP = null;
-const bitmapRecord = () => bmRecP || (bmRecP = fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json', 60000).then(r => r.json()).catch(() => null));
+const bitmapRecord = () => bmRecP || (bmRecP = fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json', 60000).then(r => r.json()).catch(() => fetchT('https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@bitmap-record/record.json', 60000).then(r => r.json())).catch(() => null));
 /* ---------- one block, read the Block Manifest way ---------- */
 async function rawBlockOf(h, hash) {
     try { const {r, site} = await mpFetch('/api/block/' + hash + '/raw', 120000); return {bytes: new Uint8Array(await r.arrayBuffer()), site}; } catch (e) {}

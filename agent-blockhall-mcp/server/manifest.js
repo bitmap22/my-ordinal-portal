@@ -425,8 +425,8 @@
     const out = {};
     for (let round = 0; round < 4; round++) {   // (a check that gets no answer is asked again, three more times, a little later each time)
       const seen = new Set(); let missing = false;
-      for (const r of scan.txs) {
-        const c = r && r.bitmapClaim; if (!c || seen.has(c.number)) continue; seen.add(c.number);
+      for (const r of scan.txs) for (const c of (r && (r.bitmapClaims || (r.bitmapClaim ? [r.bitmapClaim] : []))) || []) {   // (23 Nov 2026: every claim in a transaction)
+        if (seen.has(c.number)) continue; seen.add(c.number);
         if (c.number in out) continue;
         const id0 = r.txid + 'i' + c.index;
         try {
