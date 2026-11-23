@@ -195,7 +195,7 @@ const mpJson = async (path, ms) => { const {r, site} = await mpFetch(path, ms); 
 // an ord call, from the first site that answers it
 // the Bitmap Record (every bitmap claim of a block from 942,000 on, kept by a GitHub job: .github/bitmap-record), read once and kept for 10 minutes
 let bmRecP = null, bmRecAt = 0;
-const bitmapRecord = () => { if (!bmRecP || Date.now() - bmRecAt > 600000) { bmRecAt = Date.now(); bmRecP = fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json', null, 60000).then(r => r.json()).catch(() => { bmRecP = null; return null; }); } return bmRecP; };
+const bitmapRecord = () => { if (!bmRecP || Date.now() - bmRecAt > 600000) { bmRecAt = Date.now(); bmRecP = fetchT('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/bitmap-record/record.json', null, 60000).then(r => r.json()).catch(() => fetchT('https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@bitmap-record/record.json', null, 60000).then(r => r.json())).catch(() => { bmRecP = null; return null; }); } return bmRecP; };   // (jsDelivr's copy as a back-up if GitHub doesn't answer; a copy that is behind is safe: only blocks up to its upTo are trusted)
 async function ordFetch(path, ms, list) {
   let err = null;
   for (const b of list || ORD_R) { try { return {r: await fetchT(b + path, null, ms), site: b}; } catch (e) { err = e; if (b === (list || ORD_R)[0] && /http 404/.test(String(e))) break; } }
