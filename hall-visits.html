@@ -163,18 +163,40 @@
     $('day').replaceChildren(grp('Days', days, d => d), ...(months.length ? [grp('Best of the month', months, m => new Date(m + '-15T12:00:00Z').toLocaleDateString('en-GB', {month: 'long', year: 'numeric', timeZone: 'UTC'}))] : []));
     draw();
   })();
-  // the kit for AI agents
-  window.agent = {
-    help: async () => ({about: 'Hall Visits: anonymous daily totals of what people and AI agents do in Agent Blockhall (btc) and Doge Cube (doge). Each thing is counted once a visit; nothing personal is kept.',
-      commands: {'days()': 'every saved day with its totals', 'day({day, hall})': 'one day (day like 2026-11-23, hall btc or doge; newest day if left out): blocks walked into, time stayed, kinds picked up, time held, each split into person and agent. Days over 90 days old keep only their cream (thinned: true)', 'month({month, hall})': 'the best of a finished month (month like 2026-11): the 100 most visited blocks, kinds picked up and held, totals', 'months()': 'the months saved'},
-      data: BASES[0] + 'index.json', note: S.index && S.index.note}),
-    days: async () => (S.index || await get('index.json')).days,
-    months: async () => (S.index || await get('index.json')).months || [],
-    month: async (o = {}) => { const ix = S.index || await get('index.json'), ms = ix.months || [], m = o.month || ms[ms.length - 1]; if (!m) return {error: 'No month is finished yet: the first best of the month is saved at the start of December 2026.'};
-      const j = await day(m); return o.hall ? {month: j.month, note: j.note, [o.hall]: j[o.hall]} : j; },
-    day: async (o = {}) => { const ix = S.index || await get('index.json'), d = o.day || (ix.days.length ? ix.days[ix.days.length - 1].day : null); if (!d) return {error: 'No day is saved yet: the first is saved just after midnight (UTC) on 23 November 2026.'};
-      const j = await day(d); return o.hall ? {day: j.day, note: j.note, [o.hall]: j[o.hall]} : j; }
+  // the kit for AI agents: the same shape as every other page's (help, commands, see), and WebMCP tools named visits_*
+  const NOTE = 'Anonymous daily totals only: nothing personal is kept.';
+  const cmds = [
+    {name: 'see', does: 'What the page shows now: the day or month picked, the hall (btc: Agent Blockhall, doge: Doge Cube) and its totals. Gives back {showing, hall, data}.',
+      run: async () => { const d = $('day') && $('day').value; if (!d) return {showing: null, hall: S.hall, note: $('status') ? $('status').textContent : null}; const j = await day(d); return {showing: d, hall: S.hall, data: {[S.hall]: j[S.hall], note: j.note}}; }},
+    {name: 'days', does: 'Every saved day with its totals. Gives back [{day, …}].', run: async () => (S.index || await get('index.json')).days},
+    {name: 'day', does: 'One day: blocks walked into, time stayed, kinds picked up, time held, each split into person and agent. Days over 90 days old keep only their cream (thinned: true). Gives back the day (or {error}).', args: [{name: 'day', does: 'a day like 2026-11-23 (the newest if left out)'}, {name: 'hall', does: 'btc or doge (both if left out)'}],
+      run: async (o = {}) => { const ix = S.index || await get('index.json'), d = o.day || (ix.days.length ? ix.days[ix.days.length - 1].day : null); if (!d) return {error: 'No day is saved yet: the first is saved just after midnight (UTC) on 23 November 2026.'};
+        const j = await day(d); return o.hall ? {day: j.day, note: j.note, [o.hall]: j[o.hall]} : j; }},
+    {name: 'months', does: 'Every finished month (its best day kept). Gives back [month].', run: async () => (S.index || await get('index.json')).months || []},
+    {name: 'month', does: 'One finished month\'s best. Gives back the month (or {error}).', args: [{name: 'month', does: 'a month like 2026-12 (the newest if left out)'}, {name: 'hall', does: 'btc or doge (both if left out)'}],
+      run: async (o = {}) => { const ix = S.index || await get('index.json'), ms = ix.months || [], m = o.month || ms[ms.length - 1]; if (!m) return {error: 'No month is finished yet: the first best of the month is saved at the start of December 2026.'};
+        const j = await day(m); return o.hall ? {month: j.month, note: j.note, [o.hall]: j[o.hall]} : j; }}
+  ];
+  const api = {};
+  for (const c of cmds) api[c.name] = async (...a) => {
+    const args = a[0] && typeof a[0] === 'object' && !Array.isArray(a[0]) ? a[0] : Object.fromEntries((c.args || []).map((d, k) => [d.name, a[k]]));
+    try { return await c.run(args || {}); } catch (e) { return {ok: false, error: String(e && e.message || e)}; }
   };
+  api.help = async () => ['Hall Visits by bitmap22, always free: anonymous daily totals of what people and AI agents do in Agent Blockhall (btc) and Doge Cube (doge). Each thing is counted once a visit. ' + NOTE,
+    'Every command returns a promise. Call with one object of named arguments, e.g. agent.day({day: "2026-11-23", hall: "btc"}), or the same arguments in order.', '', 'Commands:']
+    .concat(cmds.map(c => '  agent.' + c.name + '(' + (c.args || []).map(d => d.name + '?').join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : '')))
+    .concat(['', 'The data, without a browser: ' + BASES[0] + 'index.json (days/<day>.json, months/<month>.json). The halls: https://ordportal.com/block-cube.html and https://ordportal.com/doge-cube.html']).join('\n');
+  api.commands = () => cmds.map(c => c.name);
+  api.page = 'Hall Visits';
+  window.agent = api;
+  // WebMCP: the same commands as tools named visits_*
+  const mc = (typeof document !== 'undefined' && document.modelContext) || (typeof navigator !== 'undefined' && navigator.modelContext) || null;
+  if (mc && typeof mc.registerTool === 'function' && window.top === window) {
+    for (const c of cmds) {
+      const props = {}; for (const d of c.args || []) props[d.name] = {type: 'string', description: d.does};
+      try { const p = mc.registerTool({name: 'visits_' + c.name, description: c.does, inputSchema: {type: 'object', properties: props}, annotations: {readOnlyHint: true}, execute: async args => (await api[c.name](args || {})) ?? null}); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+    }
+  }
 })();
 </script>
 </body>
