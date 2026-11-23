@@ -205,7 +205,7 @@
 <div id="for-ai-agents" aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden">For AI agents: this page has a kit for you. Call await window.agent.help(), then agent.check({txid}) and agent.fees(). Where the browser has WebMCP, the same commands are tools named stuck_*. Without a browser, the free Agent Blockhall MCP tool has the same check as its stuckTx tool. Nothing is sent or signed.</div>
 
 <script src="agent-blockhall-mcp/server/provenance.js?v=20261123"></script>
-<script src="agent-blockhall-mcp/server/stuck.js"></script>
+<script src="agent-blockhall-mcp/server/stuck.js?v=20261123f"></script>
 <script src="agent-blockhall-mcp/server/cite.js"></script>
 <script>
 'use strict';
@@ -233,13 +233,19 @@
     if (!r.ok) throw new Error('http ' + r.status + ' from ' + host);
     return r;
   }
-  let mpAt = 0;
+  let mpAt = 0, lastNotFound = [];
   async function mpFetch(path, ms) {
     const n = /^\/api\/v1\//.test(path) ? MIRROR_V1 : MIRRORS.length, order = [mpAt < n ? mpAt : 0].concat([...Array(n).keys()]); let err = null;
-    for (const i of (self.SiteOrder ? SiteOrder.idx(MIRRORS, [...new Set(order)]) : [...new Set(order)])) { try { const r = await fetchT(MIRRORS[i] + path, ms); mpAt = i; return {r, site: MIRRORS[i]}; } catch (e) { err = e; if (/http 404/.test(String(e))) throw e; } }
+    // (23 Nov 2026) a site that has no such transaction is not the last word: every site is asked, and "not found" needs at least two that answered so
+    let nf = null; const said404 = [];
+    for (const i of (self.SiteOrder ? SiteOrder.idx(MIRRORS, [...new Set(order)]) : [...new Set(order)])) { try { const r = await fetchT(MIRRORS[i] + path, ms); mpAt = i; return {r, site: MIRRORS[i]}; } catch (e) { err = e; if (/http 404/.test(String(e))) { nf = e; said404.push(MIRRORS[i].replace('https://', '')); } } }
+    lastNotFound = said404;
+    if (nf && said404.length >= 2) throw nf;
+    if (nf) throw new Error('only ' + said404[0] + ' answered, and it has no such transaction; the other sites did not answer, so it can\'t be said that it is not there: try again in a minute');
     throw err || new Error('no site answered');
   }
   const io = {
+    askedAll: () => lastNotFound.length + ' sites (' + lastNotFound.join(', ') + ')',
     mpJson: async p => { const x = await mpFetch(p, 20000); return {j: await x.r.json(), site: x.site}; },
     mpText: async p => { const x = await mpFetch(p, 20000); return {t: await x.r.text(), site: x.site}; },
     fineBlocks: async h => { for (const s of FINE) { try { const r = await fetchT(s + '/api/v1/blocks/' + h, 15000); const list = await r.json(); if (Array.isArray(list) && list.length) return {list, site: s}; } catch (e) {} } try { const x = await io.mpJson('/api/v1/blocks/' + h); return {list: x.j, site: x.site}; } catch (e) { return null; } }};
