@@ -10255,8 +10255,8 @@ window.AgentKit = window.AgentKit || (() => {
       }
       window.__agentOn = true; try { boxUI(); } catch (e) {}
       const lines = [intro, '', cmds.some(c => c.name === 'events') ? TALK_NOTE : TALK_NOTE.replace(' (new messages also come in events())', '')].concat(TIPS_ON ? [TIP_NOTE] : []).concat(['', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, 'Also: agent.commands() lists every command\'s name, agent.page names this kit and agent.version is its version.', '', 'Commands:']);
+      lines.splice(1, 0, 'This help is long: help({command: \'name\'}) gives one command, help({find: \'word\'}) every command that mentions a word.');
       for (const c of cmds) lines.push(fmtOne(c));
-      lines.push('', 'Long? help({command: \'name\'}) gives one command, help({find: \'word\'}) every command that mentions a word.');
       return lines.join('\n');
     };
     api.commands = () => cmds.map(c => c.name);
@@ -10847,14 +10847,15 @@ window.AgentKit = window.AgentKit || (() => {
         return o;
       }},
     // (23 Nov 2026) the twins of Agent Blockhall's inscription, price, network and trackTx, for Dogecoin
-    {name: 'inscription', ro: true, untrusted: true, does: 'One Doginal in one quick read, from the explorer (thedoginalsexplorer.com): its number, the address holding it now, the block it was made in and when, its kind and size, and where it sits. No second free site gives Doginal records to a web page, so this one is from the explorer alone (said in from). Gives back {ok, id, number, holder, madeInBlock, made, kind, bytes, output, from, secondSite} (or {ok: false, error} if it could not).', args: [{name: 'id', does: 'the Doginal: its number (like "#0") or its ID (a transaction ID, then i and a number)', req: true}],
+    {name: 'inscription', ro: true, untrusted: true, does: 'One Doginal in one quick read, from the explorer (thedoginalsexplorer.com): its number, the address holding it now, the block it was made in and when, its kind and size, and where it sits. No second free site gives Doginal records to a web page, so this one is from the explorer alone (said in from). Gives back {ok, id, number, holder, madeInBlock, made, kind, kinds[], valueKoinu, output, from, secondSite, seeIt} (or {ok: false, error} if it could not).', args: [{name: 'id', does: 'the Doginal: its number (like "#0") or its ID (a transaction ID, then i and a number)', req: true}],
       run: async ({id}) => { id = String(id || '').trim().toLowerCase().replace(/,/g, '');
         if (/^#?-?\d{1,10}$/.test(id)) { try { id = (await srInsNum(+id.replace('#', ''))).id; } catch (e) { return {ok: false, error: String(e && e.message || e)}; } }
         if (!/^[0-9a-f]{64}i\d{1,7}$/.test(id)) return {ok: false, error: 'a Doginal: its number (like "#1000") or its ID (64 hex characters, then i and a number)'};
         let d; try { d = await djP(DX + '/v1/inscription/' + id, 15000); } catch (e) { return {ok: false, error: /404/.test(String(e)) ? 'the explorer knows no Doginal with that ID' : 'the explorer did not answer just now: try again'}; }
         const sp = String(d.satpoint || ''), out = sp ? sp.split(':').slice(0, 2).join(':') : null;
-        return {ok: true, id, number: d.number ?? null, holder: d.address || null, madeInBlock: d.genesis_height ?? null, made: d.timestamp ? new Date((d.timestamp > 1e12 ? d.timestamp : d.timestamp * 1000)).toISOString().replace('.000', '') : null,
-          kind: d.content_type || null, bytes: d.content_length ?? null, output: out, from: 'thedoginalsexplorer.com', secondSite: 'none: no second free site lets a web page read Doginal records (doggy.market keeps its data for its own site)', seeIt: DX + '/inscription/' + id}; }},
+        const tm = d.genesis_time ?? d.timestamp;
+        return {ok: true, id, number: d.number ?? null, holder: d.address || null, madeInBlock: d.genesis_height ?? null, made: tm ? new Date((tm > 1e12 ? tm : tm * 1000)).toISOString().replace('.000', '') : null,
+          kind: d.contentType || d.content_type || null, kinds: d.kinds || [], valueKoinu: d.satoshis ?? null, output: out, from: 'thedoginalsexplorer.com', secondSite: 'none: no second free site lets a web page read Doginal records (doggy.market keeps its data for its own site)', seeIt: DX + '/inscription/' + id}; }},
     {name: 'price', ro: true, does: 'The price of one dogecoin: now (the middle of 4 separate sources for USD: CoinGecko, Coinbase, Kraken, Gemini; for EUR, GBP, CAD, CHF, AUD and JPY the middle of CoinGecko and Coinbase), and how many agree within 1%; or on a past day (Coinbase\'s day, checked against Kraken\'s low and high for that day). Koinu to money: koinu / 100,000,000 x price. Gives back {ok, oneDogecoin{…}, at, sources, sourcesAgreeWithin1pc, checked} (or {ok: false, error} if it could not).', args: [{name: 'date', does: 'a past day for the price, like 2026-11-01 (leave out for now)'}],
       run: async ({date}) => {
         const J = async u => { const r = await fetchT(u, null, 12000); return r.json(); }, CUR = ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY'], mid = a => { const b = a.slice().sort((x, y) => x - y), k = b.length >> 1; return b.length % 2 ? b[k] : (b[k - 1] + b[k]) / 2; };
@@ -10880,10 +10881,12 @@ window.AgentKit = window.AgentKit || (() => {
       run: async () => {
         let tip = null, st = null; try { tip = await djP(BTC + '/block/tip', 15000); } catch (e) {} try { st = (await djP(BCR + '/stats', 15000)).data; } catch (e) {}
         if (!tip && !st) return {ok: false, error: 'neither Bitcore nor Blockchair answered just now: try again'};
-        let diff = null; if (tip && tip.bits) { const b = +tip.bits, e = b >>> 24, m = b & 0xffffff; diff = (0xffff * Math.pow(256, 0x1d - 3)) / (m * Math.pow(256, e - 3)); }
-        const bd = st && st.difficulty != null ? +st.difficulty : null;
+        const dOf = bits => { const b = +bits, e = b >>> 24, m = b & 0xffffff; return (0xffff * Math.pow(256, 0x1d - 3)) / (m * Math.pow(256, e - 3)); };
+        const diff = tip && tip.bits ? dOf(tip.bits) : null, bd = st && st.difficulty != null ? +st.difficulty : null;
+        // (the check compares the same block: Blockchair's newest may be a block behind Bitcore's, and the difficulty changes every block)
+        let same = null; if (diff != null && bd != null) { const bh = st.best_block_height; try { const B2 = bh === tip.height ? tip : await djP(BTC + '/block/' + bh, 15000); same = {height: bh, agree: Math.abs(dOf(B2.bits) - bd) <= bd * 1e-6}; } catch (e) {} }
         return {ok: true, newestBlock: tip ? tip.height : st && st.blocks ? st.blocks - 1 : null, difficulty: diff != null ? Math.round(diff) : bd != null ? Math.round(bd) : null,
-          difficultyChecked: diff != null && bd != null ? Math.abs(diff - bd) <= Math.max(diff, bd) * 0.02 ? 'agrees with Blockchair' : 'differs from Blockchair (' + Math.round(bd) + '): one of them may be a block behind' : 'only one site answered, so not checked',
+          difficultyChecked: same ? (same.agree ? 'block ' + same.height + '\'s header gives exactly Blockchair\'s difficulty' : 'block ' + same.height + '\'s header and Blockchair differ: not trusted') : 'only one site answered, so not checked',
           blocks24h: st ? st.blocks_24h ?? null : null, hashrate24h: st && st.hashrate_24h != null ? st.hashrate_24h + ' hashes a second (Blockchair)' : null,
           from: [tip ? 'Bitcore (the newest block\'s header)' : null, st ? 'Blockchair' : null].filter(Boolean).join(', ')}; }},
     {name: 'trackTx', ro: true, does: 'Track a Dogecoin transaction: mined or still waiting; if mined, the block and how many confirmations; its fee and size. Asked of BlockCypher and checked on Bitcore (the block it is in must agree). Read only: it sends nothing. Gives back {ok, txid, status, block, confirmations, feeKoinu, sizeBytes, from, checked} (or {ok: false, error} if it could not).', args: [{name: 'txid', does: 'the transaction ID (64 letters and numbers)', req: true}],
