@@ -210,7 +210,7 @@
     // the whole block's bytes from Blockchair; if it gives none, the header's six fields and the transaction list from the
     // explorer, with transactions' bytes from BlockCypher (each still proved: the header's hash, the list's merkle root, and
     // the height written in the first transaction)
-    let B = null, from = 'api.blockchair.com', why = '';
+    let B = null, from = 'api.blockchair.com', why = '', builtFrom = null;
     const r = opt.dogeVia === 'explorer' ? {http: null, failed: 'not asked this time'} : await ask('https://api.blockchair.com/dogecoin/raw/block/' + h, opt, BLOCK_WAIT_MS);
     try { if (r.failed) throw new Error('gave no answer (' + r.failed + ')'); if (r.http !== 200) throw new Error('answered with http ' + r.http); let raw; try { raw = js(r.bytes).data; } catch (e) { throw new Error(r.bytes && r.bytes.length ? 'gave an answer that could not be read' : 'gave an empty answer'); } if (!raw || !raw[h] || !raw[h].raw_block) throw new Error('gave no block bytes'); B = readBlock(P.fromHex(raw[h].raw_block), 'doge'); }
     catch (e) { why = 'api.blockchair.com ' + e.message; B = null; }
@@ -242,6 +242,7 @@
       const pickT = B.txs.length > 1 ? pickOne(B.txs.slice(1)) : B.txs[0], s1 = pickT === B.txs[0] ? cb : await docTx(pickT.txid);
       tx = {id: pickT.txid, hex: s1.hex};
       const cand = B.txs.find(t => t.ins); if (cand) { try { const d = await docTx(cand.txid); addDoginal(cand.txid, d.u); } catch (e) {} }
+      builtFrom = 'thedoginalsexplorer.com';   // (23 Nov 2026: the truth was built from this site's own fields, so it can't also be one of the sites that agree)
       from = 'thedoginalsexplorer.com (the header’s fields and the list) and ' + [...used].join(' and ') + ' (transactions’ bytes), as ' + why;
     }
     // Doginal #0, put back together from the transactions that wrote it (each spends the one before)
@@ -257,7 +258,7 @@
       }
       if (fin) { let n = 0; for (const x of body) n += x.length; const u = new Uint8Array(n); let o = 0; for (const x of body) { u.set(x, o); o += x.length; } zero = {id: ZERO.doge, sha: fp(u), length: n}; }
     } catch (e) { zero = null; }
-    return {chain: 'doge', h, hash: B.hash, settled: null, proof: {bytesFrom: from, transactions: B.txs.length, doginalsFound: ins.length}, tx, ins: ins.length ? pickOne(ins) : null, zero};
+    return {chain: 'doge', h, hash: B.hash, settled: null, builtFrom, proof: {bytesFrom: from, transactions: B.txs.length, doginalsFound: ins.length}, tx, ins: ins.length ? pickOne(ins) : null, zero};
   }
 
   /* ---------- one check: the truth, then every site ---------- */
@@ -271,7 +272,7 @@
     const results = await Promise.all(list.map(s => askSite(s, truth, opt).then(r => { if (opt.progress) opt.progress(++done, list.length, r); return r; })));
     // Dogecoin: the hash from the bytes must be given by at least two other sites, or nothing of Dogecoin's is scored this time
     if (truth.doge) {
-      const agree = results.filter(r => r.chain === 'doge' && r.site !== 'api.blockchair.com' && r.facts.some(f => f.fact === 'hash' && f.code === 'R')).map(r => r.site);
+      const agree = results.filter(r => r.chain === 'doge' && r.site !== 'api.blockchair.com' && r.site !== truth.doge.builtFrom && r.facts.some(f => f.fact === 'hash' && f.code === 'R')).map(r => r.site);
       truth.doge.settled = agree.length >= DOGE_AGREE; truth.doge.agreedBy = agree;
       if (!truth.doge.settled) { notes.push('Dogecoin: only ' + agree.length + ' other site' + (agree.length === 1 ? '' : 's') + ' gave block ' + truth.doge.h + '’s hash from its bytes, so nothing of Dogecoin’s is scored this time'); for (const r of results) if (r.chain === 'doge') for (const f of r.facts) if (f.code !== '-') { f.unscored = f.code; f.code = '-'; } }
     }
