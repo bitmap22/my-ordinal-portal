@@ -194,9 +194,10 @@
       }
       if (k === 'ins.holder' || k === 'addr.holds') {
         const A = k === 'ins.holder' ? c.value : c.subject;
-        two('address', j => j.address, 'the address holding it, as this ord site has it', v => v === A);
+        const sameA = v => v === A || (/^bc1/i.test(String(v)) && String(v).toLowerCase() === String(A).toLowerCase());   // (bc1 addresses: case doesn't matter)
+        two('address', j => j.address, 'the address holding it, as this ord site has it', sameA);
         if (J && J.satpoint) await tryIt(async () => { const [t, o] = J.satpoint.split(':'); const x = await io.mpJson('/api/tx/' + t); const out1 = x.j.vout[+o]; const sp = (await io.mpJson('/api/tx/' + t + '/outspend/' + o)).j;
-          const v = sp.spent ? 'moved since (the output it sat in is spent)' : out1.scriptpubkey_address; out.push(S(x.site, v, !sp.spent && v === A, 'the output it sits in (' + t.slice(0, 10) + '…:' + o + ') and its address, as this mempool site has it', 'mempool')); }, 'mempool.space');
+          const v = sp.spent ? 'moved since (the output it sat in is spent)' : out1.scriptpubkey_address; out.push(S(x.site, v, !sp.spent && sameA(v), 'the output it sits in (' + t.slice(0, 10) + '…:' + o + ') and its address, as this mempool site has it', 'mempool')); }, 'mempool.space');
       }
       if (k === 'ins.parent') {
         const pid = await insId(c.value, io); c._pid = pid;
@@ -300,6 +301,11 @@
     else if (!no.length) { answer = 'true'; verdict = 'True: ' + (yes.length === 1 ? 'the one source that answered agrees' : yes.length === 2 ? 'both sources agree' : 'all ' + yes.length + ' sources agree') + (c.approx ? ' (within 1%: ' + show(yes[0].says) + ')' : '') + (chain.length ? ', the chain itself included' : ''); }
     else if (!yes.length) { const vals = [...new Set(no.map(s => show(s.says)))]; answer = 'false'; verdict = 'False: ' + (vals.length === 1 ? (no.length === 1 ? 'the source says ' : no.length === 2 ? 'both sources say ' : 'all ' + no.length + ' sources say ') + vals[0] : 'the sources say ' + vals.join(' / ')); }
     else { answer = chain.length ? (chain.every(s => s.agrees) ? 'true' : 'false') : 'mixed'; verdict = 'The sources differ: ' + yes.length + ' agree, ' + no.length + ' don\'t' + (chain.length ? '; the chain itself says ' + (chain.every(s => s.agrees) ? 'it is true' : show(chain[0].says)) : ''); }
+    // (23 Nov 2026) a child is proven only when the parent's trail shows it was spent to make it: ord counts a child only then.
+    // If that trail could not be followed to the end (too many moves, out of time, no answer), it is not proven.
+    if (c.kind === 'ins.parent' && answer === 'true' && !sources.some(s => /parent's trail/.test(s.source) && s.agrees === true)) {
+      answer = 'unknown'; verdict = 'Not proven: it names the parent, but the parent\'s moves could not be followed back to the transaction that made it this time, so it could not be shown the parent was spent to make it';
+    }
     const r = {check: 'Agent Blockhall Second Opinion ' + VERSION, claim: {text: c.text, kind: c.kind, means: KINDS[c.kind], subject: c.subject, value: c.value, approx: c.approx || undefined, inscription: c._id, parent: c._pid, rune: c._rune},
       answer, verdict, sources, why: notes, checkedAt: new Date().toISOString().replace(/\.\d{3}/, '')};
     say('done', true);

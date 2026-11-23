@@ -202,8 +202,10 @@
     // 5. who holds it now
     const sp = String(J.satpoint || '').split(':'), nowOut = o.nowTx && o.nowTx.vout ? o.nowTx.vout[+sp[1]] : null;
     const addrOk = nowOut ? (nowOut.scriptpubkey_address || null) === (J.address || null) : null;
-    chk('heldNow', o.trailSite || null, o.outspend && nowOut ? !o.outspend.spent && addrOk : null,
-      o.outspend && nowOut ? 'the output it sits in (' + J.satpoint.split(':').slice(0, 2).join(':') + ') ' + (o.outspend.spent ? 'has been spent, so it has moved since' : 'is unspent') + ', and its address ' + (addrOk ? 'matches' : 'does not match') + ' the holder ordinals.com names' : 'not checked');
+    // (23 Nov 2026) spent by a transaction still waiting to be mined: it is being moved (a sale, say), not proven elsewhere: not decided
+    const moving = !!(o.outspend && o.outspend.spent && o.outspend.status && o.outspend.status.confirmed === false);
+    chk('heldNow', o.trailSite || null, o.outspend && nowOut ? moving ? null : !o.outspend.spent && addrOk : null,
+      o.outspend && nowOut ? 'the output it sits in (' + J.satpoint.split(':').slice(0, 2).join(':') + ') ' + (moving ? 'is being spent by a transaction still waiting to be mined (' + String(o.outspend.txid || '').slice(0, 10) + '…), so it is being moved right now: check again once that is mined' : (o.outspend.spent ? 'has been spent, so it has moved since' : 'is unspent') + ', and its address ' + (addrOk ? 'matches' : 'does not match') + ' the holder ordinals.com names') : 'not checked');
     // 6. its number and sat, on a second ord site
     const S2 = o.second;
     chk('numberAndSat', o.secondSite || null, S2 ? S2.number === J.number && String(S2.sat) === String(J.sat) && S2.height === J.height : null,

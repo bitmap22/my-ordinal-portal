@@ -250,7 +250,9 @@
     }
     const left = T.steps.find(s => s.to !== claimer), stillThere = C.holder === claimer && unspent !== false;
     const moves = T.steps.length - 1, proofTrail = {claimedBy: claimer, moves, everyMoveStayed: !left, trail: T.steps.map(s => s.txid)};
-    if (!left && stillThere) {
+    // (23 Nov 2026) if the second check of who holds it now (mempool: is the output unspent?) got no answer, it is not proven still held
+    if (!left && C.holder === claimer && unspent === null) { const why = 'the wallet that claimed it is named as the holder, but a second site could not confirm it still sits there this time'; cant('Held since claimed', why); if (inBlockout) cant('Blockout claimer, never sold', why); }
+    else if (!left && stillThere) {
       earn('Held since claimed', 'the wallet ' + claimer, 'the wallet that claimed it in block ' + fmt(C.block) + ' still holds it, and ' + (moves ? 'all ' + moves + ' of its moves stayed in that wallet' : 'it has never moved'), proofTrail);
       if (inBlockout) earn('Blockout claimer, never sold', 'the wallet ' + claimer, 'claimed during the blockout and never let go: ' + (moves ? 'all ' + moves + ' of its moves stayed in that wallet' : 'it has never moved'), proofTrail);
     } else {
@@ -294,15 +296,15 @@
     const say = io.progress || (() => {}), MAX = Math.min(o.max || 60, 200);
     say('Reading which inscriptions ' + a + ' holds…');
     const page = await io.addressText(a), ids = [...new Set([...page.t.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)].map(m => m[1]))];
-    const out = {check: 'Agent Blockhall Earned Traits ' + VERSION, wallet: a, holds: ids.length, bitmaps: [], walletTraits: [], skipped: 0, blockout: BLOCKOUT};
+    const out = {check: 'Agent Blockhall Earned Traits ' + VERSION, wallet: a, holds: ids.length, bitmaps: [], walletTraits: [], skipped: 0, notRead: 0, blockout: BLOCKOUT};   // (notRead: inscriptions that could not be read, so a bitmap among them would not be seen)
     // the small text inscriptions only (a bitmap's body is "N.bitmap", 8 to 14 characters), then the index must agree it is the claim
     const found = [];
     for (let i = 0; i < ids.length; i++) {
       if (o.stopped && o.stopped()) break;
       if (i && !(i % 25)) say('Looking for bitmaps among ' + fmt(ids.length) + ' inscriptions: ' + fmt(i) + ' read…');
-      let J; try { J = (await io.ordJson('/r/inscription/' + ids[i])).j; } catch (e) { continue; }
+      let J; try { J = (await io.ordJson('/r/inscription/' + ids[i])).j; } catch (e) { out.notRead++; continue; }
       if (!(J.content_length >= 8 && J.content_length <= 14) || !/^text\/plain/.test(J.content_type || '') || J.delegate) continue;
-      let t; try { t = (await io.ordText('/content/' + ids[i])).t; } catch (e) { continue; }
+      let t; try { t = (await io.ordText('/content/' + ids[i])).t; } catch (e) { out.notRead++; continue; }
       const m = /^(0|[1-9]\d{0,6})\.bitmap$/.exec(t); if (m) found.push({n: +m[1], id: ids[i], block: J.height});
     }
     found.sort((x, y) => x.n - y.n);

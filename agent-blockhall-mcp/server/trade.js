@@ -77,7 +77,9 @@
     if (!seller) return I.holder ? [reason('who holds it', 'info', 'Held now by ' + I.holder + (held && held.agrees ? ' (proven: the output it sits in is unspent, at that address).' : '.'), {holder: I.holder})] : [];
     const s = String(seller).trim();
     if (!I.holder) return [reason('who holds it', 'unknown', 'Who holds it now could not be read, so it could not be checked against the address given, ' + s + '.')];
-    if (I.holder !== s) return [reason('who holds it', 'stop', 'Proven wrong: it is held by ' + I.holder + ', not by the address given, ' + s + '.', {holder: I.holder, seller: s})];
+    // (23 Nov 2026) bc1 addresses are the same in upper or lower case
+    const sameAddr = (x, y) => /^bc1/i.test(x) && /^bc1/i.test(y) ? x.toLowerCase() === y.toLowerCase() : x === y;
+    if (!sameAddr(I.holder, s)) return [reason('who holds it', 'stop', 'Proven wrong: it is held by ' + I.holder + ', not by the address given, ' + s + '.', {holder: I.holder, seller: s})];
     if (held && held.agrees === true) return [reason('who holds it', 'ok', 'Held by the address given, ' + s + ' (proven: the output it sits in is unspent, at that address).', {holder: I.holder})];
     return [reason('who holds it', 'unknown', 'ord says it is held by the address given, ' + s + ', but that could not be proven from the chain this time.', {holder: I.holder})];
   }
@@ -86,6 +88,8 @@
     const tail = (O.verdict ? ' (' + O.verdict + ')' : '');
     // (a no, in plain words: "both sources name its parent as …", not "False: both sources say …")
     const tailNo = O.verdict ? ' (' + String(O.verdict).replace(/^False:\s*/, '').replace(/ say(s?) /, ' name$1 its parent as ') + ')' : '';
+    const spent = (O.sources || []).some(x => /parent's trail/.test(x.source || '') && x.agrees === true);
+    if (O.answer === 'true' && !spent) return [reason('its collection', 'unknown', 'It names ' + short(pid) + ' as its parent, but it could not be shown this time that the parent was spent to make it' + tail + '.', {parent: pid, from: 'Second Opinion'})];
     if (O.answer === 'true') return [reason('its collection', 'ok', 'Proven a real member of the collection of ' + short(pid) + ': it names it in its own transaction, and it was spent to make it.', {parent: pid, from: 'Second Opinion'})];
     if (O.answer === 'false') return [reason('its collection', claimed ? 'stop' : 'care', (claimed ? 'Proven wrong: it is not a child of ' : 'It names ' + short(pid) + ' as its parent, but is not proven its child') + (claimed ? short(pid) : '') + tailNo + '.', {parent: pid, from: 'Second Opinion'})];
     return [reason('its collection', 'unknown', 'Whether it is a child of ' + short(pid) + ' could not be proven this time' + tail + '.', {parent: pid, from: 'Second Opinion'})];
@@ -99,11 +103,14 @@
       const f = (R.findings || []).find(x => x.kind === k.key), code = f && f.code && f.code.untrusted ? String(f.code.untrusted) : '', url = (code.match(/https?:\/\/[^\s"'`<>)]+/) || [])[0];
       out.push(reason('its code', 'care', 'Code Read found ' + fmt(k.count || 1) + ' place' + ((k.count || 1) === 1 ? '' : 's') + ' where its code ' + String(k.says || k.name).replace(/^it /, '') + (f && f.what ? ': ' + f.what + (url ? ', ' + url : '') + (f.line ? ' (line ' + f.line + ')' : '') : '') + '.' + (/wallet|sends|hidden/.test(k.key) ? ' Never sign anything it asks.' : ''), {kind: k.key, from: 'Code Read', found: f ? {what: f.what, line: f.line, address: url || null} : null}));
     }
-    if (!out.length) out.push(reason('its code', 'ok', 'Its code was read without running it: it asks no wallet for anything, sends nothing out, has no known tracking and hides nothing.', {from: 'Code Read'}));
+    // (23 Nov 2026) "nothing found" counts only when all its code was read
+    if (!out.length && R.complete === false) out.push(reason('its code', 'unknown', 'Not all of its code could be read this time, so it can\'t be said what it asks for: ' + String(R.verdict || '').replace(/^.*Not everything was read: /, '') , {from: 'Code Read'}));
+    else if (!out.length) out.push(reason('its code', 'ok', 'Its code was read without running it: it asks no wallet for anything, sends nothing out, has no known tracking and hides nothing.', {from: 'Code Read'}));
     return out;
   }
   function fromRecursion(M, codeLoadsOutside) {
-    if (!M || M.mapped === false || M.allOnChain === null) return [reason('what it loads', 'unknown', 'What it loads could not be mapped this time.')];
+    if (!M || M.mapped === false) return [reason('what it loads', 'unknown', 'What it loads could not be mapped this time.')];
+    if (M.allOnChain === null) return [reason('what it loads', 'unknown', 'Not everything it loads could be checked this time: ' + (M.verdict || 'some of it could not be looked up or read') + '.', {from: 'Recursion Map'})];
     const C = M.counts || {}, out = [];
     if (C.missing) out.push(reason('what it loads', 'care', fmt(C.missing) + ' of the inscriptions it loads could not be found: it may not work fully.', {from: 'Recursion Map'}));
     // (the Recursion Map sees every address written in its code; Code Read says whether its code loads or asks from one)
