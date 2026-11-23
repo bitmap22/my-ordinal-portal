@@ -379,13 +379,13 @@
     return {
       manifest: 'Doge Cube Block Manifest ' + VERSION,
       block: {height: o.height, dogemap: o.height + '.dogemap', hash: hdr.hash || null, time: hdr.time ? new Date(hdr.time * 1000).toISOString().replace('.000', '') : null,
-        transactions: N, totalFees: feesKnown ? totalFee : null, feesUnit: 'koinu (1 DOGE = 100,000,000 koinu)', mergeMined: hdr.version != null ? ((+hdr.version) & 0x100) !== 0 : null,
+        transactions: N, totalFees: N <= 1 || feesKnown === N - 1 ? totalFee : null, feesNote: N > 1 && feesKnown < N - 1 ? 'Fees were found for ' + feesKnown + ' of the ' + (N - 1) + ' transactions (beyond the coinbase): the rest were not on the second site\'s list and past the first transactions read one by one, so the block\'s fee total is not known and none is shown.' : undefined, feesKnownFor: N > 1 && feesKnown < N - 1 ? {transactions: feesKnown, of: N - 1, sumOfThose: totalFee} : undefined, feesUnit: 'koinu (1 DOGE = 100,000,000 koinu)', mergeMined: hdr.version != null ? ((+hdr.version) & 0x100) !== 0 : null,
         minedBy: pool, coinbaseWords: coinbase ? {untrusted: coinbase} : null, piecesOfBiggerFiles: pieces || undefined},
       counts: Object.fromEntries(Object.entries(counts).filter(([, v]) => v)),
       checked: {
         blockHash: {fromItsOwnHeader: ownHash != null && ownHash === hdr.hash, secondSite: secH, what: 'the hash worked out from the header\'s six fields (' + o.headerSite + '), then asked of a second site'},
         transactionList: {provedByMerkleRoot: root != null && root === hdr.merkle_root, transactions: N, what: 'every transaction id in ' + o.listSite + '\'s list, folded together the way the chain does it, gives the merkle root written in the block\'s header: so the list is complete, in order, and nothing else'},
-        secondList: {matched: inSecond, of: N, what: 'transactions also in ' + o.secondSite + '\'s list for this block'},
+        secondList: o.secondListAnswered === false ? {matched: null, of: N, what: 'the second site\'s list for this block did not come (it did not answer, or gave an empty list): not checked'} : {matched: inSecond, of: N, what: 'transactions also in ' + o.secondSite + '\'s list for this block'},
         sizes: {matched: sizeOk, of: sizeBoth, what: 'each size from ' + o.listSite + ', ' + o.secondSite + ' and, where read, the transaction\'s own bytes'},
         fees: {matched: feeOk, of: feeBoth, what: 'each fee from ' + o.listSite + ' against ' + o.secondSite},
         ownBytes: {read: rawRead, of: wanted, failed: rawBad || undefined, what: 'transactions that carry something (an inscription, OP_RETURN data) and the coinbase, each read from its own bytes (' + (o.rawSite || 'no site') + ') and hashed to make sure the bytes are that transaction'},
@@ -473,7 +473,7 @@
       if (round) await new Promise(r => setTimeout(r, 3000 * round));
       for (const n of [...new Set(claims)]) { if (n in dogemapFirst) continue; try { const j = await io.dx('/v1/dogemap/' + n); if (j && j.txid) dogemapFirst[n] = j.txid; } catch (e) {} }
     }
-    const m = buildManifest({height: h, header: B, dogemapFirst, headerSite: 'https://thedoginalsexplorer.com', list, listSite: 'https://thedoginalsexplorer.com', details, second, secondHash, secondSite: secondSite || 'no second site',
+    const m = buildManifest({height: h, header: B, dogemapFirst, headerSite: 'https://thedoginalsexplorer.com', list, listSite: 'https://thedoginalsexplorer.com', details, second, secondListAnswered: Array.isArray(second) && second.length > 0, secondHash, secondSite: secondSite || 'no second site',
       raw, rawSite: io.raw ? (rawFrom.size ? [...rawFrom].join(' and ') : 'https://api.blockchair.com') : null, rawWanted: io.raw ? carry.length : 0, dunesMade});
     if (list.length > DETAIL_CAP) m.checked.note = 'A very big block: the first ' + DETAIL_CAP.toLocaleString('en-GB') + ' transactions were read one by one; the rest are from the lists only.';
     if (rawStop) m.checked.ownBytes.stopped = 'Blockchair asked us to slow down (30 asks a minute): the rest were not read from their bytes this time. Try again in a minute.';

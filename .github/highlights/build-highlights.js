@@ -71,13 +71,14 @@ async function main() {
 
   /* ---------- reading blocks ---------- */
   await fact('block-manifest.html', 'Block Manifest', async () => {
-    const b = maxBy(blocksOf(need(btcDay, 'Daily Data')), x => x.totalFees);
-    return {text: 'Block ' + n0(b.height) + ' paid its miner the most fees yesterday: ' + btc(b.totalFees) + ' from ' + n0(b.transactions) + ' transactions, every one sorted and checked.',
+    // (23 Nov 2026: says only what was checked: a fee proven against the coinbase is said so; the words never claim more than the data)
+    const b = maxBy(blocksOf(need(btcDay, 'Daily Data')).filter(x => x.totalFees != null), x => x.totalFees);
+    return {text: 'Block ' + n0(b.height) + ' paid its miner the most fees yesterday: ' + btc(b.totalFees) + ' from ' + n0(b.transactions) + ' transactions' + (b.checked && b.checked.feesAgainstCoinbase === true ? ', its fees checked against what its coinbase pays out.' : '.'),
       link: PORTAL + 'block-manifest.html?block=' + b.height, linkText: 'See every transaction', period: D};
   });
   await fact('daily.html', 'Daily Data', async () => {
-    const t = need(btcDay, 'Daily Data').totals;
-    return {text: 'On ' + Dw + ': ' + n0(t.blocks) + ' Bitcoin blocks, ' + n0(t.transactions) + ' transactions, ' + btc(t.totalFees) + ' in fees and ' + n0((t.counts || {}).inscriptions || 0) + ' inscriptions, every block read and checked.',
+    const t = need(btcDay, 'Daily Data').totals, K = t.checked || {}, whole = !K.notRead && !K.feesMissing;
+    return {text: 'On ' + Dw + ': ' + n0(t.blocks) + ' Bitcoin blocks, ' + n0(t.transactions) + ' transactions, ' + btc(t.totalFees) + ' in fees' + (K.feesMissing ? ' (' + n0(K.feesMissing) + ' block' + (K.feesMissing === 1 ? '' : 's') + ' with no fee figure left out)' : '') + ' and ' + n0((t.counts || {}).inscriptions || 0) + ' inscriptions' + (whole ? ', every block read.' : K.notRead ? ' (' + n0(K.notRead) + ' block' + (K.notRead === 1 ? '' : 's') + ' could not be read).' : '.'),
       link: PORTAL + 'daily.html?day=' + D, linkText: 'See every block of the day', period: D};
   });
   await fact('blockspace-share.html', 'Blockspace Share', async () => {
@@ -210,12 +211,12 @@ async function main() {
   await fact('doge-block-manifest.html', 'Doge Block Manifest', async () => {
     const b = maxBy(blocksOf(need(dogeDay, 'Doge Daily Data')), x => (x.counts || {}).inscriptions || 0);
     const n = (b.counts || {}).inscriptions || 0; if (!n) throw new Error('no Doginals yesterday');
-    return {text: 'Dogecoin block ' + n0(b.height) + ' held the most Doginals yesterday: ' + n0(n) + ', among ' + n0(b.transactions) + ' transactions, every one sorted and checked.',
+    return {text: 'Dogecoin block ' + n0(b.height) + ' held the most Doginals yesterday: ' + n0(n) + ', among ' + n0(b.transactions) + ' transactions.',
       link: PORTAL + 'doge-block-manifest.html?block=' + b.height, linkText: 'See every transaction', period: D};
   });
   await fact('doge-daily.html', 'Doge Daily Data', async () => {
-    const t = need(dogeDay, 'Doge Daily Data').totals;
-    return {text: 'On ' + Dw + ': ' + n0(t.blocks) + ' Dogecoin blocks, ' + n0(t.transactions) + ' transactions, ' + doge(t.totalFees) + ' in fees and ' + n0((t.counts || {}).inscriptions || t.inscriptions || 0) + ' Doginals, every block checked.',
+    const t = need(dogeDay, 'Doge Daily Data').totals, K = t.checked || {};
+    return {text: 'On ' + Dw + ': ' + n0(t.blocks) + ' Dogecoin blocks, ' + n0(t.transactions) + ' transactions, ' + doge(t.totalFees) + ' in fees' + (K.feesMissing ? ' (' + n0(K.feesMissing) + ' block' + (K.feesMissing === 1 ? '' : 's') + ' with no fee figure left out)' : '') + ' and ' + n0((t.counts || {}).inscriptions || t.inscriptions || 0) + ' Doginals' + (K.notRead ? ' (' + n0(K.notRead) + ' block' + (K.notRead === 1 ? '' : 's') + ' could not be read).' : ', every block read.'),
       link: PORTAL + 'doge-daily.html?day=' + D, linkText: 'See every block of the day', period: D};
   });
   await fact('doge-watch.html', 'Doge Watch', async () => {

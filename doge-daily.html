@@ -210,7 +210,7 @@
     const F = $('facts'); F.textContent = '';
     const pools = Object.entries(T.pools || {}).sort((a, b) => b[1] - a[1]);
     const merged = d.blocks.filter(b => b.mergeMined).length;
-    for (const [k, v] of [['Blocks', fmt(T.blocks)], ['From block to block', T.firstBlock != null ? fmt(T.firstBlock) + ' to ' + fmt(T.lastBlock) : '–'], ['Transactions', fmt(T.transactions)], ['Fees', doge(T.totalFees) + ' DOGE'],
+    for (const [k, v] of [['Blocks', fmt(T.blocks)], ['From block to block', T.firstBlock != null ? fmt(T.firstBlock) + ' to ' + fmt(T.lastBlock) : '–'], ['Transactions', fmt(T.transactions)], ['Fees', doge(T.totalFees) + ' DOGE' + (T.checked && T.checked.feesMissing ? ' (' + T.checked.feesMissing + ' block' + (T.checked.feesMissing === 1 ? '' : 's') + ' with no fee figure left out)' : '')],
       ['With a Doginal', fmt((T.counts || {}).inscriptions || 0) + ' transactions'], ['Merge-mined', fmt(merged) + ' of ' + fmt(T.blocks)], ['Pool named in the coinbase', (pools.length ? pools.map(p => p[0] + ' (' + fmt(p[1]) + ')').join(', ') + ' · ' : '') + fmt(T.blocks - T.checked.notRead - pools.reduce((a, p) => a + p[1], 0)) + ' name none'], ['Made', d.made ? d.made.replace('T', ' ').replace('Z', ' UTC') : '–']]) {
       const f = el('div', 'fact'); f.appendChild(el('b', null, k)); f.appendChild(el('span', null, v)); F.appendChild(f);
     }
@@ -231,7 +231,7 @@
       const c0 = cell('left', null, 'Block'); const a = el('a', null, fmt(b.height)); a.href = 'doge-block-manifest.html?block=' + b.height; a.title = 'Every transaction in block ' + fmt(b.height); c0.appendChild(a);
       cell('left', b.time ? b.time.slice(11, 16) : '–', 'Time (UTC)'); cell('left', b.minedBy || '–', 'Mined by');
       if (b.notRead) { cell('left', 'not read: ' + b.notRead, 'Note'); tb.appendChild(tr); continue; }
-      cell('num', fmt(b.transactions), 'Transactions'); cell('num', doge(b.totalFees), 'Fees (DOGE)'); cell('num', fmt((b.counts || {}).inscriptions || 0), 'With a Doginal');
+      cell('num', fmt(b.transactions), 'Transactions'); { const fc = cell('num', b.totalFees == null ? '– (why?)' : doge(b.totalFees), 'Fees (DOGE)'); if (b.totalFees == null) { fc.title = b.feesNote || 'No fee figure for this block'; fc.style.cursor = 'help'; fc.tabIndex = 0; fc.setAttribute('aria-label', 'No fee figure: ' + (b.feesNote || '')); } } cell('num', fmt((b.counts || {}).inscriptions || 0), 'With a Doginal');
       const ck = cell('', null, 'Checked'); const k = b.checked;
       for (const [ok, t] of [[k.hashFromItsHeader, 'ID from its own header'], [k.secondSite ? k.secondSite.agrees : null, 'ID on a second site'], [k.listProved, 'list proved by the header'], [k.secondList ? k.secondList[0] === k.secondList[1] : null, 'list on a second site']]) {
         const s = el('span', ok === true ? 'y' : ok === false ? 'x' : 'z', ok === true ? '✓' : ok === false ? '✗' : '·'); s.title = t + (ok === true ? ': agrees' : ok === false ? ': differs' : ': not checked'); ck.appendChild(s);

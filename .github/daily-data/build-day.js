@@ -130,13 +130,14 @@ async function main() {
     spaceBlocks.push({height: b.height, split: M.space || null});
     const C = M.checked;
     const rec = {height: b.height, bitmap: b.height + '.bitmap', hash: b.id, time: new Date(b.timestamp * 1000).toISOString().replace('.000', ''), minedBy: pool || M.block.minedBy,
-      transactions: M.block.transactions, totalFees: M.block.totalFees, counts: M.counts,
+      transactions: M.block.transactions, totalFees: M.block.totalFees, feesNote: M.block.feesNote, counts: M.counts,
       checked: {hashFromItsBytes: C.blockHash.fromItsOwnBytes, secondSite: C.blockHash.secondSite, ids: [C.transactions.matched, C.transactions.of], sizes: [C.sizes.matched, C.sizes.of],
         kinds: C.kinds.agreed != null ? [C.kinds.agreed, C.kinds.of] : null, inscriptions: C.inscriptions.agreed != null ? [C.inscriptions.agreed, C.inscriptions.of, C.inscriptions.listed] : null,
-        runesEtched: C.runesEtched ? [C.runesEtched.made, C.runesEtched.tried] : null, differences: C.differences.length},
+        runesEtched: C.runesEtched ? [C.runesEtched.made, C.runesEtched.tried] : null, differences: C.differences.length, feesAgainstCoinbase: C.fees ? C.fees.agrees : null},
       sources: M.sources, blockManifest: PORTAL + 'block-manifest.html?block=' + b.height};
     blocks.push(rec);
-    T.transactions += rec.transactions; T.totalFees += rec.totalFees; sumInto(T.counts, rec.counts); if (rec.minedBy) T.pools[rec.minedBy] = (T.pools[rec.minedBy] || 0) + 1;
+    T.transactions += rec.transactions; if (rec.totalFees != null) T.totalFees += rec.totalFees; else T.checked.feesMissing = (T.checked.feesMissing || 0) + 1;
+    if (rec.checked.feesAgainstCoinbase === true) T.checked.feesCheckedByCoinbase = (T.checked.feesCheckedByCoinbase || 0) + 1; else if (rec.totalFees != null) T.checked.feesNotProven = (T.checked.feesNotProven || 0) + 1; sumInto(T.counts, rec.counts); if (rec.minedBy) T.pools[rec.minedBy] = (T.pools[rec.minedBy] || 0) + 1;
     const K = T.checked; if (rec.checked.hashFromItsBytes) K.hashFromItsBytes++; if (rec.checked.secondSite) { K.secondSiteAsked++; if (rec.checked.secondSite.agrees) K.secondSiteAgrees++; }
     for (const k of ['ids', 'sizes', 'kinds', 'inscriptions', 'runesEtched']) if (rec.checked[k] && rec.checked[k][0] != null) { K[k][0] += rec.checked[k][0]; K[k][1] += rec.checked[k][1]; }
     if (rec.checked.inscriptions) K.inscriptionsListed += rec.checked.inscriptions[2];
@@ -155,6 +156,8 @@ async function main() {
   if (K.kindsNotChecked) notes.push('For ' + K.kindsNotChecked + ' block' + (K.kindsNotChecked === 1 ? '' : 's') + ', ordpool.space did not answer, so their kinds were read once and not checked (null on those blocks).');
   if (K.inscriptionsNotChecked) notes.push('For ' + K.inscriptionsNotChecked + ' block' + (K.inscriptionsNotChecked === 1 ? '' : 's') + ' with inscriptions, ordinals.com did not answer, so their inscriptions were not checked (null on those blocks). It was not a disagreement.');
   if (K.runesEtchedNotChecked) notes.push('For ' + K.runesEtchedNotChecked + ' block' + (K.runesEtchedNotChecked === 1 ? '' : 's') + ', ordinals.com did not say which runes were made, so etchings were not checked.');
+  if (K.feesMissing) notes.push('Fees: ' + K.feesMissing + ' block' + (K.feesMissing === 1 ? ' has' : 's have') + ' no fee figure (see feesNote on each), so the day\'s fee total leaves ' + (K.feesMissing === 1 ? 'it' : 'them') + ' out and is lower than the real total.');
+  if (K.feesNotProven) notes.push('Fees: for ' + K.feesNotProven + ' block' + (K.feesNotProven === 1 ? '' : 's') + ', the fee total could not be proven against what the coinbase pays out (a miner may take less than it could): those totals are mempool.space\'s.');
   if (K.differences) notes.push(K.differences + ' difference' + (K.differences === 1 ? '' : 's') + ' between this reader and the second sites across the day: open a block in the Block Manifest to see each one.');
   for (const k of ['kinds', 'inscriptions', 'runesEtched']) if (K[k] && K[k][1] === 0) K[k] = null;   // (nothing was checked: null, not [0, 0])
   if (!notes.length) notes.push('Every block was read and every check was made.');
