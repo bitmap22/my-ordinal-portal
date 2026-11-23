@@ -21,7 +21,7 @@
   'use strict';
   const VERSION = '1.0.0';
   const INCREMENTAL = 1;      // sat/vB a replacement adds for its own size (1: what every node still accepts; Bitcoin Core 29.1 and later ask 0.1)
-  const r1 = v => !isFinite(v) ? '?' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');   // (a fee rate a site didn't give: ?, never NaN)
+  const r1 = v => v == null || !isFinite(v) ? '?' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');   // (a fee rate a site didn't give: ?, never NaN)
   const fmt = n => n == null || !isFinite(Number(n)) ? '–' : Number(n).toLocaleString('en-GB');   // (a number a site didn't give: a dash, never NaN)
   const up = v => Math.ceil(v * 100 - 1e-9) / 100;
   const whole = fr => fr.every(v => Math.abs(v - Math.round(v)) < 1e-9);
@@ -34,7 +34,7 @@
       const x = await io.fineBlocks(h); const list = x && x.list;
       if (!Array.isArray(list) || !list.length) break;
       used.add(x.site); for (const b of list) if (!got.has(b.height)) got.set(b.height, b);
-      h = Math.min(...list.map(b => b.height)) - 1; if (progress) progress('blocks', got.size);
+      const nh = Math.min(...list.map(b => b.height)) - 1; if (!(nh < h)) break; h = nh; if (progress) progress('blocks', got.size);   // (a copy that ignores the height asked: stop, never loop)
     }
     const B = [];
     for (let i = 0; i < 144; i++) {
@@ -99,7 +99,7 @@
     const out = {txid, checked: new Date().toISOString().replace(/\.\d{3}/, ''), sources: site ? [site] : []};
     if (!T) {
       const m = await io.mpJson('/api/v1/fees/recommended').catch(() => null);
-      return Object.assign(out, {state: 'not found', verdict: 'Not found: mempool.space and its copies have no transaction with this ID, waiting or mined.',
+      return Object.assign(out, {state: 'not found', verdict: 'Not found: ' + (io.askedAll ? io.askedAll() : 'mempool.space and its copies') + ' have no transaction with this ID, waiting or mined.',
         why: ['It was never sent to the network, or nodes have dropped it (a transaction paying under what full nodes keep' + (m && m.j ? ', now ' + r1(m.j.minimumFee) + ' sat/vB,' : '') + ' can be dropped, and so can one that waited two weeks), or the ID has a mistake in it.',
           'If it was dropped, its coins were never spent: the wallet that made it can send it again, with a higher fee.'], fixes: null});
     }
@@ -173,7 +173,7 @@
     }
     const ok = eff >= (targets[0] ? targets[0].feeRate : Infinity) || where.block === 1;
     const verdict = ok ? 'Waiting, but not stuck: it pays enough for the next block (' + r1(eff) + ' sat/vB).'
-      : where.block ? 'Waiting: at ' + r1(eff) + ' sat/vB it sits in about block ' + where.block + ' of the ' + where.of + ' waiting. To be sure of the next block, it needs about ' + targets[0].feeRate + ' sat/vB (the next block takes from ' + r1(F0) + ' now).'
+      : where.block ? 'Waiting: at ' + r1(eff) + ' sat/vB it sits in about block ' + where.block + ' of the ' + where.of + ' waiting. To be sure of the next block, it needs about ' + (targets[0] ? targets[0].feeRate : '?') + ' sat/vB (the next block takes from ' + r1(F0) + ' now).'
       : 'Stuck at the back: at ' + r1(eff) + ' sat/vB it is under every block waiting. For the next block it needs about ' + (targets[0] ? targets[0].feeRate : '?') + ' sat/vB.';
     out.sources = [...new Set(out.sources.concat(adv.sources))];
     return Object.assign(out, {state: ok ? 'waiting, not stuck' : where.block ? 'waiting' : 'stuck', verdict, facts, why,
