@@ -227,7 +227,7 @@
     if (!(X instanceof Uint8Array) || X.length < 81) throw new Error('not a block');
     let p = 80;
     const vi = () => { const f = X[p++]; if (f < 253) return f; const n = f === 253 ? 2 : f === 254 ? 4 : 8; let v = 0; for (let i = 0; i < n; i++) v += X[p++] * 2 ** (8 * i); return v; };
-    const blockHash = hashHex(X.subarray(0, 80)), ntx = vi(), out = new Array(ntx); let cb = '';
+    const blockHash = hashHex(X.subarray(0, 80)), ntx = vi(), out = new Array(ntx); let cb = '', cbOut = 0;   // (cbOut: what the coinbase pays out, in sats, from its own bytes)
     for (let t = 0; t < ntx && p < X.length; t++) {
       const r = {n: t, sc: 0, ins: [], a: p}, set = f => { r.sc |= 1 << f; };
       p += 4; let sw = 0; if (X[p] === 0 && X[p + 1] === 1) { sw = 1; p += 2; }
@@ -236,8 +236,8 @@
       for (let i = 0; i < nin; i++) { p += 36; const l = vi(); isc.push([p, p + l]); p += l + 4; }
       const nout = vi(); let ms = null, mso = null, wsh = null, pay = 0;
       for (let i = 0; i < nout; i++) {
-        p += 8; const l = vi(), q = p; p += l;
-        if (!t) continue;
+        const vo = p; p += 8; const l = vi(), q = p; p += l;
+        if (!t) { let v = 0; for (let k = 7; k >= 0; k--) v = v * 256 + X[vo + k]; cbOut += v; continue; }
         if (X[q] === 0x6a) {
           if (X[q + 1] === 0x5d) {
             if (h < RUNES_START || r.rs) continue;   // (no runes before block 840,000; only a transaction's first rune message counts)
@@ -370,7 +370,7 @@
     if (out.length !== ntx || out.some(x => !x)) throw new Error('the block ended early');
     if (p !== X.length) throw new Error('the block has bytes left over');
     let pool = null; for (const [re, nm] of POOLS) if (re.test(cb)) { pool = nm; break; }
-    return {hash: blockHash, txs: out, coinbase: {words: cb, pool}};
+    return {hash: blockHash, txs: out, coinbase: {words: cb, pool, paysOut: cbOut}};
   }
 
 
@@ -503,17 +503,27 @@
       it.checked = {id: idMatch, size: sizeMatch, kinds: kc, inscriptions: ic};
       items[i] = it;
     }
+    // (23 Nov 2026) the fees are checked against the chain itself: what the coinbase pays out (read from the block's own bytes) less the
+    // new coins is the fees the miner took. A miner may take less than it could, so a coinbase that pays less is said, not called wrong.
+    const newCoins = o.height >= 6930000 ? 0 : Number(5000000000n >> BigInt(Math.floor(o.height / 210000))), paysOut = S.coinbase.paysOut;
+    const feeMissing = txs.slice(1).filter(r => { const m = sum[r.n]; return !(m && m.fee != null); }).length;
+    const coinbaseFees = paysOut != null ? paysOut - newCoins : null, tf = Math.round(totalFee);   // (one copy sends some fees with a rounding slip, as 838.9999999999999)
+    const feeCheck = paysOut == null || feeMissing ? {agrees: null, what: 'the fee total against the coinbase (what it pays out, less the new coins): not checked' + (feeMissing ? ', as some fees were missing' : '')}
+      : {agrees: coinbaseFees === tf ? true : coinbaseFees > tf ? false : null, coinbasePaysOut: paysOut, newCoins, coinbaseFees, listFees: tf,
+        what: coinbaseFees === tf ? 'the fees in ' + o.summarySite + '\'s list add up to what the coinbase pays out (read from the block\'s own bytes) less the new coins: checked against the chain'
+          : coinbaseFees > tf ? 'the coinbase pays out more than the fees in the list plus the new coins: the list may be missing fees' : 'the coinbase pays out less than the fees in the list plus the new coins (a miner may take less than it could)'};
     const sec = o.secondHash ? {against: o.secondSite, agrees: o.secondHash === o.hash} : null;
     const etchTries = txs.filter(r => r.rune && r.rune.etched).length;
     return {
       manifest: 'Agent Blockhall Block Manifest ' + VERSION,
       block: {height: o.height, bitmap: o.height + '.bitmap', hash: o.hash, time: o.time ? new Date(o.time * 1000).toISOString().replace('.000', '') : null,
-        transactions: N, totalFees: totalFee, minedBy: S.coinbase.pool, coinbaseWords: S.coinbase.words ? {untrusted: S.coinbase.words} : null},
+        transactions: N, totalFees: feeCheck.agrees === false || feeMissing ? null : totalFee, feesNote: feeMissing ? 'The fee list had no fee for ' + feeMissing + ' transaction' + (feeMissing === 1 ? '' : 's') + ', so the block\'s fee total is not known and none is shown.' : feeCheck.agrees === false ? 'The fees in ' + o.summarySite + '\'s list add up to ' + Math.round(totalFee) + ' sats, but the coinbase pays out ' + feeCheck.coinbasePaysOut + ' sats less the new coins (' + feeCheck.newCoins + ' sats) = ' + feeCheck.coinbaseFees + ' sats, more than the list: the list is missing fees, so no total is shown.' : undefined, minedBy: S.coinbase.pool, coinbaseWords: S.coinbase.words ? {untrusted: S.coinbase.words} : null},
       counts: Object.fromEntries(Object.entries(counts).filter(([, v]) => v)),
       checked: {
         blockHash: {fromItsOwnBytes: S.hash === o.hash, secondSite: sec},
         transactions: {matched: idOk, of: N, what: 'each transaction\'s id, worked out from the block\'s own bytes (' + o.rawSite + '), against ' + o.summarySite + '\'s list, in the same order'},
         sizes: {matched: sizeOk, of: N, what: 'each size worked out from the bytes against ' + o.summarySite},
+        fees: feeCheck,
         kinds: o.tags ? {agreed: kindsAgree, of: kindsBoth, what: 'inscriptions, runes, BRC-20, SRC-20, CAT-21, Atomicals and Labitbu: this reader\'s reading against ' + o.tagSite + '\'s tags'} : {agreed: null, of: 0, what: 'ordpool.space did not answer, so kinds were read once'},
         inscriptions: o.ordIds ? {agreed: insAgree, of: insBoth, listed: o.ordIds.length, what: 'inscriptions read in each transaction against ' + o.ordSite + '\'s list for this block'} : {agreed: null, of: 0, what: 'ordinals.com did not answer, so inscription ids are missing'},
         runesEtched: etchTries ? (made ? {made: txs.filter(r => r.rune && r.rune.made).length, tried: etchTries, what: 'etchings against the runes ' + (o.ordSite || 'ordinals.com') + ' says this block made'} : {made: null, tried: etchTries, what: 'not checked: an etching only makes its rune if the name was free'}) : undefined,
