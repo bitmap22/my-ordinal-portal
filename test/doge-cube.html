@@ -10243,10 +10243,20 @@ window.AgentKit = window.AgentKit || (() => {
       try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
     };
-    api.help = async () => {
+    api.help = async (q) => {
+      // (help({command: 'walkIn'}) gives one command, help({find: 'fee'}) every command that mentions it: the whole help is long)
+      const fmtOne = c => '  agent.' + c.name + '(' + (c.args || []).map(d => d.name + (d.req ? '' : '?')).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : '');
+      q = typeof q === 'string' ? {command: q} : q && typeof q === 'object' ? q : {};
+      if (q.command || q.find) {
+        const w = String(q.command || q.find).trim().replace(/^agent\./, '').replace(/\(.*$/, ''), lw = w.toLowerCase();
+        const pick = q.command ? cmds.filter(c => c.name.toLowerCase() === lw) : cmds.filter(c => (c.name + ' ' + c.does + ' ' + (c.args || []).map(d => d.name + ' ' + d.does).join(' ')).toLowerCase().includes(lw));
+        if (!pick.length) return q.command ? 'There is no command called ' + w + '. agent.commands() lists them all; help({find: \'' + w + '\'}) searches what they do.' : 'No command mentions "' + w + '". agent.commands() lists them all.';
+        return pick.map(fmtOne).join('\n');
+      }
       window.__agentOn = true; try { boxUI(); } catch (e) {}
       const lines = [intro, '', cmds.some(c => c.name === 'events') ? TALK_NOTE : TALK_NOTE.replace(' (new messages also come in events())', '')].concat(TIPS_ON ? [TIP_NOTE] : []).concat(['', 'Every command returns a promise. Call with one object of named arguments, e.g. agent.' + (cmds.find(c => (c.args || []).length) || cmds[0]).name + '({...}), or the same arguments in order.', UNTRUSTED, 'Also: agent.commands() lists every command\'s name, agent.page names this kit and agent.version is its version.', '', 'Commands:']);
-      for (const c of cmds) lines.push('  agent.' + c.name + '(' + (c.args || []).map(d => d.name + (d.req ? '' : '?')).join(', ') + ') - ' + c.does + ((c.args || []).length ? '\n' + c.args.map(d => '      ' + d.name + ': ' + d.does).join('\n') : ''));
+      for (const c of cmds) lines.push(fmtOne(c));
+      lines.push('', 'Long? help({command: \'name\'}) gives one command, help({find: \'word\'}) every command that mentions a word.');
       return lines.join('\n');
     };
     api.commands = () => cmds.map(c => c.name);
