@@ -106,7 +106,9 @@ async function main() {
     const rate = fees.halfHourFee; if (!(rate > 0)) throw new Error('no live fee');
     // the calculator's own sum, with its own settings: 102,400 bytes, 200 vB extra, 330 sats postage
     const b = 102400, vb = Math.ceil(b / 4) + Math.ceil(Math.ceil(b / 520) * 3 / 4) + 200, sats = Math.ceil(vb * rate - 1e-9) + 330;
-    const usd = prices.USD ? sats / 1e8 * prices.USD : null;
+    // (23 Nov 2026) the dollar figure only when a second, separate source agrees within 1% (Coinbase, else Kraken)
+    let second = null; for (const [u, f] of [['https://api.coinbase.com/v2/exchange-rates?currency=BTC', j => +j.data.rates.USD], ['https://api.kraken.com/0/public/Ticker?pair=XBTUSD', j => +Object.values(j.result)[0].c[0]]]) { try { const r = await fetch(u, {signal: AbortSignal.timeout(15000)}); if (r.ok) { second = f(await r.json()); if (second > 0) break; } } catch (e) {} }
+    const usd = prices.USD && second > 0 && Math.abs(second - prices.USD) / prices.USD <= 0.01 ? sats / 1e8 * prices.USD : null;
     return {text: 'At ' + hhmm(now) + ', a 100 KB inscription cost about ' + n0(sats) + ' sats' + (usd != null ? ' ($' + usd.toFixed(2) + ')' : '') + ', at the live "within half an hour" fee of ' + rate + ' sat/vB.',
       link: PORTAL + 'inscription-cost-calculator.html', linkText: 'Work out your own file', period: now.toISOString().replace(/\.\d{3}/, '')};
   });
