@@ -86,6 +86,8 @@
       if (!(tip > s.tip)) return {state: s, events: ev};
       const first = s.tip + 1, from = Math.max(first, tip - MAX_NEW + 1), told = []; for (let h = from; h <= tip; h++) told.push(h);   // (only the newest few are fetched, however far back the token says it was)
       const skipped = from - first;
+      // (23 Nov 2026) blocks skipped are said in an alert of their own, never only counted
+      if (skipped) E(fmt(skipped) + ' older block' + (skipped === 1 ? '' : 's') + ' (' + fmt(first) + (skipped > 1 ? ' to ' + fmt(from - 1) : '') + ') passed since the last look and ' + (skipped === 1 ? 'was' : 'were') + ' not looked at: each look reads only the newest ' + MAX_NEW + ' blocks', {facts: {from: first, to: from - 1, skipped}, notLookedAt: true});
       let lastHash = s.hash;
       for (const h of told) {
         const B = await blockFacts(io, h); lastHash = B.hash;
@@ -155,6 +157,8 @@
             checked: {address: {against: 'https://thedoginalsexplorer.com', agrees: ok, what: 'bitcore.io sees the coins; the explorer\'s copy of the transaction ' + (ok ? 'pays to or from this address too' : ok === false ? 'does not show this address' : 'was not found yet')}},
             links: {blockchair: txLink(txid), dogeBlockManifest: conf ? MANIFEST + '?block=' + o.h : null, dogeCube: GAME + ' (its tablet finds addresses too)'}});
       }
+      // (23 Nov 2026) the second site lists an address's newest 200 coins: a change it can't trace is still said, never silent
+      if (!byTx.size) E('The address\'s balance changed, but the change could not be traced to a transaction: this watch reads only the address\'s newest 200 coins on bitcore.io', {facts: {address: w.value, balanceWas: s.bal, balanceNow: bal}});
       return {state: {bal, coins: now}, events: ev};
     }
     return {state: s, events: ev};

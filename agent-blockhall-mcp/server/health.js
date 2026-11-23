@@ -221,7 +221,7 @@
     const name = chain && chain !== 'all' ? CHAINS[pick(chain)[0].chain] : null;
     const asked = now && now.results.some(r => pick(chain).some(s => s.site === r.site));
     if (asked && !out.length) out.push({trouble: false, says: 'Every ' + (name ? name + ' ' : '') + 'site answered ' + here + ' and was up to date' + (sum && sum.checks ? ', and GitHub\u2019s record shows no trouble' : '') + '.'});
-    if (asked) for (const [c, h] of Object.entries(now.newest || {})) if (!name || CHAINS[c] === name) out.push({trouble: false, says: 'The newest ' + CHAINS[c] + ' block, by at least two sites: ' + fmt(h) + '.'});
+    if (asked) for (const [c, h] of Object.entries(now.newest || {})) if (!name || CHAINS[c] === name) { const k = now.results.filter(r => CHAINS[r.chain] === CHAINS[c] && typeof r.says === 'number').length; out.push({trouble: k < 2, says: 'The newest ' + CHAINS[c] + ' block, ' + (k >= 2 ? 'by at least two sites' : 'by the one site that answered (not checked against a second)') + ': ' + fmt(h) + '.'}); }
     return out;
   }
 

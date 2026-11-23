@@ -91,6 +91,8 @@
       if (tip <= s.tip) return {state: tip < s.tip ? {tip, hash: await hashAt(io, tip)} : s, events: ev};
       const first = s.tip + 1, from = Math.max(first, tip - MAX_NEW + 1), told = []; for (let h = from; h <= tip; h++) told.push(h);   // (only the newest few are fetched, however far back the token says it was)
       const skipped = from - first;
+      // (23 Nov 2026) blocks skipped are said in an alert of their own, never only counted
+      if (skipped) E(fmt(skipped) + ' older block' + (skipped === 1 ? '' : 's') + ' (' + fmt(first) + (skipped > 1 ? ' to ' + fmt(from - 1) : '') + ') passed since the last look and ' + (skipped === 1 ? 'was' : 'were') + ' not looked at: each look reads only the newest ' + MAX_NEW + ' blocks', {facts: {from: first, to: from - 1, skipped}, notLookedAt: true});
       let lastHash = s.hash;
       for (const h of told) {
         const B = await blockFacts(io, h); lastHash = B.hash;
@@ -152,16 +154,20 @@
     if (w.what === 'address') {
       const n = await addrCount(io, w.value);
       if (n > s.count) {
-        const txs = (await io.mpJson('/api/address/' + w.value + '/txs')).j.slice(0, Math.min(10, n - s.count));
+        const got = await io.mpJson('/api/address/' + w.value + '/txs'), txs = got.j.slice(0, Math.min(10, n - s.count));
+        if (n - s.count > 10) E((n - s.count) + ' new transactions for this address since the last look: the newest 10 are told about below', {facts: {address: w.value, newTransactions: n - s.count, told: 10}});
         for (const t of txs) {
+          // (23 Nov 2026) each one asked of a second, separate site: is the transaction there, and does it move the same amount for this address?
+          let two = null, site2 = null; if (io.mp2Json) try { const y = await io.mp2Json('/api/tx/' + t.txid, got.site); site2 = y.site; let n2 = 0; for (const o of y.j.vout || []) if (o.scriptpubkey_address === w.value) n2 += o.value; for (const i of y.j.vin || []) if (i.prevout && i.prevout.scriptpubkey_address === w.value) n2 -= i.prevout.value; two = n2; } catch (e) {}
           let net = 0; for (const o of t.vout || []) if (o.scriptpubkey_address === w.value) net += o.value; for (const i of t.vin || []) if (i.prevout && i.prevout.scriptpubkey_address === w.value) net -= i.prevout.value;
           const conf = !!(t.status && t.status.confirmed);
           E((net >= 0 ? 'Address got ' : 'Address sent ') + fmt(Math.abs(net)) + ' sats' + (conf ? ' in block ' + fmt(t.status.block_height) : ' (waiting in the mempool)'),
             {facts: {address: w.value, txid: t.txid, sats: net, confirmed: conf, block: conf ? t.status.block_height : null},
+              checked: {transaction: {against: site2, agrees: two == null ? null : two === net, what: two == null ? 'not asked of a second site this time (none answered)' : 'the same transaction on ' + site2 + (two === net ? ' moves the same amount for this address' : ' moves a different amount (' + fmt(two) + ' sats)')}},
               links: {mempool: 'https://mempool.space/tx/' + t.txid, blockManifest: conf ? MANIFEST + '?block=' + t.status.block_height : null, agentBlockhall: GAME + ' (its tablet finds addresses too)'}});
         }
       }
-      return {state: {count: n}, events: ev};
+      return {state: {count: Math.max(n, s.count)}, events: ev};   // (a copy that is behind never makes old transactions look new again)
     }
     return {state: s, events: ev};
   }

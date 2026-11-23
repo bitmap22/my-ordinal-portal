@@ -97,6 +97,7 @@
   <h1>Doge Watch</h1>
   <div class="sub">Know the moment something happens on Dogecoin, every alert checked</div>
   <p class="lead">Pick what to watch. While this page is open, it looks every 30 seconds and tells you the moment it happens, with a sound or a pop-up if you like. Every alert is checked: a new block against its own header and a second site, a move or a payment on two sites. From each one, walk into the block in <a href="doge-cube.html">Doge Cube</a>, see every transaction with the <a href="doge-block-manifest.html">Doge Block Manifest</a>, or prove a Doginal's past with the <a href="doge-provenance-check.html">Doge Provenance Check</a>. The Bitcoin twin is the <a href="watch.html">Watch</a>.</p>
+  <p class="lead"><b>Limits, up front:</b> each look reads the newest 6 blocks at most (a Dogecoin block comes about once a minute); if more have passed, an alert names the blocks that were not looked at. For an address, the second site (bitcore.io) lists only its newest 200 coins: a change it can't trace is still told, as a change it could not trace. A site that does not answer is said, never taken as agreeing.</p>
 
   <div class="panel">
     <h2>Add a watch</h2>
@@ -150,7 +151,7 @@
 
 <script src="agent-blockhall-mcp/server/doge-manifest.js?v=20261123f"></script>
 <script src="agent-blockhall-mcp/server/doge-provenance.js"></script>
-<script src="agent-blockhall-mcp/server/doge-watch.js"></script>
+<script src="agent-blockhall-mcp/server/doge-watch.js?v=20261123g"></script>
 <script>
 'use strict';
 (() => {
@@ -356,10 +357,12 @@
   /* ---------- start: the watches kept from last time, a watch from the link, then a look every 30 seconds ---------- */
   load(); render(); choose('block');
   if (W.length) say('Watching ' + W.length + ' thing' + (W.length === 1 ? '' : 's') + ' from last time: looking now for anything that happened while the page was closed.');
-  const q = new URLSearchParams(location.search), qw = q.get('watch');
+  const q = new URLSearchParams(location.search), qw = q.get('watch'); let badKind = null;
   (async () => {
     // (21 Nov 2026) a link only fills the form in: nothing is watched until the person presses Start watching
-    if (qw && DW.WHAT.includes(qw)) { choose(qw); $('v').value = String(q.get('value') || (qw === 'kind' ? 'DRC-20' : '')).slice(0, 200); say('A link filled this in. Nothing is watched yet: press Start watching to add it.'); try { history.replaceState(null, '', location.pathname); } catch (e) {} }
+    if (qw && DW.WHAT.includes(qw)) { choose(qw); $('v').value = String(q.get('value') || (qw === 'kind' ? 'DRC-20' : '')).slice(0, 200);
+      // (23 Nov 2026) a kind is picked from the list, which Start watching reads: set it there too (a kind not in the list is said, not swapped for another)
+      if (qw === 'kind' && q.get('value')) { const want = String(q.get('value')).toLowerCase(), o = [...$('k').options].find(x => x.value.toLowerCase() === want || x.textContent.toLowerCase() === want); if (o) $('k').value = o.value; else badKind = String(q.get('value')).slice(0, 60); } say(badKind ? 'The link asked to watch "' + badKind + '", which is not one of the kinds this page can watch: pick one from the list, then press Start watching.' : 'A link filled this in. Nothing is watched yet: press Start watching to add it.'); try { history.replaceState(null, '', location.pathname); } catch (e) {} }
     if (W.length) await look();
     nextAt = Date.now() + EVERY;
     setInterval(() => { if (W.length && Date.now() >= nextAt) look(); }, 1000);
