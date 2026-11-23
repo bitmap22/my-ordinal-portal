@@ -41,14 +41,26 @@
   .sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 10px 0 14px; }
   .pick { background: #1a1408; border: 1px solid var(--amber); border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; }
   .pick b { color: var(--hot); }
-  .chart { position: relative; background: var(--wall); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 4px; margin: 0 0 14px; }
-  #hsvg svg { width: 100%; height: auto; display: block; }
-  .legend { display: flex; flex-wrap: wrap; gap: 16px; font: 13px var(--sign); color: var(--muted); margin: 2px 6px 8px; }
-  .legend { align-items: center; } .legend b { color: var(--text); font-weight: 600; margin-right: 2px; }
-  .legend span { display: inline-flex; align-items: center; gap: 6px; } .legend svg { width: 16px; height: 16px; flex: none; }
-  .addr td:first-child svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; }
+  .bh { font-size: 16px; margin: 6px 0 8px; }
+  .share { display: flex; height: 40px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); margin: 0 0 6px; }
+  .seg { display: flex; align-items: center; justify-content: center; padding: 0 10px; font: 700 15px var(--sign); color: #0a0f1c; white-space: nowrap; min-width: 30px; overflow: hidden; }
+  .board { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
+  .tile { position: relative; aspect-ratio: 1 / 1; border-radius: 10px; background: var(--wall); border: 2px solid var(--c); padding: 7px 6px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; cursor: pointer; color: var(--text); text-align: left; font: inherit; box-shadow: inset 0 0 16px color-mix(in srgb, var(--c) 14%, transparent); }
+  .tile:focus-visible, .tile.open { outline: 2px solid #fff; outline-offset: 2px; }
+  .tile .tn { font: 700 20px/1 var(--sign); } .tile .tn small { display: block; font: 600 10px var(--sign); color: var(--muted); margin-bottom: 3px; }
+  .tile .tf { font: 12px var(--sign); color: var(--muted); white-space: nowrap; }
+  .tile.race { box-shadow: 0 0 0 3px var(--night), 0 0 0 5px #fff6, inset 0 0 20px color-mix(in srgb, var(--c) 25%, transparent); }
+  .badge { position: absolute; top: -9px; right: -7px; font: 700 11px var(--sign); background: #fff; color: #0a0f1c; border-radius: 99px; padding: 1px 6px; }
+  .badge.late { background: var(--night); color: var(--text); border: 1.5px solid var(--text); }
+  .key { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--muted); font-size: 13px; margin: 14px 0 0; } .key span { display: inline-flex; gap: 8px; align-items: center; }
+  .mini { width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--amber); background: var(--wall); display: inline-block; flex: none; } .mini.race { box-shadow: 0 0 0 2px var(--night), 0 0 0 3.5px #fff6; }
+  .kb { font: 700 11px var(--sign); background: #fff; color: #0a0f1c; border-radius: 99px; padding: 1px 6px; } .kb.late { background: none; color: var(--text); border: 1.5px solid var(--text); }
+  .detail { margin: 16px 0 18px; background: var(--wall); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; } .detail h3 { margin: 0 0 6px; font: 600 18px var(--sign); }
+  .drow { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font: 13px var(--sign); }
+  .drow .da { color: var(--cyan); } .drow .df { font-weight: 700; } .dw.won { color: #9ff0c4; } .dw.lost { color: #ff9cc4; }
+  .sw { display: inline-block; width: 13px; height: 13px; border-radius: 3px; vertical-align: -2px; margin-right: 7px; flex: none; }
+  @media (max-width: 600px) { .board { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; } .drow { grid-template-columns: 22px 1fr auto; } .drow .dw { grid-column: 2 / 4; } }
   .more { margin: 6px 0 14px; } table.addr { margin: 0 0 22px; }
-  .tip { position: absolute; pointer-events: none; background: #070b15; border: 1px solid var(--amber); border-radius: 8px; padding: 7px 9px; font: 12px/1.5 var(--sign); color: var(--text); display: none; max-width: 300px; z-index: 3; }
   .who { margin: 0 0 14px; } .who li { margin: 3px 0; font: 13px var(--sign); } .who a { color: var(--cyan); }
   button { font: 600 14px var(--sign); color: var(--night); background: var(--amber); border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
 </style>
@@ -326,36 +338,28 @@
         '<div class="stat"><b>' + sameHigher + ' of ' + same.length + '</b><span>races inside one block won by the higher fee</span></div></div>' +
         '<div class="pick"><b>How to win the next number</b>, going by these 50 blocks: have the claim waiting <b>before</b> that block is found, and paying more than any other claim waiting for the same number (the live list above shows them). ' +
         inOwn + ' of ' + R.length + ' numbers were won by a claim already in the number\'s own block, mostly at the lowest fee' + (fees ? ' (the fee to get into the next block right now: ' + fees.fastestFee + ' sat/vB, mempool.space)' : '') + '. Paying more after the block is found did not help: every such claim lost. An estimate from these 50 blocks only: nothing is certain until it is mined.</div>' +
-        '<div class="chart" id="hchart"><div class="legend" id="hleg"></div><div class="legend" id="hwho"></div><div id="hsvg"></div><div class="tip" id="htip"></div></div>' +
+        '<h3 class="bh">Who won each number</h3><div class="share" id="hshare"></div><p class="note" id="hfake"></p><div class="board" id="hboard"></div>' +
+        '<div class="key"><span><i class="mini"></i>a number: its edge is who won it (their colour below), big: its last 3 digits, under it: the fee the winner paid (sat/vB)</span><span><i class="mini race"></i><b class="kb">3</b>a race: claims for it in the same block (how many)</span><span><b class="kb late">late</b>someone claimed it after its block was found, and lost</span><span>Tap a number to see every claim for it.</span></div><div class="detail" id="hdetail"></div>' +
         '<p class="note">Every address that took part in these 50 blocks (the address the new inscription landed in; it may be a person, a bot or a service claiming for others: the chain alone can\'t say):</p><div id="haddr"></div>' +
         (R.length ? '<table><tr><th>number</th><th>winner paid</th><th>won in</th><th>went to</th><th>claims that lost (fee)</th></tr>' + R.slice().sort((x, y) => y.n - x.n).map(r => '<tr><td>' + r.n + '.bitmap</td><td>' + (r.win.rate != null ? r.win.rate.toFixed(1) : '–') + ' sat/vB</td><td>block ' + fmt(r.win.block) + (r.after ? ' (' + r.after + ' after)' : ' (its own)') + '</td><td>' + (r.win.to ? addr(r.win.to) : '–') + '</td><td>' +
           (r.claims.length > 1 ? r.claims.slice(1).map(c => (c.rate != null ? c.rate.toFixed(1) : '–') + (c.block === r.win.block ? ' (same block)' : ' (block ' + fmt(c.block) + ', too late)')).join(', ') : 'no race') + '</td></tr>').join('') + '</table>' : '');
-      const people = addressList(R); drawChart(R, from, top, fees && fees.fastestFee, people);
+      const people = addressList(R); drawBoard(R, people);
       log('Read the last 50 blocks: ' + R.length + ' numbers claimed, ' + lost.length + ' claims lost.');
     } catch (e) { out.innerHTML = '<div class="empty">Could not finish: ' + esc(e.message) + '. Try again in a minute.</div>'; }
     $('hist').disabled = false;
   };
 
-  /* ---------- who took part: every address, busiest first; the busiest 6 get their own shape on the chart ---------- */
-  const SHAPES = ['diamond', 'circle', 'star', 'plus', 'square', 'tri'];
-  function shapePath(kind, cx, cy, r) {
-    if (kind === 'circle') return 'M' + (cx - r) + ' ' + cy + 'a' + r + ' ' + r + ' 0 1 0 ' + 2 * r + ' 0a' + r + ' ' + r + ' 0 1 0 ' + -2 * r + ' 0Z';
-    if (kind === 'diamond') return 'M' + cx + ' ' + (cy - r * 1.25) + 'L' + (cx + r * 1.25) + ' ' + cy + 'L' + cx + ' ' + (cy + r * 1.25) + 'L' + (cx - r * 1.25) + ' ' + cy + 'Z';
-    if (kind === 'square') return 'M' + (cx - r * .9) + ' ' + (cy - r * .9) + 'h' + r * 1.8 + 'v' + r * 1.8 + 'h' + -r * 1.8 + 'Z';
-    if (kind === 'tri') return 'M' + cx + ' ' + (cy - r * 1.2) + 'L' + (cx + r * 1.15) + ' ' + (cy + r * .85) + 'L' + (cx - r * 1.15) + ' ' + (cy + r * .85) + 'Z';
-    if (kind === 'plus') { const t = r * .42; return 'M' + (cx - t) + ' ' + (cy - r * 1.15) + 'h' + 2 * t + 'v' + (r * 1.15 - t) + 'h' + (r * 1.15 - t) + 'v' + 2 * t + 'h' + -(r * 1.15 - t) + 'v' + (r * 1.15 - t) + 'h' + -2 * t + 'v' + -(r * 1.15 - t) + 'h' + -(r * 1.15 - t) + 'v' + -2 * t + 'h' + (r * 1.15 - t) + 'Z'; }
-    if (kind === 'star') { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * .55 : r * 1.35; d += (i ? 'L' : 'M') + (cx + q * Math.cos(a)).toFixed(2) + ' ' + (cy + q * Math.sin(a)).toFixed(2); } return d + 'Z'; }
-    return 'M' + (cx - r * .7) + ' ' + cy + 'a' + r * .7 + ' ' + r * .7 + ' 0 1 0 ' + r * 1.4 + ' 0a' + r * .7 + ' ' + r * .7 + ' 0 1 0 ' + -r * 1.4 + ' 0Z';   // (other: a small dot)
-  }
-  const OUT = {win: {fill: '#cc8015', stroke: '#cc8015', dash: ''}, same: {fill: 'none', stroke: '#d95790', dash: ''}, late: {fill: 'none', stroke: '#2fa3c4', dash: '3 2'}};
-  const icon = (shape, o) => '<svg viewBox="0 0 16 16"><path d="' + shapePath(shape, 8, 8, 5) + '" fill="' + (o.fill === 'none' ? '#111a2c' : o.fill) + '" stroke="' + o.stroke + '" stroke-width="1.8"' + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : '') + '/></svg>';
+  /* ---------- who took part: every address, most wins first; the first 6 get their own colour, the rest grey ---------- */
+  const COL = ['#cc8015', '#2fa3c4', '#d95790', '#8a6ff0', '#3f9e5e', '#b06ad9'], OTHER = '#7b879c';   // (checked for colour-blind readers on this dark page)
+  const short = a => a === 'unknown' ? 'unknown' : a.slice(0, 9) + '…' + a.slice(-6);
+  const swatch = c => '<i class="sw" style="background:' + c + '"></i>';
   function addressList(R) {
     const m = new Map();
     R.forEach(r => r.claims.forEach((c, i) => { const a = c.to || 'unknown'; if (!m.has(a)) m.set(a, {address: a, won: 0, lost: 0}); m.get(a)[i === 0 ? 'won' : 'lost']++; }));
     const list = [...m.values()].sort((x, y) => y.won - x.won || (y.won + y.lost) - (x.won + x.lost));
-    list.forEach((p, i) => { p.shape = i < SHAPES.length && p.address !== 'unknown' ? SHAPES[i] : 'other'; });
-    const row = p => '<tr><td>' + icon(p.shape, {fill: '#cc8015', stroke: '#cc8015'}) + (p.address === 'unknown' ? 'unknown' : '<a href="https://mempool.space/address/' + p.address + '" target="_blank" rel="noopener noreferrer">' + p.address.slice(0, 14) + '…' + p.address.slice(-6) + '</a>') + (p.shape === 'other' ? ' <span class="note">(other)</span>' : '') + '</td><td>' + p.won + '</td><td>' + p.lost + '</td><td>' + (p.won + p.lost) + '</td></tr>';
-    const head = '<table class="addr"><tr><th>address (its shape on the chart)</th><th>won</th><th>lost</th><th>claims</th></tr>';
+    let k = 0; list.forEach(p => { p.colour = p.address !== 'unknown' && k < COL.length ? COL[k++] : OTHER; });
+    const row = p => '<tr><td>' + swatch(p.colour) + (p.address === 'unknown' ? 'unknown' : '<a href="https://mempool.space/address/' + p.address + '" target="_blank" rel="noopener noreferrer">' + short(p.address) + '</a>') + (p.colour === OTHER ? ' <span class="note">(grey: not in the first 6)</span>' : '') + '</td><td>' + p.won + '</td><td>' + p.lost + '</td><td>' + (p.won + p.lost) + '</td></tr>';
+    const head = '<table class="addr"><tr><th>address (its colour on the board)</th><th>won</th><th>lost</th><th>claims</th></tr>';
     const box = $('haddr');
     box.innerHTML = '<p class="note">' + list.length + ' address' + (list.length === 1 ? '' : 'es') + ' took part.</p>' + head + list.slice(0, 10).map(row).join('') + '</table>' +
       (list.length > 10 ? '<p class="more"><button id="hall">Show all ' + list.length + '</button></p>' : '');
@@ -363,45 +367,30 @@
     return list;
   }
 
-  /* ---------- the chart: one mark per claim; along: its number, up: its fee (log scale). Colour and fill: what happened.
-     Shape: who it went to. Claims for the same number are joined by a line, so each race stands out. ---------- */
-  function drawChart(R, from, top, nextFee, people) {
-    const W = 920, H = 380, L = 58, Rm = 18, T = 26, B = 46;
-    const shapeOf = new Map(people.map(p => [p.address, p.shape]));
-    const pts = R.flatMap(r => r.claims.map((c, i) => ({n: r.n, c, kind: i === 0 ? 'win' : c.block === r.win.block ? 'same' : 'late', shape: shapeOf.get(c.to || 'unknown') || 'other'}))).filter(p => p.c.rate != null);
-    const maxR = Math.max(2, ...pts.map(p => p.c.rate), nextFee || 0), lo = Math.log(0.75), hi = Math.log(maxR * 1.5);
-    const x = n => L + (n - from + 0.5) / (top - from + 1) * (W - L - Rm), y = v => T + (1 - (Math.log(Math.max(v, 0.75)) - lo) / (hi - lo)) * (H - T - B);
-    let g = '';
-    for (const v of [1, 2, 5, 10, 20, 50, 100, 200, 500]) if (Math.log(v) <= hi) g += '<line x1="' + L + '" x2="' + (W - Rm) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#1d2840"/><text x="' + (L - 10) + '" y="' + (y(v) + 4) + '" fill="#9aa8be" font-size="13" text-anchor="end">' + v + '</text>';
-    for (let n = from; n <= top; n++) if ((n - from) % 5 === 0) g += '<line x1="' + x(n) + '" x2="' + x(n) + '" y1="' + (H - B) + '" y2="' + (H - B + ((n - from) % 10 ? 4 : 7)) + '" stroke="#3a4a6a"/>' + ((n - from) % 10 ? '' : '<text x="' + x(n) + '" y="' + (H - B + 22) + '" fill="#9aa8be" font-size="13" text-anchor="middle">' + fmt(n) + '</text>');
-    g += '<line x1="' + L + '" x2="' + (W - Rm) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="#3a4a6a"/>';
-    g += '<text x="' + ((L + W) / 2) + '" y="' + (H - 4) + '" fill="#9aa8be" font-size="13" text-anchor="middle">bitmap number</text><text x="16" y="' + ((T + H - B) / 2) + '" fill="#9aa8be" font-size="13" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')">fee paid (sat/vB)</text>';
-    if (nextFee) g += '<line x1="' + L + '" x2="' + (W - Rm) + '" y1="' + y(nextFee) + '" y2="' + y(nextFee) + '" stroke="#6b7a96" stroke-dasharray="2 5"/>';
-    // races: a line joining every claim of the same number, and its number above the highest one
-    for (const r of R) if (r.claims.length > 1) {
-      const rates = r.claims.map(c => c.rate).filter(v => v != null); if (rates.length < 2) continue;
-      const y1 = y(Math.max(...rates)), y2 = y(Math.min(...rates));
-      g += '<line x1="' + x(r.n) + '" x2="' + x(r.n) + '" y1="' + y1 + '" y2="' + y2 + '" stroke="#e0629a" stroke-opacity=".45" stroke-width="2"/>';
-      g += '<text x="' + x(r.n) + '" y="' + (y1 - 13) + '" fill="#eef2f8" font-size="12" text-anchor="middle">' + fmt(r.n) + '</text>';
-    }
-    // the marks: the races' marks last, so they sit on top
-    const order = pts.map((p, i) => i).sort((a, b) => (pts[a].kind === 'win' && R.find(r => r.n === pts[a].n).claims.length === 1 ? 0 : 1) - (pts[b].kind === 'win' && R.find(r => r.n === pts[b].n).claims.length === 1 ? 0 : 1));
-    for (const i of order) {
-      const p = pts[i], o = OUT[p.kind], cx = x(p.n), cy = y(p.c.rate);
-      g += '<path d="' + shapePath(p.shape, cx, cy, 6) + '" fill="' + (o.fill === 'none' ? '#111a2c' : o.fill) + '" stroke="' + (o.fill === 'none' ? o.stroke : '#111a2c') + '" stroke-width="' + (o.fill === 'none' ? 2.2 : 1.5) + '"' + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : '') + '/>';
-      g += '<circle cx="' + cx + '" cy="' + cy + '" r="12" fill="transparent" data-i="' + i + '" style="cursor:pointer"/>';
-    }
-    $('hsvg').innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Every bitmap claim of the last 50 blocks by number and fee paid; the table below has the same data.">' + g + '</svg>';
-    $('hleg').innerHTML = '<b>What happened:</b><span>' + icon('circle', OUT.win) + 'won (the real bitmap)</span><span>' + icon('circle', OUT.same) + 'lost in the same block</span><span>' + icon('circle', OUT.late) + 'lost: sent after the block was found</span>' + (nextFee ? '<span><svg viewBox="0 0 16 16"><line x1="1" x2="15" y1="8" y2="8" stroke="#6b7a96" stroke-width="1.5" stroke-dasharray="2 3"/></svg>next-block fee now (' + nextFee + ')</span>' : '');
-    $('hwho').innerHTML = '<b>Who:</b>' + people.filter(p => p.shape !== 'other').map(p => '<span>' + icon(p.shape, {fill: '#9aa8be', stroke: '#9aa8be'}) + p.address.slice(0, 9) + '…' + p.address.slice(-4) + ' (' + p.won + ' won)</span>').join('') + (people.some(p => p.shape === 'other') ? '<span>' + icon('other', {fill: '#9aa8be', stroke: '#9aa8be'}) + 'other</span>' : '');
-    const tipEl = $('htip'), box = $('hchart');
-    $('hsvg').querySelectorAll('[data-i]').forEach(el => {
-      const p = pts[+el.getAttribute('data-i')];
-      el.addEventListener('mouseenter', () => { tipEl.innerHTML = '<b>' + p.n + '.bitmap</b><br>' + (p.kind === 'win' ? 'won' : p.kind === 'same' ? 'lost in the same block' : 'lost: sent after the block was found') + '<br>' + p.c.rate.toFixed(1) + ' sat/vB, mined in block ' + fmt(p.c.block) + '<br>went to ' + (p.c.to ? p.c.to.slice(0, 14) + '…' + p.c.to.slice(-6) : '–') + '<br>click to open it on mempool.space'; tipEl.style.display = 'block'; });
-      el.addEventListener('mousemove', ev => { const r = box.getBoundingClientRect(); tipEl.style.left = Math.max(4, Math.min(r.width - 310, ev.clientX - r.left + 14)) + 'px'; tipEl.style.top = (ev.clientY - r.top + 14) + 'px'; });
-      el.addEventListener('mouseleave', () => { tipEl.style.display = 'none'; });
-      el.addEventListener('click', () => window.open('https://mempool.space/tx/' + p.c.txid, '_blank', 'noopener'));
-    });
+  /* ---------- the board: one tile per number. Its edge: who won it (their colour). Big: the number's last 3 digits.
+     Under it: the fee the winner paid. A badge: a race in the same block (how many), or "late" (claimed after its block, and lost).
+     Tap a tile: every claim for that number. ---------- */
+  function drawBoard(R, people) {
+    const colOf = new Map(people.map(p => [p.address, p.colour])), col = a => colOf.get(a || 'unknown') || OTHER;
+    const total = R.reduce((t, r) => t + r.claims.length, 0), fakes = total - R.length;
+    const winners = people.filter(p => p.won);
+    $('hshare').innerHTML = winners.map(p => '<div class="seg" title="' + esc(p.address) + ': won ' + p.won + ' of ' + R.length + '" style="flex:' + p.won + ';background:' + p.colour + '">' + (p.won / R.length > 0.3 ? short(p.address) + ' · ' : '') + p.won + '</div>').join('');
+    $('hfake').textContent = fakes + ' fake bitmap' + (fakes === 1 ? '' : 's') + ': ' + fakes + ' of ' + total + ' claims came after the first one for their number, so they are copies, not bitmaps.';
+    const B = R.slice().sort((a, b) => a.n - b.n);
+    $('hboard').innerHTML = B.map(r => {
+      const w = r.win, same = r.claims.filter(c => c.block === w.block).length, late = r.claims.some(c => c.block > w.block), n = String(r.n);
+      return '<button type="button" class="tile' + (same > 1 ? ' race' : '') + '" style="--c:' + col(w.to) + '" data-n="' + r.n + '" aria-label="' + r.n + '.bitmap, won by ' + esc(short(w.to || 'unknown')) + '">' +
+        (same > 1 ? '<span class="badge">' + same + '</span>' : late ? '<span class="badge late">late</span>' : '') +
+        '<span class="tn"><small>' + n.slice(0, -3) + ',</small>' + n.slice(-3) + '</span><span class="tf">' + (w.rate != null ? +w.rate.toFixed(1) : '–') + '</span></button>';
+    }).join('');
+    const show = n => {
+      const r = R.find(x => x.n === n), w = r.win;
+      [...$('hboard').children].forEach(t => t.classList.toggle('open', +t.dataset.n === n));
+      $('hdetail').innerHTML = '<h3>' + fmt(n) + '.bitmap</h3>' + r.claims.map((c, i) => '<div class="drow">' + swatch(col(c.to)) + '<a class="da" href="https://mempool.space/tx/' + c.txid + '" target="_blank" rel="noopener noreferrer">' + esc(short(c.to || 'unknown')) + '</a><span class="df">' + (c.rate != null ? c.rate.toFixed(1) : '–') + ' sat/vB</span><span class="dw ' + (i ? 'lost' : 'won') + '">' +
+        (i ? 'lost: ' + (c.block === w.block ? 'same block' : 'mined in ' + fmt(c.block) + ', too late') : 'won, in block ' + fmt(c.block)) + '</span></div>').join('');
+    };
+    $('hboard').onclick = e => { const t = e.target.closest('.tile'); if (t) show(+t.dataset.n); };
+    const first = B.find(r => r.claims.length > 1) || B[0]; if (first) show(first.n);
   }
 
   /* ---------- for agents ---------- */
