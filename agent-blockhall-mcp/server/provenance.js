@@ -305,5 +305,29 @@
   }
 
 
-  return {VERSION, sha256, hex, fromHex, parseTx, envelopes, idFromField, stepBack, buildProvenance, resolve, gather};
+  /* (23 Nov 2026) more sources, at the asker's own wait: the inscription's record on every ord site (its number, sat, block, file type and
+     holder), and the block its transaction is in on every block explorer we can read. I = the Provenance Check's inscription. get(url) -> text.
+     Gives {ord[{site, agrees, differs[]}], block[{site, says, agrees}]} */
+  const MORE_ORD = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+  const MORE_TXB = [
+    ['blockstream.info', t => 'https://blockstream.info/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
+    ['mempool.space', t => 'https://mempool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
+    ['blockchain.com', t => 'https://blockchain.info/rawtx/' + t + '?cors=true', j => j.block_height != null ? j.block_height : null],
+    ['bitcore.io (BitPay)', t => 'https://api.bitcore.io/api/BTC/mainnet/tx/' + t, j => j.blockHeight > 0 ? j.blockHeight : null],
+    ['blockcypher.com', t => 'https://api.blockcypher.com/v1/btc/main/txs/' + t + '?limit=1', j => j.block_height > 0 ? j.block_height : null]];
+  async function moreSources(I, get) {
+    const base = v => String(v || '').split(';')[0].trim().toLowerCase(), txid = String(I.id).slice(0, 64);
+    const ord = await Promise.all(MORE_ORD.map(async b => { const site = b.replace('https://', '');
+      try { const j = JSON.parse(await get(b + '/r/inscription/' + I.id)), d = [];
+        if (j.number !== I.number) d.push('number ' + j.number); if (j.height !== I.block) d.push('block ' + j.height);
+        if (j.sat != null && I.sat != null && String(j.sat) !== String(I.sat)) d.push('sat ' + j.sat);
+        if (base(j.content_type) !== base(I.contentType) && I.contentType !== 'not a standard type') d.push('file type ' + j.content_type);
+        if ((j.address || null) !== (I.holder || null)) d.push('holder ' + j.address);
+        return {site, agrees: !d.length, differs: d, gaveSat: j.sat != null}; }
+      catch (e) { return {site, agrees: null, differs: [], error: /404/.test(String(e)) ? 'it has no such inscription' : 'no answer'}; } }));
+    const block = await Promise.all(MORE_TXB.map(async ([site, url, pick]) => { try { const v = pick(JSON.parse(await get(url(txid)))); return {site, says: v, agrees: v == null ? null : v === I.block}; } catch (e) { return {site, says: null, agrees: null}; } }));
+    return {ord, block};
+  }
+
+  return {VERSION, sha256, hex, fromHex, parseTx, envelopes, idFromField, stepBack, buildProvenance, resolve, gather, moreSources};
 });
