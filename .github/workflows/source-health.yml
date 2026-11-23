@@ -51,7 +51,9 @@ jobs:
         if: steps.due.outputs.go == 'true'
         run: |
           mkdir -p health
-          if git fetch -q --depth 1 origin source-health; then git show FETCH_HEAD:week.json > health/week.json || rm -f health/week.json; fi
+          # (23 Nov 2026) if the branch is there but can't be read, stop: saving now would start the record again and wipe it
+          if git fetch -q --depth 1 origin source-health; then git show FETCH_HEAD:week.json > health/week.json || { echo "Couldn't read last week's record, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }
+          else h=$(git ls-remote --heads origin source-health) || { echo "Couldn't read last week's record, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }; [ -z "$h" ] || { echo "Couldn't read last week's record, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }; fi
       - name: Ask each site
         if: steps.due.outputs.go == 'true'
         run: node .github/source-health/check.js health

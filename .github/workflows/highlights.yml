@@ -50,7 +50,9 @@ jobs:
         if: steps.due.outputs.go == 'true'
         run: |
           mkdir -p hl
-          if git fetch -q --depth 1 origin highlights; then git show FETCH_HEAD:highlights.json > hl/highlights.json || rm -f hl/highlights.json; fi
+          # (23 Nov 2026) if the branch is there but can't be read, stop: saving now would start the record again and wipe it
+          if git fetch -q --depth 1 origin highlights; then git show FETCH_HEAD:highlights.json > hl/highlights.json || { echo "Couldn't read the last facts, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }
+          else h=$(git ls-remote --heads origin highlights) || { echo "Couldn't read the last facts, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }; [ -z "$h" ] || { echo "Couldn't read the last facts, so nothing is saved this time (saving now would start the record again and lose it). The keeper tries again within the hour."; exit 1; }; fi
       - name: Find today's facts
         if: steps.due.outputs.go == 'true'
         run: node .github/highlights/build-highlights.js hl
