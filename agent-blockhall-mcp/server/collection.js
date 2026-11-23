@@ -87,9 +87,12 @@
         run.secondSite = run.secondSite || x.site;
         const before = S.size; for (const id of (x.j && x.j.ids) || []) S.add(id);
         say('second', S.size);
-        if (!x.j || !x.j.more || p > 2000 || S.size === before || Date.now() - t1 > 180000) break;
+        if (!x.j || !x.j.more) { run.secondDone = true; break; }
+        // (23 Nov 2026) stopped before the end (too many pages, a page with nothing new, or 3 minutes): the list is not whole, so a child
+        // missing from it is "not checked", not "not listed"
+        if (p > 2000 || S.size === before || Date.now() - t1 > 180000) { run.secondPartial = true; break; }
       }
-      run.second = S; run.secondDone = true;
+      run.second = S;
     } catch (e) { run.secondError = String(e && e.message || e); say('second', false); }
     // where the parent sits now: the trail starts there
     const sp = String(P.satpoint || '').split(':');
@@ -163,14 +166,17 @@
     const T = run.trail, gen = c.id.slice(0, 64), idx = +c.id.split('i').pop();
     const J = run.txs.get(gen), have = J && !J.then;
     const onTrail = trailSet ? trailSet.has(gen) : T.moves.some(m => m.txid === gen);
-    const listedTwice = run.secondDone ? run.second.has(c.id) : null;
+    const listedTwice = run.secondDone ? run.second.has(c.id) : run.second && run.second.has(c.id) ? true : null;
     const env = have ? J.made.find(e => e.index === idx) : null;
     const namesParent = have ? !!(env && env.parents.includes(run.pid)) : null;
     const parentSpent = onTrail ? true : T.reached ? false : null;
-    const proven = namesParent === true && parentSpent === true ? true : namesParent === false || parentSpent === false ? false : null;
+    // (23 Nov 2026) proven only when the transactions themselves check out: each one's bytes are that transaction, and each move spends the one before
+    const bytesOk = have ? J.hashOk === true && (trailSet ? T.moves : T.moves).every(m => m.hashOk) && !T.linkBad : null;
+    const proven = namesParent === true && parentSpent === true ? (bytesOk ? true : null) : namesParent === false || parentSpent === false ? false : null;
     const why = proven === true ? 'it names the parent, and the transaction that made it spent the parent'
       : proven === false ? [namesParent === false ? (have && !env ? 'its transaction has no inscription ' + idx : 'its own transaction does not name the parent') : null,
         parentSpent === false ? 'the transaction that made it is not one of the parent\'s moves (the whole trail was followed)' : null].filter(Boolean).join('; ')
+      : namesParent === true && parentSpent === true ? 'not proven: the transactions read did not all check out (a transaction\'s bytes were not that transaction, or a move did not spend the one before)'
       : T.lost ? 'not reached: the parent went to a miner in a fee, and its trail can\'t be followed past that block'
       : T.error ? 'not reached: the trail stopped (' + T.error + ')' : 'not reached yet: the parent\'s trail has not been followed back that far';
     return {id: c.id, number: c.number, block: c.block, time: c.time, proven, checks: {listedTwice, namesParent, parentSpent}, why};

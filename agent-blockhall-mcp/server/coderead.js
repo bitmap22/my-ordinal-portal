@@ -166,6 +166,11 @@
     out.verdict = found.length ? found.map(k => cap(k.says) + (k.whats.length ? ': ' + k.whats.slice(0, 3).join('; ') : '')).join('. ') + '.' : 'None of these were found in its code' + (files.length > 1 ? ' or the code it loads' : '') + '.';
     if (out.keepsThingsInYourBrowser) out.verdict += ' It keeps things in your browser (its own storage, like saved progress): that stays on your computer.';
     if (out.outsideAddresses.length) out.verdict += ' Its code also names ' + out.outsideAddresses.length + ' address' + (out.outsideAddresses.length === 1 ? '' : 'es') + ' outside the chain in all: links, or places it may load from.';
+    // (23 Nov 2026) what was not read, said plainly: "none found" only covers what was read
+    const unreadFiles = files.filter(f => f.error).length, cutFiles = files.filter(f => texts.has(f.id) && texts.get(f.id).length > 600000).length;
+    out.notRead = {files: unreadFiles, pastTheLimits: notRead, cutShort: cutFiles};
+    out.complete = !unreadFiles && !notRead && !cutFiles;
+    if (!out.complete) out.verdict += ' Not everything was read: ' + [unreadFiles ? unreadFiles + ' file' + (unreadFiles === 1 ? '' : 's') + ' could not be read' : '', notRead ? notRead + ' more it loads were past the limits (' + MAX_LOOKED + ' looked at, ' + MAX_LOADED + ' read)' : '', cutFiles ? cutFiles + ' file' + (cutFiles === 1 ? ' is' : 's are') + ' over 600,000 characters and only the start was read' : ''].filter(Boolean).join('; ') + '.';
     out.note = 'Code Read reads code without running it. It can\'t prove code is safe, only say what it found. On ordinals.com, ord\'s own rules let an inscription load only from the chain; other sites may not.';
     return out;
   }

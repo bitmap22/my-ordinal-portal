@@ -131,19 +131,27 @@
     const levels = all.reduce((m, n) => Math.max(m, n.depth), 0), byHow = h => others.filter(n => n.usedBy.some(u => u.how === h)).length;
     const maybeNone = e => /^\/r\/(metadata|parents|children|undelegated-content)$/.test(e.endpoint), epNo = endpoints.filter(e => e.answers === false && !maybeNone(e)), bytes = all.reduce((s, n) => s + (n.bytes || 0), 0);
     const parts = [];
-    if (!others.length) parts.push('it loads no other inscriptions');
+    const rootUnread = root && /could not be read|not read/.test(root.read || '');
+    if (rootUnread) parts.push('its own code could not be read, so what it loads is not known');
+    else if (!others.length) parts.push('it loads no other inscriptions');
     else parts.push('it uses ' + fmt(others.length) + ' other inscription' + (others.length === 1 ? '' : 's') + (levels > 1 ? ' (' + levels + ' levels deep)' : ''));
-    parts.push(missing.length ? fmt(missing.length) + ' of them could not be found' : others.length ? 'every one is on ordinals.com' : null);
+    const unasked = others.filter(n => n.checks.onOrdinals === null), unread = all.filter(n => /could not be read|not read/.test(n.read || ''));
+    parts.push(missing.length ? fmt(missing.length) + ' of them could not be found' : unasked.length ? null : others.length ? 'every one is on ordinals.com' : null);
+    if (unasked.length) parts.push(fmt(unasked.length) + ' could not be looked up (ordinals.com and its back-ups did not answer)');
+    if (unread.length - (rootUnread ? 1 : 0) > 0) parts.push(fmt(unread.length - (rootUnread ? 1 : 0)) + ' could not be read for what they load');
+    if (lim.cut) parts.push(fmt(lim.cut) + ' more were left out (the map stops at ' + fmt(lim.nodeMax) + ' inscriptions and ' + lim.depthMax + ' levels)');
     if (notOn2.length) parts.push(fmt(notOn2.length) + ' did not load on the second ord site');
     const built = all.reduce((s, n) => s + (n.endpoints.content || 0), 0);
     if (built) parts.push('its code builds /content/ paths in ' + fmt(built) + ' place' + (built === 1 ? '' : 's') + ' (what those load is picked when it runs)');
     if (endpoints.length) parts.push(fmt(endpoints.length) + ' /r/ endpoint' + (endpoints.length === 1 ? '' : 's') + (epNo.length ? ' (' + epNo.map(e => e.endpoint).join(', ') + ' not answered)' : endpoints.some(e => e.answers === null) ? ', some not asked' : ', all answered'));
-    parts.push(outside.length ? fmt(new Set(outside.map(o => o.url)).size) + ' address' + (outside.length === 1 ? '' : 'es') + ' outside the chain written in its code' : 'nothing outside the chain');
-    const onChain = !outside.length && !missing.length, rootErr = root && root.error;
+    parts.push(outside.length ? fmt(new Set(outside.map(o => o.url)).size) + ' address' + (outside.length === 1 ? '' : 'es') + ' outside the chain written in its code' : rootUnread ? null : 'nothing outside the chain');
+    const rootErr = root && root.error, notSure = unasked.length || unread.length || lim.cut;
+    // (23 Nov 2026: "all on the chain" only when everything was looked up and read; anything not looked up, not read or left out makes it unknown)
+    const onChain = outside.length || missing.length ? false : notSure ? null : true;
     return {
       check: 'Agent Blockhall Recursion Map ' + VERSION,
       verdict: rootErr ? 'it could not be mapped: ' + rootErr : parts.filter(Boolean).join('; '), mapped: !rootErr,
-      allOnChain: rootErr ? null : onChain, allOnChainNote: onChain ? 'everything it names is on the chain' : outside.length ? 'its code names addresses outside the chain: they may be links, or things it loads; if they load, they can stop working one day' : 'something it uses could not be found',
+      allOnChain: rootErr ? null : onChain, allOnChainNote: onChain ? 'everything it names is on the chain' : onChain === null ? 'not everything it uses could be looked up or read, so this can\'t be said' : outside.length ? 'its code names addresses outside the chain: they may be links, or things it loads; if they load, they can stop working one day' : 'something it uses could not be found',
       root: root ? {id: root.id, number: root.number, block: root.block, time: root.time, contentType: root.contentType, bytes: root.bytes, delegate: root.delegate, read: root.read} : {id: rootId},
       counts: {inscriptions: others.length, loadsByPath: byHow('loads'), namedInCode: byHow('named'), children: byHow('child'), delegates: byHow('delegate'), levels, missing: missing.length,
         notOnSecondSite: notOn2.length, endpoints: endpoints.length, contentPathsBuilt: all.reduce((s, n) => s + (n.endpoints.content || 0), 0), outside: new Set(outside.map(o => o.url)).size, totalBytes: bytes, notMapped: lim.cut},
