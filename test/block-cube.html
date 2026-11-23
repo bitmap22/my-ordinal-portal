@@ -18263,7 +18263,14 @@ window.AgentKit = window.AgentKit || (() => {
           const t = Date.parse(String(date).trim().length === 10 ? String(date).trim() + 'T12:00:00Z' : String(date)); if (!isFinite(t) || t > Date.now() || t < Date.UTC(2010, 6, 18)) return {ok: false, error: 'a past day from 2010-07-18 on, like 2024-04-20'};
           const c = String(currency || 'USD').toUpperCase(); if (!CUR.includes(c)) return {ok: false, error: 'currency: ' + CUR.join(', ')};
           const j = await (await mpFetch('/api/v1/historical-price?currency=' + c + '&timestamp=' + Math.floor(t / 1000), null, 20000)).json(), q = j.prices && j.prices[0];
-          if (!q || typeof q[c] !== 'number') return {ok: false, error: 'no price for that day'}; return {ok: true, oneBitcoin: {[c]: q[c]}, on: new Date(q.time * 1000).toISOString().slice(0, 10), from: 'mempool.space'};
+          if (!q || typeof q[c] !== 'number') return {ok: false, error: 'no price for that day'};
+          // (23 Nov 2026) a past day in USD is checked against two exchanges' own day: the price must lie between that day's low and high there
+          const day = new Date(q.time * 1000).toISOString().slice(0, 10), checks = [];
+          if (c === 'USD') { const d0 = Date.parse(day + 'T00:00:00Z') / 1000, J = u => fetch(u, {cache: 'no-store'}).then(r => r.ok ? r.json() : Promise.reject());
+            await Promise.all([J('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400&start=' + day + 'T00:00:00Z&end=' + day + 'T23:59:59Z').then(L => { const k = (L || []).find(x => x[0] === d0); if (k) checks.push({source: 'Coinbase', low: k[1], high: k[2], within: q[c] >= k[1] && q[c] <= k[2]}); }, () => {}),
+              J('https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1&start=' + d0).then(j => { const k = j && j.data && j.data.ohlc && j.data.ohlc[0]; if (k && +k.timestamp === d0) checks.push({source: 'Bitstamp', low: +k.low, high: +k.high, within: q[c] >= +k.low && q[c] <= +k.high}); }, () => {})]); }
+          return {ok: true, oneBitcoin: {[c]: q[c]}, on: day, from: 'mempool.space', checkedAgainst: checks, checked: checks.length ? checks.every(x => x.within) : null,
+            note: c === 'USD' ? (checks.length ? 'The price is checked against each exchange\'s low and high for that day.' : 'No exchange answered, so it was not checked.') : 'Only mempool.space gives past prices in ' + c + ': not checked against a second source.'};
         } catch (e) { return {ok: false, error: 'the price did not come just now: try again'}; } }},
     {name: 'network', ro: true, does: 'Bitcoin\'s network now (mempool.space): the next difficulty change (how far through, the expected change, when, blocks to go) and the mining pools of the last week (share of blocks, hashrate). Gives back {ok, nextDifficultyChange{…}, miningLastWeek{blocks, hashrate, pools[]}, from} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"ok":{},"nextDifficultyChange":{"type":"object"},"miningLastWeek":{"type":"object","properties":{"blocks":{},"hashrate":{},"pools":{"type":"array"}}},"from":{},"error":{"type":"string"}}}, run: async () => {
       try {
