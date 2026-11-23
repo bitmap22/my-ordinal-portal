@@ -70,7 +70,7 @@
     ord: [
       {f: 'hash', path: t => '/r/blockhash/' + t.h, read: b => lower(js(b)), want: t => t.hash},
       {f: 'file', need: 'ins', path: t => '/content/' + t.ins.id, read: b => fp(b), want: t => t.ins.sha, isFile: true},
-      {f: 'record', need: 'ins', path: t => '/r/inscription/' + t.ins.id, read: b => { const j = js(b); return [j.height, j.content_length, j.content_type]; }, want: t => [t.h, t.ins.length, t.ins.type]},
+      {f: 'record', need: 'ins', path: t => '/r/inscription/' + t.ins.id, read: b => { const j = js(b); return [j.height, j.content_length, j.content_type]; }, want: t => [t.h, t.ins.length, t.ins.type], keep: b => ({number: js(b).number})},
       {f: 'old', need: 'zero', path: t => '/content/' + t.zero.id, read: b => fp(b), want: t => t.zero.sha, isFile: true}],
     none: [],
     dx: [
@@ -118,6 +118,7 @@
     if (r.http === 404) return Object.assign(out, {code: 'M', note: 'it did not have it (http 404)'});
     if (r.http < 200 || r.http > 299) return Object.assign(out, {code: 'E', note: 'http ' + r.http});
     let said; try { said = q.read(r.bytes); } catch (e) { return Object.assign(out, {code: 'E', note: 'its answer could not be read'}); }
+    if (q.keep) try { Object.assign(out, q.keep(r.bytes)); } catch (e) {}   // (kept beside the answer, never scored: see numbers below)
     const want = q.want(t);
     if (same(said, want)) return Object.assign(out, {code: 'R'});
     return Object.assign(out, {code: 'W', said: q.isFile ? {bytes: r.bytes.length, sha256: said} : brief(said), truth: q.isFile ? {sha256: want} : brief(want)});
@@ -276,8 +277,17 @@
       truth.doge.settled = agree.length >= DOGE_AGREE; truth.doge.agreedBy = agree;
       if (!truth.doge.settled) { notes.push('Dogecoin: only ' + agree.length + ' other site' + (agree.length === 1 ? '' : 's') + ' gave block ' + truth.doge.h + '’s hash from its bytes, so nothing of Dogecoin’s is scored this time'); for (const r of results) if (r.chain === 'doge') for (const f of r.facts) if (f.code !== '-') { f.unscored = f.code; f.code = '-'; } }
     }
+    // inscription numbers: no block's bytes can prove one (it is each site's count of every inscription ever made), so they
+    // are never marked right or wrong; the ord sites' numbers for the same inscription are set side by side, to show whether they agree
+    let numbers = null;
+    if (truth.bitcoin && truth.bitcoin.ins) {
+      const said = {}; for (const r of results) if (r.kind === 'ord') { const f = r.facts.find(x => x.fact === 'record'); if (f && f.code === 'R' && Number.isInteger(f.number)) said[r.site] = f.number; }
+      const vals = [...new Set(Object.values(said))];
+      numbers = {inscription: truth.bitcoin.ins.id, said, sites: Object.keys(said).length, agree: Object.keys(said).length >= 2 ? vals.length === 1 : null};
+      if (numbers.agree === false) notes.push('Bitcoin: the ord sites gave different numbers for the same inscription (' + Object.entries(said).map(([k, v]) => k + ' #' + v).join(', ') + '). Numbers are not marked right or wrong, because no block’s bytes can prove one.');
+    }
     const pub = t => t ? {h: t.h, hash: t.hash, settled: t.settled, agreedBy: t.agreedBy, proof: t.proof, tx: t.tx && t.tx.id, inscription: t.ins && t.ins.id, zero: t.zero && t.zero.id} : null;
-    return {at, from: opt.from || 'here', truth: {bitcoin: pub(truth.bitcoin), doge: pub(truth.doge)}, notes, results};
+    return {at, from: opt.from || 'here', truth: {bitcoin: pub(truth.bitcoin), doge: pub(truth.doge)}, numbers, notes, results};
   }
 
   /* ---------- the record (GitHub's computers): 30 days of checks, one line each ---------- */
@@ -292,6 +302,7 @@
     for (const r of c.results) for (const f of r.facts) if (f.code === 'W') rec.wrong.push({t, site: r.site, fact: f.fact, asked: f.asked, said: f.said, truth: f.truth});
     const cut = t - KEEP_DAYS * 86400;
     rec.checks = rec.checks.filter(k => k.t > cut); rec.wrong = rec.wrong.filter(w => w.t > cut).slice(-KEEP_WRONG);
+    if (c.numbers && c.numbers.sites) { rec.numbers = (rec.numbers || []).concat([{t, id: c.numbers.inscription, said: c.numbers.said, agree: c.numbers.agree}]).filter(n => n.t > t - KEEP_DAYS * 86400).slice(-60); }
     rec.made = c.at; rec.licence = LICENCE; rec.facts = Object.fromEntries(Object.entries(FACTS).map(([k, v]) => [k, v.map(q => q.f)]));
     return rec;
   }
