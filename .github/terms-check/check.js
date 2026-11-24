@@ -102,6 +102,9 @@ async function issue(title, body) {
     }
     p.unreadable = 0; delete p.lastError;
     const fp = fingerprint(x.text), file = path.join(dir, 'texts', w.id + '.txt');
+    // (which part of the page is compared: if that rule was changed here, the page is read afresh, never reported as changed)
+    const rule = JSON.stringify([w.url, w.start || null, w.endBefore || w.upTo || null, w.endAfter || null]);
+    if (p.rule !== rule) { delete p.fingerprint; p.rule = rule; }
     if (!p.fingerprint) { p.fingerprint = fp; p.since = now; fs.writeFileSync(file, x.text + '\n'); report.push(w.id + ': first read, kept to compare'); }
     else if (p.fingerprint === fp) { fs.writeFileSync(file, x.text + '\n'); report.push(w.id + ': the same'); }
     else {
