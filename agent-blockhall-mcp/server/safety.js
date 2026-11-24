@@ -299,15 +299,16 @@
      look({id, type, bytes}): optional, looks at pictures and films (the portal's pages give one that uses the Family Guard);
      without it, pictures and films are counted as not looked at. Nothing is run: files are only read as bytes.
      Bitcoin: the address's inscriptions from ordinals.com (its address page), each file from ordinals.com/content/.
-     Dogecoin: from thedoginalsexplorer.com (its wallet list), each file from its /content/ (else Doggy Market's copy). */
+     (24 Nov 2026: Bitcoin only; Dogecoin is paused.) */
   const PIC = /^image\/(png|jpeg|jpg|webp|gif|avif|bmp)$/, FILM = /^video\//;
   const isAddr = (c, a) => c === 'doge' ? /^[DA9][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) : /^(bc1[02-9ac-hj-np-z]{8,87}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$/i.test(a);
   async function scanWallet(o) {
-    o = o || {}; const chain = /^d/i.test(o.chain || '') ? 'doge' : 'btc', a = String(o.address || '').trim();
+    o = o || {}; if (/^d/i.test(o.chain || '')) throw new Error('Dogecoin is paused: only Bitcoin addresses are scanned');
+    const chain = 'btc', a = String(o.address || '').trim();
     if (!isAddr(chain, a)) throw new Error('give a ' + (chain === 'doge' ? 'Dogecoin address (starts with D, A or 9)' : 'Bitcoin address (starts with bc1, 1 or 3)'));
     const F = o.fetch || ((u, i) => fetch(u, i)), MAX = Math.min(o.max || 3000, 10000), say = o.progress || (() => {}), stop = o.stopped || (() => false);
     const sleep = ms => new Promise(r => setTimeout(r, ms));
-    const DXS = 'https://thedoginalsexplorer.com', BASES = chain === 'doge' ? [DXS, 'https://cdn.doggy.market'] : ['https://ordinals.com'];
+    const BASES = ['https://ordinals.com'];
     const out = {chain: chain === 'doge' ? 'Dogecoin' : 'Bitcoin', address: a, at: new Date().toISOString(), holds: 0, checked: 0, pictures: 0, films: 0, models: 0, sounds: 0, text: 0, other: 0, notLooked: 0, flashNotChecked: 0, namesAndTokens: 0, tooMany: 0, found: [], tally: {}};
     // the list
     let list = [];
@@ -315,17 +316,6 @@
     if (chain === 'btc') {
       const r = await F('https://ordinals.com/address/' + encodeURIComponent(a)); if (!r.ok) throw new Error('ordinals.com did not answer (http ' + r.status + ')');
       const t = await r.text(); list = [...new Set([...t.matchAll(/\/inscription\/([0-9a-f]{64}i\d+)/g)].map(m => m[1]))].map(id => ({id, type: null}));
-    } else {
-      for (let pg = 1; pg <= 200; pg++) {
-        let r = await F(DXS + '/v1/wallet/' + a + '/inscriptions?exclude=drc20&limit=100&page=' + pg);
-        if (r.status === 429) { say('The Doginals Explorer asked us to slow down: waiting…'); await sleep(Math.min(60, +r.headers.get('retry-after') || 20) * 1000); r = await F(DXS + '/v1/wallet/' + a + '/inscriptions?exclude=drc20&limit=100&page=' + pg); }
-        if (!r.ok) throw new Error('the Doginals Explorer did not answer (http ' + r.status + ')');
-        const j = await r.json(), L = j.inscriptions || [];
-        for (const x of L) { if (!x || !x.id) continue; if ((x.kinds || []).includes('dogemap')) { out.namesAndTokens++; continue; } list.push({id: x.id, type: String(x.contentType || '').split(';')[0].trim().toLowerCase() || null}); }
-        say('Reading which Doginals ' + a + ' holds: ' + (list.length + out.namesAndTokens) + ' of ' + (j.total || '?') + '…');
-        if (!L.length || list.length + out.namesAndTokens >= (j.total || 0) || list.length >= MAX || stop()) break;
-        await sleep(800);   // (each page of a wallet's list costs 3 of the explorer's 300 units a minute: this stays well under)
-      }
     }
     out.holds = list.length + out.namesAndTokens;
     if (list.length > MAX) { out.tooMany = list.length - MAX; list = list.slice(0, MAX); }

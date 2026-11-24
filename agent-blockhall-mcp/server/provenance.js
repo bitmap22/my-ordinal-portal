@@ -209,12 +209,12 @@
     // 6. its number and sat, on a second ord site
     const S2 = o.second;
     chk('numberAndSat', o.secondSite || null, S2 ? S2.number === J.number && String(S2.sat) === String(J.sat) && S2.height === J.height : null,
-      S2 ? 'its number, sat and block on ' + (o.secondSite || 'a second ord site') + ' against ordinals.com' : 'no second ord site answered');
-    const used = Object.values(C).filter(c => !c.notNeeded), vals = used.map(c => c.agrees), nOk = vals.filter(v => v === true).length, nNo = vals.filter(v => v === false).length, nNone = vals.filter(v => v === null).length;
+      S2 ? 'its number, sat and block on ' + (o.secondSite || 'a second ord site') + ' against ordinals.com' : 'no second ord site is asked: none we found has terms that allow the portal to use it, so its number and sat come from ordinals.com alone');   // (24 Nov 2026)
+    const used = Object.values(C).filter(c => !c.notNeeded), vals = used.map(c => c.agrees), nOk = vals.filter(v => v === true).length, nNo = vals.filter(v => v === false).length, nNone = vals.filter(v => v === null).length, nNotAsked = used.filter(c => c.agrees === null && /^no second ord site is asked/.test(c.what || '')).length;
     const ctype = J.content_type || null;
     const R = {
       check: 'Agent Blockhall Provenance Check ' + VERSION,
-      verdict: nNo ? nNo + ' of ' + vals.length + ' checks differ: ' + diffs.join(', ') : nOk + ' of ' + vals.length + ' checks agree' + (nNone ? ', ' + nNone + ' could not be made' : ''),
+      verdict: nNo ? nNo + ' of ' + vals.length + ' checks differ: ' + diffs.join(', ') : nOk + ' of ' + vals.length + ' checks agree' + (nNone - nNotAsked ? ', ' + (nNone - nNotAsked) + ' could not be made' : '') + (nNotAsked ? ', ' + nNotAsked + ' not asked (no second ord site whose terms allow it)' : ''),
       inscription: {id, number: J.number, block: J.height, time: J.timestamp ? new Date(J.timestamp * 1000).toISOString().replace('.000', '') : null,
         contentType: okType(ctype) ? ctype : ctype ? 'not a standard type' : null, bytes: J.content_length != null ? J.content_length : null, fingerprint: fp ? {sha256: fp, of: 'the content as stored in its transaction'} : null,
         sat: J.sat != null ? J.sat : null, satpoint: J.satpoint || null, holder: J.address || null, parents: o.parents || [], delegate: J.delegate || null,
@@ -309,13 +309,11 @@
   /* (23 Nov 2026) more sources, at the asker's own wait: the inscription's record on every ord site (its number, sat, block, file type and
      holder), and the block its transaction is in on every block explorer we can read. I = the Provenance Check's inscription. get(url) -> text.
      Gives {ord[{site, agrees, differs[]}], block[{site, says, agrees}]} */
-  const MORE_ORD = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+  const MORE_ORD = ['https://ordinals.com'];
   const MORE_TXB = [
     ['blockstream.info', t => 'https://blockstream.info/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
     ['mempool.space', t => 'https://mempool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
-    ['blockchain.com', t => 'https://blockchain.info/rawtx/' + t + '?cors=true', j => j.block_height != null ? j.block_height : null],
-    ['bitcore.io (BitPay)', t => 'https://api.bitcore.io/api/BTC/mainnet/tx/' + t, j => j.blockHeight > 0 ? j.blockHeight : null],
-    ['blockcypher.com', t => 'https://api.blockcypher.com/v1/btc/main/txs/' + t + '?limit=1', j => j.block_height > 0 ? j.block_height : null]];
+    ['ordpool.space', t => 'https://ordpool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null]];   // (24 Nov 2026: only sites whose terms allow it)
   async function moreSources(I, get) {
     const base = v => String(v || '').split(';')[0].trim().toLowerCase(), txid = String(I.id).slice(0, 64);
     const ord = await Promise.all(MORE_ORD.map(async b => { const site = b.replace('https://', '');

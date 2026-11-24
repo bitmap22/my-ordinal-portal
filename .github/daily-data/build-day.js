@@ -13,9 +13,9 @@ const PORTAL = 'https://ordportal.com/', RAW = 'https://raw.githubusercontent.co
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (' + 'https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE' + '). Bitcoin’s own data is public.';
 
 /* ---------- being gentle with the sites: at most 30 at once, then 6 a second per site; rest any site that asks ---------- */
-const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://mempool.bitaroo.net', 'https://blockstream.info'];
-const MIRROR_V1 = 5;
-const ORD_R = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.fra.mempool.space', 'https://blockstream.info'];
+const MIRROR_V1 = 3;
+const ORD_R = ['https://ordinals.com'];
 const ORD_LIST = 'https://ordinals.com';
 const PACE = {rate: 6, burst: 30, rest: 30}, sites = new Map();
 const site = h => { let b = sites.get(h); if (!b) sites.set(h, b = {tok: PACE.burst, t: Date.now(), restUntil: 0}); return b; };
@@ -168,7 +168,7 @@ async function main() {
     what: 'Every Bitcoin block whose time falls in this UTC day, read the Block Manifest way: each block’s transactions sorted into Agent Blockhall’s hall kinds (counts), its fees and who mined it, and its checks: its hash worked out from its own bytes and asked of a second site, each transaction’s id and size worked out from the bytes against mempool.space’s list, its kinds against ordpool.space’s tags, its inscriptions against ordinals.com’s list, and rune etchings against the runes ordinals.com says the block made. [matched, of] pairs. null means that check could not be made because a site did not answer: it is not a disagreement. totals.notes says in plain words which checks could not be made.',
     totals: Object.assign({blocks: blocks.length, firstBlock: blocks.length ? blocks[0].height : null, lastBlock: blocks.length ? blocks[blocks.length - 1].height : null}, T),
     blocks,
-    links: {page: PORTAL + 'daily.html?day=' + day, blockManifest: PORTAL + 'block-manifest.html?block=<height>', watch: PORTAL + 'watch.html?watch=block', agentBlockhall: PORTAL + 'block-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', dogeTwin: PORTAL + 'doge-daily.html?day=' + day, csv: RAW + 'days/' + day + '.csv'}
+    links: {page: PORTAL + 'daily.html?day=' + day, blockManifest: PORTAL + 'block-manifest.html?block=<height>', watch: PORTAL + 'watch.html?watch=block', agentBlockhall: PORTAL + 'block-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', csv: RAW + 'days/' + day + '.csv'}
   };
   fs.mkdirSync(path.join(out, 'days'), {recursive: true});
   fs.writeFileSync(path.join(out, 'days', day + '.json'), JSON.stringify(file));
@@ -189,7 +189,7 @@ async function main() {
     inscriptions: T.counts.inscriptions || 0, runes: T.counts.runes || 0, 'BRC-20': T.counts['BRC-20'] || 0, notRead: T.checked.notRead, notes, json: RAW + 'days/' + day + '.json', csv: RAW + 'days/' + day + '.csv'});
   index.days.sort((a, b) => a.day < b.day ? -1 : 1);
   index.updated = file.made; index.licence = LICENCE;
-  index.links = {page: PORTAL + 'daily.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', agentBlockhall: PORTAL + 'block-cube.html', dogeTwin: RAW.replace('daily-data', 'doge-daily-data') + 'index.json'};
+  index.links = {page: PORTAL + 'daily.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', agentBlockhall: PORTAL + 'block-cube.html'};
   fs.writeFileSync(ip, JSON.stringify(index, null, 1));
   // Blockspace Share: the day's bytes by kind (space/days/<day>.json and space/index.json)
   const sp = SP.dayRecord(day, spaceBlocks); SP.writeDay(out, sp);

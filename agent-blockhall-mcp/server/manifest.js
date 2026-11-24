@@ -553,13 +553,8 @@
      block explorers on other software), each asked once. get(url) -> the answer's text. Gives [{site, kind, says, agrees}] */
   const MORE_HASH = [
     ['ordinals.com', 'ord', h => 'https://ordinals.com/r/blockhash/' + h, t => t],
-    ['ordiscan.com', 'ord', h => 'https://ordiscan.com/r/blockhash/' + h, t => t],
-    ['ord.xverse.app', 'ord', h => 'https://ord.xverse.app/r/blockhash/' + h, t => t],
     ['blockstream.info', 'explorer', h => 'https://blockstream.info/api/block-height/' + h, t => t],
-    ['blockchain.com', 'explorer', h => 'https://blockchain.info/block-height/' + h + '?format=json&cors=true', t => JSON.parse(t).blocks.filter(b => b.main_chain !== false)[0].hash],
-    ['bitcore.io (BitPay)', 'explorer', h => 'https://api.bitcore.io/api/BTC/mainnet/block/' + h, t => JSON.parse(t).hash],
-    ['blockcypher.com', 'explorer', h => 'https://api.blockcypher.com/v1/btc/main/blocks/' + h + '?txstart=0&limit=1', t => JSON.parse(t).hash],
-    ['3xpl.com', 'explorer', h => 'https://sandbox-api.3xpl.com/bitcoin/block/' + h + '?data=block', t => JSON.parse(t).data.block.hash]];
+    ['ordpool.space', 'explorer', h => 'https://ordpool.space/api/block-height/' + h, t => t]];   // (24 Nov 2026: only sites whose terms allow it)
   async function moreHashes(height, hash, get) {
     return Promise.all(MORE_HASH.map(async ([site, kind, url, pick]) => {
       try { const v = String(pick(await get(url(height))) || '').trim().replace(/^"|"$/g, '').toLowerCase(); return {site, kind, says: v || null, agrees: v ? v === String(hash).toLowerCase() : null}; }

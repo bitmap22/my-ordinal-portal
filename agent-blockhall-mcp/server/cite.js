@@ -5,8 +5,7 @@
    Anyone who opens the link gets the same check made again, now, and is told whether it is the same, or what changed
    (the holder was X, now Y). Nothing is stored anywhere: the link itself is the record.
    Tools: manifest (Block Manifest), provenance (Provenance Check), collection (Collection Check), recursion (Recursion Map),
-   opinion (Second Opinion), health (Source Health), daily (Daily Data), stuck (Stuck Transaction Doctor), code (Code Read), league (Truth League), and Doge Cube's
-   dogemanifest, dogeprovenance and dogedaily. The same file is for the portal's pages and the free
+   opinion (Second Opinion), health (Source Health), daily (Daily Data), stuck (Stuck Transaction Doctor), code (Code Read), league (Truth League). The same file is for the portal's pages and the free
    Agent Blockhall MCP tool (its checkAgain tool reads a link and makes the check again). No other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
 (function (root, make) {
@@ -103,13 +102,6 @@
     facts: r => Object.assign({isCode: r.isCode, files: (r.files || []).length, outsideAddresses: (r.outsideAddresses || []).length}, Object.fromEntries((r.kinds || []).map(k => [k.name, k.count]))),
     sources: r => r.sources || []};
 
-  // Doge Collection Check: the pieces of a Doginals collection checked so far (Doginals have no parents: the list is the explorer's)
-  TOOLS.dogecollection = {coreName: 'the pieces checked', name: 'Doge Collection Check', page: 'doge-collection-check.html', mcp: 'dogeCollectionCheck', subject: r => ({collection: r.collection.slug, checked: r.counts.checked}),
-    label: r => 'the Doginals collection ' + r.collection.name + ' (its first ' + fmt(r.counts.checked) + ' piece' + (r.counts.checked === 1 ? '' : 's') + ')',
-    coreIs: 'the pieces checked: each one\'s ID and file fingerprint, in the collection\'s order',
-    core: r => [r.collection.slug, (r.pieces || []).map(p => [p.id, p.fingerprint || null])],
-    facts: r => ({listed: r.counts.listed, checked: r.counts.checked, real: r.counts.real, problems: r.counts.problems, notFullyChecked: r.counts.notFullyChecked, holders: r.collection.holders}),
-    sources: r => [r.sources.list, r.sources.secondSite].concat(r.sources.fileCopies || [])};
 
   // Rune Proof: a rune's etching, read from the chain's own bytes and checked against ordinals.com
   TOOLS.rune = {coreName: 'the rune as etched', name: 'Rune Proof', page: 'rune-proof.html', mcp: 'runeProof', subject: r => ({rune: r.query}), label: r => 'rune ' + (r.rune && r.rune.name || r.query),
@@ -118,12 +110,6 @@
     facts: r => { const O = r.ordinalsOnly || {}; return {answer: r.answer, id: r.rune && r.rune.id || null, supply: O.supply || null, mints: O.mints || null, burned: O.burned || null, differs: (r.compare || []).filter(c => !c.same).map(c => c.field).join(', ') || null}; },
     sources: r => r.sources || []};
 
-  // Doge Cube's twins of three of them (Dogecoin's blocks, Doginals and days), read the same way
-  TOOLS.dogemanifest = Object.assign({}, TOOLS.manifest, {name: 'Doge Block Manifest', page: 'doge-block-manifest.html', mcp: 'dogeBlockManifest', label: r => 'Dogecoin block ' + fmt(r.block.height)});
-  TOOLS.dogeprovenance = Object.assign({}, TOOLS.provenance, {coreName: 'the Doginal itself', name: 'Doge Provenance Check', page: 'doge-provenance-check.html', mcp: 'dogeProvenanceCheck',
-    label: r => 'Doginal ' + (r.inscription.number != null ? '#' + fmt(r.inscription.number) : r.inscription.id), coreIs: 'the Doginal itself: its file\'s fingerprint (put back together from the transactions that wrote it), the block it was made in, its type, size and delegate',
-    facts: r => { const I = r.inscription, T = r.trail || []; return {number: I.number, block: I.block, type: I.contentType, bytes: I.bytes, file: I.fingerprint ? I.fingerprint.sha256.slice(0, 16) : null, holder: I.holder, moves: T.length ? T.length - 1 : 0, checks: r.verdict}; }});
-  TOOLS.dogedaily = Object.assign({}, TOOLS.daily, {name: 'Doge Daily Data', page: 'doge-daily.html', mcp: 'dogeDailyData', label: r => 'Doge Daily Data for ' + r.day, sources: () => ['github.com/bitmap22/my-ordinal-portal (the doge-daily-data branch)']});
 
   // Truth League: one check of every data site's answers, against blocks proved from their own bytes
   TOOLS.league = {coreName: 'how every site answered', name: 'Truth League', page: 'truth-league.html', mcp: 'truthLeague', subject: r => r.chain && r.chain !== 'all' ? {chain: r.chain} : {},

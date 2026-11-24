@@ -9,7 +9,7 @@
    accept a replacement without the old opt-in signal. Bitcoin Core 29.1 and 30 lowered the incremental relay fee to 0.1 sat/vB,
    but many nodes still use 1 sat/vB, so 1 sat/vB is used here, so every node passes the replacement on.
    A child's size is the usual size for its kind of output (one input, one output back to the same kind of address).
-   It reads mempool.space (and its copies) and uses the Provenance Check's transaction reader (provenance.js) to spot an
+   It reads mempool.space (and its back-ups) and uses the Provenance Check's transaction reader (provenance.js) to spot an
    inscription. Nothing is sent or signed: it only reads and works out. The same file is for the portal's Stuck Transaction
    Doctor page and the free Agent Blockhall MCP tool. Fetching is left to whoever uses it (io: mpJson(path), mpText(path),
    fineBlocks(height) -> a page of blocks with their fee ranges, from a site that gives fees to the decimal). No other packages.
@@ -99,7 +99,7 @@
     const out = {txid, checked: new Date().toISOString().replace(/\.\d{3}/, ''), sources: site ? [site] : []};
     if (!T) {
       const m = await io.mpJson('/api/v1/fees/recommended').catch(() => null);
-      return Object.assign(out, {state: 'not found', verdict: 'Not found: ' + (io.askedAll ? io.askedAll() : 'mempool.space and its copies') + ' have no transaction with this ID, waiting or mined.',
+      return Object.assign(out, {state: 'not found', verdict: 'Not found: ' + (io.askedAll ? io.askedAll() : 'mempool.space and its back-ups') + ' have no transaction with this ID, waiting or mined.',
         why: ['It was never sent to the network, or nodes have dropped it (a transaction paying under what full nodes keep' + (m && m.j ? ', now ' + r1(m.j.minimumFee) + ' sat/vB,' : '') + ' can be dropped, and so can one that waited two weeks), or the ID has a mistake in it.',
           'If it was dropped, its coins were never spent: the wallet that made it can send it again, with a higher fee.'], fixes: null});
     }

@@ -3,8 +3,8 @@
 # each run looks at what is due every 10 minutes for about 50 minutes, then starts the next keeper run itself. GitHub's timer and
 # every push to main also start it, in case that chain ever breaks. Each look starts what is due: Source Health if its last check
 # is 55 minutes old or more, the Safety Scan if its last scan is an hour old or more, the Truth League if its last is 175
-# minutes old or more, Daily Data from 00:20 UTC and Doge Daily Data from 00:47 UTC if the day before isn't saved yet, Rare sats
-# from 07:17 UTC if today's prices aren't read yet, Highlights once yesterday's Daily Data is saved and they were made before it,
+# minutes old or more, Daily Data from 00:20 UTC if the day before isn't saved yet,
+# Highlights once yesterday's Daily Data is saved and they were made before it,
 # the Corridor shelves if they last ran 35 minutes ago or more, Hall Visits if it last ran 5 hours ago or more, and the Bitmap
 # Record if it has not run for 75 minutes. It only starts those workflows, each of which still checks for itself that there is
 # something to do. Free: GitHub runs it (the repository is public). © 2026 bitmap22. All rights reserved.
@@ -57,25 +57,15 @@ jobs:
             if [ "$age" -lt 10500 ]; then echo "Truth League: not due (its last check was $((age / 60)) minutes ago)"
             elif [ "$(busy truth-league.yml)" != "0" ]; then echo "Truth League: already running"
             else gh api -X POST "repos/$R/actions/workflows/truth-league.yml/dispatches" -f ref=main -f "inputs[ifDue]=yes" && echo "Truth League: started (its last check was $((age / 60)) minutes ago)"; fi
-            # Daily Data (from 00:20 UTC) and Doge Daily Data (from 00:47 UTC): the day before, if it isn't saved yet
+            # Daily Data (from 00:20 UTC): the day before, if it isn't saved yet
             DAY=$(date -u -d yesterday +%F); mins=$(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) ))
-            for x in "daily-data.yml daily-data 20" "doge-daily-data.yml doge-daily-data 47"; do
+            for x in "daily-data.yml daily-data 20"; do
               set -- $x
               if [ "$mins" -lt "$3" ]; then echo "$1: not yet (it starts at 00:$3 UTC)"; continue; fi
               if gh api "repos/$R/contents/days/$DAY.json?ref=$2" --silent 2>/dev/null; then echo "$1: $DAY is saved"; continue; fi
               if [ "$(busy "$1")" != "0" ]; then echo "$1: already running"; continue; fi
               gh api -X POST "repos/$R/actions/workflows/$1/dispatches" -f ref=main -f "inputs[onlyIfMissing]=yes" && echo "$1: started for $DAY"
             done
-            # Rare sats (from 07:17 UTC): today's prices, if they aren't read yet (as its timed runs: from 19:17 UTC it is the last try)
-            TODAY=$(LC_ALL=C TZ=Europe/London date +'%-d %b %Y')
-            if [ "$mins" -lt 437 ]; then echo "Rare sats: not yet (it starts at 07:17 UTC)"
-            else
-              got=$(gh api "repos/$R/contents/rare-sats.json?ref=rare-sats" --jq .content 2>/dev/null | base64 -di 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("read", ""))' 2>/dev/null || true)
-              [ -n "$got" ] || got=$(gh api "repos/$R/contents/rare-sats.json?ref=main" --jq .content 2>/dev/null | base64 -di 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("read", ""))' 2>/dev/null || true)
-              if [ "$got" = "$TODAY" ]; then echo "Rare sats: $TODAY is read"
-              elif [ "$(busy rare-sats.yml)" != "0" ]; then echo "Rare sats: already running"
-              else try=try; [ "$mins" -ge 1157 ] && try=last; gh api -X POST "repos/$R/actions/workflows/rare-sats.yml/dispatches" -f ref=main -f "inputs[keeper]=$try" && echo "Rare sats: started for $TODAY (last read: ${got:-unknown})"; fi
-            fi
             # Highlights: once yesterday's Daily Data is saved, if they were made before it
             saved=$(gh api "repos/$R/commits?sha=daily-data&path=days/$DAY.json&per_page=1" --jq '.[0].commit.committer.date // ""' 2>/dev/null || true)
             made=$(gh api "repos/$R/commits/highlights" --jq .commit.committer.date 2>/dev/null || true)

@@ -1,6 +1,6 @@
 # Security policy
 
-This covers the Ord Portal (https://ordportal.com, also at bitmap22.github.io/my-ordinal-portal) and everything in this repository: Agent Blockhall, Doge Cube, Block Paint City, the Play Together pages, the tools, the agent kits on each page, the GitHub workflows, and the Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`, in `agent-blockhall-mcp/`).
+This covers the Ord Portal (https://ordportal.com, also at bitmap22.github.io/my-ordinal-portal) and everything in this repository: Agent Blockhall, Block Paint City, the Play Together pages, the tools, the agent kits on each page, the GitHub workflows, and the Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`, in `agent-blockhall-mcp/`).
 
 ## Supported versions
 
@@ -35,13 +35,13 @@ Please don't run tests that could harm other people: no attacks on other players
 
 ## Not in scope
 
-- **Inscriptions on Bitcoin or Dogecoin**, including bitmap22's own: once inscribed they can't be changed. If one is unsafe, tell us anyway, and the portal will stop showing or linking it.
-- **Other sites** the portal reads from or links to, such as ordinals.com, ordiscan.com, mempool.space, UniSat and the Doginals explorer. Please report those to their owners.
+- **Inscriptions on Bitcoin**, including bitmap22's own: once inscribed they can't be changed. If one is unsafe, tell us anyway, and the portal will stop showing or linking it.
+- **Other sites** the portal reads from or links to, such as ordinals.com, ordiscan.com, mempool.space, ordpool.space, blockstream.info, CoinGecko and UniSat (whose wallet does the read-only wallet check). Please report those to their owners.
 - Problems that need someone to give away their own seed words, keys or passwords.
 
 ## How the portal keeps people safe
 
-- **An inscription's code never runs** in Agent Blockhall, Doge Cube, Block Paint City or the Sentinel ID Viewer. A web page, a script or a file whose type can't be checked is not opened: its own page on ordinals.com (or ordiscan.com, the back-up) is linked instead. Pictures, sound, film and plain text show in frames where nothing can run. Block Paint City turns a web-page inscription down as a stencil.
+- **An inscription's code never runs** in Agent Blockhall, Block Paint City or the Sentinel ID Viewer. A web page, a script or a file whose type can't be checked is not opened: its own page on ordinals.com (or ordiscan.com, the back-up) is linked instead. Pictures, sound, film and plain text show in frames where nothing can run. Block Paint City turns a web-page inscription down as a stencil.
 - **Block Paint City's paint app files** are code: one runs only when you load it yourself and say yes to a warning that it can do anything the page can.
 - **The Ordinal View Tester** only runs a file you load into it yourself, in a locked frame with no reach into the portal, your saved data or a wallet.
 - **No keys:** the portal never asks for, sees or keeps seed words, private keys or passwords. Connecting a wallet only reads which address and inscriptions it holds.
@@ -50,7 +50,7 @@ Please don't run tests that could harm other people: no attacks on other players
 - **Agents never sign, mint or pay.** Only a person does that, in their own wallet. What comes from the blockchain or other players is marked as untrusted data, never instructions.
 - **Chat** shows messages as plain text only, so no code in a message can run.
 - **The Family Guard** checks every picture and film from an inscription in the visitor's own browser (NSFWJS) before it is shown clearly, and keeps what may be adult content behind an 18+ warning; moving pictures and films are checked on several frames, and ones that flash more than 3 times a second are shown still until a person plays them (all of them with reduce motion on); rude words in text inscriptions, names and chat are starred out (AllProfanity). Nothing is sent anywhere. Neither checker is perfect.
-- **The Safety Scan** (GitHub, about every hour) looks at and reads every inscription of the latest Bitcoin and Dogecoin blocks without running any of it (a kind of file it can't read is counted as not looked at), and marks what may be adult, flashing, a scam, an agent trap (prompt injection, hidden instructions, agent or WebMCP calls), risky code, a miner or phone-killer, hate words or personal details (SVG drawings drawn and looked at; sound files' tags and cover pictures read): on its pages, over the parcels in Agent Blockhall and Doge Cube, and in the MCP tool (`safetyScan`). Its pages never show or run an inscription, and mask personal details and hate words.
+- **The Safety Scan** (GitHub, about every hour) looks at and reads every inscription of the latest Bitcoin blocks without running any of it (a kind of file it can't read is counted as not looked at), and marks what may be adult, flashing, a scam, an agent trap (prompt injection, hidden instructions, agent or WebMCP calls), risky code, a miner or phone-killer, hate words or personal details (SVG drawings drawn and looked at; sound files' tags and cover pictures read): on its pages, over the parcels in Agent Blockhall, and in the MCP tool (`safetyScan`). Its pages never show or run an inscription, and mask personal details and hate words.
 - **Safety headers** on every page (set at Cloudflare): always HTTPS (`Strict-Transport-Security`, 6 months), no file-type guessing (`X-Content-Type-Options: nosniff`), only ordportal.com may show its pages in a frame (`X-Frame-Options: SAMEORIGIN`), other sites only see the site name (`Referrer-Policy: strict-origin-when-cross-origin`), and camera, location, payment and USB are switched off, with the microphone and screen share allowed only for the portal's own pages (`Permissions-Policy`).
 - **The MCP publish job** uses a fixed version of `mcp-publisher`, checked against its published fingerprint before it runs.
 - **The `main` branch** only takes changes through pull requests.
