@@ -4,7 +4,7 @@
    https://ordportal.com/block-cube.html
    This tool gives AI agents its catalogue without a browser: the chain now, the big screen's fee advice (which keeps
    score of itself), a block's inscriptions, inscriptions with their parents and children, an inscription's trail back
-   to where it was made, the tablet's search and the rare sats board. It runs on the agent's own computer, reads the
+   to where it was made, and the tablet's search. It runs on the agent's own computer, reads the
    same free public sites Agent Blockhall reads (with the same back-ups), and asks them gently.
    blockManifest lists every transaction in a block, sorted into the same kinds as the halls' shelves, each one checked
    (the block reader is server/manifest.js, the same file the portal's Block Manifest page uses).
@@ -19,7 +19,7 @@
    recursionMap maps everything an inscription loads from the chain (the inscriptions it uses and what those use, its children
    and delegate, the /r/ endpoints it asks, addresses outside the chain), each checked (server/recursion.js, the same file the
    portal's Recursion Map page uses).
-   secondOpinion checks a claim about Bitcoin (a block, an inscription, a collection, an address or a rune) against ord sites, mempool
+   secondOpinion checks a claim about Bitcoin (a block, an inscription, a collection, an address or a rune) against ordinals.com, mempool
    sites and the chain's own bytes, and says where they agree (server/opinion.js, the same file the portal's Second Opinion page uses).
    sourceHealth says which of the data sites these tools read are answering, how fast and whether they are
    up to date: asked now from this computer, and over the last day and week from GitHub's computers, which ask about once an hour
@@ -53,7 +53,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.28.0';
+const VERSION = '1.28.1';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://ordportal.com/';
 const GAME = PORTAL + 'block-cube.html';

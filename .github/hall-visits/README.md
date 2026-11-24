@@ -1,7 +1,7 @@
 # Hall Visits
 
 Anonymous daily totals of what visitors did in [Agent Blockhall](https://ordportal.com/block-cube.html) (`btc`) and
-[Doge Cube](https://ordportal.com/doge-cube.html) (`doge`), from the portal's own counter on Cloudflare
+Doge Cube (`doge`, until it was paused on 24 Nov 2026), from the portal's own counter on Cloudflare
 (`hall-counter/` on the main branch). Shown as a page at [ordportal.com/hall-visits.html](https://ordportal.com/hall-visits.html).
 
 - `index.json`: every saved day with its totals.
