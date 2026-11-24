@@ -1,0 +1,933 @@
+Ordinals API
+Return to Ordiscan
+Ordinals API
+Introduction
+Quickstart
+Pay-per-request (x402)
+New
+🔑 Address balance
+📊 Address activity
+➡️ Transaction
+🖼️ Inscriptions
+🔲 Runes
+📔 Collections
+🔷 Alkanes
+🔘 BRC-20
+🟣 Rare sats
+🧊 Blocks
+Sign in
+Return to Ordiscan
+Ordinals API
+Copy as Markdown
+Introduction
+The Ordiscan API is the easiest way to retrieve information about inscriptions, runes, rare sats, and other ordinals-related data.
+Trusted by leading crypto builders
+Pricing Plans:
+Free
+$ 0
+/month
+Get started for free. No strings attached.
+1K requests /month
+100 requests /minute
+Standard
+$ 59
+/month
+Billed monthly. Cancel anytime.
+1M requests /month
+100 requests /minute
+Pro
+$ 199
+/month
+Billed monthly. Cancel anytime.
+5M requests /month
+300 requests /minute
+Need a bigger subscription? Get in touch!
+Quickstart
+In order to use the Ordiscan API you first need to create an account and obtain an API key.
+Example request:
+cURL JavaScript
+GET /v1/inscription/{inscription_id}
+Copy Copied!
+If you're using JavaScript or TypeScript, you can use the official Ordiscan NPM package:
+ordiscan
+A JavaScript/TypeScript SDK for the Ordiscan API
+Pay-per-request (x402)
+The Ordiscan API supports the x402 payment protocol , allowing you to make API requests without an API key by paying per request with USDC on Base .
+Show x402 protocol details
+Network : Base (Chain ID 8453)
+Asset : USDC ( 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 )
+Price : $0.01 per request
+How it works:
+Send a request without an Authorization header
+The server responds with 402 Payment Required and a Payment-Required header containing payment details (base64-encoded JSON)
+Sign an ERC-3009 TransferWithAuthorization and retry the request with a Payment-Signature header
+The server verifies the signature, settles the transaction onchain, and returns the requested resource with a Payment-Response header
+Tools like awal (Coinbase Agentic Wallet) and @x402/fetch can handle this flow automatically.
+🔑 Address balance
+UTXOs
+Get all UTXOs owned by a Bitcoin address and the inscriptions and runes tied to them (if they have any).
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+An array of objects with the following keys:
+Name outpoint Type string Description
+The unique outpoint, in the format {txid}:{vout} .
+Name value Type number Description
+The value in sats.
+Name runes Type RuneBalance[] Description
+A list of rune balances .
+Name inscriptions Type string[] Description
+A list of inscription IDs.
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/utxos
+Copy Copied!
+Copy Copied!
+Owned inscription IDs
+Get all inscription IDs owned by a Bitcoin address (without the need for pagination).
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+An array of inscription IDs (strings).
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/inscription-ids
+Copy Copied!
+Copy Copied!
+Owned inscriptions
+Get all inscriptions owned by a Bitcoin address. Limited to 100 inscriptions per page.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Name page Type number (optional) Description
+Used to retrieve the next page of inscriptions (e.g. ?page=2 ). Max page: 1000.
+Response:
+A list of inscription objects
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/inscriptions
+Copy Copied!
+Copy Copied!
+Rune balance
+Get the rune balance for a Bitcoin address. The returned balances use the rune's smallest denomination, and therefore never have decimals.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+An array of objects with the following keys:
+Name name Type string Description
+The name of the rune (without spacers)
+Name balance Type string Description
+The amount of runes held by the address. Formatted as a string, because the amount can be very large.
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/runes
+Copy Copied!
+Copy Copied!
+BRC-20 balance
+Get the BRC-20 balance for a Bitcoin address. BRC-20 tokens are address-based, not UTXO-based, so they cannot be spent accidentally.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+An array of objects with the following keys:
+Name tick Type string Description
+The unique name of the BRC-20 token
+Name balance Type number Description
+The overall amount of tokens held by the address
+Name available_balance Type number Description
+The amount of "idle" tokens held by the address
+Name transferrable_balance Type number Description
+The amount of tokens ready to be sent to another address
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/brc20
+Copy Copied!
+Copy Copied!
+Rare sat balance
+Retrieve all rare sats for a specific Bitcoin address. If the address has no rare sats, it will return an empty array.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+An array of objects with the following keys:
+Name satributes Type string[] Description
+The categories (satributes) that the sat belongs to. See full list of satributes .
+Name ranges Type number[][] Description
+The range of sat numbers owned by the address that belong to the category. The first number is inclusive, and the second is exclusive (i.e. the range [1964333750000000, 1964333750000001] only includes the sat number 1964333750000000 )
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/rare-sats
+Copy Copied!
+Copy Copied!
+📊 Address activity
+Inscription activity
+Retrieve all inscription transfers for a specific Bitcoin address. Limited to 1000 events per page.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Name type Type string (optional) Description
+Can be either:
+transfer (Default). To see sent and received inscriptions.
+inscribe . To see inscriptions inscribed directly to this address.
+Name page Type number (optional) Description
+Used to retrieve the next page of activity (e.g. ?page=2 ). Max page: 250.
+Name sort Type string (optional) Description
+Specify the sorting order. Can be either:
+newest (default)
+oldest
+Response:
+Name txid Type string Description
+The TXID (Transaction ID) of the transaction
+Name type Type string Description
+The type of activity. Can be one of the following:
+SEND : the address sent an inscription to another address
+RECEIVE : the address received an inscription from another address
+Name inscription_id Type string Description
+Unique identifier for the inscription.
+Name counterpart_address Type string Description
+The Bitcoin address of the counterpart (if the activity is a SEND or RECEIVE )
+Name spent_as_fee Type boolean Description
+Whether the inscription was spent as a fee (if the activity is a SEND )
+Name confirmed Type boolean Description
+Whether the event has been confirmed or not yet (i.e. included in a block)
+Name timestamp Type string Description
+A datetime string for when the event occured
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/activity
+Copy Copied!
+Copy Copied!
+Runes activity
+Retrieve all runic transactions for a specific Bitcoin address. Limited to 100 events per page.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Name page Type number (optional) Description
+Used to retrieve the next page of activity (e.g. ?page=2 ). Max page: 1000.
+Name sort Type string (optional) Description
+Specify the sorting order. Can be either:
+newest (default)
+oldest
+Response:
+A list of runic transactions
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/activity/runes
+Copy Copied!
+Copy Copied!
+BRC-20 activity
+Retrieve all BRC-20 transactions for a specific Bitcoin address. Limited to 100 events per page.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Name page Type number (optional) Description
+Used to retrieve the next page of activity (e.g. ?page=2 ). Max page: 1000.
+Name sort Type string (optional) Description
+Specify the sorting order. Can be either:
+newest (default)
+oldest
+Response:
+Name ticker Type string Description
+The BRC-20 ticker (4 or 5 characters)
+Name type Type string Description
+Can be TRANSFER , MINT or DEPLOY
+Name from_address Type string Description
+Address sending the token
+Name to_address Type string Description
+Address receiving the token
+Name amount Type number Description
+The amount of tokens sent
+Name inscription_id Type string Description
+The inscription ID associated with the BRC-20 transaction
+Name timestamp Type string Description
+A datetime string for when the BRC-20 inscription was created.
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/activity/brc20
+Copy Copied!
+Copy Copied!
+Activity check
+Check whether a Bitcoin address has any ordinals activity (inscriptions, runes, or BRC-20), without fetching the full activity data. This is useful to determine upfront what other API calls to make.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+Name has_inscription_activity Type boolean Description
+Whether the address has any inscription transfer or inscribe activity
+Name has_rune_activity Type boolean Description
+Whether the address has any rune activity
+Name has_brc20_activity Type boolean Description
+Whether the address has any BRC-20 activity
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/activity/check
+Copy Copied!
+Copy Copied!
+➡️ Transaction
+Transaction info
+Retrieve info for a specific Bitcoin transaction.
+Parameters:
+Name txid Type string Description
+The transaction ID (txid) (e.g. 7d0a2dd897222913d58fc957b0429526117a0a61c964642fe93b077f328ccec1 )
+Response:
+Name txid Type string Description
+The transaction ID
+Name fee Type number Description
+The transaction's fee, in sats
+Name size Type number Description
+The size of the transaction, in bytes
+Name weight Type number Description
+The weight of the transaction, in weight units (1 vbyte = four weight units)
+Name confirmed Type boolean Description
+Whether the transaction is confirmed (i.e. included in a block or not)
+Name block_hash Type string | null Description
+If the transaction is included in a block, this field will give you the block's hash.
+Name indexed Type boolean Description
+Whether Ordiscan has fully indexed the transaction's inscriptions and runes. This can take up to a few minutes.
+Name has_inscriptions Type boolean Description
+Once indexed, this field returns true if the transaction has any new inscriptions associated with it.
+Name has_inscription_transfers Type boolean Description
+Once indexed, this field returns true if the transaction has any inscription transfers associated with it.
+Name has_runes Type boolean Description
+Once indexed, this field returns true if the transaction has any rune mints or transfers associated with it.
+cURL JavaScript
+GET /v1/tx/{txid}
+Copy Copied!
+Copy Copied!
+New inscriptions in TX
+Get all the new inscriptions created from the transaction.
+Parameters:
+Name txid Type string Description
+The transaction ID (txid) (e.g. 7d0a2dd897222913d58fc957b0429526117a0a61c964642fe93b077f328ccec1 )
+Response:
+A list of inscription objects
+cURL JavaScript
+GET /v1/tx/{txid}/inscriptions
+Copy Copied!
+Copy Copied!
+Transferred inscriptions in TX
+Get a list of all inscriptions transferred in the transaction.
+Parameters:
+Name txid Type string Description
+The transaction ID (txid) (e.g. 7d0a2dd897222913d58fc957b0429526117a0a61c964642fe93b077f328ccec1 )
+Response:
+An array of objects with the following keys:
+Name from_address Type string Description
+The address that sent the inscription
+Name to_address Type string Description
+The address that received the inscription
+Name inscription_id Type string Description
+The transferred inscription's ID (e.g. f07c9f52c8337edbb60ae4345150a48e287f17006a651300ad18306a2e86868ci0 )
+Name spent_as_fee Type boolean Description
+Whether the inscription was spent as a fee or not (sometimes done by accidenta)
+Name txid Type string Description
+The transaction's ID
+Name confirmed Type boolean Description
+Whether the transaction has been confirmed (i.e. included in a block or not)
+Name timestamp Type string | null Description
+If confirmed, returns a datetime string of the block time.
+cURL JavaScript
+GET /v1/tx/{txid}/inscription-transfers
+Copy Copied!
+Copy Copied!
+Runes in tx
+Get a list of all minted and transferred runes in the transaction.
+Parameters:
+Name txid Type string Description
+The transaction ID (txid) (e.g. 7d0a2dd897222913d58fc957b0429526117a0a61c964642fe93b077f328ccec1 )
+Response:
+Name txid Type string Description
+The transaction ID.
+Name runestone_messages Type RunestoneMessage[] Description
+A list of runestone messages . Each object contains:
+rune (the unique rune name, without spacers)
+type (can be ETCH , MINT , TRANSFER )
+Name inputs Type RunicInput[] Description
+A list of inputs with runes. Each object contains:
+address : the address that the runes got transferred from.
+output : the transaction output that was spent (formatted as txid:vout ).
+rune : the unique rune name, without spacers.
+rune_amount : the amount of runes, as a string.
+Name outputs Type RunicOutput[] Description
+A list of outputs with runes. Each object contains:
+address : the address that the runes got transferred to.
+vout : the index of the transaction output that the runes got transferred to.
+rune : the unique rune name, without spacers.
+rune_amount : the amount of runes, as a string.
+Name timestamp Type string Description
+A datetime string of the transaction's block's timestamp.
+cURL JavaScript
+GET /v1/tx/{txid}/runes
+Copy Copied!
+Copy Copied!
+🖼️ Inscriptions
+Inscription info
+Retrieve the info for a specific inscription.
+Parameters:
+Name id Type string Description
+The inscription ID (e.g. b61b0172d95e266c18aea0c624db987e971a5d6d4ebc2aaed85da4642d635735i0 )
+Response:
+Name inscription_id Type string Description
+Unique identifier for the inscription.
+Name inscription_number Type number Description
+The inscription number.
+Name content_type Type string Description
+The inscription content type.
+Name owner_address Type string Description
+The current owner of the inscription (Bitcoin address).
+Name owner_output Type string Description
+The current tx output associated with the inscription.
+Name genesis_address Type string Description
+The initial owner of the inscription (Bitcoin address).
+Name genesis_output Type string Description
+The initial tx output associated with the inscription.
+Name timestamp Type string Description
+A datetime string for when the inscription was created.
+Name content_url Type string Description
+URL to the inscription content (can be a text file, image, video, etc).
+Name collection_slug Type string | null Description
+The unique collection identifier of the inscription (if it belongs to a collection that's been indexed)
+Name sat Type number Description
+The sat number that it's is inscribed on.
+Name satributes Type string array Description
+The satributes for the inscription (e.g. UNCOMMON , PIZZA , PALINDROME ... etc).
+Name metadata Type object | null Description
+A JSON object with the inscription's metadata . The data can be nested.
+Name metaprotocol Type string | null Description
+The inscription's specified metaprotocol (e.g. cbrc-20:deploy ).
+Name parent_inscription_id Type string | null Description
+The inscription's parent, inscribed through Provenance
+Name delegate_inscription_id Type string | null Description
+The inscription's nominated delegate
+Name submodules Type string[] Description
+If it's a recursive inscription, this will return a list of inscription IDs that are being used as modules to generate the recursive inscription.
+Name sats_name Type string | null Description
+The sats name (e.g. john.sats ) registered through this inscription (if the inscription is identified as a sats name).
+Name brc20_action Type object | null Description
+A BRC-20 Action object (if the inscription has been verified as a BRC-20 action).
+cURL JavaScript
+GET /v1/inscription/{inscription-id}
+Copy Copied!
+Copy Copied!
+Inscription traits
+Retrieve the traits for an inscription (if they've been indexed for the collection).
+Parameters:
+Name id Type string Description
+The inscription ID (e.g. b61b0172d95e266c18aea0c624db987e971a5d6d4ebc2aaed85da4642d635735i0 )
+Response:
+A list of objects containing:
+Name name Type string Description
+The unique name of the trait
+Name value Type string Description
+The value of the trait
+Name rarity Type number Description
+The rarity of the trait. The number is the percentage of items in the collection that share this specific trait (i.e. smaller = more rare).
+cURL JavaScript
+GET /v1/inscription/{inscription-id}/traits
+Copy Copied!
+Copy Copied!
+List of inscriptions
+Retrieve the full list of indexed inscriptions. Limited to 100 inscriptions per page.
+Parameters:
+Name sort Type string (optional) Description
+Specify the sorting order for the returned inscriptions. Can be either:
+inscription_number_desc (default). Sorts by descending inscription number.
+inscription_number_asc . Sorts by ascending inscription number.
+Name after Type number (optional) Description
+Only return inscriptions above a certain inscription number. Useful for pagination.
+Name before Type number (optional) Description
+Only return inscriptions below a certain inscription number. Useful for pagination.
+Name satribute Type string (optional) Description
+Filter inscriptions by satribute . Valid values: uncommon , rare , epic , legendary , mythic , black_uncommon , black_rare , black_epic , black_legendary , black_mythic , nakamoto , first_tx , vintage , pizza , hitman , palindrome , block_9 , block_78 , alpha , omega .
+Response:
+A list of inscription objects
+cURL JavaScript
+GET /v1/inscriptions
+Copy Copied!
+Copy Copied!
+Transfer activity
+Get the list of transfers for a specific inscription. Limited to 20 per page.
+Parameters:
+Name id Type string Description
+The inscription ID (e.g. b61b0172d95e266c18aea0c624db987e971a5d6d4ebc2aaed85da4642d635735i0 )
+Name page Type number (optional) Description
+Used to retrieve the next page of activity (e.g. ?page=2 ). Max page: 1000.
+Name sort Type string (optional) Description
+Specify the sorting order. Can be either:
+newest (default)
+oldest
+Response:
+A list of inscription transfers
+cURL JavaScript
+GET /v1/inscription/{inscription_id}/activity
+Copy Copied!
+Copy Copied!
+🔲 Runes
+List runes
+Get a list of the latest runes. Limited to 100 per request.
+Parameters:
+Name sort Type string (optional) Description
+Specify the sorting order for the runes. Can be either:
+newest (default)
+oldest
+Name after Type number (optional) Description
+Only return runes etched after a certain rune number. Useful for pagination when the sort order is oldest .
+Name before Type number (optional) Description
+Only return runes etched before a certain rune number. Useful for pagination when the sort order is newest .
+Response:
+Name id Type string Description
+The unique ID for the Rune (example: 840000:1 )
+Name name Type string Description
+The unique name of the rune, without spacers (example: UNCOMMONGOODS )
+Name formatted_name Type string Description
+The formatted name of the rune, with spacers (example: UNCOMMON•GOODS )
+Name number Type number Description
+The rune's unique sequential number.
+Name inscription_id Type string | null Description
+The parent inscription ID of the rune (if any). This usually acts as the rune's logo.
+Name decimals Type number Description
+The number of decimals supported.
+Name symbol Type string Description
+The rune's symbol.
+Name etching_txid Type string | null Description
+The ID of the bitcoin transaction that etched (created) the rune.
+Name timestamp_unix Type string | null Description
+The unix timestamp of the etching transaction. Returns null for the very first hard-coded rune ( UNCOMMON•GOODS ).
+Name premined_supply Type string Description
+The number of premined runes.
+Name amount_per_mint Type string | null Description
+The number of runes created by 1 mint transaction. returns null if the rune doesn't support minting.
+Name mint_count_cap Type string | null Description
+The maximum number of mint transactions for the rune.
+Name mint_start_block Type number | null Description
+If set, the rune cannot be minted before this block.
+Name mint_end_block Type number | null Description
+If set, the rune cannot be minted after this block.
+cURL JavaScript
+GET /v1/runes
+Copy Copied!
+Copy Copied!
+Rune info
+Get the etched info for a rune.
+Parameters:
+Name name Type string Description
+The unique name of the rune (without spacers)
+Response:
+The same data as when fetching the list of runes, but also has the additional properties current_supply and current_mint_count .
+Name id Type string Description
+The unique ID for the Rune (example: 840000:1 )
+Name name Type string Description
+The unique name of the rune, without spacers (example: UNCOMMONGOODS )
+Name formatted_name Type string Description
+The formatted name of the rune, with spacers (example: UNCOMMON•GOODS )
+Name number Type number Description
+The rune's unique sequential number.
+Name inscription_id Type string | null Description
+The parent inscription ID of the rune (if any). This usually acts as the rune's logo.
+Name decimals Type number Description
+The number of decimals supported.
+Name symbol Type string Description
+The rune's symbol.
+Name etching_txid Type string | null Description
+The ID of the bitcoin transaction that etched (created) the rune.
+Name timestamp_unix Type string | null Description
+The unix timestamp of the etching transaction. Returns null for the very first hard-coded rune ( UNCOMMON•GOODS ).
+Name premined_supply Type string Description
+The number of premined runes.
+Name amount_per_mint Type string | null Description
+The number of runes created by 1 mint transaction. returns null if the rune doesn't support minting.
+Name mint_count_cap Type string | null Description
+The maximum number of mint transactions for the rune.
+Name mint_start_block Type number | null Description
+If set, the rune cannot be minted before this block.
+Name mint_end_block Type number | null Description
+If set, the rune cannot be minted after this block.
+Name current_supply Type string Description
+The current supply for this rune (includes the premine).
+Name current_mint_count Type number Description
+The current number of mint transactions for this rune.
+cURL JavaScript
+GET /v1/rune/{name}
+Copy Copied!
+Copy Copied!
+Rune market info
+Get the latest price and market cap for a rune.
+Parameters:
+Name name Type string Description
+The unique name of the rune (without spacers)
+Response:
+Name price_in_sats Type number Description
+The price of one unit of the rune, denominated in sats (1 bitcoin = 100,000,000 sats)
+Name price_in_usd Type number Description
+The price of one unit of the rune, denominated in US dollars
+Name market_cap_in_btc Type number Description
+The market cap of the rune, in Bitcoin (BTC)
+Name market_cap_in_usd Type number Description
+The market cap of the rune, in US dollars
+cURL JavaScript
+GET /v1/rune/{name}/market
+Copy Copied!
+Copy Copied!
+Rune name unlock
+Check when a specific rune name becomes available to etch.
+Parameters:
+Name name Type string Description
+The desired name of the rune (without spacers)
+Response:
+Name name Type string Description
+The name of the rune (without spacers)
+Name status Type enum Description
+Status can be:
+ETCHED (name already taken)
+AVAILABLE (name can be etched)
+LOCKED (name hasn't been unlocked yet)
+RESERVED (name is too long and can only be assigned randomly)
+Name unlock_block_height Type number Description
+The block at which the name gets unlocked (can be in the past).
+Name unlock_block_timestamp Type number Description
+The time and date when the name got or will get unlocked. If it's in the future, this will be a rough estimate based on the expected time between blocks.
+cURL JavaScript
+GET /v1/rune-name/{name}
+Copy Copied!
+Copy Copied!
+📔 Collections
+List collections
+Get a list of indexed collections. Limited to 20 per page.
+Parameters:
+Name page Type number (optional) Description
+Used to retrieve the next page of inscriptions (e.g. ?page=2 )
+Response:
+A list of collection objects .
+cURL JavaScript
+GET /v1/collections
+Copy Copied!
+Copy Copied!
+Collection info
+Get info for a collection.
+Parameters:
+Name slug Type string Description
+The unique identifier for a collection (e.g. taproot-wizards )
+Response:
+Name name Type string Description
+The collection's name
+Name slug Type string Description
+The collection's unique identifier
+Name description Type string Description
+A description of the collection
+Name twitter_link Type string|null Description
+A link to the collection's Twitter/X account (if it exists)
+Name discord_link Type string|null Description
+A link to the collection's Discord server (if it exists)
+Name website_link Type string|null Description
+A link to the collection's website (if it exists)
+Name item_count Type number Description
+The number of inscriptions in the collections
+cURL JavaScript
+GET /v1/collection/{slug}
+Copy Copied!
+Copy Copied!
+Collection inscriptions
+Get a list of the inscription IDs in a collection. Limited to 1000 per page.
+Parameters:
+Name slug Type string Description
+The unique identifier for a collection (e.g. taproot-wizards )
+Name page Type number (optional) Description
+Used to retrieve the next page of inscription IDs (e.g. ?page=2 )
+Response:
+A list of inscription IDs (as strings).
+cURL JavaScript
+GET /v1/collection/{slug}/inscriptions
+Copy Copied!
+Copy Copied!
+Collection market info
+Get the latest price and market cap for a collection.
+Parameters:
+Name slug Type string Description
+The unique identifier for a collection (e.g. taproot-wizards )
+Response:
+Name floor_price_in_sats Type number Description
+The latest price for an inscription in the collection, denominated in sats (1 bitcoin = 100,000,000 sats)
+Name floor_price_in_usd Type number Description
+The latest price for an inscription in the collection, denominated in US dollars
+Name market_cap_in_btc Type number Description
+The market cap of the collection, in Bitcoin (BTC)
+Name market_cap_in_usd Type number Description
+The market cap of the collection, in US dollars
+cURL JavaScript
+GET /v1/collection/{slug}/market
+Copy Copied!
+Copy Copied!
+🔷 Alkanes
+List alkanes
+Get a list of alkanes. Limited to 100 per request.
+Parameters:
+Name sort Type string (optional) Description
+Specify the sorting order for the alkanes. Can be either:
+newest (default)
+oldest
+Name type Type string (optional) Description
+Filter by alkane type. Can be one of:
+TOKEN
+CONTRACT
+NFT_COLLECTION
+NFT_ITEM
+Name page Type number (optional) Description
+Page number for pagination (defaults to 1)
+Response:
+An array of objects with the following keys:
+Name id Type string Description
+The unique identifier of the alkane
+Name name Type string | null Description
+The name of the alkane (if available)
+Name symbol Type string | null Description
+The symbol of the alkane (if available)
+Name type Type string Description
+The type of alkane ( TOKEN , CONTRACT , NFT_COLLECTION , or NFT_ITEM )
+Name logo_url Type string | null Description
+The CDN URL for the alkane's icon image (if available)
+Name premined_supply Type string Description
+The premined supply amount
+Name amount_per_mint Type string | null Description
+The amount minted per mint operation (if applicable)
+Name mint_count_cap Type string | null Description
+The maximum number of mints allowed (if applicable)
+Name deploy_txid Type string | null Description
+The transaction ID where the alkane was deployed
+Name deploy_timestamp Type string | null Description
+The ISO timestamp when the alkane was deployed
+cURL JavaScript
+GET /v1/alkanes
+Copy Copied!
+Copy Copied!
+Alkane info
+Get detailed information about a specific alkane by its ID.
+Parameters:
+Name id Type string Description
+The unique alkane identifier (e.g., "2:42")
+Response:
+The same data as when fetching the list of runes, but also has the additional properties current_supply and current_mint_count :
+Name current_supply Type string Description
+The current total supply
+Name current_mint_count Type number Description
+The current number of mints that have occurred
+cURL JavaScript
+GET /v1/alkane/{alkane-id}
+Copy Copied!
+Copy Copied!
+Alkane meta
+Get the contract metadata for a specific alkane, including what opcodes are available to call.
+Parameters:
+Name id Type string Description
+The unique alkane identifier (e.g., "2:42")
+Response:
+Name name Type string | null Description
+The contract name of the alkane
+Name methods Type array | null Description
+The available methods and their definitions for the alkane contract. Each method contains:
+name : The method name (string)
+opcode : The unique opcode identifier for the method (number)
+params : Array of parameter objects, each with type and name properties
+returns : The return type of the method (string)
+cURL JavaScript
+GET /v1/alkane/{alkane-id}/meta
+Copy Copied!
+Copy Copied!
+Alkane address balance
+Get the alkane balance for a Bitcoin address. This includes tokens, NFTs, contracts, and any other type of alkane.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+An array of objects with the following keys:
+Name id Type string Description
+The unique identifier of the alkane
+Name name Type string | null Description
+The name of the alkane (if available)
+Name symbol Type string | null Description
+The symbol of the alkane (if available)
+Name balance Type string Description
+The amount of alkanes held by the address. Note that all tokens use 8 decimals by default.
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/alkanes
+Copy Copied!
+Copy Copied!
+Alkane address UTXOs
+Get all UTXOs owned by a Bitcoin address that have some alkane balance.
+Parameters:
+Name address Type string Description
+A valid Bitcoin address
+Response:
+An array of objects with the following keys:
+Name outpoint Type string Description
+The unique outpoint, in the format {txid}:{vout} .
+Name value Type number Description
+The value in sats.
+Name alkanes Type AlkaneBalance[] Description
+A list of alkanes balances
+cURL JavaScript
+GET /v1/address/{bitcoin-address}/utxos/alkanes
+Copy Copied!
+Copy Copied!
+Alkane TX info
+Get the alkane operations that were performed in a Bitcoin transaction.
+Parameters:
+Name txid Type string Description
+The transaction ID (txid) (e.g. 7d0a2dd897222913d58fc957b0429526117a0a61c964642fe93b077f328ccec1 )
+Response:
+Name txid Type string Description
+The transaction ID.
+Name protostones Type ProtostoneMessage[] Description
+A list of protostone messages. Each object contains:
+type : the protostone message type ( TRANSFER , CONTRACT_CALL , CONTRACT_DEPLOY , FACTORY_DEPLOY or FACTORY_CLONE )
+alkaneId : the unique alkane ID that was called (if available)
+opcode : the contract opcode that was called (if available)
+Name trace Type AlkaneTraceResponse | null Description
+Execution trace of alkane operations in the transaction. Contains an array of events of with the types invoke , return or create .
+cURL JavaScript
+GET /v1/tx/{txid}/alkanes
+Copy Copied!
+Copy Copied!
+🔘 BRC-20
+List BRC-20 tokens
+Get a list of the latest BRC-20 tokens. Limited to 20 per page.
+Parameters:
+Name sort Type string (optional) Description
+Specify the sorting order. Can be either:
+newest
+oldest (default)
+Name page Type number (optional) Description
+Used to retrieve the next page of tokens (e.g. ?page=2 )
+Response:
+Name tick Type string Description
+The unique 4-character tick of the BRC-20 token.
+Name inscription_id Type string | null Description
+The inscription ID of the deploy inscription for this token.
+Name max_supply Type number Description
+The max supply available to mint.
+Name minted Type number Description
+The number of tokens minted so far.
+Name price Type string | null Description
+The current market price for the token in USD. This will only be available for the most well-known tokens, otherwise it returns null .
+cURL JavaScript
+GET /v1/brc20
+Copy Copied!
+Copy Copied!
+BRC-20 token info
+Parameters:
+Name tick Type string Description
+The unique tick of the token. Can be either uppercase or lowercase.
+Response:
+Name tick Type string Description
+The unique 4-character tick of the BRC-20 token.
+Name inscription_id Type string | null Description
+The inscription ID of the deploy inscription for this token.
+Name max_supply Type number Description
+The max supply available to mint.
+Name minted Type number Description
+The number of tokens minted so far.
+Name price Type string | null Description
+The current market price for the token in USD. This will only be available for the most well-known tokens, otherwise it returns null .
+cURL JavaScript
+GET /v1/brc20/{tick}
+Copy Copied!
+Copy Copied!
+🟣 Rare sats
+Ordiscan indexes a wide range of rare sat categories. You can read more about each satribute on the Rare sats page .
+Available satributes:
+UNCOMMON
+RARE
+EPIC
+LEGENDARY
+MYTHIC
+BLACK_UNCOMMON
+BLACK_RARE
+BLACK_EPIC
+BLACK_LEGENDARY
+BLACK_MYTHIC
+BLOCK_9
+BLOCK_78
+NAKAMOTO
+FIRST_TX
+VINTAGE
+PIZZA
+HITMAN
+PALINDROME
+ALPHA
+OMEGA
+Sat info
+Get information about any individual sat.
+Parameters:
+Name sat_number Type number Description
+A valid sat number (i.e. any number between 0 and 2099999997689999)
+Response:
+Name sat_number Type number Description
+The unique sat number
+Name satributes Type string[] Description
+The list of satributes that the sat has (if any)
+Name creation_date Type string Description
+A timestamp of when the sat was created
+Name block_height Type number Description
+The Bitcoin block that the sat was created in
+Name epoch Type number Description
+The epoch (i.e. halving period) that the sat was created in
+Name inscription_ids Type string[] Description
+A list of inscriptions that have been inscribed on this particular sat
+cURL JavaScript
+GET /v1/sat/{sat_number}
+Copy Copied!
+Copy Copied!
+Rare sats for UTXO
+Get all the rare sats for a specific UTXO.
+Parameters:
+Name utxo Type string Description
+A valid Bitcoin UTXO (e.g. 3d57f76284e17370f1ce45e75f68b5960906c4117951607f20ddd19f85c15706:0 )
+Response:
+An array of objects with the following keys:
+Name satributes Type string[] Description
+The categories (satributes) that the sat belongs to. See full list of satributes .
+Name ranges Type number[][] Description
+The range of sat numbers owned by the address that belong to the category. The first number is inclusive, and the second is exclusive (i.e. the range [1964333750000000, 1964333750000001] only includes the sat number 1964333750000000 )
+cURL JavaScript
+GET /v1/utxo/{utxo}/rare-sats
+Copy Copied!
+Copy Copied!
+Sat ranges for UTXO
+Get all the sat ranges for a specific UTXO, regardless of whether they contain any rare sats or not.
+Parameters:
+Name utxo Type string Description
+A valid Bitcoin UTXO (e.g. 3d57f76284e17370f1ce45e75f68b5960906c4117951607f20ddd19f85c15706:0 )
+Response:
+An array of ranges. The first number in a range is inclusive, and the second is exclusive.
+cURL JavaScript
+GET /v1/utxo/{utxo}/sat-ranges
+Copy Copied!
+Copy Copied!
+🧊 Blocks
+Block info
+Get information about any Bitcoin block.
+Parameters:
+Name hash_or_height Type string|number Description
+A valid block hash or block height
+Response:
+Name hash Type string Description
+The unique hash of the block
+Name height Type number Description
+The block height
+Name timestamp Type string Description
+A timestamp of when the block was created
+Name size Type number Description
+The size of the block
+Name weight Type number Description
+The weight of the block
+Name status Type BlockStatus Description
+Can be used to check if the inscriptions and runes in the block have been indexed yet. Contains the following keys with boolean values:
+runes_indexed
+inscriptions_indexed
+cURL JavaScript
+GET /v1/block/{hash_or_height}
+Copy Copied!
+Copy Copied!
+Rune TXIDs
+Filters the TXIDs in a block to only show those that have runes in them.
+Parameters:
+Name hash_or_height Type string|number Description
+A valid block hash or block height
+Response:
+An array of TXIDs (strings).
+cURL JavaScript
+GET /v1/block/{hash_or_height}/rune_txids
+Copy Copied!
+Copy Copied!
