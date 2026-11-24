@@ -1,0 +1,38 @@
+name: Share pictures (temporary)
+on:
+  push:
+    branches: [findability-shots]
+permissions:
+  contents: read
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: |
+          npm i playwright@1 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+          python3 -m http.server 8000 >/dev/null 2>&1 &
+          sleep 2
+          mkdir out
+          cat > shot.js <<'JS'
+          const { chromium } = require('playwright');
+          const pages = process.argv.slice(2);
+          (async () => {
+            const b = await chromium.launch();
+            for (const p of pages) {
+              const pg = await b.newPage({ viewport: { width: 1200, height: 628 }, deviceScaleFactor: 1 });
+              try { await pg.goto('http://localhost:8000/' + p + '.html', { waitUntil: 'networkidle', timeout: 45000 }); } catch (e) { console.log(p, 'load:', e.message.split('\n')[0]); }
+              await pg.waitForTimeout(6000);
+              await pg.screenshot({ path: 'out/share-' + p + '.jpg', type: 'jpeg', quality: 85 });
+              console.log('done', p);
+              await pg.close();
+            }
+            await b.close();
+          })();
+          JS
+          node shot.js claim-race hall-visits block-manifest blockspace-share code-read collection-check daily earned-traits legal provenance-check recursion-map rune-proof safety-scan second-opinion source-health stuck-transaction trade-check truth-league watch inscription-cost-calculator ordinal-view-tester sentinel-id-viewer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shots
+          path: out/
