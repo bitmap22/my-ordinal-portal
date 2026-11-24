@@ -35,6 +35,8 @@ Removed because their terms don't allow this use, or don't clearly allow it:
 - Blockchair, BlockCypher, BitPay's Bitcore and 3xpl: back-up explorers
 - Doggy Market: Doginal files
 
+**These sites are looked at again once a month** (a GitHub job, Source Review), to see if any now allows the portal's use. It opens one GitHub issue a month listing each site and whether its terms changed. A site comes back only after its new terms are read and clearly allow it.
+
 Because of this:
 
 - **Doge Cube and the Dogecoin tools are paused.** There is no second Dogecoin source whose terms allow this use. The work is kept on the `doge-paused` branch.
