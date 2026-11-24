@@ -2,7 +2,7 @@
 
 © 2026 bitmap22. All rights reserved.
 
-The Ord Portal (https://ordportal.com) and its free agent tool, Agent Blockhall (`io.github.bitmap22/agent-blockhall`), read only the sites below. Each site's own terms were read on **24 November 2026**, and the portal reads a site only when its terms allow this use. If a site changes its terms, it is checked again before it is read again.
+The Ord Portal (https://ordportal.com) and its free agent tool, Agent Blockhall (`io.github.bitmap22/agent-blockhall`), read only the sites below. Each site's own terms were read on **24 November 2026**, and the portal reads a site only when its terms allow this use. **The terms are checked once a day for changes.** A GitHub job (Terms Check) reads each site's terms every day and compares them with the day before. If they change, bitmap22 is told at once, and the new terms are read before the portal decides whether to keep reading that site. The record of every check is on the `terms-check` branch.
 
 Every page asks these sites gently: a few asks at a time, and a site that asks the portal to slow down is rested.
 

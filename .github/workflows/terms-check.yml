@@ -1,0 +1,79 @@
+# Terms Check: once a day, read the terms (and licences) of every site the Ord Portal reads (SOURCES.md), and if any changed,
+# open a GitHub issue saying what changed. It only tells: it never stops a site being read. Free: GitHub runs it.
+# It writes only to the terms-check branch (the last text of each page, and when it last changed) and to issues.
+# To run it by hand: Actions > Terms Check > Run workflow. © 2026 bitmap22. All rights reserved.
+name: Terms Check
+
+on:
+  schedule:
+    # GitHub starts this repo's timed jobs late, sometimes by hours, so it is asked four times a day and the first step
+    # skips the check if one was saved in the last 20 hours: it still checks about once a day.
+    - cron: '17 1,7,13,19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write    # to save the texts on the terms-check branch
+  issues: write      # to say when terms changed
+
+concurrency:
+  group: terms-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Was there a check in the last 20 hours?
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/terms-check" --jq .commit.committer.date 2>/dev/null || true)
+          age=999999
+          if [ -n "$last" ]; then age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) )); fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$age" -lt 72000 ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "The last check was saved $((age / 3600)) hours ago: not due yet."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.due.outputs.go == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.due.outputs.go == 'true'
+        with:
+          node-version: 20
+      - name: The last check's texts
+        if: steps.due.outputs.go == 'true'
+        run: |
+          mkdir -p terms
+          # if the branch is there but can't be read, stop: starting again would lose what the terms said before
+          if git fetch -q origin terms-check; then git --work-tree=terms checkout FETCH_HEAD -- . || { echo "Couldn't read the last check, so nothing is checked this time."; exit 1; }
+          else h=$(git ls-remote --heads origin terms-check) || { echo "Couldn't read the last check, so nothing is checked this time."; exit 1; }; [ -z "$h" ] || { echo "Couldn't read the last check, so nothing is checked this time."; exit 1; }; fi
+          git reset -q
+      - name: Make sure the issue label is there
+        if: steps.due.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh label create terms-check --color B60205 --description "A data site's terms changed, or can't be read" -R "${GITHUB_REPOSITORY}" 2>/dev/null || true
+      - name: Read each site's terms
+        if: steps.due.outputs.go == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/terms-check/check.js terms
+      - name: Save it
+        if: steps.due.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp .github/terms-check/README.md terms/README.md
+          git fetch -q origin terms-check 2>/dev/null && had=yes || had=no
+          cd terms
+          git init -q -b terms-check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          # (the branch keeps its history, so every past wording of each page can be seen)
+          if [ "$had" = yes ]; then git fetch -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" terms-check && git reset -q --soft FETCH_HEAD; fi
+          git add -A
+          git commit -qm "Terms check: $(date -u +%FT%H:%MZ)" || git commit -q --allow-empty -m "Terms check: $(date -u +%FT%H:%MZ) (no change)"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" terms-check
