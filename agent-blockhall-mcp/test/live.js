@@ -39,7 +39,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   const holder = calls.find(c => c.name === 'inscription' && c.args.id === '#1000' && c.out && c.out.owner);
   if (holder) calls.push(await call('search', {query: holder.out.owner}));
   calls.push(await call('search', {query: 'satoshi.sats'}));
-  calls.push(await call('rareSats', {}));
+  calls.push(await call('price', {}));   // (24 Nov 2026: the rare sats board is removed)
   // the Block Manifest: the halving block's rune etchings, the next page of the same block (no new reading), inscription 0's
   // block, a kind that is not there, a kind it does not know, and the newest block
   calls.push(await call('blockManifest', {height: 840000, kind: 'runes etched', limit: 5}));
@@ -89,9 +89,9 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
     {claim: 'UNCOMMON•GOODS\'s symbol is ⧉'}, {claim: 'DOG•GO•TO•THE•MOON\'s supply is 100,000,000,000'}, {claim: 'NOT•A•RUNE•AT•ALL•HERE was etched in block 840,000'}]) calls.push(await call('secondOpinion', a));
   results.opinion = calls.filter(c => c.name === 'secondOpinion').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.answer + ' | ' + c.out.verdict + ' | ' + c.out.sources.map(s => s.source.replace('https://', '').slice(0, 40) + '=' + String(s.says).slice(0, 24) + ':' + s.agrees).join(', ')));
   // Source Health: every site now and the record, one chain, one site's hourly record (the record only), and a site it doesn't know
-  for (const a of [{}, {chain: 'doge'}, {site: 'ordinals.com', now: false}, {site: 'nowhere.example'}]) calls.push(await call('sourceHealth', a));
-  for (const a of [{}, {chain: 'doge', days: 30}, {site: 'ordinals.com'}, {site: 'nowhere.example'}]) calls.push(await call('truthLeague', a));
-  for (const a of [{id: '#0'}, {id: '#0', seller: 'bc1pgxygjamgwsscmejzcp2htsxkrxy27l73a8jg06hxr6wamuutynkqe9c2l8'}, {id: 'cdf08dc642ac8b8cc905417cc7b5cc4d4c2d77eb97941f0472e1ffae30ba012ei1'}, {id: '#0', chain: 'doge'}]) calls.push(await call('tradeCheck', a));
+  for (const a of [{}, {site: 'ordinals.com', now: false}, {site: 'nowhere.example'}]) calls.push(await call('sourceHealth', a));
+  for (const a of [{}, {days: 30}, {site: 'ordinals.com'}, {site: 'nowhere.example'}]) calls.push(await call('truthLeague', a));
+  for (const a of [{id: '#0'}, {id: '#0', seller: 'bc1pgxygjamgwsscmejzcp2htsxkrxy27l73a8jg06hxr6wamuutynkqe9c2l8'}, {id: 'cdf08dc642ac8b8cc905417cc7b5cc4d4c2d77eb97941f0472e1ffae30ba012ei1'}]) calls.push(await call('tradeCheck', a));
   results.trade = calls.filter(c => c.name === 'tradeCheck').map(c => JSON.stringify(c.args).slice(0, 70) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 140) : c.out.verdict + ' | ' + c.out.words.slice(0, 140)));
   results.league = calls.filter(c => c.name === 'truthLeague').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.record && c.out.record.checks != null ? c.out.record.checks + ' checks; ' + (c.out.findings || []).slice(0, 2).map(f => f.says).join(' | ').slice(0, 200) : JSON.stringify(c.out.record).slice(0, 160)));
   results.health = calls.filter(c => c.name === 'sourceHealth').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : (c.out.now ? JSON.stringify(c.out.now.counts) + ' newest ' + JSON.stringify(c.out.now.newest) + ' | ' + c.out.now.results.map(r => r.site + '=' + r.state + (r.behind >= 2 ? '(' + r.behind + ' behind)' : '') + ':' + r.ms).join(', ') : 'record only') +
@@ -102,36 +102,11 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
       ', sizes ' + k.sizes.matched + '/' + k.sizes.of + ', kinds ' + (k.kinds ? k.kinds.agreed + '/' + k.kinds.of : '-') + ', inscriptions ' + (k.inscriptions ? k.inscriptions.agreed + '/' + k.inscriptions.of : '-') +
       (k.runesEtched ? ', etched ' + k.runesEtched.made + '/' + k.runesEtched.tried : '') + ', differences ' + k.differences.length + ', items ' + c.out.items.kind + ' ' + c.out.items.list.length + '/' + c.out.items.total + ', sources ' + JSON.stringify(c.out.sources);
   });
-  // Doge Cube's tools, for Dogecoin: a block with the first Doginals, its next page (no new reading), the newest block, a kind
-  // it does not know, a block not made yet; Doginal #0, #1,000 and one that does not exist; the watches, and a fee watch (there is none)
-  const dstart = calls.length;
-  calls.push(await call('dogeBlockManifest', {height: 4609723, kind: 'inscriptions', limit: 5}));
-  calls.push(await call('dogeBlockManifest', {height: 4609723, from: 5, limit: 3}));
-  calls.push(await call('dogeBlockManifest', {height: 'newest', limit: 5}));
-  calls.push(await call('dogeBlockManifest', {height: 4609723, kind: 'shoes'}));
-  calls.push(await call('dogeBlockManifest', {height: 99999999}));
-  calls.push(await call('dogeBlockManifest', {height: 0}));   // (Dogecoin's first block: Blockchair has no bytes for its coinbase, BlockCypher has)
-  for (const id of ['#0', '#1000', '#999999999']) calls.push(await call('dogeProvenanceCheck', {id}));
-  const db = await call('dogeWatch', {what: 'block'}); calls.push(db);
-  if (db.out && db.out.since) { const o = JSON.parse(Buffer.from(db.out.since, 'base64').toString()); o.s.hash = null; o.s.tip -= 2; calls.push(await call('dogeWatch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
-  calls.push(await call('dogeWatch', {what: 'inscription', value: '#0'}));
-  const dk = await call('dogeWatch', {what: 'kind', value: 'inscriptions'}); calls.push(dk);
-  if (dk.out && dk.out.since) { const o = JSON.parse(Buffer.from(dk.out.since, 'base64').toString()); o.s.hash = null; o.s.tip -= 1; calls.push(await call('dogeWatch', {since: Buffer.from(JSON.stringify(o)).toString('base64')})); }
-  calls.push(await call('dogeWatch', {what: 'fee', value: '1'}));
-  for (const a of [{}, {day: '2026-11-13'}, {block: 6455172}, {day: '2001-01-01'}]) calls.push(await call('dogeDailyData', a));
-  results.doge = calls.slice(dstart).map(c => c.name + ' ' + JSON.stringify(c.args).slice(0, 70) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + c.out : !c.out ? 'no answer' :
-    c.out.manifest ? 'block ' + c.out.block.height + ': hash ' + c.out.checked.blockHash.fromItsOwnHeader + '/' + (c.out.checked.blockHash.secondSite && c.out.checked.blockHash.secondSite.agrees) + ', list proved ' + c.out.checked.transactionList.provedByMerkleRoot +
-      ', second list ' + c.out.checked.secondList.matched + '/' + c.out.checked.secondList.of + ', own bytes ' + c.out.checked.ownBytes.read + '/' + c.out.checked.ownBytes.of + ', items ' + c.out.items.kind + ' ' + c.out.items.list.length + '/' + c.out.items.total + ', counts ' + JSON.stringify(c.out.counts) :
-    c.out.check ? c.out.inscription.id + ': ' + c.out.verdict :
-    c.out.watching ? c.out.watching + ' | ' + c.out.now + ' | looked ' + c.out.looked + ' | ' + c.out.events.map(e => e.title).join(' / ') :
-    c.out.totals ? c.out.day + ': ' + c.out.totals.blocks + ' blocks, ' + c.out.totals.transactions + ' transactions | ' + (c.out.notes || []).join(' ') :
-    c.out.days ? c.out.days.length + ' days' : JSON.stringify(c.out).slice(0, 200)));
+  // (24 Nov 2026: Doge Cube's tools are paused: the Dogecoin calls are kept on the doge-paused branch)
   // the Media Reader, through both Provenance Checks: what is in the file
-  results.media = calls.filter(c => /^(doge)?[pP]rovenanceCheck$/.test(c.name) && c.out && c.out.whatIsInIt).map(c => c.name + ' ' + c.args.id + ': ' + (c.out.whatIsInIt.says || c.out.whatIsInIt.none || c.out.whatIsInIt.error) + ' | read from ' + c.out.whatIsInIt.readFrom);
+  results.media = calls.filter(c => /^provenanceCheck$/.test(c.name) && c.out && c.out.whatIsInIt).map(c => c.name + ' ' + c.args.id + ': ' + (c.out.whatIsInIt.says || c.out.whatIsInIt.none || c.out.whatIsInIt.error) + ' | read from ' + c.out.whatIsInIt.readFrom);
   results.calls = calls;
   results.summary = calls.map(c => c.name + ' ' + JSON.stringify(c.args) + ': ' + (c.error ? 'PROTOCOL ERROR ' + c.error.message : c.isError ? 'ERROR ' + c.out : 'ok') + ' (' + c.ms + ' ms)');
-  const g0 = calls.find(c => c.name === 'dogeBlockManifest' && c.args.height === 0);
-  results.dogeFirstBlock = g0 && g0.out && g0.out.checked ? JSON.stringify({hash: g0.out.block && g0.out.block.hash, ownBytes: g0.out.checked.ownBytes, bytesFrom: g0.out.sources && g0.out.sources.bytes}) : 'ERROR ' + (g0 && String(g0.out).slice(0, 200));
   fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 1));
   // Stuck Transaction Doctor: one waiting now, one mined (#1000's reveal), one not found, one not an ID
   for (const a of [{}, {txid: 'cbd62b57bc1b3ae8f6e0cfc402fbdbeb5ae4172f9200671f5f689f1af6d3332b'}, {txid: '0'.repeat(63) + '1'}, {txid: 'hello'}]) calls.push(await call('stuckTx', a));
@@ -142,9 +117,6 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   // Rune Proof: a premined rune, one open to mint, UNCOMMON•GOODS, a try that made no rune, a mint, a name not etched yet, an ID that isn't there, not a name
   for (const a of [{rune: 'DOG•GO•TO•THE•MOON'}, {rune: 'satoshi.nakamoto'}, {rune: 'UNCOMMON•GOODS'}, {rune: 'c74d618c4b5035a3c5dba96618ca7184f989912c72cd18d0a2f445c15bb7d2c2'}, {rune: '1b12b6246a56aa6d95c715a95f596f8b274ee253d89f53f287534a1d6fb1f56a'}, {rune: 'DOGGY'}, {rune: '99999999:1'}, {rune: 'newest'}, {rune: 'not a name!'}]) calls.push(await call('runeProof', a));
   results.rune = calls.filter(c => c.name === 'runeProof').map(c => JSON.stringify(c.args).slice(0, 50) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.answer + ' | ' + c.out.verdict.slice(0, 230) + (c.out.compare ? ' | same ' + c.out.compare.filter(x => x.same).length + '/' + c.out.compare.length : '') + (c.out.rules ? ' | rules kept ' + c.out.rules.filter(x => x.ok === true).length + '/' + c.out.rules.length : '')));
-  // Doge Collection Check: a collection by name (first 6 pieces), by short name further on, a list of pieces, and one that isn't there
-  for (const a of [{collection: 'Doginal Frogs', limit: 6}, {collection: 'doginal-dogs', from: 0, limit: 8}, {ids: ['#61345204', '91e0019e10a4a711f4af99820231be8f084b724bee8a0ba63a66a4b5331fd392i0']}, {collection: 'no such collection here'}]) calls.push(await call('dogeCollectionCheck', a));
-  results.dogecollection = calls.filter(c => c.name === 'dogeCollectionCheck').map(c => JSON.stringify(c.args).slice(0, 60) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 160) : c.out.verdict.slice(0, 200) + ' | ' + JSON.stringify(c.out.counts).slice(0, 200) + ' | ' + (c.out.pieces || []).filter(p => p.ok !== true).map(p => p.why).slice(0, 3).join(' / ')));
   // Earned Traits: a blockout bitmap never sold, one bought, one after the blockout, one from 942,000 up, not a bitmap
   for (const a of [{bitmap: '333333'}, {bitmap: '388067.bitmap'}, {bitmap: '900000'}, {bitmap: '960000'}, {bitmap: 'hello'}]) calls.push(await call('earnedTraits', a));
   results.traits = calls.filter(c => c.name === 'earnedTraits').map(c => JSON.stringify(c.args) + ' (' + c.ms + ' ms): ' + (c.isError ? 'ERROR ' + String(c.out).slice(0, 120) : c.out.bitmap + ' earned ' + (c.out.traits.map(t => t.trait).join(', ') || 'nothing') + ' | not: ' + c.out.notEarned.map(t => t.trait).join(', ') + ' | could not: ' + c.out.couldNotCheck.map(t => t.trait).join(', ')));
@@ -161,8 +133,6 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Watch:\n' + results.watch.join('\n'));
   console.log('Daily Data:\n' + results.daily.join('\n'));
   console.log('Blockspace Share:\n' + results.space.join('\n'));
-  console.log('Doge Cube (Dogecoin):\n' + results.doge.join('\n'));
-  console.log('Doge first block: ' + results.dogeFirstBlock);
   console.log('What is in the file (Media Reader):\n' + results.media.join('\n'));
   console.log('Collection Check:\n' + results.collection.join('\n'));
   console.log('Recursion Map:\n' + results.recursion.join('\n'));
@@ -171,7 +141,6 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   console.log('Stuck Transaction Doctor:\n' + results.stuck.join('\n'));
   console.log('Code Read:\n' + results.code.join('\n'));
   console.log('Rune Proof:\n' + results.rune.join('\n'));
-  console.log('Doge Collection Check:\n' + results.dogecollection.join('\n'));
   console.log('Earned Traits:\n' + results.traits.join('\n'));
   console.log('Citable checks:\n' + results.cite.join('\n'));
   server.kill();

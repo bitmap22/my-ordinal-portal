@@ -65,7 +65,7 @@
         const x = await io.ordJson('/r/inscription/' + id); const J = x.j || {}; sites.info = sites.info || x.site;
         n.checks.onOrdinals = true; n.number = J.number; n.block = J.height; n.time = iso(J.timestamp); n.contentType = J.content_type || null; n.bytes = J.content_length != null ? J.content_length : null; n.delegate = J.delegate || null;
         n.charms = J.charms || []; n.sat = J.sat != null ? J.sat : null; n.satpoint = J.satpoint || null;
-      } catch (e) { n.checks.onOrdinals = false; n.error = /404/.test(String(e)) ? 'no such inscription' : 'ordinals.com and its back-ups did not answer'; if (!/404/.test(String(e))) n.checks.onOrdinals = null; }
+      } catch (e) { n.checks.onOrdinals = false; n.error = /404/.test(String(e)) ? 'no such inscription' : 'ordinals.com did not answer'; if (!/404/.test(String(e))) n.checks.onOrdinals = null; }
       try { const h = await io.ord2Head('/content/' + id); sites.second = sites.second || h.site; n.checks.onSecondSite = h.ok; } catch (e) {}
       say('node', nodes.size);
       if (!n.checks.onOrdinals) return;
@@ -138,7 +138,7 @@
     else parts.push('it uses ' + fmt(others.length) + ' other inscription' + (others.length === 1 ? '' : 's') + (levels > 1 ? ' (' + levels + ' levels deep)' : ''));
     const unasked = others.filter(n => n.checks.onOrdinals === null), unread = all.filter(n => /could not be read|not read/.test(n.read || ''));
     parts.push(missing.length ? fmt(missing.length) + ' of them could not be found' : unasked.length ? null : others.length ? 'every one is on ordinals.com' : null);
-    if (unasked.length) parts.push(fmt(unasked.length) + ' could not be looked up (ordinals.com and its back-ups did not answer)');
+    if (unasked.length) parts.push(fmt(unasked.length) + ' could not be looked up (ordinals.com did not answer)');
     if (unread.length - (rootUnread ? 1 : 0) > 0) parts.push(fmt(unread.length - (rootUnread ? 1 : 0)) + ' could not be read for what they load');
     if (lim.cut) parts.push(fmt(lim.cut) + ' more were left out (the map stops at ' + fmt(lim.nodeMax) + ' inscriptions and ' + lim.depthMax + ' levels)');
     if (notOn2.length) parts.push(fmt(notOn2.length) + ' did not load on the second ord site');

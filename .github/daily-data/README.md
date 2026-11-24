@@ -8,4 +8,4 @@ Every Bitcoin block of each UTC day, read the [Block Manifest](https://ordportal
 
 See them on the portal: https://ordportal.com/daily.html. Without a browser, use the free Agent Blockhall MCP tool (`io.github.bitmap22/agent-blockhall`, its `dailyData` tool).
 
-© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents. Not to be republished or sold without permission ([licence](https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE)). Bitcoin's own data is public. The data comes from the free public sites mempool.space (and its copies), ordpool.space and ordinals.com (and its back-ups), asked gently.
+© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents. Not to be republished or sold without permission ([licence](https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE)). Bitcoin's own data is public. The data comes from the free public sites mempool.space (and its back-ups), ordpool.space and ordinals.com, asked gently.

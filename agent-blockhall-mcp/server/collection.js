@@ -211,7 +211,7 @@
       foundNotListed: run.extraFound.slice(0, 100),
       page: {filter: opts.filter || 'all', from, limit, total: want.length, more: from + limit < want.length},
       children: want.slice(from, from + limit),
-      howProven: {listedTwice: 'in the parent\'s children list on ' + (run.listSite || 'ordinals.com') + ' and on ' + (run.secondSite || 'a second ord site'),
+      howProven: {listedTwice: run.secondSite ? 'in the parent\'s children list on ' + (run.listSite || 'ordinals.com') + ' and on ' + run.secondSite : 'not asked: no second ord site is asked (none we found has terms that allow it); a child is proven by the chain alone',
         namesParent: 'its own transaction (read from a mempool site, not from ord) names the parent in its parent field',
         parentSpent: 'the transaction that made it is one of the parent\'s own moves: the parent was spent to make it (ord\'s rule for a child)',
         proven: 'names the parent and the parent was spent to make it'},

@@ -134,7 +134,8 @@
   async function check(q, io, progress) {
     q = q || {};
     const say = (k, v) => { try { progress && progress(k, v); } catch (e) {} };
-    const chain = /^d/i.test(q.chain || '') ? 'doge' : 'bitcoin', seller = q.seller ? String(q.seller).trim() : null, claimed = q.collection ? String(q.collection).trim() : null;
+    if (/^d/i.test(q.chain || '')) throw new Error('Dogecoin is paused: only Bitcoin inscriptions are checked');   // (24 Nov 2026)
+    const chain = 'bitcoin', seller = q.seller ? String(q.seller).trim() : null, claimed = q.collection ? String(q.collection).trim() : null;
     if (q.id == null || String(q.id).trim() === '') throw new Error('give an inscription’s number (#1000) or its ID');
     const at = new Date().toISOString().replace(/\.\d{3}/, ''), reasons = [], ran = {};
     // 1. where it came from (and who holds it)

@@ -128,7 +128,7 @@
     const out = [], note = [];
     // (each claim's own rule: "about 37.6 BTC" agrees within 1%; so two claims checked at once never mix)
     const same = (v, want) => typeof v === 'number' && typeof want === 'number' ? (c.approx ? Math.abs(v - want) <= Math.abs(want) * 0.01 : v === want) : v === want;
-    const tryIt = async (f, label) => { try { await f(); } catch (e) { out.push(S(label, null, null, 'did not answer: ' + String(e && e.message || e).slice(0, 100), null)); } };
+    const tryIt = async (f, label) => { try { await f(); } catch (e) { const m = String(e && e.message || e); out.push(S(label, null, null, (/^no second ord site is asked/.test(m) ? 'not asked: ' + m : 'did not answer: ' + m.slice(0, 100)), null)); } };   // (24 Nov 2026: a site the portal may not use is 'not asked', never 'did not answer')
     const k = c.kind;
     if (k.startsWith('block.')) {
       const h = c.subject; let H = null, X = null;

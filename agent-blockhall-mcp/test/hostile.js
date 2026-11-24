@@ -50,7 +50,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     s = start('none');
     const tok = o => Buffer.from(JSON.stringify(o)).toString('base64');
     r = await s.call('watch', {since: tok({v: 1, w: {what: 'block'}, s: {tip: -1e9, hash: null}})}, 20000); ok(r.result && r.result.isError && s.exited() === null, 'a made-up watch token: refused, and the tool keeps going');
-    r = await s.call('dogeWatch', {since: tok({v: 1, w: {what: 'block'}, s: {tip: -1e9, hash: null}})}, 20000); ok(r.result && r.result.isError && s.exited() === null, 'the same for dogeWatch');
+    r = await s.call('dogeWatch', {since: tok({v: 1, w: {what: 'block'}, s: {tip: -1e9, hash: null}})}, 20000); ok(((r.result && r.result.isError) || r.error) && s.exited() === null, 'a tool no longer there (dogeWatch, Dogecoin is paused): a clear error, and the tool keeps going');
     s.raw('{"jsonrpc":"2.0","id":' + '['.repeat(20000) + ']'.repeat(20000) + ',"method":"ping"}\n'); await sleep(800);
     ok(s.exited() === null && s.notes.some(m => m.error && m.error.code === -32600), 'a deeply nested id: an invalid request, and the tool keeps going');
     s.raw(JSON.stringify([{jsonrpc: '2.0', id: 9, method: 'ping'}]) + '\n'); await sleep(300); ok(s.notes.some(m => m.error && /batch/.test(m.error.message)), 'a batch: a clear answer');
