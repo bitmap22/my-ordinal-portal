@@ -47,7 +47,7 @@ label{display:block;font:600 13px/1 var(--cond);letter-spacing:.14em;text-transf
 .view{display:grid;grid-template-columns:minmax(230px,330px) minmax(0,1fr);column-gap:clamp(20px,4.5vw,72px);row-gap:14px;align-items:start;margin-top:clamp(18px,4.5vh,44px)}
 #start{grid-template-areas:"menu side"}
 #wait{grid-template-areas:"menu crew" "menu chat"}
-#start .menu,#wait .menu{grid-area:menu}#start .side{grid-area:side}.crewbox{grid-area:crew}.chatwrap{grid-area:chat}
+#start .menu,#wait .menu{grid-area:menu}.crewbox .trust{margin:2px 0 10px;font-size:13px;color:#ffb04a;letter-spacing:.02em}#start .side{grid-area:side}.crewbox{grid-area:crew}.chatwrap{grid-area:chat}
 /* the menu down the left */
 .menu{display:flex;flex-direction:column;gap:2px}
 .mi{position:relative;display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;margin:0;padding:10px 14px 9px 18px;border:0;border-radius:0;background:transparent;color:var(--m-dim);font:700 clamp(18px,2vw,23px)/1 var(--cond);letter-spacing:.04em;text-transform:uppercase;text-align:left;cursor:pointer}
@@ -283,7 +283,7 @@ body.inpaint.peek #hud,body.inpaint.peek #ptop:not([hidden])~#hud{left:auto;righ
   <div id="start" class="view">
     <nav class="menu" aria-label="Play">
       <button class="mi" id="crew">Start a crew</button>
-      <button class="mi" id="sea">Open hall</button>
+      <button class="mi" id="sea" hidden>Open hall</button><!-- (24 Nov 2026: the open hall is closed: crews are joined by code, invite or the crew list) -->
       <div class="mi join"><button id="join">Join</button><input id="code" maxlength="6" autocomplete="off" spellcheck="false" placeholder="Code" aria-label="Crew code"></div>
       <button class="mi" id="crewsb">Crew list</button>
       <button class="mi" id="friendsb">Friends<span class="badge" id="fon"></span></button>
@@ -319,6 +319,7 @@ body.inpaint.peek #hud,body.inpaint.peek #ptop:not([hidden])~#hud{left:auto;righ
     </nav>
     <section class="box crewbox">
       <div class="lhead"><h2 id="rtitle">Crew</h2><button class="sm" id="rcopy" hidden>Copy</button><span class="count" id="rsub"></span></div>
+      <p class="trust">Play with people you trust.</p>
       <ul class="plist" id="rplist"></ul>
       <div class="voice"><button class="micb" id="rmic" aria-pressed="false"><svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="4.5" y="1" width="5" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 7.5a5 5 0 0010 0M7 12.5V15M4.5 15h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="x" d="M1.5 1.5l11 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl"></span></button>
         <div class="seg" role="group" aria-label="How you talk"><button data-talk="open" aria-pressed="true">Open mic</button><button data-talk="ptt" aria-pressed="false">Push to talk</button></div></div>
@@ -1507,6 +1508,7 @@ function inbox() {
     const f = friends.find(x => x.pk === ev.pubkey); if (!f || now() - ev.created_at > 120) return;
     const w = { mode: c.mode === 'sea' ? 'sea' : 'crew', code: typeof c.code === 'string' ? c.code.slice(0, 6) : '', rid: typeof c.rid === 'string' ? c.rid.slice(0, 16) : '' };
     if (net.on && w.rid && w.rid === net.rid) return;
+    if (w.mode === 'sea') return;   // (the open hall is closed)
     toast(f.name + ' invites you to ' + (w.mode === 'sea' ? 'the open hall' : 'crew ' + w.code), [['Join', () => joinFriend(w), 1], ['Not now', () => {}]], 30000); chime('invite');
   });
 }
@@ -1620,7 +1622,7 @@ function drawFriends() {
     const i = FR.get(f.pk), live = online(i), li = el('li', { class: live ? 'on' : null });
     li.append(el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'who' }, el('span', { class: 'nm', text: f.name || 'Runner' }), el('span', { class: 'st', text: fstatus(i) })));
     const w = live ? i.where : null;
-    if (w && (w.s === 'sea' ? w.rid : w.s === 'crew' && w.code) && !(net.on && w.rid && w.rid === net.rid)) { const b = el('button', { text: w.n >= w.max ? 'Full' : 'Join' }); b.disabled = w.n >= w.max; b.onclick = () => joinFriend(w); li.append(b); }
+    if (w && (w.s === 'crew' && w.code) && !(net.on && w.rid && w.rid === net.rid)) { const b = el('button', { text: w.n >= w.max ? 'Full' : 'Join' }); b.disabled = w.n >= w.max; b.onclick = () => joinFriend(w); li.append(b); }
     if (net.on && live && !(w && w.rid && w.rid === net.rid)) { const b = el('button', { text: 'Invite' }); b.onclick = () => { if (inviteFriend(f)) { b.textContent = 'Invited'; b.disabled = true; setTimeout(() => { b.textContent = 'Invite'; b.disabled = false; }, 10000); } }; li.append(b); }
     const x = el('button', { class: 'x', text: '×', 'aria-label': 'Remove ' + (f.name || 'friend') });
     x.onclick = () => { if (x.dataset.sure) { removeFriend(f.pk); return; } x.dataset.sure = '1'; x.textContent = 'Remove?'; x.classList.remove('x'); setTimeout(() => { if (x.isConnected) { delete x.dataset.sure; x.textContent = '×'; x.classList.add('x'); } }, 4000); };
@@ -1634,7 +1636,7 @@ async function crewsPanel() {
   const body = $('pbody'), msg = el('p', { class: 'pnote', id: 'cnote', role: 'status', text: 'Looking…' }), ul = el('ul', { class: 'plist', id: 'clist' }), again = el('button', { text: 'Refresh' });
   body.append(ul, msg, el('div', { class: 'btns' }, again));
   again.onclick = () => openPanel('crews');
-  const rooms = await findRooms(r => r.mode === 'sea' || r.open, 3000);
+  const rooms = await findRooms(r => r.mode !== 'sea' && r.open, 3000);
   if (P.kind !== 'crews' || !ul.isConnected) return;
   // one row for each crew (the best room, if a crew is split for a moment)
   const by = new Map(); for (const r of rooms) { const k = r.rid || r.pk, b = by.get(k); if (!b || pickBest([r, b]) === r) by.set(k, r); }
@@ -1848,9 +1850,7 @@ $('crew').onclick = async () => { if (starting) return; starting = true; note('S
   try { const c = newCode(), rid = await ridOf(c); note(''); if (net.on) leave(); net.sail = false; host('crew', c, { rid }); } finally { starting = false; } };
 $('join').onclick = async () => { const code = $('code').value.trim().toUpperCase(); if (code.length < 4) { note(''); flash($('code')); return; } note('Finding crew ' + code + '…');
   const rid = await ridOf(code), rooms = (await findRooms(r => r.mode === 'crew' && (r.rid === rid || r.code === code || r.rid === code), 3500, { early: true, most: 12000, rids: [rid, code] })).map(r => Object.assign({}, r, { code })), r = pickBest(rooms); if (!r) { note('No crew with that code is in the cube right now.'); return; } if (r.n >= r.max) { note('That crew is full.'); return; } note('Joining…'); joinBest(rooms); };
-$('sea').onclick = async () => { note('Looking for runners in the open hall…'); const all = await findRooms(() => true, 3500, { all: true, most: 8000 });
-  const r = all.filter(x => x.mode === 'sea' && x.n < x.max).filter(fresh).sort((a, b) => (b.n - a.n) || (b.at - a.at))[0];
-  if (r) { note('Joining…'); joinRoom(r); } else { net.sail = true; host('sea', ''); } };
+$('sea').onclick = () => note('The open hall is closed: start a crew, join one with its code, or explore alone.');
 $('solo').onclick = () => { soloOn = true; hideLobby(); toGame({ type: 'look', id: 'me', look: picked }); try { frame.contentWindow.focus(); } catch (e) {} presenceSoon(); };
 $('crewsb').onclick = () => openPanel('crews'); $('friendsb').onclick = () => openPanel('friends'); $('frpill').onclick = () => openPanel('friends'); $('room').onclick = () => openPanel('crew');
 $('sail').onclick = () => startGame();
@@ -1867,6 +1867,7 @@ relaysOn(); presence(); watchFriends(); inbox(); drawFriends();
   if (!s || typeof s !== 'object' || !(Date.now() - (+s.t || 0) < 600000) || typeof s.rid !== 'string' || !/^[A-Za-z0-9]{1,16}$/.test(s.rid)) return;
   const mode = s.mode === 'sea' ? 'sea' : 'crew', code = typeof s.code === 'string' && /^[A-Z0-9]{1,6}$/.test(s.code) ? s.code : '', rid = s.rid;
   if (mode === 'crew' && !code) return;
+  if (mode === 'sea') return;   // (the open hall is closed)
   showStart(mode === 'sea' ? 'Taking you back into the open hall…' : 'Taking you back into crew ' + code + '…');
   const rooms = (await findRooms(r => r.rid === rid && r.mode === mode && r.n < r.max, 3500, { early: true, most: 12000, rids: [rid] })).map(r => Object.assign({}, r, { code: r.code || code }));
   if (net.on) return;   // (they chose something else meanwhile)
@@ -2156,7 +2157,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'pickRunner', does: 'Pick which of the ten you are: Leo, Kofi, Ren, Marco, Sam, Mia, Zara, Yuki, Elena or Nia. Gives back {name, runner} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"name":{},"runner":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'name', enum: RUNNERS, does: 'one of the ten', req: true}],
       run: ({name}) => { const tiles = [...$('chars').children], t = tiles.find(el => (el.getAttribute('aria-label') || text(el)).toLowerCase().includes(String(name).toLowerCase())); if (!t) return {ok: false, error: 'pick one of: ' + RUNNERS.join(', ')}; t.click(); return look(); }},
     {name: 'startCrew', does: 'Start a new private crew (you get a code to share). Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => { if (!press('crew')) return {ok: false, error: 'not on the start page'}; await until(() => net.on && net.code, 20000); if (!net.on) return {ok: false, error: $('note').textContent || 'no crew was started'}; return crewState(); }},
-    {name: 'openHall', does: 'Opening or joining the open hall (anyone can join it) is the person\'s choice: this says so, and asks them to press Open hall. Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => ({ok: false, error: 'the open hall is public, so going there is the person\'s choice: ask them to press Open hall (you can startCrew() or join({code}) a private crew)'}) },
+    {name: 'openHall', does: 'The open hall (a public room anyone could walk into) is closed: crews are joined with their code, a friend\'s invite or the crew list. Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => ({ok: false, error: 'the open hall is closed: startCrew() or join({code}) a crew, or explore alone'}) },
     {name: 'join', does: 'Join a crew with its code. Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'code', does: 'the crew code, e.g. GRX27', req: true}],
       run: async ({code}) => { const i = $('code'); if (!shown(i)) return {ok: false, error: 'not on the start page'}; i.value = String(code).toUpperCase().trim(); i.dispatchEvent(new Event('input', {bubbles: true})); press('join'); await until(() => net.on && net.players.size > 1, 25000); return crewState(); }},
     {name: 'exploreAlone', does: 'Play without a crew. Gives back {screen} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"screen":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => { if (!press('solo')) return {ok: false, error: 'not on the start page'}; await wait(1500); return {screen: lobbyOpen() ? 'start page' : 'in the game'}; }},
