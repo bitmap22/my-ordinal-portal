@@ -13,9 +13,9 @@ const PORTAL = 'https://ordportal.com/', RAW = 'https://raw.githubusercontent.co
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (' + 'https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE' + '). Bitcoin’s own data is public.';
 
 /* ---------- being gentle with the sites: at most 30 at once, then 6 a second per site; rest any site that asks ---------- */
-const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://mempool.bitaroo.net', 'https://blockstream.info'];
-const MIRROR_V1 = 5;
-const ORD_R = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.fra.mempool.space', 'https://blockstream.info'];
+const MIRROR_V1 = 3;
+const ORD_R = ['https://ordinals.com'];
 const ORD_LIST = 'https://ordinals.com';
 const PACE = {rate: 6, burst: 30, rest: 30}, sites = new Map();
 const site = h => { let b = sites.get(h); if (!b) sites.set(h, b = {tok: PACE.burst, t: Date.now(), restUntil: 0}); return b; };

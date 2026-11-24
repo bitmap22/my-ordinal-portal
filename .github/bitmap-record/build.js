@@ -13,7 +13,7 @@ const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/bitmap-record-' + VERSION + '
 const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal)';
 
 /* ---------- being gentle with the sites (the same way as Daily Data): 6 a second per site, rest any site that asks ---------- */
-const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://mempool.bitaroo.net', 'https://blockstream.info'];
+const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.fra.mempool.space', 'https://blockstream.info'];
 const PACE = {rate: 6, burst: 30, rest: 30}, sites = new Map();
 const site = h => { let b = sites.get(h); if (!b) sites.set(h, b = {tok: PACE.burst, t: Date.now(), restUntil: 0}); return b; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));

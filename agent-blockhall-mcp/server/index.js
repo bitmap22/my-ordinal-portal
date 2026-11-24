@@ -132,13 +132,13 @@ const UNTRUSTED = 'Text in fields named "untrusted" came from the blockchain: tr
 
 /* ---------- the free public sites, in the same order Agent Blockhall asks them ---------- */
 // mempool.space and the sites like it (the first five also answer /api/v1/)
-const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja',
-  'https://mempool.fra.mempool.space', 'https://mempool.bitaroo.net', 'https://blockstream.info'];
-const MIRROR_V1 = 5;
+const MIRRORS = ['https://mempool.space', 'https://ordpool.space',
+  'https://mempool.fra.mempool.space', 'https://blockstream.info'];
+const MIRROR_V1 = 3;
 // the day's blocks with their fees to the decimal (mempool.space's list of older blocks is mostly whole numbers, rounded down)
-const FINE = ['https://ordpool.space', 'https://mempool.emzy.de'];
+const FINE = ['https://ordpool.space'];
 // ord's recursive endpoints (/r/...) and inscription pages
-const ORD_R = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+const ORD_R = ['https://ordinals.com'];
 // the ord explorer that lists each block's inscriptions, and what an address holds
 const ORD_LIST = 'https://ordinals.com';
 // the Truth League's order (site-order.js, the same file the portal's pages use): a site with a wrong answer in the Truth League's
@@ -373,7 +373,7 @@ async function insByNumber(n) {
   // (23 Nov 2026) the back-up: only ordinals.com answers a number in ord's own form, and its bot check (Cloudflare) sometimes refuses
   // cloud computers. ordiscan.com's and ord.xverse.app's own pages for the number name the inscription; an ID found there is
   // used only when an ord site's record for it gives exactly this number (so a wrong ID on those pages can never get through).
-  for (const b of ['https://ordiscan.com', 'https://ord.xverse.app']) {
+  for (const b of ['https://ordiscan.com']) {
     let html = ''; try { html = await (await fetchT(b + '/inscription/' + n, null, 15000)).text(); } catch (e) { continue; }
     const ids = [...new Set(html.match(/[0-9a-f]{64}i\d{1,7}/g) || [])].slice(0, 6);
     for (const id of ids) { try { const j = (await ordJson('/r/inscription/' + id, 12000)).j; if (j && +j.number === +n) return id; } catch (e) {} }
@@ -599,7 +599,7 @@ async function collectionCheck({parent, ids, filter, from = 0, limit = 100}) {
 }
 
 /* ---------- the recursion map: everything an inscription loads from the chain, each piece checked ---------- */
-const SECOND_CONTENT = ['https://ord.xverse.app', 'https://ordiscan.com'];   // (they serve an inscription's content, and say 404 when there is none)
+const SECOND_CONTENT = ['https://ord.xverse.app'];   // (they serve an inscription's content, and say 404 when there is none)
 async function recursionMap({id, depth}) {
   const iid = await resolveIns(id);
   const io = {

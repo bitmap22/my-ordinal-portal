@@ -29,8 +29,8 @@ const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use
 const t0 = Date.now(), log = (...a) => console.log(...a);
 
 /* ---------- fetching, asked gently (each site: a few a second, and a rest when it says "too many") ---------- */
-const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.emzy.de', 'https://mempool.ninja', 'https://mempool.fra.mempool.space', 'https://blockstream.info'];
-const ORD_R = ['https://ordinals.com', 'https://ordiscan.com', 'https://ordinalswallet.com', 'https://ord.xverse.app'];
+const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.fra.mempool.space', 'https://blockstream.info'];
+const ORD_R = ['https://ordinals.com'];
 const DX = 'https://thedoginalsexplorer.com', DOGE_CONTENT = [DX, 'https://cdn.doggy.market'];
 const PACE = {[new URL(DX).host]: {rate: 4, burst: 12}}, sites = new Map(), sleep = ms => new Promise(r => setTimeout(r, ms));
 async function paceWait(host) {
