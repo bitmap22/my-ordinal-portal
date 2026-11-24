@@ -283,9 +283,9 @@ body.inpaint.peek #hud,body.inpaint.peek #ptop:not([hidden])~#hud{left:auto;righ
   <div id="start" class="view">
     <nav class="menu" aria-label="Play">
       <button class="mi" id="crew">Start a crew</button>
-      <button class="mi" id="sea" hidden>Open hall</button><!-- (24 Nov 2026: the open hall is closed: crews are joined by code, invite or the crew list) -->
+      <button class="mi" id="sea" hidden>Open hall</button><!-- (24 Nov 2026: the open hall is closed: crews are joined only by code or invite) -->
       <div class="mi join"><button id="join">Join</button><input id="code" maxlength="6" autocomplete="off" spellcheck="false" placeholder="Code" aria-label="Crew code"></div>
-      <button class="mi" id="crewsb">Crew list</button>
+      <button class="mi" id="crewsb" hidden>Crew list</button><!-- (24 Nov 2026: no crew list: a crew is joined only with its code or an invite) -->
       <button class="mi" id="friendsb">Friends<span class="badge" id="fon"></span></button>
       <button class="mi" id="solo">Explore alone</button>
       <button class="mi small" id="have">Invite code</button>
@@ -961,7 +961,7 @@ const fresh = r => now() - r.at <= 45;
 // There's no server to hold it, so each page checks before it starts a new one (two starting in the same second can make it 101).
 const MAXCREWS = 100;   // (no longer stops anyone: a flood of fake rooms could fill it. Kept for the count shown to agents)
 const liveCrews = rooms => { const ids = new Set(); for (const r of rooms) if (r.status === 'live' && fresh(r)) ids.add(r.rid || r.pk); return ids.size; };
-const FULL = 'The lobby is full: ' + MAXCREWS + ' crews are going. Join one with space from the Crew list, or explore alone.';
+const FULL = 'The lobby is full: ' + MAXCREWS + ' crews are going. Join a crew with its code, or explore alone.';
 const ranked = rooms => rooms.slice().sort((a, b) => (fresh(b) - fresh(a)) || (b.n - a.n) || (b.gen - a.gen) || (b.at - a.at));
 const pickBest = rooms => ranked(rooms)[0] || null;
 // join the best of these rooms, falling back to the others if it doesn't answer
@@ -1026,7 +1026,7 @@ function watchSplits() {
 function host(mode, code, opt = {}) {
   const takeover = !!opt.back;
   for (const u of net.unsub.splice(0)) u();   // (listeners left from linking to an earlier host: closed, so they don't pile up on the relays)
-  Object.assign(net, { on: true, host: true, mode, code: code || '', rid: opt.rid || (mode === 'crew' ? code : newCode() + newCode()), gen: opt.gen || 0, open: !!opt.open, hostId: ME, started: now(), prev: opt.prev || '', fast: Date.now() + (takeover ? 45000 : 0), nextBeat: 0, hostLink: null, back: false });
+  Object.assign(net, { on: true, host: true, mode, code: code || '', rid: opt.rid || (mode === 'crew' ? code : newCode() + newCode()), gen: opt.gen || 0, open: false, hostId: ME, started: now(), prev: opt.prev || '', fast: Date.now() + (takeover ? 45000 : 0), nextBeat: 0, hostLink: null, back: false });
   soloOn = false; if (takeover) for (const k of Object.values(net.pks || {})) net.crewKeys.add(k); else net.crewKeys = new Set(); net.line = [ME]; net.pks = { [ME]: pk };
   net.players.set(ME, Object.assign(net.players.get(ME) || {}, { name: myName(), ns: nameProof(myName()), look: picked, fpk, fps: friendProof(), sail: net.sail ? 1 : 0 }));
   if (takeover) for (const id of [...net.players.keys()]) if (id !== ME) laterGone(id, 25000);
@@ -1035,7 +1035,7 @@ function host(mode, code, opt = {}) {
     const gid = ev.pubkey.slice(0, 12), old = net.peers.get(gid), n = typeof q.n === 'string' ? q.n.slice(0, 16) : '';
     // (they lost their link and are back: the old one goes. Each ask has its own tag; one from an older page, without, counts as new after 3 seconds)
     if (old) { if ((!n || n === old.n) && performance.now() - (old.t0 || 0) < 3000) return; net.peers.delete(gid); try { old.pc.close(); } catch (e) {} voice.gone(gid); }
-    if (net.kicked.has(ev.pubkey) || (net.mode === 'crew' && !net.open && q.c !== codeProof(net.code, ev.pubkey))) return;   // (a private crew: only someone who has its code gets in; and nobody the host has taken out)
+    if (net.kicked.has(ev.pubkey) || (net.mode === 'crew' && q.c !== codeProof(net.code, ev.pubkey))) return;   // (every crew: only someone who has its code gets in; and nobody the host has taken out)
     if (placesTaken() >= MAX - 1) return;
     { const t = Date.now(); askB.v = Math.min(3, askB.v + (t - askB.at) / 1000); askB.at = t; if (askB.v < 1) return; askB.v--; }
     { const wait = [...net.peers.values()].filter(p => !p.hi).sort((a, b) => (a.answered === 2 ? 1 : 0) - (b.answered === 2 ? 1 : 0) || a.t0 - b.t0); while (wait.length >= ASK_WAIT) { const o = wait.shift(); if (net.peers.get(o.gid) === o) net.peers.delete(o.gid); try { o.pc.close(); } catch (e) {} } }   // (the oldest waiting ask gives way)
@@ -1531,7 +1531,7 @@ function drawWait() {
   const n = net.host ? liveCount() : Math.max(net.players.size, 1), linked = net.host || (net.hostLink && net.hostLink.init);
   $('rtitle').textContent = 'Crew '; $('rtitle').append(el('span', { class: 'cc', text: net.code || '…' })); $('rcopy').hidden = !net.code;
   $('rsub').textContent = net.regroup ? 'Finding the crew again…' : !linked ? 'Joining…' : n + '/' + MAX;
-  $('ropenw').hidden = !(net.host && net.mode === 'crew'); $('ropen').checked = !!net.open; $('ragentsw').hidden = !(net.host && net.mode === 'crew'); $('ragents').checked = net.agents !== 0;
+  $('ropenw').hidden = true; $('ropen').checked = false; $('ragentsw').hidden = !(net.host && net.mode === 'crew'); $('ragents').checked = net.agents !== 0;
   $('rbycode').hidden = !net.host;
 }
 // everyone in the crew: the host's star, which block they're in, friends, and a mic symbol each (lit while they talk; tap someone's to mute them)
@@ -1591,7 +1591,7 @@ function drawChat() { const box = $('rlines'); if (!box) return; const atEnd = b
   if (atEnd) box.scrollTop = box.scrollHeight; }
 // panels: Friends, the crew list, your crew (in the game)
 const P = { kind: '' };
-function openPanel(kind) { P.kind = kind; $('panel').hidden = false; $('pbody').textContent = ''; if (kind === 'friends') friendsPanel(); else if (kind === 'crews') crewsPanel(); else if (kind === 'crew') crewPanel(true); }
+function openPanel(kind) { P.kind = kind; $('panel').hidden = false; $('pbody').textContent = ''; if (kind === 'friends') friendsPanel(); else if (kind === 'crews') { closePanel(); return; } else if (kind === 'crew') crewPanel(true); }
 function closePanel() { P.kind = ''; $('panel').hidden = true; $('pbody').textContent = ''; }
 $('px').onclick = closePanel; $('panel').addEventListener('click', e => { if (e.target === $('panel')) closePanel(); });
 function friendsPanel() {
@@ -1622,7 +1622,7 @@ function drawFriends() {
     const i = FR.get(f.pk), live = online(i), li = el('li', { class: live ? 'on' : null });
     li.append(el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'who' }, el('span', { class: 'nm', text: f.name || 'Runner' }), el('span', { class: 'st', text: fstatus(i) })));
     const w = live ? i.where : null;
-    if (w && (w.s === 'crew' && w.code) && !(net.on && w.rid && w.rid === net.rid)) { const b = el('button', { text: w.n >= w.max ? 'Full' : 'Join' }); b.disabled = w.n >= w.max; b.onclick = () => joinFriend(w); li.append(b); }
+    /* (24 Nov 2026: no Join button here: a friend's crew is joined only with its code or their invite) */
     if (net.on && live && !(w && w.rid && w.rid === net.rid)) { const b = el('button', { text: 'Invite' }); b.onclick = () => { if (inviteFriend(f)) { b.textContent = 'Invited'; b.disabled = true; setTimeout(() => { b.textContent = 'Invite'; b.disabled = false; }, 10000); } }; li.append(b); }
     const x = el('button', { class: 'x', text: '×', 'aria-label': 'Remove ' + (f.name || 'friend') });
     x.onclick = () => { if (x.dataset.sure) { removeFriend(f.pk); return; } x.dataset.sure = '1'; x.textContent = 'Remove?'; x.classList.remove('x'); setTimeout(() => { if (x.isConnected) { delete x.dataset.sure; x.textContent = '×'; x.classList.add('x'); } }, 4000); };
@@ -1652,12 +1652,12 @@ function crewPanel(first) {
   const body = $('pbody');
   $('ptitle').textContent = net.mode === 'crew' ? 'Crew ' + (net.code || '…') : 'Open hall';
   const n = net.host ? liveCount() : Math.max(net.players.size, 1), sub = net.regroup ? 'Finding the crew again…' : n + '/' + MAX;
-  if (!first && $('pplist')) { $('csub').textContent = sub; playerRows($('pplist')); const ow = $('copenw'); if (ow) { ow.hidden = !(net.host && net.mode === 'crew'); $('copen').checked = !!net.open; } const bc = $('cbycode'); if (bc) bc.hidden = !net.host; return; }
+  if (!first && $('pplist')) { $('csub').textContent = sub; playerRows($('pplist')); const ow = $('copenw'); if (ow) { ow.hidden = true; $('copen').checked = false; } const bc = $('cbycode'); if (bc) bc.hidden = !net.host; return; }
   body.textContent = '';
   const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'How you talk' }, el('button', { 'data-talk': 'open', text: 'Open mic' }), el('button', { 'data-talk': 'ptt', text: 'Push to talk' }));
   for (const b of seg.children) b.onclick = () => voice.setMode(b.dataset.talk);
   const openBox = el('input', { type: 'checkbox', id: 'copen' }); openBox.onchange = () => setOpen(openBox.checked);
-  const ow = el('label', { class: 'check', id: 'copenw' }, openBox, ' Show in crew list'); ow.hidden = !(net.host && net.mode === 'crew'); openBox.checked = !!net.open;
+  const ow = el('label', { class: 'check', id: 'copenw' }, openBox, ' Show in crew list'); ow.hidden = true; openBox.checked = false;
   const inv = el('button', { text: 'Invite friends' }); inv.onclick = () => openPanel('friends');
   const byc = el('button', { id: 'cbycode', text: 'Invite by code' }); byc.hidden = !net.host; byc.onclick = () => { closePanel(); inviteByCode(); };
   const lv = el('button', { text: 'Leave crew' }); lv.onclick = () => { closePanel(); leaveCrew(); };
@@ -1666,7 +1666,7 @@ function crewPanel(first) {
   body.append(el('ul', { class: 'plist', id: 'pplist' }), el('div', { class: 'voice' }, el('span', { class: 'sub', style: 'margin:0', text: 'Talk:' }), seg), ow, el('div', { class: 'btns' }, inv, byc, lv), el('div', { class: 'wal', id: 'cwal' }));
   playerRows($('pplist')); voice.ui(); walBox($('cwal'));
 }
-function setOpen(on) { if (!net.host) return; net.open = !!on; toAll({ t: 'room', open: net.open ? 1 : 0, agents: net.agents === 0 ? 0 : 1 }); beatSoon(); presenceSoon(); drawCrew(); }
+function setOpen(on) { if (!net.host) return; net.open = false; /* (24 Nov 2026: crews are never listed: code or invite only) */ toAll({ t: 'room', open: net.open ? 1 : 0, agents: net.agents === 0 ? 0 : 1 }); beatSoon(); presenceSoon(); drawCrew(); }
 function setAgents(on) { if (!net.host) return; net.agents = on ? 1 : 0; window.__crewAgents = net.agents; toAll({ t: 'room', open: net.open ? 1 : 0, agents: net.agents }); drawCrew(); }   // (read by the agent kit: with it off, agents can only look)
 // little notes at the top of the screen
 function toast(text, actions = [], ms = 8000, key) {
@@ -1852,7 +1852,7 @@ $('join').onclick = async () => { const code = $('code').value.trim().toUpperCas
   const rid = await ridOf(code), rooms = (await findRooms(r => r.mode === 'crew' && (r.rid === rid || r.code === code || r.rid === code), 3500, { early: true, most: 12000, rids: [rid, code] })).map(r => Object.assign({}, r, { code })), r = pickBest(rooms); if (!r) { note('No crew with that code is in the cube right now.'); return; } if (r.n >= r.max) { note('That crew is full.'); return; } note('Joining…'); joinBest(rooms); };
 $('sea').onclick = () => note('The open hall is closed: start a crew, join one with its code, or explore alone.');
 $('solo').onclick = () => { soloOn = true; hideLobby(); toGame({ type: 'look', id: 'me', look: picked }); try { frame.contentWindow.focus(); } catch (e) {} presenceSoon(); };
-$('crewsb').onclick = () => openPanel('crews'); $('friendsb').onclick = () => openPanel('friends'); $('frpill').onclick = () => openPanel('friends'); $('room').onclick = () => openPanel('crew');
+$('crewsb').onclick = () => note('Crews are joined only with their code, or an invite from someone in the crew.'); $('friendsb').onclick = () => openPanel('friends'); $('frpill').onclick = () => openPanel('friends'); $('room').onclick = () => openPanel('crew');
 $('sail').onclick = () => startGame();
 $('rleave').onclick = () => leaveCrew(); $('rinvite').onclick = () => openPanel('friends'); $('rbycode').onclick = inviteByCode;
 $('rcopy').onclick = () => copyText(net.code, $('rcopy'), 'Copy');
@@ -2157,7 +2157,7 @@ window.AgentKit = window.AgentKit || (() => {
     {name: 'pickRunner', does: 'Pick which of the ten you are: Leo, Kofi, Ren, Marco, Sam, Mia, Zara, Yuki, Elena or Nia. Gives back {name, runner} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"name":{},"runner":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'name', enum: RUNNERS, does: 'one of the ten', req: true}],
       run: ({name}) => { const tiles = [...$('chars').children], t = tiles.find(el => (el.getAttribute('aria-label') || text(el)).toLowerCase().includes(String(name).toLowerCase())); if (!t) return {ok: false, error: 'pick one of: ' + RUNNERS.join(', ')}; t.click(); return look(); }},
     {name: 'startCrew', does: 'Start a new private crew (you get a code to share). Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => { if (!press('crew')) return {ok: false, error: 'not on the start page'}; await until(() => net.on && net.code, 20000); if (!net.on) return {ok: false, error: $('note').textContent || 'no crew was started'}; return crewState(); }},
-    {name: 'openHall', does: 'The open hall (a public room anyone could walk into) is closed: crews are joined with their code, a friend\'s invite or the crew list. Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => ({ok: false, error: 'the open hall is closed: startCrew() or join({code}) a crew, or explore alone'}) },
+    {name: 'openHall', does: 'The open hall (a public room anyone could walk into) is closed: crews are joined only with their code or an invite from someone in the crew. Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => ({ok: false, error: 'the open hall is closed: startCrew() or join({code}) a crew, or explore alone'}) },
     {name: 'join', does: 'Join a crew with its code. Gives back {note, on, kind, code, youAreHost, ifThisPageReloads, aiAgents, untrusted{players[], chat[]}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"note":{},"on":{},"kind":{},"code":{},"youAreHost":{},"ifThisPageReloads":{},"aiAgents":{},"untrusted":{"type":"object","properties":{"players":{"type":"array"},"chat":{"type":"array"}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'code', does: 'the crew code, e.g. GRX27', req: true}],
       run: async ({code}) => { const i = $('code'); if (!shown(i)) return {ok: false, error: 'not on the start page'}; i.value = String(code).toUpperCase().trim(); i.dispatchEvent(new Event('input', {bubbles: true})); press('join'); await until(() => net.on && net.players.size > 1, 25000); return crewState(); }},
     {name: 'exploreAlone', does: 'Play without a crew. Gives back {screen} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"screen":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: async () => { if (!press('solo')) return {ok: false, error: 'not on the start page'}; await wait(1500); return {screen: lobbyOpen() ? 'start page' : 'in the game'}; }},
