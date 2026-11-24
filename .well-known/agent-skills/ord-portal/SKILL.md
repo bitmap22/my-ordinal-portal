@@ -1,6 +1,6 @@
 ---
 name: ord-portal
-description: Look up and prove Bitcoin and Dogecoin facts with bitmap22's free Ord Portal and Agent Blockhall tools, each answer read from the chain and checked against a second source. Covers blocks and every transaction in them, ordinal inscriptions and Doginals (where they came from, who holds them, what their code asks for), collections (which pieces are a parent's real children), bitmaps and their Earned Traits, runes, fees, stuck transactions, alerts when something happens, and a safety scan of new inscriptions. Use when someone asks whether an inscription, collection piece, bitmap, rune or Doginal is real or what it is, what is in a block, what fee to pay, why a transaction is stuck, or wants to watch the chain, or mentions ordportal.com, Agent Blockhall, Doge Cube or a bitmap.
+description: Look up and prove Bitcoin facts with bitmap22's free Ord Portal and Agent Blockhall tools, each answer read from the chain and checked against a second source. Covers blocks and every transaction in them, ordinal inscriptions (where they came from, who holds them, what their code asks for), collections (which pieces are a parent's real children), bitmaps and their Earned Traits, runes, fees, stuck transactions, alerts when something happens, and a safety scan of new inscriptions. Use when someone asks whether an inscription, collection piece, bitmap or rune is real or what it is, what is in a block, what fee to pay, why a transaction is stuck, or wants to watch the chain, or mentions ordportal.com, Agent Blockhall or a bitmap.
 license: Copyright (c) 2026 bitmap22. All rights reserved. Free to use - you may download this skill and load it into AI agents, unchanged. See https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE
 compatibility: Needs internet access. Works through the free Agent Blockhall MCP tool (Node.js 18 or newer, no keys or accounts), a browser on https://ordportal.com, or plain links.
 metadata:
@@ -10,9 +10,9 @@ metadata:
   mcp-server: io.github.bitmap22/agent-blockhall
 ---
 
-# Ord Portal: Bitcoin and Dogecoin facts, checked
+# Ord Portal: Bitcoin facts, checked
 
-The Ord Portal (https://ordportal.com/) is bitmap22's free set of tools for Bitcoin and Dogecoin. Its big app, Agent Blockhall, is a 3D block explorer world where every block is a hall you can walk into, and Doge Cube is its Dogecoin twin. Every tool reads the chain itself and checks what it finds against a second, separate source, then says what agreed and what didn't. Everything is read only: nothing here holds funds or keys, connects a wallet, signs or pays.
+The Ord Portal (https://ordportal.com/) is bitmap22's free set of tools for Bitcoin. Its big app, Agent Blockhall, is a 3D block explorer world where every block is a hall you can walk into. Every tool reads the chain itself and checks what it finds against a second, separate source, then says what agreed and what didn't. Everything is read only: nothing here holds funds or keys, connects a wallet, signs or pays.
 
 ## Three ways in
 
@@ -43,14 +43,12 @@ Use the first one you have.
 | Every block of a day | `agent-blockhall:dailyData` `{day}` | `https://ordportal.com/daily.html?day=<YYYY-MM-DD>` |
 | How is Bitcoin's space, or the fees paid, shared between runes, inscriptions, payments and the rest? | `agent-blockhall:blockspaceShare` `{period?, at?}` | `https://ordportal.com/blockspace-share.html?by=<day\|week\|month>&show=fees` |
 | Which data sites are up, and which tell the truth? | `agent-blockhall:sourceHealth` `{}`, `agent-blockhall:truthLeague` `{}` | `https://ordportal.com/source-health.html`, `https://ordportal.com/truth-league.html` |
-| Check a block or an inscription with more sites (slower) | `agent-blockhall:moreSources` `{chain?, height?, id?}` | the Ask more sources button on `https://ordportal.com/block-manifest.html?block=<height>`, `https://ordportal.com/doge-block-manifest.html?block=<height>` or `https://ordportal.com/provenance-check.html?id=<id>` |
-| What does a bitcoin (or a dogecoin) cost now, or on a day? | `agent-blockhall:price` `{chain?, date?, currency?}` | `https://ordportal.com/block-cube.html` (agent.price()) |
+| Check a block or an inscription with more sites (slower) | `agent-blockhall:moreSources` `{height?, id?}` | the Ask more sources button on `https://ordportal.com/block-manifest.html?block=<height>` or `https://ordportal.com/provenance-check.html?id=<id>` |
+| What does a bitcoin cost now, or on a day? | `agent-blockhall:price` `{date?, currency?}` | `https://ordportal.com/block-cube.html` (agent.price()) |
 | What does inscribing a file cost? | `agent-blockhall:inscriptionCost` `{bytes, feeRate?, currency?}` | `https://ordportal.com/inscription-cost-calculator.html` |
 | Is a bitmap number taken, and who won it? | `agent-blockhall:bitmapClaims` `{number?}` | `https://ordportal.com/claim-race.html` (waiting claims, live) |
 | What do people and agents do in the halls? | `agent-blockhall:hallVisits` `{day?, hall?}` | `https://ordportal.com/hall-visits.html` |
 | Walk into a block | - | `https://ordportal.com/block-cube.html#block=<height>` |
-
-For Dogecoin, use the twins: `agent-blockhall:dogeBlockManifest`, `agent-blockhall:dogeProvenanceCheck`, `agent-blockhall:dogeCollectionCheck`, `agent-blockhall:dogeWatch`, `agent-blockhall:dogeDailyData` and `agent-blockhall:safetyScan` with `{chain: "doge"}`. Their pages are `doge-block-manifest.html?block=<height>`, `doge-provenance-check.html?id=<id>`, `doge-collection-check.html?collection=<name>`, `doge-watch.html`, `doge-daily.html` and `doge-safety-scan.html`, and Doge Cube walks in at `doge-cube.html#block=<height>`.
 
 In a page link, write an inscription number without `#` (`?id=1000`): a `#` there cuts the link short.
 
