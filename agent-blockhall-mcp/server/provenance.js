@@ -309,7 +309,8 @@
   /* (23 Nov 2026) more sources, at the asker's own wait: the inscription's record on every ord site (its number, sat, block, file type and
      holder), and the block its transaction is in on every block explorer we can read. I = the Provenance Check's inscription. get(url) -> text.
      Gives {ord[{site, agrees, differs[]}], block[{site, says, agrees}]} */
-  const MORE_ORD = ['https://ordinals.com'];
+  const MORE_ORD = [];   // (24 Nov 2026: ordinals.com already gave the page its record, and no other ord site's terms allow
+  //  it, so the record is not asked again: asking the same site twice proves nothing. Only which block it is in is asked.)
   const MORE_TXB = [
     ['blockstream.info', t => 'https://blockstream.info/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
     ['mempool.space', t => 'https://mempool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],

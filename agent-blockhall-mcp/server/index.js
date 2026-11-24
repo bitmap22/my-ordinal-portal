@@ -53,7 +53,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.28.1';
+const VERSION = '1.28.2';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://ordportal.com/';
 const GAME = PORTAL + 'block-cube.html';
@@ -923,9 +923,9 @@ async function moreSources({chain, height, id}) {
   if (chain && /^d/i.test(String(chain))) throw new Error('Dogecoin is paused: only Bitcoin is asked');
   if (id != null && String(id).trim()) {
     const out = await provenanceCheck({id}), I = out.inscription, M = await PV.moreSources(I, get);
-    return {asked: 'inscription', inscription: I.id, number: I.number, ord: M.ord, block: M.block,
-      agree: {ord: M.ord.filter(x => x.agrees === true).length + ' of ' + M.ord.length, block: M.block.filter(x => x.agrees === true).length + ' of ' + M.block.length},
-      note: 'ord: the inscription\'s record on ordinals.com (number, sat, block, file type, holder; differs lists what did not match). block: which block its transaction is in, from 3 sites (blockstream.info, mempool.space, ordpool.space). agrees null: that site did not answer.'};
+    return {asked: 'inscription', inscription: I.id, number: I.number, block: M.block,
+      agree: {block: M.block.filter(x => x.agrees === true).length + ' of ' + M.block.length},
+      note: 'block: which block its transaction is in, from 3 sites (blockstream.info, mempool.space, ordpool.space). agrees null: that site did not answer. Its record (number, sat, file type, holder) is not asked again: only ordinals.com has it among the sites whose terms allow it, and provenanceCheck already read it there.'};
   }
   if (height == null || height === '') throw new Error('give a block height, or an inscription id');
   height = +height; if (!(height >= 0) || height % 1) throw new Error('give a block number');
