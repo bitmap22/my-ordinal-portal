@@ -313,9 +313,7 @@
   const MORE_TXB = [
     ['blockstream.info', t => 'https://blockstream.info/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
     ['mempool.space', t => 'https://mempool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
-    ['blockchain.com', t => 'https://blockchain.info/rawtx/' + t + '?cors=true', j => j.block_height != null ? j.block_height : null],
-    ['bitcore.io (BitPay)', t => 'https://api.bitcore.io/api/BTC/mainnet/tx/' + t, j => j.blockHeight > 0 ? j.blockHeight : null],
-    ['blockcypher.com', t => 'https://api.blockcypher.com/v1/btc/main/txs/' + t + '?limit=1', j => j.block_height > 0 ? j.block_height : null]];
+    ['ordpool.space', t => 'https://ordpool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null]];   // (24 Nov 2026: only sites whose terms allow it)
   async function moreSources(I, get) {
     const base = v => String(v || '').split(';')[0].trim().toLowerCase(), txid = String(I.id).slice(0, 64);
     const ord = await Promise.all(MORE_ORD.map(async b => { const site = b.replace('https://', '');

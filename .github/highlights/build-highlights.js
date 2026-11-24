@@ -14,12 +14,11 @@ const M = require(path.join(ROOT, 'agent-blockhall-mcp', 'server', 'index.js'));
 const BD = require(path.join(ROOT, '.github', 'daily-data', 'build-day.js'));
 const T = Object.fromEntries(M.TOOLS.map(t => [t.name, t.run]));
 const VERSION = '1.0.0', PORTAL = 'https://ordportal.com/';
-const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE). Bitcoin\'s and Dogecoin\'s data are public and are not part of it.';
+const LICENCE = '© 2026 bitmap22. All rights reserved. Free to download and use, for people and AI agents; not to be republished or sold without permission (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE). Bitcoin\'s data is public and is not part of it.';
 
 const n0 = n => Number(n).toLocaleString('en-GB');
 const pc = v => (v >= 10 ? v.toFixed(0) : v.toFixed(1)) + '%';
 const btc = s => (s / 1e8).toFixed(3) + ' BTC';
-const doge = k => n0(Math.round(k / 1e8)) + ' DOGE';
 const dayWords = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', {day: 'numeric', month: 'long', timeZone: 'UTC'});
 const hhmm = t => new Date(t).toISOString().slice(11, 16) + ' UTC';
 const mins = ms => { const m = Math.round(ms / 60000); return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; };
@@ -44,7 +43,6 @@ async function main() {
     }
   }
   const btcDay = await T.dailyData({day: D}).catch(e => { log.push('no Daily Data for ' + D + ': ' + e.message); return null; });
-  const dogeDay = await T.dogeDailyData({day: D}).catch(e => { log.push('no Doge Daily Data for ' + D + ': ' + e.message); return null; });
   const need = (x, what) => { if (!x) throw new Error(what + ' for ' + D + ' is not saved yet'); return x; };
   const blocksOf = x => (x.blocks || []).slice().sort((a, b) => a.height - b.height);
   const maxBy = (list, f) => list.reduce((a, b) => (f(b) > f(a) ? b : a), list[0]);
@@ -62,11 +60,6 @@ async function main() {
     const b = maxBy(blocksOf(need(btcDay, 'Daily Data')), x => x.transactions);
     return {text: 'Yesterday\'s busiest Bitcoin block was ' + n0(b.height) + ': ' + n0(b.transactions) + ' transactions, each one a parcel on its shelves' + (b.minedBy ? ' (mined by ' + b.minedBy + ')' : '') + '.',
       link: PORTAL + 'block-cube.html#block=' + b.height, linkText: 'Walk into block ' + n0(b.height), period: D};
-  });
-  await fact('doge-cube.html', 'Doge Cube', async () => {
-    const b = maxBy(blocksOf(need(dogeDay, 'Doge Daily Data')), x => x.transactions);
-    return {text: 'Yesterday\'s busiest Dogecoin block was ' + n0(b.height) + ': ' + n0(b.transactions) + ' transactions, each one a parcel you can pick up.',
-      link: PORTAL + 'doge-cube.html#block=' + b.height, linkText: 'Walk into block ' + n0(b.height), period: D};
   });
 
   /* ---------- reading blocks ---------- */
@@ -106,8 +99,8 @@ async function main() {
     const rate = fees.halfHourFee; if (!(rate > 0)) throw new Error('no live fee');
     // the calculator's own sum, with its own settings: 102,400 bytes, 200 vB extra, 330 sats postage
     const b = 102400, vb = Math.ceil(b / 4) + Math.ceil(Math.ceil(b / 520) * 3 / 4) + 200, sats = Math.ceil(vb * rate - 1e-9) + 330;
-    // (23 Nov 2026) the dollar figure only when a second, separate source agrees within 1% (Coinbase, else Kraken)
-    let second = null; for (const [u, f] of [['https://api.coinbase.com/v2/exchange-rates?currency=BTC', j => +j.data.rates.USD], ['https://api.kraken.com/0/public/Ticker?pair=XBTUSD', j => +Object.values(j.result)[0].c[0]]]) { try { const r = await fetch(u, {signal: AbortSignal.timeout(15000)}); if (r.ok) { second = f(await r.json()); if (second > 0) break; } } catch (e) {} }
+    // (24 Nov 2026) the dollar figure only when a second, separate source agrees within 1% (CoinGecko: Powered by CoinGecko)
+    let second = null; for (const [u, f] of [['https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', j => +j.bitcoin.usd]]) { try { const r = await fetch(u, {signal: AbortSignal.timeout(15000)}); if (r.ok) { second = f(await r.json()); if (second > 0) break; } } catch (e) {} }
     const usd = prices.USD && second > 0 && Math.abs(second - prices.USD) / prices.USD <= 0.01 ? sats / 1e8 * prices.USD : null;
     return {text: 'At ' + hhmm(now) + ', a 100 KB inscription cost about ' + n0(sats) + ' sats' + (usd != null ? ' ($' + usd.toFixed(2) + ')' : '') + ', at the live "within half an hour" fee of ' + rate + ' sat/vB.',
       link: PORTAL + 'inscription-cost-calculator.html', linkText: 'Work out your own file', period: now.toISOString().replace(/\.\d{3}/, '')};
@@ -200,7 +193,7 @@ async function main() {
     return {text: 'At ' + hhmm(j.at) + ', ' + j.counts.answers + ' of the ' + j.counts.asked + ' free data sites were answering' + (fast ? '; the fastest was ' + fast.site + ' (' + n0(fast.ms) + ' ms)' : '') + '.',
       link: PORTAL + 'source-health.html', linkText: 'See every site', period: j.at};
   });
-  for (const [page, chain, name] of [['safety-scan.html', 'bitcoin', 'Safety Scan'], ['doge-safety-scan.html', 'doge', 'Doge Safety Scan']]) {
+  for (const [page, chain, name] of [['safety-scan.html', 'bitcoin', 'Safety Scan']]) {
     await fact(page, name, async () => {
       const r = await T.safetyScan({chain}), key = Object.fromEntries((r.key || []).map(k => [k.mark, k.name.toLowerCase()]));
       const ins = (r.blocks || []).reduce((n, b) => n + (b.inscriptions || 0), 0), marks = Object.entries(r.totals || {}).filter(([, v]) => v > 0);
@@ -209,44 +202,6 @@ async function main() {
     });
   }
 
-  /* ---------- Dogecoin ---------- */
-  await fact('doge-block-manifest.html', 'Doge Block Manifest', async () => {
-    const b = maxBy(blocksOf(need(dogeDay, 'Doge Daily Data')), x => (x.counts || {}).inscriptions || 0);
-    const n = (b.counts || {}).inscriptions || 0; if (!n) throw new Error('no Doginals yesterday');
-    return {text: 'Dogecoin block ' + n0(b.height) + ' held the most Doginals yesterday: ' + n0(n) + ', among ' + n0(b.transactions) + ' transactions.',
-      link: PORTAL + 'doge-block-manifest.html?block=' + b.height, linkText: 'See every transaction', period: D};
-  });
-  await fact('doge-daily.html', 'Doge Daily Data', async () => {
-    const t = need(dogeDay, 'Doge Daily Data').totals, K = t.checked || {};
-    return {text: 'On ' + Dw + ': ' + n0(t.blocks) + ' Dogecoin blocks, ' + n0(t.transactions) + ' transactions, ' + doge(t.totalFees) + ' in fees' + (K.feesMissing ? ' (' + n0(K.feesMissing) + ' block' + (K.feesMissing === 1 ? '' : 's') + ' with no fee figure left out)' : '') + ' and ' + n0((t.counts || {}).inscriptions || t.inscriptions || 0) + ' Doginals' + (K.notRead ? ' (' + n0(K.notRead) + ' block' + (K.notRead === 1 ? '' : 's') + ' could not be read).' : ', every block read.'),
-      link: PORTAL + 'doge-daily.html?day=' + D, linkText: 'See every block of the day', period: D};
-  });
-  await fact('doge-watch.html', 'Doge Watch', async () => {
-    const bs = blocksOf(need(dogeDay, 'Doge Daily Data')); let gap = 0, at = null;
-    for (let i = 1; i < bs.length; i++) { const g = Date.parse(bs[i].time) - Date.parse(bs[i - 1].time); if (g > gap) { gap = g; at = bs[i]; } }
-    if (!at) throw new Error('too few blocks');
-    return {text: 'The longest wait for a Dogecoin block on ' + Dw + ' was ' + mins(gap) + ', before block ' + n0(at.height) + ' (by the times written in the blocks).',
-      link: PORTAL + 'doge-watch.html', linkText: 'Watch for the next block', period: D};
-  });
-  await fact('doge-provenance-check.html', 'Doge Provenance Check', async () => {
-    const b = blocksOf(need(dogeDay, 'Doge Daily Data')).find(x => ((x.counts || {}).inscriptions || 0) > 0); if (!b) throw new Error('no Doginals yesterday');
-    // the first Doginal of yesterday whose checks could all be made (a check that can't be made is a data site not answering,
-    // not something about the Doginal); else the last one read, as it is
-    let id = null, r = null;
-    for (const bb of blocksOf(dogeDay).filter(x => ((x.counts || {}).inscriptions || 0) > 0).slice(0, 3)) {
-      for (const it of items(await T.dogeBlockManifest({height: bb.height, kind: 'inscriptions', limit: 2}))) { id = insOf(it); r = await T.dogeProvenanceCheck({id}); if (!/could not be made/.test(r.verdict || '')) break; }
-      if (r && !/could not be made/.test(r.verdict || '')) break;
-    }
-    if (!r) throw new Error('no Doginal could be read');
-    const i = r.inscription || {};
-    return {text: 'Doginal #' + n0(i.number) + ' (' + i.contentType + ', made in block ' + n0(i.block) + ' on ' + dayWords(String(i.time).slice(0, 10)) + '): ' + r.verdict + ', read from its own transactions.',
-      link: PORTAL + 'doge-provenance-check.html?id=' + id, linkText: 'See every check', period: D};
-  });
-  await fact('doge-collection-check.html', 'Doge Collection Check', async () => {
-    const r = await T.dogeCollectionCheck({collection: 'Doginal Frogs', limit: 5}), c = r.counts || {};
-    return {text: 'Doginal Frogs: ' + n0(c.real) + ' of the ' + n0(c.checked) + ' pieces checked today are real (' + n0(c.listed) + ' listed).',
-      link: PORTAL + 'doge-collection-check.html?collection=doginal-frogs', linkText: 'Check a collection', period: now.toISOString().replace(/\.\d{3}/, '')};
-  });
 
   /* ---------- the two tools that check your own files: what they check (not data) ---------- */
   facts['ordinal-view-tester.html'] = {tool: 'Ordinal View Tester', page: PORTAL + 'ordinal-view-tester.html', about: true,
