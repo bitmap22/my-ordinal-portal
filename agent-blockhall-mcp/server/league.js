@@ -182,6 +182,7 @@
       const said = {}; for (const r of results) if (r.kind === 'ord') { const f = r.facts.find(x => x.fact === 'record'); if (f && f.code === 'R' && Number.isInteger(f.number)) said[r.site] = f.number; }
       const vals = [...new Set(Object.values(said))];
       numbers = {inscription: truth.bitcoin.ins.id, said, sites: Object.keys(said).length, agree: Object.keys(said).length >= 2 ? vals.length === 1 : null};
+      if (SITES.filter(s => s.kind === 'ord').length < 2) numbers = null;   // (24 Nov 2026: with one ord site read there is nothing to set side by side)
       if (numbers.agree === false) notes.push('Bitcoin: the ord sites gave different numbers for the same inscription (' + Object.entries(said).map(([k, v]) => k + ' #' + v).join(', ') + '). Numbers are not marked right or wrong, because no block’s bytes can prove one.');
     }
     const pub = t => t ? {h: t.h, hash: t.hash, settled: t.settled, agreedBy: t.agreedBy, proof: t.proof, tx: t.tx && t.tx.id, inscription: t.ins && t.ins.id, zero: t.zero && t.zero.id} : null;
