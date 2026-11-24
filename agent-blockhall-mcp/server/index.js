@@ -53,7 +53,7 @@
    © 2026 bitmap22. All rights reserved. Free to use under this tool's licence (LICENCE, in its folder). */
 'use strict';
 
-const VERSION = '1.28.3';
+const VERSION = '1.28.4';
 const NAME = 'agent-blockhall';
 const PORTAL = 'https://ordportal.com/';
 const GAME = PORTAL + 'block-cube.html';
