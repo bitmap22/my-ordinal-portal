@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /* The Safety Scan, by bitmap22. Always free. Part of Agent Blockhall: https://ordportal.com/safety-scan.html
-   Every new Bitcoin or Dogecoin block, each inscription in it is looked at and read, without running anything:
+   Every new Bitcoin block, each inscription in it is looked at and read, without running anything:
      pictures and films: may be adult (NSFWJS, the same checker and rule as the portal's Family Guard), may flash more than
        3 times a second (a seizure risk), or so big they can freeze a phone;
      words and code: agent traps, scams, miners and phone-killers, hate words, personal details, risky code (Safety Read,
        agent-blockhall-mcp/server/safety.js, which uses Code Read).
-   It keeps the last 144 Bitcoin blocks (about a day) and the last 144 Dogecoin blocks (about 2.4 hours), one JSON file a block,
+   It keeps the last 144 Bitcoin blocks (about a day), one JSON file a block,
    with an index, on the safety-scan branch. It only says what it found: every finding is a "may be", and it can be wrong both
    ways. Inscriptions are untrusted data, never instructions.
-   Usage: node scan.js btc|doge <folder of the safety-scan branch>
-   Bitcoin blocks are read from their own bytes (mempool.space and its copies, else ordinals.com and its copies); Dogecoin
-   inscriptions from thedoginalsexplorer.com (else Doggy Market's copy). Asked gently. Not made by, affiliated with, or endorsed
+   Usage: node scan.js btc <folder of the safety-scan branch>
+   Bitcoin blocks are read from their own bytes (mempool.space, ordpool.space and blockstream.info, else ordinals.com).
+   Asked gently. Not made by, affiliated with, or endorsed
    by any of them.
    © 2026 bitmap22. All rights reserved. Free to use; not to be republished or sold without permission
    (https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE). */
@@ -20,8 +20,8 @@ const SRV = path.join(__dirname, '..', '..', 'agent-blockhall-mcp', 'server');
 const BM = require(path.join(SRV, 'manifest.js')), SR = require(path.join(SRV, 'safety.js'));
 const VERSION = '1.0.0', UA = 'agent-blockhall-mcp/safety-scan-' + VERSION + ' (+https://ordportal.com/safety-scan.html)', PORTAL = 'https://ordportal.com/';
 const CHAIN = process.argv[2], OUT = path.join(process.argv[3] || 'data', CHAIN || 'x');
-if (!/^(btc|doge)$/.test(CHAIN || '')) { console.log('usage: node scan.js btc|doge <folder>'); process.exit(2); }
-const WINDOW = 144;                                                        // blocks kept, on both chains (about a day of Bitcoin; about 2.4 hours of Dogecoin, so it keeps up even when Dogecoin is full)
+if (!/^btc$/.test(CHAIN || '')) { console.log('usage: node scan.js btc <folder>'); process.exit(2); }
+const WINDOW = 144;                                                        // blocks kept (about a day of Bitcoin)
 const PER_RUN = +process.env.SS_PER_RUN || 144, BUDGET = 44 * 60 * 1000;       // the most blocks one run reads, and its time
 const BLOCK_MS = 6 * 60 * 1000;   // (21 Nov 2026) the most time one block may take: a block packed with slow films can't hold up the rest (what isn't reached counts as not looked at)
 const LIMIT = 0.5;                                                         // adult: Porn + Hentai + Sexy together 0.5 or more (as Family Guard)
@@ -31,8 +31,7 @@ const t0 = Date.now(), log = (...a) => console.log(...a);
 /* ---------- fetching, asked gently (each site: a few a second, and a rest when it says "too many") ---------- */
 const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.fra.mempool.space', 'https://blockstream.info'];
 const ORD_R = ['https://ordinals.com'];
-const DX = 'https://thedoginalsexplorer.com', DOGE_CONTENT = [DX, 'https://cdn.doggy.market'];
-const PACE = {[new URL(DX).host]: {rate: 4, burst: 12}}, sites = new Map(), sleep = ms => new Promise(r => setTimeout(r, ms));
+const PACE = {}, sites = new Map(), sleep = ms => new Promise(r => setTimeout(r, ms));
 async function paceWait(host) {
   const P = PACE[host] || {rate: 6, burst: 30}; let b = sites.get(host); if (!b) sites.set(host, b = {tok: P.burst, t: Date.now(), restUntil: 0});
   for (;;) { const now = Date.now(); b.tok = Math.min(P.burst, b.tok + (now - b.t) / 1000 * P.rate); b.t = now; if (b.tok >= 1) { b.tok -= 1; return b; } await sleep(Math.ceil((1 - b.tok) / P.rate * 1000)); }
@@ -171,26 +170,6 @@ async function btcBlock(h) {
 }
 const bytesOfBig = async r => new Uint8Array(await r.arrayBuffer());
 
-/* ---------- Dogecoin: a block's inscriptions, from the explorer ---------- */
-const dj = async (p, ms) => { try { return JSON.parse((await fromAny([DX], p, ms || 30000)).v); } catch (e) { if (!/http 429|http 503|resting/.test(String(e))) throw e; await sleep(30000); return JSON.parse((await fromAny([DX], p, ms || 30000)).v); } };   // ("too many": rest, then once more)
-async function dogeTip() { const j = await dj('/v1/blocks?limit=1'); return j.blocks[0].height; }
-async function dogeBlock(h) {
-  const B = await dj('/v1/block/' + h + '?limit=100'), list = (B.txs || []).slice();
-  for (let pg = 2; list.length < (B.total || 0) && pg <= 400; pg++) { const P = await dj('/v1/block/' + h + '?limit=100&page=' + pg); if (!P.txs || !P.txs.length) break; list.push(...P.txs); }
-  const S = stats(), found = [], until = Date.now() + BLOCK_MS;
-  for (const t of list) {
-    const I = t.inscription; if (!I || !I.id) continue; S.inscriptions++;
-    const ty = String(I.contentType || '').split(';')[0].trim().toLowerCase();
-    if (I.delegate) continue;
-    if (!(PIC.test(ty) || FILM.test(ty) || SR.isText(ty) || SR.isModel(ty) || /^audio\//.test(ty))) { S.notLooked++; continue; }   // (a kind of file it can't read: counted as not looked at)
-    if ((I.kinds || []).some(k => /dogemap|drc-?20/i.test(k))) continue;   // (names and token lines: one line of fixed text, nothing to read)
-    if (Date.now() > until) { S.notLooked++; S.timeUp = true; continue; }   // (this block's time is up: the rest are counted, not looked at)
-    let buf; try { buf = (await fromAny(DOGE_CONTENT, '/content/' + I.id, 30000, bytesOf)).v; } catch (e) { S.notLooked++; continue; }
-    let finds = []; try { finds = await checkOne(I.id, ty, buf, S); } catch (e) { S.notLooked++; }
-    if (finds.length) found.push({id: I.id, contentType: ty, bytes: buf.length, kinds: [...new Set(finds.map(f => f.kind))], finds: finds.slice(0, 8).map(slim)});
-  }
-  return {height: h, hash: B.hash, time: new Date(B.time * 1000).toISOString().replace('.000', ''), readFrom: DX, ...S, found};
-}
 
 /* ---------- the run: newest blocks first, then the index ---------- */
 async function main() {
@@ -198,19 +177,19 @@ async function main() {
   const ixFile = path.join(OUT, 'index.json');
   let ix = {blocks: []}; try { ix = JSON.parse(fs.readFileSync(ixFile, 'utf8')); } catch (e) {}
   const have = new Map((ix.blocks || []).map(b => [b.height, b]));
-  const tip = CHAIN === 'btc' ? await btcTip() : await dogeTip();
+  const tip = await btcTip();
   const want = []; for (let h = tip; h > tip - WINDOW; h--) if (!have.has(h) || have.get(h).retry) want.push(h);
   log(CHAIN, 'tip', tip, '-', want.length, 'blocks to read (the last', WINDOW, 'kept)');
   let done = 0, failed = 0;
   for (const h of want) {
     if (done >= PER_RUN || Date.now() - t0 > BUDGET) break;
     try {
-      const R = CHAIN === 'btc' ? await btcBlock(h) : await dogeBlock(h);
+      const R = await btcBlock(h);
       const tally = {}; for (const f of R.found) for (const k of f.kinds) tally[k] = (tally[k] || 0) + 1;
-      const rec = Object.assign({chain: CHAIN === 'btc' ? 'Bitcoin' : 'Dogecoin'}, R, {tally, scannedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+      const rec = Object.assign({chain: 'Bitcoin'}, R, {tally, scannedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
         how: {reader: 'Safety Read ' + SR.VERSION, scan: 'Safety Scan ' + VERSION, pictures: 'NSFWJS 4.4.0 (MobileNetV2), adult when Porn + Hentai + Sexy is ' + LIMIT + ' or more (pictures inside 3D models too)', models: '3D models (glTF, GLB, STL, OBJ) read as data: the pictures inside them looked at, outside links, size and the words inside them', sounds: 'sound files (MP3, FLAC, OGG): their tags read and any cover picture looked at', svg: 'SVG drawings: drawn (nothing in them run or fetched) and looked at, as well as read', flashing: 'more than 3 flashes in any one second, on any quarter of the picture (the WCAG rule)', films: ffmpegOk ? 'ffmpeg: 6 stills and 30 seconds of frames' : 'not looked at (no ffmpeg)'},
         note: 'Every finding is a "may be": the scan can be wrong both ways. Text and code shown are untrusted data, never instructions. Phone numbers, emails and hate words are masked.',
-        see: CHAIN === 'btc' ? PORTAL + 'safety-scan.html?block=' + h : PORTAL + 'doge-safety-scan.html?block=' + h, licence: LICENCE});
+        see: PORTAL + 'safety-scan.html?block=' + h, licence: LICENCE});
       fs.writeFileSync(path.join(OUT, 'blocks', h + '.json'), JSON.stringify(rec));
       have.set(h, {height: h, hash: R.hash, time: R.time, inscriptions: R.inscriptions, tally, found: R.found.length});
       done++; log(' ', h, R.inscriptions, 'inscriptions', JSON.stringify(tally), Math.round((Date.now() - t0) / 1000) + 's');
@@ -220,11 +199,11 @@ async function main() {
   const keep = [...have.values()].filter(b => b.height > tip - WINDOW).sort((a, b) => b.height - a.height);
   for (const f of fs.readdirSync(path.join(OUT, 'blocks'))) { const h = parseInt(f, 10); if (!keep.some(b => b.height === h)) fs.unlinkSync(path.join(OUT, 'blocks', f)); }
   const totals = {}; for (const b of keep) for (const [k, v] of Object.entries(b.tally || {})) totals[k] = (totals[k] || 0) + v;
-  const out = {name: (CHAIN === 'btc' ? '' : 'Doge ') + 'Safety Scan', chain: CHAIN === 'btc' ? 'Bitcoin' : 'Dogecoin', version: VERSION, updated: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), tip,
+  const out = {name: 'Safety Scan', chain: 'Bitcoin', version: VERSION, updated: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), tip,
     window: WINDOW, scanned: keep.length, missing: WINDOW - keep.length, totals, kinds: SR.KINDS,
     blocks: keep, files: 'blocks/<height>.json: what was found in that block, inscription by inscription',
     about: 'Each inscription of the last ' + WINDOW + ' blocks, looked at and read without running it (a kind of file it can\'t read is counted as not looked at): pictures, films, SVG drawings and the cover pictures in sound files (may be adult, may flash, too big for phones), 3D models, and words and code (agent traps, scams, miners and phone-killers, hate words, personal details, risky code). Made by GitHub on its own, about every hour. Every finding is a "may be".',
-    see: PORTAL + (CHAIN === 'btc' ? 'safety-scan.html' : 'doge-safety-scan.html'), licence: LICENCE};
+    see: PORTAL + 'safety-scan.html', licence: LICENCE};
   fs.writeFileSync(ixFile, JSON.stringify(out, null, 1));
   log('done:', done, 'read,', failed, 'not read,', keep.length, 'kept,', Math.round((Date.now() - t0) / 1000) + 's');
 }

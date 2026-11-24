@@ -6,23 +6,22 @@
      Bitcoin: its hash is worked out from its header and starts with at least 70 zero bits (its proof of work, which no one
      could fake), its transactions are each worked out to their ids and lead to the header's merkle root (so the list is whole
      and in order), and its first transaction says its height (as Bitcoin's rules require since block 227,931).
-     Dogecoin: the same from its bytes (its merge-mined proof of work is checked differently, so it is not checked here), and
-     at least two other sites must give the same hash for that height before anything is scored.
-   - Each site is then asked what it is for: a block's hash, a transaction's bytes and its block (mempool.space and its
-     copies, Dogecoin's explorers), an inscription's file and record, and inscription #0's file (ordinals.com and its copies).
+   - Each site is then asked what it is for: a block's hash, a transaction's bytes and its block (mempool.space, ordpool.space,
+     mempool.space's Frankfurt server and blockstream.info), an inscription's file and record, and inscription #0's file (ordinals.com).
+   (24 Nov 2026: only sites whose terms allow the portal's use are asked; Dogecoin is paused. See SOURCES.md in the portal's repository.)
    - Right: the same as the bytes. Wrong: a different answer (kept, with what it said and what the bytes say). A site that
      refused, did not have it, gave an error or did not answer is counted as that, never as wrong.
    GitHub's computers do this every few hours and keep the last 30 days (the truth-league branch of the portal's own
    repository); a person or an AI agent can also run the same checks from their own computer. The same file is for the
-   portal's Truth League page, the free Agent Blockhall MCP tool and that timed check. Needs the Provenance Check and Doge
-   Provenance readers (provenance.js, doge-provenance.js, in this folder). No other packages.
+   portal's Truth League page, the free Agent Blockhall MCP tool and that timed check. Needs the Provenance Check reader
+   (provenance.js, in this folder). No other packages.
    © 2026 bitmap22. All rights reserved. Free to use under the Agent Blockhall MCP tool's licence (LICENCE, in this folder's parent). */
 (function (root, make) {
-  if (typeof module === 'object' && module.exports) module.exports = make(require('./provenance.js'), require('./doge-provenance.js'));
+  if (typeof module === 'object' && module.exports) module.exports = make(require('./provenance.js'), null);
   else root.TruthLeague = make(root.ProvenanceCheck, root.DogeProvenance);
 })(typeof self !== 'undefined' ? self : this, function (P, DP) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const WAIT_MS = 20000, BLOCK_WAIT_MS = 90000, KEEP_DAYS = 30, KEEP_WRONG = 200, MIN_ZERO_BITS = 70, DOGE_AGREE = 2;
   const RECORD_URLS = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/truth-league/league.json',
     'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@truth-league/league.json'];   // (the second is a copy that can be some hours old)
@@ -33,24 +32,13 @@
   const mp = (site, what) => ({site, chain: 'bitcoin', kind: 'mempool', group: 'Blocks and transactions', base: 'https://' + site, what});
   const ord = (site, what) => ({site, chain: 'bitcoin', kind: 'ord', group: 'Inscriptions', base: 'https://' + site, what});
   const SITES = [
-    mp('mempool.space', 'blocks, transactions, fees and prices'), mp('ordpool.space', 'a copy of mempool.space'), mp('mempool.emzy.de', 'a copy of mempool.space'),
-    mp('mempool.ninja', 'a copy of mempool.space'), mp('mempool.fra.mempool.space', 'a copy of mempool.space'), mp('mempool.bitaroo.net', 'a copy of mempool.space'),
-    mp('blockstream.info', 'blocks and transactions'),
+    mp('mempool.space', 'blocks, transactions, fees and prices'), mp('ordpool.space', 'blocks and transactions, from its own node'),
+    mp('mempool.fra.mempool.space', 'mempool.space\'s own second server'), mp('blockstream.info', 'blocks and transactions'),
     ord('ordinals.com', 'inscriptions, their files and records (ord’s own site)'),
-    ord('ordiscan.com', 'a copy of ordinals.com’s files and records'), ord('ordinalswallet.com', 'a copy of ordinals.com’s files and records'),
-    ord('ord.xverse.app', 'a copy of ordinals.com’s files and records'),
-    {site: 'stampchain.io', chain: 'bitcoin', kind: 'none', group: 'Stamps, Counterparty and names', what: 'Stamp numbers and SRC-20 token totals'},
-    {site: 'api.counterparty.io', chain: 'bitcoin', kind: 'none', group: 'Stamps, Counterparty and names', what: 'Counterparty messages'},
-    {site: 'api.bnrp.name', chain: 'bitcoin', kind: 'none', group: 'Stamps, Counterparty and names', what: 'names (.sats, .btc and the like)'},
-    {site: 'thedoginalsexplorer.com', chain: 'doge', kind: 'dx', group: 'Dogecoin', base: 'https://thedoginalsexplorer.com', what: 'blocks, Doginals and their files'},
-    {site: 'api.blockchair.com', chain: 'doge', kind: 'blockchair', group: 'Dogecoin', base: 'https://api.blockchair.com', what: 'blocks and transactions’ bytes'},
-    {site: 'api.blockcypher.com', chain: 'doge', kind: 'blockcypher', group: 'Dogecoin', base: 'https://api.blockcypher.com', what: 'blocks and transactions'},
-    {site: 'api.bitcore.io', chain: 'doge', kind: 'bitcore', group: 'Dogecoin', base: 'https://api.bitcore.io', what: 'blocks and transactions'},
-    {site: 'sandbox-api.3xpl.com', chain: 'doge', kind: '3xpl', group: 'Dogecoin', base: 'https://sandbox-api.3xpl.com', what: 'blocks'},
-    {site: 'cdn.doggy.market', chain: 'doge', kind: 'doggy', group: 'Dogecoin', base: 'https://cdn.doggy.market', what: 'copies of Doginals’ files'}
+    {site: 'api.bnrp.name', chain: 'bitcoin', kind: 'none', group: 'Names', what: 'names (.sats, .btc and the like)'}
   ];
-  const CHAINS = {bitcoin: 'Bitcoin', doge: 'Dogecoin'};
-  const pick = chain => chain && chain !== 'all' ? SITES.filter(s => s.chain === (/^d/i.test(chain) ? 'doge' : 'bitcoin')) : SITES;
+  const CHAINS = {bitcoin: 'Bitcoin'};
+  const pick = () => SITES;   // (Bitcoin only)
   const site = name => SITES.find(s => s.site === String(name || '').replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
 
   const txt = b => new TextDecoder().decode(b).trim();
@@ -72,28 +60,8 @@
       {f: 'file', need: 'ins', path: t => '/content/' + t.ins.id, read: b => fp(b), want: t => t.ins.sha, isFile: true},
       {f: 'record', need: 'ins', path: t => '/r/inscription/' + t.ins.id, read: b => { const j = js(b); return [j.height, j.content_length, j.content_type]; }, want: t => [t.h, t.ins.length, t.ins.type], keep: b => ({number: js(b).number})},
       {f: 'old', need: 'zero', path: t => '/content/' + t.zero.id, read: b => fp(b), want: t => t.zero.sha, isFile: true}],
-    none: [],
-    dx: [
-      {f: 'hash', path: t => '/r/blockhash/' + t.h, read: b => lower(js(b)), want: t => t.hash},
-      {f: 'file', need: 'ins', path: t => '/content/' + t.ins.id, read: b => fp(b), want: t => t.ins.sha, isFile: true},
-      {f: 'old', need: 'zero', path: t => '/content/' + t.zero.id, read: b => fp(b), want: t => t.zero.sha, isFile: true}],
-    blockchair: [
-      {f: 'hash', path: t => '/dogecoin/blocks?q=id(' + t.h + ')', read: b => lower(js(b).data[0].hash), want: t => t.hash},
-      {f: 'bytes', need: 'tx', path: t => '/dogecoin/raw/transaction/' + t.tx.id, read: b => lower(js(b).data[t_id(b)].raw_transaction), want: t => t.tx.hex, short: true}],
-    blockcypher: [
-      {f: 'hash', path: t => '/v1/doge/main/blocks/' + t.h + '?limit=1', read: b => lower(js(b).hash), want: t => t.hash},
-      {f: 'bytes', need: 'tx', path: t => '/v1/doge/main/txs/' + t.tx.id + '?includeHex=true&limit=1', read: b => lower(js(b).hex), want: t => t.tx.hex, short: true},
-      {f: 'place', need: 'tx', path: t => '/v1/doge/main/txs/' + t.tx.id + '?limit=1', read: b => { const j = js(b); return [j.block_height, j.block_hash]; }, want: t => [t.h, t.hash]}],
-    bitcore: [
-      {f: 'hash', path: t => '/api/DOGE/mainnet/block/' + t.h, read: b => lower(js(b).hash), want: t => t.hash},
-      {f: 'place', need: 'tx', path: t => '/api/DOGE/mainnet/tx/' + t.tx.id, read: b => { const j = js(b); return [j.blockHeight, j.blockHash]; }, want: t => [t.h, t.hash]}],
-    '3xpl': [
-      {f: 'hash', path: t => '/dogecoin/block/' + t.h + '?data=block', read: b => lower(js(b).data.block.hash), want: t => t.hash}],
-    doggy: [
-      {f: 'file', need: 'ins', path: t => '/content/' + t.ins.id, read: b => fp(b), want: t => t.ins.sha, isFile: true},
-      {f: 'old', need: 'zero', path: t => '/content/' + t.zero.id, read: b => fp(b), want: t => t.zero.sha, isFile: true}]
+    none: []
   };
-  function t_id(b) { const d = js(b).data; return Object.keys(d)[0]; }   // (Blockchair names its answer by the id asked)
   const factsOf = s => FACTS[s.kind] || [];
 
   /* ---------- asking ---------- */
@@ -198,85 +166,15 @@
     return {chain: 'bitcoin', h, hash: B.hash, settled: true, proof: {bytesFrom: from, zeroBits: zeroBits(B.hash), transactions: B.txs.length, inscriptionsFound: ins.length}, tx: sampleTx(B), ins: ins.length ? pickOne(ins) : null, zero};
   }
 
-  async function dogeTruth(opt) {
-    const say = opt.say || (() => {});
-    const asks = await Promise.all([ask('https://thedoginalsexplorer.com/r/blockheight', opt), ask('https://api.bitcore.io/api/DOGE/mainnet/block/tip', opt), ask('https://api.blockcypher.com/v1/doge/main', opt)]);
-    const tips = asks.map((r, i) => { if (r.http !== 200) return NaN; try { return i === 0 ? Number(txt(r.bytes)) : Number(js(r.bytes).height); } catch (e) { return NaN; } }).filter(Number.isInteger).sort((a, b) => b - a);
-    if (!tips.length) throw new Error('no Dogecoin site said how high the chain is');
-    const tip = tips.length >= 2 ? tips[1] : tips[0];
-    // a block about a day deep, with a Doginal in it if one of a few tries finds one (the explorer's count only picks it; the bytes prove it)
-    let h = opt.dogeHeight || null;
-    if (!h) for (let k = 0; k < 6 && !h; k++) { const c = tip - 20 - Math.floor(rnd() * 1400); const r = await ask('https://thedoginalsexplorer.com/v1/block/' + c + '?limit=1', opt); try { if (r.http === 200 && js(r.bytes).inscription_count > 0) h = c; } catch (e) {} if (k === 5 && !h) h = c; }
-    say('dogecoin block', h);
-    // the whole block's bytes from Blockchair; if it gives none, the header's six fields and the transaction list from the
-    // explorer, with transactions' bytes from BlockCypher (each still proved: the header's hash, the list's merkle root, and
-    // the height written in the first transaction)
-    let B = null, from = 'api.blockchair.com', why = '', builtFrom = null;
-    const r = opt.dogeVia === 'explorer' ? {http: null, failed: 'not asked this time'} : await ask('https://api.blockchair.com/dogecoin/raw/block/' + h, opt, BLOCK_WAIT_MS);
-    try { if (r.failed) throw new Error('gave no answer (' + r.failed + ')'); if (r.http !== 200) throw new Error('answered with http ' + r.http); let raw; try { raw = js(r.bytes).data; } catch (e) { throw new Error(r.bytes && r.bytes.length ? 'gave an answer that could not be read' : 'gave an empty answer'); } if (!raw || !raw[h] || !raw[h].raw_block) throw new Error('gave no block bytes'); B = readBlock(P.fromHex(raw[h].raw_block), 'doge'); }
-    catch (e) { why = 'api.blockchair.com ' + e.message; B = null; }
-    // an answer read as JSON, or a plain-words reason it could not be (which site, and what it gave)
-    const jsFrom = (a, who) => { if (a.failed) throw new Error(who + ' gave no answer (' + a.failed + ')'); if (a.http !== 200) throw new Error(who + ' answered with http ' + a.http); try { return js(a.bytes); } catch (e) { throw new Error(who + (a.bytes && a.bytes.length ? ' gave an answer that could not be read' : ' gave an empty answer')); } };
-    // a transaction's bytes: from BlockCypher, or else Blockchair (either way they must hash to its id)
-    const used = new Set(), ins = [], docTx = async id => {
-      const tries = [['api.blockcypher.com', 'https://api.blockcypher.com/v1/doge/main/txs/' + id + '?includeHex=true&limit=1', j => j.hex], ['api.blockchair.com', 'https://api.blockchair.com/dogecoin/raw/transaction/' + id, j => j.data && j.data[id] && j.data[id].raw_transaction]];
-      const why = [];
-      for (const [who, url, pickHex] of tries) { try { const hx = pickHex(jsFrom(await ask(url, opt), who)); if (!hx) throw new Error(who + ' gave no bytes'); const u = P.fromHex(hx), t = P.parseTx(u); if (t.txid !== id) throw new Error(who + '\u2019s bytes are not transaction ' + id.slice(0, 12) + '\u2026'); used.add(who); return {t, u, hex: lower(hx)}; } catch (e) { why.push(e.message); } }
-      throw new Error(why.join('; '));
-    };
-    const addDoginal = (txid, u) => { try { const S = DP.inscriptionStart(DP.parseTx(u)); if (S && S.finished && S.body && S.body.length && S.contentType) { let n = 0; for (const x of S.body) n += x.length; const v = new Uint8Array(n); let o = 0; for (const x of S.body) { v.set(x, o); o += x.length; } ins.push({id: txid + 'i0', sha: fp(v), length: n, type: S.contentType}); } } catch (e) {} };
-    let tx = null;
-    if (B) {
-      if (merkle(B.txs.map(t => t.txid)) !== B.root) throw new Error('block ' + h + '’s transactions do not lead to its header');
-      if (B.height !== h) throw new Error('block ' + h + '’s first transaction says block ' + B.height);
-      for (const t of B.txs) addDoginal(t.txid, B.X.subarray(t.a, t.end));
-      tx = sampleTx(B);
-    } else {
-      const pg = async n => jsFrom(await ask('https://thedoginalsexplorer.com/v1/block/' + h + '?limit=100&page=' + n, opt), 'thedoginalsexplorer.com');
-      const H0 = await pg(1), list = (H0.txs || []).slice();
-      for (let n = 2; list.length < (H0.total || 0) && n <= 60; n++) { const Q = await pg(n); if (!Q.txs || !Q.txs.length) break; list.push(...Q.txs); }
-      const le = v => { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, v >>> 0, true); return a; }, rb = x => P.fromHex(x).reverse();
-      const hdr = new Uint8Array(80); hdr.set(le(+H0.version), 0); hdr.set(rb(H0.previous), 4); hdr.set(rb(H0.merkle_root), 36); hdr.set(le(+H0.time), 68); hdr.set(rb(String(H0.bits).padStart(8, '0')), 72); hdr.set(le(+H0.nonce), 76);
-      B = {hash: rev(dsha(hdr)), root: lower(H0.merkle_root), txs: list.map(t => ({txid: t.txid, ins: !!t.inscription}))};
-      if (merkle(B.txs.map(t => t.txid)) !== B.root) throw new Error('block ' + h + '’s transactions do not lead to its header (' + why + ')');
-      const cb = await docTx(B.txs[0].txid); if (heightIn(cb.t.vin[0].script) !== h) throw new Error('block ' + h + '’s first transaction says block ' + heightIn(cb.t.vin[0].script));
-      const pickT = B.txs.length > 1 ? pickOne(B.txs.slice(1)) : B.txs[0], s1 = pickT === B.txs[0] ? cb : await docTx(pickT.txid);
-      tx = {id: pickT.txid, hex: s1.hex};
-      const cand = B.txs.find(t => t.ins); if (cand) { try { const d = await docTx(cand.txid); addDoginal(cand.txid, d.u); } catch (e) {} }
-      builtFrom = 'thedoginalsexplorer.com';   // (23 Nov 2026: the truth was built from this site's own fields, so it can't also be one of the sites that agree)
-      from = 'thedoginalsexplorer.com (the header’s fields and the list) and ' + [...used].join(' and ') + ' (transactions’ bytes), as ' + why;
-    }
-    // Doginal #0, put back together from the transactions that wrote it (each spends the one before)
-    let zero = null;
-    try {
-      const gen = ZERO.doge.slice(0, 64), raw = async id => { const a = await ask('https://api.blockchair.com/dogecoin/raw/transaction/' + id, opt); return DP.parseTx(P.fromHex(js(a.bytes).data[id].raw_transaction)); };
-      let tx = await raw(gen); if (tx.txid !== gen) throw new Error('not its bytes');
-      const S = DP.inscriptionStart(tx); const body = [...S.body]; let fin = S.finished, last = S.last, k = 0;
-      while (!fin && k++ < 12) {
-        const c = await ask('https://api.bitcore.io/api/DOGE/mainnet/tx/' + tx.txid + '/coins', opt), next = [...new Set((js(c.bytes).outputs || []).map(o => o.spentTxid).filter(Boolean))];
-        let found = null; for (const id of next) { const t2 = await raw(id); if (t2.txid !== id) continue; const M = DP.inscriptionMore(t2, tx.txid, last); if (M) { found = t2; body.push(...M.body); fin = M.finished; last = M.last; break; } }
-        if (!found) throw new Error('its next piece was not found'); tx = found;
-      }
-      if (fin) { let n = 0; for (const x of body) n += x.length; const u = new Uint8Array(n); let o = 0; for (const x of body) { u.set(x, o); o += x.length; } zero = {id: ZERO.doge, sha: fp(u), length: n}; }
-    } catch (e) { zero = null; }
-    return {chain: 'doge', h, hash: B.hash, settled: null, builtFrom, proof: {bytesFrom: from, transactions: B.txs.length, doginalsFound: ins.length}, tx, ins: ins.length ? pickOne(ins) : null, zero};
-  }
-
   /* ---------- one check: the truth, then every site ---------- */
   async function check(opt) {
     opt = opt || {};
     const at = new Date().toISOString(), truth = {}, notes = [];
-    const chains = opt.chain && opt.chain !== 'all' ? [pick(opt.chain)[0].chain] : ['bitcoin', 'doge'];
-    for (const c of chains) { try { truth[c] = c === 'bitcoin' ? await bitcoinTruth(opt) : await dogeTruth(opt); } catch (e) { truth[c] = null; notes.push(CHAINS[c] + ': no block could be proved from its own bytes this time, so its sites were not asked (' + String(e && e.message || e).replace(/^SyntaxError: /, '') + ')'); } }
+    const chains = ['bitcoin'];
+    for (const c of chains) { try { truth[c] = await bitcoinTruth(opt); } catch (e) { truth[c] = null; notes.push(CHAINS[c] + ': no block could be proved from its own bytes this time, so its sites were not asked (' + String(e && e.message || e).replace(/^SyntaxError: /, '') + ')'); } }
     const list = pick(opt.chain).filter(s => chains.includes(s.chain) && (!opt.site || s.site === (site(opt.site) || {}).site));
     let done = 0;
     const results = await Promise.all(list.map(s => askSite(s, truth, opt).then(r => { if (opt.progress) opt.progress(++done, list.length, r); return r; })));
-    // Dogecoin: the hash from the bytes must be given by at least two other sites, or nothing of Dogecoin's is scored this time
-    if (truth.doge) {
-      const agree = results.filter(r => r.chain === 'doge' && r.site !== 'api.blockchair.com' && r.site !== truth.doge.builtFrom && r.facts.some(f => f.fact === 'hash' && f.code === 'R')).map(r => r.site);
-      truth.doge.settled = agree.length >= DOGE_AGREE; truth.doge.agreedBy = agree;
-      if (!truth.doge.settled) { notes.push('Dogecoin: only ' + agree.length + ' other site' + (agree.length === 1 ? '' : 's') + ' gave block ' + truth.doge.h + '’s hash from its bytes, so nothing of Dogecoin’s is scored this time'); for (const r of results) if (r.chain === 'doge') for (const f of r.facts) if (f.code !== '-') { f.unscored = f.code; f.code = '-'; } }
-    }
     // inscription numbers: no block's bytes can prove one (it is each site's count of every inscription ever made), so they
     // are never marked right or wrong; the ord sites' numbers for the same inscription are set side by side, to show whether they agree
     let numbers = null;

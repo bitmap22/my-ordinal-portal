@@ -8031,37 +8031,6 @@ function cmBanner(title, col, kind) {
   c.fillStyle = '#f7efe3'; c.font = '800 34px ui-monospace,Menlo,Consolas,monospace'; title.split(' ').forEach((t, i) => c.fillText(t, w / 2, h * .68 + i * 42));
   return cv;
 }
-// the rare sats board: [group, name, price for one sat (ordiscan.com, read on CM_RARE_DAY), how many exist: a number, or worked out from the height]
-let CM_RARE_DAY = '10 Nov 2026', cmRareGot = false; const CM_RAREP = {}, CM_RARE = [
-  ['R', 'UNCOMMON', '$49.68', h => h - Math.floor(h / 210000) - Math.floor(h / 2016) + Math.floor(h / 1260000)], ['R', 'RARE', '$45,785', h => Math.floor(h / 2016) - Math.floor(h / 1260000)], ['R', 'EPIC', '$3,243,919', h => Math.floor(h / 210000) - Math.floor(h / 1260000)], ['R', 'LEGENDARY', '—', h => Math.floor(h / 1260000)], ['R', 'MYTHIC', '—', 1],
-  ['B', 'BLACK UNCOMMON', '< $0.01', h => h + 1 - Math.floor((h + 1) / 2016) - Math.floor((h + 1) / 210000) + Math.floor((h + 1) / 1260000)], ['B', 'BLACK RARE', '$43,836', h => Math.floor((h + 1) / 2016)], ['B', 'BLACK EPIC', '—', h => Math.floor((h + 1) / 210000)],
-  ['I', 'PALINDROME', '$0.58', h => cmPal(h)], ['I', 'ALPHA', '$9.74', h => Math.ceil(cmMined(h) / 1e8)], ['I', 'OMEGA', '$11.69', h => Math.floor(cmMined(h) / 1e8)],
-  ['H', 'BLOCK 9', '$0.85', 5e9], ['H', 'BLOCK 78', '< $0.01', 5e9], ['H', 'NAKAMOTO', '< $0.01', 95e9], ['H', 'FIRST TX', '$0.85', 1e9], ['H', 'VINTAGE', '< $0.01', 5e12], ['H', 'PIZZA', '< $0.01', 1e12], ['H', 'HITMAN', '$1,948', 167e9]];
-const cmMined = h => { let s = 0, sub = 5e9, a = 0; while (a <= h && sub > 0) { const n = Math.min(210000, h + 1 - a); s += n * sub; a += 210000; sub = Math.floor(sub / 2); } return s; };   // every sat mined up to this height
-// sat numbers that read the same both ways, among those mined so far: every one of up to 15 digits (109,999,999 with 0), and the 16-digit ones below the newest sat
-const cmPal = h => { const S = cmMined(h), a = Math.floor(S / 1e8); if (a < 1e7) return null; const s = String(a), pal = Number(s + s.split('').reverse().join('')); return 109999999 + (a - 1e7) + (pal < S ? 1 : 0); };
-let cmRareCv = null;
-function cmRare(tn) {   // (a tall board: six kinds at a time)
-  if (!cmRareGot) { cmRareGot = true;   // today's prices: one small file kept beside the page (refreshed once a day); if it cannot be read, the prices built in stay
-    fetch('https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/rare-sats/rare-sats.json', {cache: 'no-cache'}).then(r => r.ok ? r.json() : null).catch(() => null).then(j => j || fetch('https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@rare-sats/rare-sats.json').then(r => r.ok ? r.json() : null).catch(() => null)).then(j => j || fetch(CM_PORTAL + 'rare-sats.json', {cache: 'no-cache'}).then(r => r.ok ? r.json() : null)).then(j => {   // (the newest prices live on the rare-sats branch; jsDelivr's copy of it, then the copy beside the page, are the back-ups)
-    if (!j || !j.prices) return; for (const q of CM_RARE) { const v = j.prices[q[1]]; if (typeof v === 'string' && /^[<$0-9.,\u2014 ]{1,14}$/.test(v)) CM_RAREP[q[1]] = v; } if (typeof j.read === 'string' && /^[0-9A-Za-z ]{6,14}$/.test(j.read)) CM_RARE_DAY = j.read; }).catch(() => {}); }
-  const W = 640, Hh = 800, [cv, c] = cmRareCv || (cmRareCv = cmCv(W, Hh)), tip = tipH >= 0 ? tipH : -1, mono = (wt, z) => `${wt} ${z}px ui-monospace,Menlo,Consolas,monospace`;
-  c.fillStyle = '#0a070c'; c.fillRect(0, 0, W, Hh); for (let y = 0; y < Hh; y += 4) { c.fillStyle = 'rgba(255,255,255,.018)'; c.fillRect(0, y, W, 2); }
-  c.strokeStyle = '#ff4fd8'; c.lineWidth = 6; c.shadowColor = '#ff4fd8'; c.shadowBlur = 18; c.strokeRect(10, 10, W - 20, Hh - 20); c.shadowBlur = 0;
-  c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = mono(800, 56); c.shadowColor = '#ffb04a'; c.shadowBlur = 16; c.fillStyle = '#ffd6a0'; c.fillText('RARE SATS', 34, 64); c.shadowBlur = 0;
-  c.font = mono(700, 19); c.fillStyle = '#27e1ff'; c.fillText(tip >= 0 ? 'BLOCK ' + fmt(tip) : 'CONNECTING…', 36, 112); c.textAlign = 'right'; c.fillStyle = 'rgba(255,255,255,.5)'; c.fillText('price for one sat', W - 36, 112);
-  c.fillStyle = 'rgba(255,79,216,.5)'; c.fillRect(34, 134, W - 68, 2);
-  const N = CM_RARE.length, k0 = Math.floor(tn / 3.2) % N, COL = {R: '#ffc94a', B: '#b9b3c6', I: '#27e1ff', H: '#ff8ad8'}, GN = {R: 'RODARMOR', B: 'BLACK', I: 'INTERESTING', H: 'HISTORICAL'};
-  for (let r = 0; r < 6; r++) { const [g, nm, pr0, sup] = CM_RARE[(k0 + r) % N], pr = CM_RAREP[nm] || pr0, y = 186 + r * 96, live = typeof sup === 'function', n = live ? (tip >= 0 ? sup(tip) : null) : sup;
-    c.fillStyle = COL[g]; c.fillRect(34, y - 26, 6, 70); c.textAlign = 'left'; c.font = mono(800, 34); c.fillText(nm, 54, y - 6); c.textAlign = 'right'; c.fillStyle = pr === '—' ? 'rgba(255,255,255,.35)' : '#7dff4a'; c.fillText(pr, W - 36, y - 6);
-    c.font = mono(600, 19); c.textAlign = 'left'; c.fillStyle = 'rgba(255,255,255,.42)'; c.fillText(GN[g], 54, y + 30); c.textAlign = 'right'; c.fillStyle = '#f7efe3'; c.fillText((n == null ? '…' : n >= 1e12 ? fmt(n / 1e12) + ' trillion' : n >= 1e9 ? fmt(n / 1e9) + ' billion' : fmt(n)) + ' exist', W - (live ? 56 : 36), y + 30);
-    if (live) { c.fillStyle = '#27e1ff'; c.beginPath(); c.arc(W - 42, y + 30, 5, 0, 6.29); c.fill(); } }
-  // (15 Nov 2026) the day its prices were read, so it stands out: LAST UPDATED and the date, in a bright band
-  c.fillStyle = 'rgba(255,201,74,.14)'; c.fillRect(34, Hh - 88, W - 68, 44); c.strokeStyle = '#ffc94a'; c.lineWidth = 2; c.strokeRect(34, Hh - 88, W - 68, 44);
-  c.textAlign = 'center'; c.font = mono(800, 25); c.shadowColor = '#ffb04a'; c.shadowBlur = 12; c.fillStyle = '#ffd36b'; c.fillText('LAST UPDATED ' + String(CM_RARE_DAY).toUpperCase(), W / 2, Hh - 65); c.shadowBlur = 0;
-  c.font = mono(600, 15); c.textAlign = 'left'; c.fillStyle = 'rgba(255,255,255,.5)'; c.fillText('prices: ordiscan.com/rare-sats', 34, Hh - 28); c.textAlign = 'right'; c.fillStyle = '#27e1ff'; c.fillText('● counted live from the chain', W - 36, Hh - 28);
-  return cv;
-}
 let cmTickCv = null;
 function cmTicker() {
   const [cv, c] = cmTickCv || (cmTickCv = cmCv(2048, 64)); c.clearRect(0, 0, 2048, 64);
@@ -8078,7 +8047,6 @@ function cmQuadsMore(R, Q, q, TX) {
   q.push(Q([-15.8, 8.05, 35.8], [0, 0, 1.4], [0, 3.3, 0], 5, .95, TX(() => cmBanner('THE MEMPOOL', '#ff4fd8', 'bar'))));
   q.push(Q([15.8, 8.05, 37.2], [0, 0, -1.4], [0, 3.3, 0], 5, .95, TX(() => cmBanner('KOI GARDEN', '#7dff4a', 'koi'))));
   R.tick = Q([-24.5, 6.95, 22.17], [-17, 0, 0], [0, .45, 0], 6, 1, TX(() => cmTicker())); q.push(R.tick);
-  R.rare = Q([-24.17, 2.5, 33.2], [0, 0, -2.5], [0, 3.125, 0], 5, .95, TX(() => cmRare(0))); q.push(R.rare);   // the rare sats board: on the entrance wall, between the doorway and GM
   R.map = Q([4.0 - .82 * .03, 1.04, 19.85 - .57 * .03], [.8, 0, -1.15], [0, 1.12, 0], 3, .95, TX(() => cmMap(4.4, 19.3))); q.push(R.map);
 }
 
@@ -8445,7 +8413,6 @@ function cmQDraw(VP, eye, tn) {
     if (pass) { gl.depthMask(true); gl.disable(gl.BLEND); }
   }
   gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(null);
-  if (R === room.at && R.rare && R.rare.tex && tn - (cm.rareAt || 0) > 3.2) { cm.rareAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.rare.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmRare(tn)); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }   // the rare sats board rolls on a row
   if (R === room.at && R.tick && tn - (cm.tickAt || 0) > 20) { cm.tickAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.tick.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmTicker()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
   // the live board, redrawn every couple of seconds while you are in the rooms
   if (R === room.at && cm.media.k === 'live' && tn - (cm.boardAt || 0) > 2) { cm.boardAt = tn; gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, R.scr.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cmBoard()); gl.generateMipmap(gl.TEXTURE_2D); gl.activeTexture(gl.TEXTURE0); }
@@ -17397,13 +17364,13 @@ window.AgentKit = window.AgentKit || (() => {
   const SPOTS = {
     'entrance': [0, 2.5, 0, 1.7, 12], 'lounge': [-14.6, 8, -10.9, 1.0, 8], 'warehouse': [9.5, 8, 15, 1.6, 8],
     'grand hall': [0, 20, 0, 4, 47.79], 'forum': [0, 33, 0, 6, 47.79], 'forum steps': [2.5, 28.1, 0, 1, 40], 'big screen': [0, 38, 0, 6.9, 47.79],
-    'mempool bar': [-38.7, 35, -41, 2.8, 35], 'rare sats board': [-30.5, 31.95, -24.17, 4.0, 31.95], 'jukebox': [-37.6, 24.6, -37.6, 2.6, 22.55],
+    'mempool bar': [-38.7, 35, -41, 2.8, 35], 'jukebox': [-37.6, 24.6, -37.6, 2.6, 22.55],
     'koi garden': [28, 30, 33, 1.6, 33]};
   const SEATS = {'sofa': 1, 'armchair': 3, 'bar stool': 12, 'garden bench': 22, 'balcony': 36};
   const MARKS = [   // [what, x, y, d] in the common room's own frame (from the room's own layout)
     ['the big screen (live from the blockchain)', 0, 6.9, 47.79], ['the Forum, the sunken floor', 0, 0, 33], ['the Chain Keeper robot on the ring over the Forum', 0, 12, 33],
     ['the map of the rooms (YOU ARE HERE)', 4.4, 1.6, 19.3], ['the door back to the blocks', 0, 1.2, 0],
-    ['the bar, its tap and the robot bartender', -40.6, 1.6, 35], ['the jukebox (BLOCK BEATS)', -37.6, 1.4, 22.55], ['the rare sats board', -24.17, 4, 31.95], ['the ticker over the bar', -33, 7.2, 22.17],
+    ['the bar, its tap and the robot bartender', -40.6, 1.6, 35], ['the jukebox (BLOCK BEATS)', -37.6, 1.4, 22.55], ['the ticker over the bar', -33, 7.2, 22.17],
     ['THE MEMPOOL sign over the arch', -15.8, 9.7, 36.5], ['KOI GARDEN sign over the arch', 15.8, 9.7, 36.5], ['the koi tank', 33, 1.5, 33]];
   const zoneName = (x, d) => { const i = CM_ZONES.findIndex(([x0, x1, d0, d1]) => x >= x0 && x <= x1 && d >= d0 && d <= d1); return i; };
 
@@ -17483,10 +17450,6 @@ window.AgentKit = window.AgentKit || (() => {
       usualWait: S ? S.eta + ' (' + S.etaSub + ')' : null, bestTimeToGetIn: S ? S.best + ' (' + S.bestSub + ')' : null,
       lowFee: S ? (S.rows ? S.rows.map(r => r.join(' ')) : [S.low + ' (' + S.lowSub + ')']) : null, blockWeather: S ? S.mood : null};
   }
-  function rareSats() {
-    const h = tipH >= 0 ? tipH : 0;
-    return {pricesRead: CM_RARE_DAY, source: 'ordiscan.com (price for one sat)', kinds: CM_RARE.map(q => ({kind: q[1], price: CM_RAREP[q[1]] || q[2], exist: typeof q[3] === 'function' ? q[3](h) : q[3]}))};
-  }
   function crewInfo() {
     if (!crew.on && !crew.page) return {on: false, note: PEOPLE_NOTE};
     return {on: crew.on, inPlayTogether: crew.page, note: PEOPLE_NOTE, untrusted: {me: crew.me, mates: [...crew.mates.values()].map(M => ({name: mateName(M), is: M.s && M.s.ai ? 'an AI agent' : 'a player', where: M.s ? (M.s.h === COMMON ? 'common room' : M.s.h === GARDEN ? 'the bitmap garden' : M.s.h >= 0 ? 'block ' + fmtN(M.s.h) : 'block view') : 'unknown', mutedByYou: crewMuted.has(M.id) || undefined}))}};
@@ -17556,7 +17519,7 @@ window.AgentKit = window.AgentKit || (() => {
     if (cmPaintShown) { s.where = 'Block Paint City (through the common room\'s warehouse door)'; s.blockPaint = 'you are in Block Paint City: paint({command: "see"}) sees it and paint({command: "help"}) lists its commands; leave() comes back to the common room'; }
     if (!inRoom()) { s.block = block(); s.parcelTypes = typeCounts(); const c = cardText(); if (c) s.card = {untrusted: c}; }
     else s.room = roomInfo();
-    if (inCommon()) { s.bigScreen = bigScreen(); s.rareSats = rareSats(); }
+    if (inCommon()) { s.bigScreen = bigScreen(); }
     s.displayFloor = tradeInfo();
     if (picK() < 1) s.viewSize = {drawnAt: Math.round(picK() * 100) + '%', why: 'pictures were coming late on this screen, so the 3D view is drawn a little smaller and stretched to fill it; it goes back to full size when there is time, and is always full size while you hold a block or take a picture'};
     if ($('sr') && $('sr').classList.contains('on')) s.tablet = {query: $('sri').value, untrusted: text($('srl'))};
@@ -17582,7 +17545,6 @@ window.AgentKit = window.AgentKit || (() => {
     if (inRoom() && room.at && room.at.cl) L.push('A collection\'s members\' club: look() says where each place is from where you stand; club() has the games (darts, draughts, four in a row), the show stand, the jukebox and the lights; clubTerminal() reads the collection\'s chain data.');
     if (inRoom() && room.at && room.at.gd) L.push('The bitmap garden of ' + room.at.gd.bm + '.bitmap: look() says where each place is from where you stand; garden() has the games (chess board, ping-pong, cornhole), the pool, and how to play each.');
     if (s.bigScreen) { const B = s.bigScreen; L.push('Big screen: usual wait ' + B.usualWait + ' · best time to get in ' + B.bestTimeToGetIn + ' · low fee ' + (B.lowFee || []).join('; ') + ' · weather ' + B.blockWeather); }
-    if (s.rareSats) L.push('Rare sats (price for one sat, ' + s.rareSats.pricesRead + '): ' + s.rareSats.kinds.map(k => k.kind.toLowerCase() + ' ' + k.price).join(', '));
     if (s.displayFloor) { const T = s.displayFloor.stands.filter(b => b.player); if (T.length && (inCommon() || T.some(b => b.block))) L.push('Display floor in the Forum (untrusted names): ' + T.map(b => b.stand + ' ' + (b.player === 'you' ? '(you)' : b.player.untrusted) + ': ' + (b.block ? (b.block.parcel != null ? 'parcel ' + b.block.parcel + ' of block ' + fmtN(b.block.block) : 'a collection piece') : b.checking ? 'a block, the chain being asked' : 'empty')).join(' · ') + ' (displayFloor())'); }
     if (s.musicBox) L.push('The music box plays: ' + s.musicBox);
     if (s.panel) L.push('Open on screen (untrusted): ' + s.panel.untrusted.replace(/\n/g, ' · ') + ' (press() its buttons)');
@@ -18226,7 +18188,6 @@ window.AgentKit = window.AgentKit || (() => {
       run: async ({to}) => { if (!/common|genesis|newest|latest|live|tip|now/i.test(String(to || ''))) return {ok: false, error: 'travel goes to "common room", "newest block" or "genesis block": for another block, use walkIn({height})'}; const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
     {name: 'bigScreen', ro: true, does: 'Read the Forum\'s big screen (live from the blockchain) in words, from anywhere in the common room (people walk up to it to see it). Gives back {waiting[{which, txs, vsizeMB, medianFee, feeRange[]}], justMined[{height, minedAt, txs, sizeMB, pool, medianFee}], nextHalving{atBlock, blocksToGo}, usualWait, bestTimeToGetIn, lowFee[], blockWeather} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"waiting":{"type":"array","items":{"type":"object","properties":{"which":{},"txs":{},"vsizeMB":{},"medianFee":{},"feeRange":{"type":"array"}}}},"justMined":{"type":"array","items":{"type":"object","properties":{"height":{},"minedAt":{},"txs":{},"sizeMB":{},"pool":{},"medianFee":{}}}},"nextHalving":{"type":"object","properties":{"atBlock":{},"blocksToGo":{}}},"usualWait":{},"bestTimeToGetIn":{},"lowFee":{"type":"array"},"blockWeather":{},"ok":{"type":"boolean"},"error":{"type":"string"}}},
       run: () => { if (!inCommon()) return {ok: false, error: 'the big screen is in the common room: go there to read it'}; return bigScreen(); }},
-    {name: 'rareSats', ro: true, does: 'Read the rare sats board in The Mempool (the neon bar): each kind, how many exist, price for one sat. Gives back {pricesRead, source, kinds[{kind, price, exist}]} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"pricesRead":{},"source":{},"kinds":{"type":"array","items":{"type":"object","properties":{"kind":{},"price":{},"exist":{}}}},"ok":{"type":"boolean"},"error":{"type":"string"}}}, run: () => inCommon() ? rareSats() : {ok: false, error: 'the board is in the common room: go there to read it'}},
     {name: 'inscription', ro: true, untrusted: true, does: 'One inscription in one quick read, from ord\'s own record (ordinals.com): the address holding it now, its number, the block it was made in and when, its sat, its kind and size, the fee paid, the output it sits in, its parents and delegate. To check whether an address holds it, compare holder: faster and more exact than reading a whole wallet. For a trade, check here just before: it is read fresh each time, heldBy says when the holder is you or a crewmate whose wallet is proven, and beingSentNow says whether it is already on its way somewhere in a transaction still waiting to be mined. Gives back {ok, id, number, holder, heldBy, beingSentNow, madeInBlock, made, sat, kind, bytes, feeSats, output, valueSats, charms[], delegate, parents[], from} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"ok":{},"id":{},"number":{},"holder":{},"heldBy":{},"beingSentNow":{},"madeInBlock":{},"made":{},"sat":{},"kind":{},"bytes":{},"feeSats":{},"output":{},"valueSats":{},"charms":{"type":"array"},"delegate":{},"parents":{"type":"array"},"from":{},"error":{"type":"string"}}}, args: [{name: 'id', does: 'the inscription: its number (like "#1000") or its ID (a transaction ID, then i and a number: …b3bi0)', req: true}],
       run: async ({id}) => { id = String(id || '').trim().toLowerCase().replace(/,/g, '');
         if (/^#?-?\d{1,10}$/.test(id)) { try { id = (await srInsNum(+id.replace('#', ''))).id; } catch (e) { return {ok: false, error: String(e && e.message || e)}; } }   // (a number, like "#0", works too: the same lookup as search)

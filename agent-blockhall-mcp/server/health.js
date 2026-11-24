@@ -2,8 +2,8 @@
    Which of the free public data sites the portal's tools read are answering, how fast, and whether their answers are up to
    date, so a person or an AI agent knows how far to trust an answer and which site to ask. Each site is asked one small thing
    (most: the newest block's height, which says both whether it answers and whether it has kept up with the chain):
-   - Bitcoin: mempool.space and its 6 copies, ordinals.com and its 3 copies, stampchain.io, api.counterparty.io, api.bnrp.name
-   - Dogecoin: thedoginalsexplorer.com, Blockchair, BlockCypher, BitPay's Bitcore, 3xpl's sandbox, and Doggy Market's file copies
+   - Bitcoin: mempool.space, ordpool.space, mempool.space's Frankfurt server, blockstream.info, ordinals.com and api.bnrp.name
+   (24 Nov 2026: only sites whose terms allow the portal's use are asked; see SOURCES.md in the portal's repository)
    What each says is only ever what it said: nothing is guessed. A site that answers in 2.5 seconds or more is slow (the
    portal's tools ask the next site after 2.5 seconds); a site 2 or more blocks behind the others is behind.
    GitHub's computers ask the same, about once an hour, and keep a week of it (the source-health branch of the portal's own
@@ -15,12 +15,10 @@
   else root.SourceHealth = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const SLOW_MS = 2500, WAIT_MS = 15000, KEEP_HOURS = 168;
   const RECORD_URLS = ['https://raw.githubusercontent.com/bitmap22/my-ordinal-portal/source-health/week.json',
     'https://cdn.jsdelivr.net/gh/bitmap22/my-ordinal-portal@source-health/week.json'];   // (the second is a copy that can be some hours old)
-  // inscription #0 on each chain: a file every copy site should give exactly (Bitcoin's is 793 bytes, Dogecoin's 1,461)
-  const DOGE_0 = '15f3b73df7e5c072becb1d84191843ba080734805addfccb650929719080f62ei0';
 
   const height = t => { const n = Number(String(t).trim()); return Number.isInteger(n) && n > 0 ? n : null; };
   const json = t => JSON.parse(t);
@@ -29,34 +27,15 @@
   const SITES = [
     mp('mempool.space', 'blocks, transactions, fees and prices (asked first)'),
     mp('ordpool.space', 'a copy of mempool.space, and the only site that tags CAT-21, Labitbu and OpenTimestamps in mined blocks'),
-    mp('mempool.emzy.de', 'a copy of mempool.space'),
-    mp('mempool.ninja', 'a copy of mempool.space'),
-    mp('mempool.fra.mempool.space', 'a copy of mempool.space'),
-    mp('mempool.bitaroo.net', 'a copy of mempool.space'),
+    mp('mempool.fra.mempool.space', 'mempool.space\'s own second server'),
     mp('blockstream.info', 'blocks and transactions (the last copy asked)'),
-    ord('ordinals.com', 'inscriptions, their files and records, rune pages and each block\'s list of inscriptions (asked first)'),
-    ord('ordiscan.com', 'a copy of ordinals.com\'s recursive endpoints (/r/) and files'),
-    ord('ordinalswallet.com', 'a copy of ordinals.com\'s recursive endpoints (/r/) and files'),
-    ord('ord.xverse.app', 'a copy of ordinals.com\'s recursive endpoints (/r/) and files'),
-    {site: 'stampchain.io', chain: 'bitcoin', group: 'Stamps, Counterparty and names', what: 'Stamp numbers and SRC-20 token totals', path: '/api/v2/health',
-      read: t => { const j = json(t), s = j && j.services && j.services.blockSync; return s && height(s.indexed); }},
-    {site: 'api.counterparty.io', base: 'https://api.counterparty.io:4000', chain: 'bitcoin', group: 'Stamps, Counterparty and names', what: 'Counterparty messages', path: '/v2/',
-      read: t => { const r = json(t).result; return r && height(r.counterparty_height); }},
-    {site: 'api.bnrp.name', chain: 'bitcoin', group: 'Stamps, Counterparty and names', what: 'names (.sats, .btc and the like)', path: '/v1/resolve/satoshi.sats',
-      read: t => { const j = json(t); return j && /^[0-9a-f]{64}i\d+$/.test(j.inscription_id || '') ? {name: j.name, inscription: j.inscription_id} : null; }, kind: 'name'},
-    {site: 'thedoginalsexplorer.com', chain: 'doge', group: 'Blocks and inscriptions', what: 'blocks, transactions, inscriptions and their files (asked first)', path: '/r/blockheight', read: height},
-    {site: 'api.blockchair.com', chain: 'doge', group: 'Blocks and inscriptions', what: 'blocks (a back-up)', path: '/dogecoin/stats',
-      read: t => { const d = json(t).data; return d && height(d.best_block_height); }},
-    {site: 'api.blockcypher.com', chain: 'doge', group: 'Blocks and inscriptions', what: 'blocks (a back-up)', path: '/v1/doge/main', read: t => height(json(t).height)},
-    {site: 'api.bitcore.io', chain: 'doge', group: 'Blocks and inscriptions', what: 'the newest block, and every transaction\'s size and fee', path: '/api/DOGE/mainnet/block/tip', read: t => height(json(t).height)},
-    {site: 'sandbox-api.3xpl.com', chain: 'doge', group: 'Blocks and inscriptions', what: 'the newest block and block hashes (a last word)', path: '/?from=dogecoin',
-      read: t => { const d = json(t).data.blockchains.dogecoin; return d && height(d.best_block); }},
-    {site: 'cdn.doggy.market', chain: 'doge', group: 'Blocks and inscriptions', what: 'copies of inscription files (when the explorer doesn\'t have one)', path: '/content/' + DOGE_0, kind: 'file',
-      against: 'https://thedoginalsexplorer.com/content/' + DOGE_0}
+    ord('ordinals.com', 'inscriptions, their files and records, rune pages and each block\'s list of inscriptions'),
+    {site: 'api.bnrp.name', chain: 'bitcoin', group: 'Names', what: 'names (.sats, .btc and the like)', path: '/v1/resolve/satoshi.sats',
+      read: t => { const j = json(t); return j && /^[0-9a-f]{64}i\d+$/.test(j.inscription_id || '') ? {name: j.name, inscription: j.inscription_id} : null; }, kind: 'name'}
   ];
   for (const s of SITES) s.url = (s.base || 'https://' + s.site) + s.path;
-  const CHAINS = {bitcoin: 'Bitcoin', doge: 'Dogecoin'};
-  const pick = chain => chain && chain !== 'all' ? SITES.filter(s => s.chain === (/^d/i.test(chain) ? 'doge' : 'bitcoin')) : SITES;
+  const CHAINS = {bitcoin: 'Bitcoin'};
+  const pick = () => SITES;   // (24 Nov 2026: Bitcoin only; Dogecoin is paused)
 
   // the states a site can be in, as one letter in the hourly record
   const STATE = {answers: 'a', slow: 's', refused: 'r', error: 'e', 'no answer': 'n', 'wrong answer': 'w'};
@@ -213,7 +192,7 @@
       if (up && r.behind >= 2) out.push({trouble: true, site: s.site, says: s.site + ' is ' + fmt(r.behind) + ' blocks behind, from ' + here + ': it doesn\u2019t know about the newest ' + fmt(r.behind) + ' blocks yet, so its answers about them are out of date.'});
       if (r && r.sameAs && r.sameAs.same === false) out.push({trouble: true, site: s.site, says: s.site + '\u2019s copy of inscription #0 is not the same as ' + r.sameAs.site + '\u2019s.'});
       if (r && r.state === 'slow') out.push({trouble: true, site: s.site, says: s.site + ' took ' + fmt(r.ms) + ' ms to answer ' + here + ': the tools ask the next site after 2.5 seconds.'});
-      if (r && !up) out.push({trouble: true, site: s.site, says: s.site + ' is not answering ' + here + ' now (' + r.words + '). The tools ask its back-ups instead' + (s.group === 'Stamps, Counterparty and names' || /only site/.test(s.what) ? ', where there is one.' : '.')});
+      if (r && !up) out.push({trouble: true, site: s.site, says: s.site + ' is not answering ' + here + ' now (' + r.words + '). The tools ask its back-ups instead' + (s.group === 'Names' || /only site/.test(s.what) ? ', where there is one.' : '.')});
       if (up && dy && dy.refused && w.last && w.last.state === 'refused') out.push({trouble: true, site: s.site, says: s.site + ' answers ' + here + ' but refused GitHub\u2019s computers at their last check. A site can answer one computer and refuse another: if it refuses you, ask its copies.'});
       else if (wk && wk.checks && wk.answered < wk.checks) out.push({trouble: true, site: s.site, says: 'From GitHub\u2019s computers, ' + s.site + ' answered ' + fmt(wk.answered) + ' of ' + fmt(wk.checks) + ' checks this week' + (wk.lastTrouble ? ' (the last time it didn\u2019t: ' + when(wk.lastTrouble.at) + ', ' + wk.lastTrouble.was + ')' : '') + '.'});
       if (wk && wk.behind && !(up && r.behind >= 2)) out.push({trouble: true, site: s.site, says: 'From GitHub\u2019s computers, ' + s.site + ' was behind in ' + fmt(wk.behind) + ' of ' + fmt(wk.checks) + ' checks this week' + (wk.mostBehind > 0 ? ', at most ' + fmt(wk.mostBehind) + ' blocks' : '') + '.'});
