@@ -49,6 +49,6 @@ Because of this:
 
 ## Not data sites
 
-GitHub (the portal's own data files, made by its own jobs from the chain), jsDelivr (a back-up copy of those files), the portal's own visit counter on Cloudflare, nostr relays (Play Together's messages between players), YouTube (youtube-nocookie.com, on the big screens), Google Fonts and GoatCounter (counting visits).
+GitHub (the portal's own data files, made by its own jobs from the chain), jsDelivr (a back-up copy of those files), the portal's own visit counter on Cloudflare, nostr relays (Play Together's messages between players), Google Fonts and GoatCounter (counting visits).
 
 Something wrong here? Report it: https://github.com/bitmap22/my-ordinal-portal/issues

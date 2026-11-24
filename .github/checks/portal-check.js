@@ -1,7 +1,7 @@
 /* The portal's safety check, by bitmap22: runs on GitHub on every change (portal-check.yml), with no add-ons and no network.
    It fails when a change brings back one of the problems the 21 November 2026 deep-dive found and fixed:
    1. A frame without a lock. Every <iframe> and every createElement('iframe') in a page must have a sandbox, or a note on the
-      same line, "frame-ok: <why>", that says why it can be unlocked (it shows one of our own pages, or YouTube).
+      same line, "frame-ok: <why>", that says why it can be unlocked (it shows one of our own pages).
    2. A stranger's picture made into an address on our own site. Every new Blob(...) whose type comes from a variable (so it could
       be an SVG or a web page from an inscription) must be checked with SAFE_PIC_T / shownPic just before, or have a note on the
       same line, "blob-ok: <why>" (for example: only drawn off-screen, never put where a person can open it in a new tab).
