@@ -11,16 +11,16 @@ const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const RAW = 'https://raw.githubusercontent.com/';
 const WATCH = [
   {id: 'mempool-terms', site: 'mempool.space (and its Frankfurt server)', url: RAW + 'mempool/mempool/master/frontend/src/app/components/terms-of-service/terms-of-service.component.html', see: 'https://mempool.space/terms-of-service', html: true},
-  {id: 'mempool-terms-page', site: 'mempool.space (and its Frankfurt server)', url: 'https://mempool.space/terms-of-service', see: 'https://mempool.space/terms-of-service', start: 'Terms of Service', html: true, optional: true},
+  {id: 'mempool-terms-page', site: 'mempool.space (and its Frankfurt server)', url: 'https://mempool.space/terms-of-service', see: 'https://mempool.space/terms-of-service', start: 'Updated:', html: true, optional: true},
   {id: 'ordpool-terms', site: 'ordpool.space', url: RAW + 'ordpool-space/ordpool/main/frontend/src/app/components/terms-of-service/terms-of-service.component.html', see: 'https://ordpool.space/terms-of-service', html: true},
   {id: 'esplora-api', site: 'blockstream.info', url: RAW + 'Blockstream/esplora/master/API.md', see: 'https://github.com/Blockstream/esplora/blob/master/API.md', upTo: '## Transactions'},
   {id: 'blockstream-explorer-api', site: 'blockstream.info', url: 'https://blockstream.info/explorer-api', see: 'https://blockstream.info/explorer-api', html: true, optional: true},
-  {id: 'blockstream-privacy', site: 'blockstream.info', url: 'https://blockstream.com/privacy', see: 'https://blockstream.com/privacy', start: 'Privacy Policy', html: true, optional: true},
+  {id: 'blockstream-privacy', site: 'blockstream.info', url: 'https://blockstream.com/privacy', see: 'https://blockstream.com/privacy', start: 'At Blockstream, we are committed', endAfter: 'This Privacy Policy was last updated', html: true, optional: true},
   {id: 'ord-licence', site: 'ordinals.com', url: RAW + 'ordinals/ord/master/LICENSE', see: 'https://github.com/ordinals/ord/blob/master/LICENSE'},
-  {id: 'coingecko-api-terms', site: 'CoinGecko', url: 'https://www.coingecko.com/en/api_terms', see: 'https://www.coingecko.com/en/api_terms', start: 'CoinGecko API Terms of Service', html: true},
-  {id: 'coingecko-keyless', site: 'CoinGecko', url: 'https://docs.coingecko.com/docs/keyless-public-api', see: 'https://docs.coingecko.com/docs/keyless-public-api', html: true, optional: true},
-  {id: 'bnrp-docs', site: 'BNRP (api.bnrp.name)', url: 'https://btcnative.pages.dev/docs', see: 'https://btcnative.pages.dev/docs', html: true},
-  {id: 'bnrp-standard', site: 'BNRP (api.bnrp.name)', url: 'https://btcnative.pages.dev/bnrp.html', see: 'https://btcnative.pages.dev/bnrp.html', html: true, optional: true}
+  {id: 'coingecko-api-terms', site: 'CoinGecko', url: 'https://www.coingecko.com/en/api_terms', see: 'https://www.coingecko.com/en/api_terms', start: 'Latest Version:', endBefore: 'Coingecko provides a fundamental analysis', html: true},
+  {id: 'coingecko-keyless', site: 'CoinGecko', url: 'https://docs.coingecko.com/docs/keyless-public-api', see: 'https://docs.coingecko.com/docs/keyless-public-api', start: 'The Keyless Public API lets you', endBefore: 'Was this page helpful?', html: true, optional: true},
+  {id: 'bnrp-docs', site: 'BNRP (api.bnrp.name)', url: 'https://btcnative.pages.dev/docs', see: 'https://btcnative.pages.dev/docs', start: 'Protocol overview', endBefore: 'Powered by BNRP open resolution', html: true},
+  {id: 'bnrp-standard', site: 'BNRP (api.bnrp.name)', url: 'https://btcnative.pages.dev/bnrp.html', see: 'https://btcnative.pages.dev/bnrp.html', start: 'What is BNRP?', endBefore: 'Powered by BNRP open resolution', html: true, optional: true}
 ];
 // (optional: a page that is often hard for a script to read, because it is built in the browser or sits behind a bot
 // check. Its words are compared when they can be read; it only raises an issue for a change, never for not being read.)
@@ -28,7 +28,7 @@ const UNREADABLE_DAYS = 3;   // a needed page that can't be read this many check
 const UA = 'OrdPortal-TermsCheck/1.0 (+https://ordportal.com/SOURCES.md)';
 
 const decode = s => s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-  .replace(/&#39;|&apos;|&rsquo;|&lsquo;/g, "'").replace(/&ldquo;|&rdquo;/g, '"').replace(/&mdash;/g, '—').replace(/&ndash;/g, '–')
+  .replace(/&#39;|&apos;|&rsquo;|&lsquo;/g, "'").replace(/&ldquo;|&rdquo;/g, '"').replace(/&copy;/g, '©').replace(/&mdash;/g, '—').replace(/&ndash;/g, '–')
   .replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCodePoint(parseInt(n, 16)));
 function textOf(body, w) {
   let t = body;
@@ -39,8 +39,11 @@ function textOf(body, w) {
     t = t.replace(/\{\{[\s\S]*?\}\}/g, ' ').replace(/i18n(-[a-z-]+)?="[^"]*"/g, ' ');   // (Angular's own marks in a code file)
   }
   let lines = t.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (w.start) { const i = lines.findIndex(l => l.includes(w.start)); if (i >= 0) lines = lines.slice(i); }
-  if (w.upTo) { const i = lines.findIndex(l => l.startsWith(w.upTo)); if (i >= 0) lines = lines.slice(0, i); }
+  // start: the first line that begins with it; endBefore: stop before the first line after that begins with it; endAfter: stop after it
+  if (w.start) { const i = lines.findIndex(l => l.startsWith(w.start)); if (i < 0) return ''; lines = lines.slice(i); }
+  const upTo = w.upTo || w.endBefore;
+  if (upTo) { const i = lines.findIndex((l, k) => k > 0 && l.startsWith(upTo)); if (i >= 0) lines = lines.slice(0, i); }
+  if (w.endAfter) { const i = lines.findIndex(l => l.startsWith(w.endAfter)); if (i >= 0) lines = lines.slice(0, i + 1); }
   return lines.join('\n');
 }
 // The fingerprint leaves out digits and spacing: live numbers on a page (prices, counts) are not terms. A real change to the
