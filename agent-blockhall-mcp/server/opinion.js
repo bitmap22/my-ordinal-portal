@@ -39,6 +39,11 @@
     'rune.divisibility': 'how many decimal places a rune has', 'rune.premine': 'how much of a rune went to its etcher at the start (its premine)', 'rune.cap': 'how many times a rune can be minted (its cap)',
     'rune.amount': 'how much each mint of a rune makes', 'rune.turbo': 'whether a rune is turbo (takes part in future rune upgrades early)', 'rune.number': 'a rune\'s number (the order runes were etched in)',
     'rune.mints': 'how many times a rune has been minted so far', 'rune.supply': 'how much of a rune there is now (its supply)'});
+  // (24 Nov 2026) claims only one source can answer are not checked: the Second Opinion promises several sources, and among
+  // the sites whose terms allow the portal's use only ordinals.com counts these (no block's bytes can prove them). They come
+  // back if a second ord site whose terms allow it is found.
+  const ONE_SOURCE = {};
+  for (const k of ['ins.number', 'ins.sat', 'coll.count', 'rune.number', 'rune.mints', 'rune.supply']) if (KINDS[k]) { ONE_SOURCE[k] = KINDS[k]; delete KINDS[k]; }
 
   /* ---------- reading a claim written in plain words ---------- */
   const SAY = [
@@ -103,7 +108,7 @@
   const group = t => String(t).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   function normal(c) {
     if (typeof c === 'string') return parse(c);
-    if (!c || !KINDS[c.kind]) throw new Error('kind must be one of: ' + Object.keys(KINDS).join(', '));
+    if (!c || !(KINDS[c.kind] || ONE_SOURCE[c.kind])) throw new Error('kind must be one of: ' + Object.keys(KINDS).join(', '));
     const insLike = t => /^-?\d+$/.test(String(t)) ? '#' + t : String(t).toLowerCase();
     const subject = /^(ins\.|coll\.)/.test(c.kind) ? insLike(c.subject) : /^block\./.test(c.kind) ? num(c.subject) : /^rune\./.test(c.kind) ? runeLike(c.subject) : String(c.subject);
     if (String(subject).length > 120 || /[\/?\\&%]|\.\./.test(String(subject)) || /^(addr|tx)\./.test(c.kind) && !/^[a-zA-Z0-9]{14,100}$/.test(String(subject))) throw new Error('that subject is not one this check can look up');   // (it is put into the sites' addresses: only plain ones)
@@ -293,6 +298,9 @@
   async function check(claim, io, progress) {
     const say = (k, v) => { try { progress && progress(k, v); } catch (e) {} };
     const c = normal(claim); say('read', c.kind);
+    if (ONE_SOURCE[c.kind]) { say('done', true); return {check: 'Agent Blockhall Second Opinion ' + VERSION, claim: {text: c.text, kind: c.kind, means: ONE_SOURCE[c.kind], subject: c.subject, value: c.value},
+      answer: 'unknown', verdict: 'Not checked: ' + ONE_SOURCE[c.kind] + ' comes from one source only (ordinals.com), and the Second Opinion only checks claims it can set against a second source. No block\'s bytes can prove it, and no other site whose terms allow the portal\'s use has it.',
+      sources: [], why: ['not checked: one source only'], checkedAt: new Date().toISOString().replace(/\.\d{3}/, ''), oneSourceOnly: true}; }
     const {sources, notes} = await gather(c, io, say);
     const show = v => typeof v === 'number' ? (/fees|balance/.test(c.kind) ? fmt(v) + ' sats (' + (v / 1e8).toLocaleString('en-GB', {maximumFractionDigits: 8}) + ' BTC)' : fmt(v)) : /^\d+$/.test(String(v)) && String(v).length < 16 ? fmt(+v) : String(v);
     const used = sources.filter(s => s.agrees !== null), yes = used.filter(s => s.agrees), no = used.filter(s => s.agrees === false), chain = used.filter(s => s.kind === 'chain');
@@ -312,5 +320,5 @@
     return r;
   }
 
-  return {VERSION, KINDS, parse, check};
+  return {VERSION, KINDS, ONE_SOURCE, parse, check};
 });
