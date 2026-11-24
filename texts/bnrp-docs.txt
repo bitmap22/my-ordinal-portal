@@ -1,0 +1,374 @@
+Developer Docs — BTC Native
+BTC NATIVE
+Names
+Browse
+Categories
+Listings
+Bulk Search
+Market
+Data
+Overview
+Floor Prices
+Live Activity
+Collections
+Subnames
+Namespaces
+Messaging
+Inbox
+Protocol (BNRP)
+What Are Subnames?
+Subname Manager
+Event Tool
+Extensions
+Lightning Address
+Sign in with Bitcoin
+Agent Namespace
+Profile Standard
+Sub-registry
+Tokens
+Protocol
+Docs
+Wallet Beta
+Get the wallet
+Web Wallet
+Chrome Extension
+List a Name
+Developer Reference
+BNRP API
+Open resolution protocol for Bitcoin-native names. No API keys required for read endpoints. Base URL: https://api.bnrp.name/v1
+Resolution
+Resolve name
+Reverse lookup
+Schemas
+Name record
+Listing
+BRC-20 fees
+Verification
+Reference
+Error responses
+Rate limits
+Namespace API
+Subnames
+Contact
+Source on GitHub
+Protocol overview
+Resolve name
+Returns the canonical BNRP record for a Bitcoin-native name. The resolver queries upstream indexers (UniSat, BTCName, SNS), selects the first inscription as canonical, and caches the result for 300 seconds.
+GET
+/v1/resolve?name={name}
+Resolves a name string (e.g. satoshi.btc ) to its owner, inscription ID, addresses, and profile records. Uses query-param routing to avoid WAF blocks on dot-containing URL paths.
+Parameter Type Required Description
+name string Required Full name including TLD, e.g. satoshi.btc , punk.ord
+GET https://api.bnrp.name/v1/resolve?name=satoshi.btc
+HTTP/1.1 200 OK
+Content-Type: application/json
+{
+"name": "satoshi.btc",
+"inscription_id": "abc123...i0",
+"owner": "bc1p...",
+"addresses": {
+"BTC": "bc1p...",
+"LIGHTNING": "satoshi@getalby.com",
+"ETH": "0x...",
+"SOL": "So1..."
+},
+"profile": {
+"avatar": "ord:abc123...i0",
+"display": "Satoshi",
+"description": "Bitcoin.",
+"com.twitter": "satoshi",
+"url": "https://bitcoin.org"
+},
+"via": "unisat",
+"resolved_at": "2026-04-23T20:00:00Z",
+"cached": true
+}
+Only the first inscription for a name is canonical. Re-inscriptions are ignored. The via field indicates which upstream indexer sourced the data.
+Reverse lookup
+Returns all BNRP names owned by a given Bitcoin address. Cached for 120 seconds.
+GET
+/v1/reverse?address={address}
+Returns an array of name strings currently owned by the provided Taproot address.
+Parameter Type Required Description
+address string Required Bitcoin Taproot address (bc1p...)
+GET https://api.bnrp.name/v1/reverse?address=bc1p...
+HTTP/1.1 200 OK
+Content-Type: application/json
+{
+"address": "bc1p...",
+"names": [
+"satoshi.btc",
+"punk.ord"
+],
+"cached": false
+}
+Name record schema
+Full shape of a resolved BNRP name record. All fields except name and inscription_id are optional.
+{
+"name": string, // Full name with TLD, e.g. "satoshi.btc"
+"inscription_id": string, // Ordinals inscription ID (txid + "i" + index)
+"owner": string, // Current Bitcoin owner address
+"addresses": {
+"BTC": string, // Primary Bitcoin address (P2TR)
+"LIGHTNING": string, // LNURL or Lightning address
+"ETH": string, // Ethereum address (optional)
+"SOL": string // Solana address (optional)
+},
+"profile": {
+"avatar": string, // "ord:{inscriptionId}" or https URL
+"display": string, // Display name
+"description": string, // Bio / description
+"com.twitter": string, // Twitter/X handle (without @)
+"com.github": string, // GitHub username
+"url": string // Website URL
+},
+"via": string, // Upstream source: "unisat" | "btcname" | "sns"
+"resolved_at": string, // ISO 8601 timestamp of resolution
+"cached": boolean // true when served from KV cache
+}
+Listing schema
+Market listing data returned by the BTCNative market worker. Listings are created via UniSat's PSBT-based auction protocol and proxied through the BTC Native market worker.
+GET
+https://market-api.btcnative.name/api/market/listings
+Parameter Type Default Description
+limit number 20 Number of listings to return (max 100)
+offset number 0 Pagination offset
+tld string Optional Filter by TLD, e.g. btc
+{
+"ok": true,
+"listings": [
+{
+"name": "satoshi.btc",
+"auctionId": "abc123",
+"unitPrice": 150000, // sats
+"inscriptionId": "abc...i0",
+"seller": "bc1p...",
+"listedAt": "2026-04-01T12:00:00Z"
+}
+],
+"total": 42
+}
+Platform fee is 1% (100 bps), minimum 1,000 sats, applied at settlement. UniSat charges an additional 0.5% taker fee. Re-inscriptions are blocked from all buy and sell surfaces.
+BRC-20 fees
+Fee schedule for BRC-20 token trades settled through BTCNative.
+Type
+Rate
+Notes
+Platform fee
+0.75%
+Collected at settlement. Waived on trades under 500,000 sats.
+Community rewards
+0.25%
+Routes to the community rewards pool. Waived on trades under 500,000 sats.
+Total
+1%
+No fee on trades under 500,000 sats.
+Fees are deducted from the buyer payment at the time of PSBT settlement. The seller receives the full listing price minus the UniSat protocol fee (0.5%). BTCNative fees are separate from and in addition to the UniSat protocol fee.
+Verification schema
+How BNRP determines canonical ownership. There is no smart contract. Verification is a read of Ordinals inscription data.
+Canonical rule:
+The FIRST inscription matching name + TLD is canonical.
+All subsequent inscriptions for the same name are ignored.
+Ownership:
+owner = current UTXO holder of the inscription.
+Transfers follow Bitcoin UTXO rules — no protocol overhead.
+Spoof detection:
+- Re-inscriptions: blocked at resolver level.
+- Unicode homoglyphs: flagged client-side by BNRP trust layer.
+- Mixed scripts: flagged as "Confusable" in name card badges.
+Resolution chain:
+1. Query upstream (UniSat / BTCName / SNS)
+2. Select inscription with lowest block height (first = canonical)
+3. Verify owner address matches current UTXO holder
+4. Return normalized record with via + resolved_at
+5. Cache in Cloudflare KV for 300s
+Error responses
+All errors return JSON with a consistent shape.
+{
+"error": "name_not_found", // Machine-readable error code
+"message": "No inscription found for this name.",
+"status": 404
+}
+Status Code Meaning
+400 invalid_name Name format invalid or TLD not supported
+404 name_not_found No inscription found for the name
+429 rate_limited Too many requests from this IP
+502 upstream_error Upstream indexer (UniSat/BTCName) failed
+503 resolver_unavailable BNRP resolver temporarily unavailable
+Rate limits
+The public resolver API has IP-based rate limiting enforced at the Cloudflare Worker edge.
+Endpoint Limit Window
+/v1/resolve 60 requests 60 seconds per IP
+/v1/reverse 30 requests 60 seconds per IP
+Market proxy 120 requests 60 seconds per IP
+Cache hits (KV-served responses) do not count toward your rate limit quota. Most name lookups are cache-warm within 5 minutes of first resolution.
+Namespace API
+Namespace endpoints return the full ownership tree, subname records, inscription history, and current record state for a name. These endpoints are part of the BNRP resolver and require no API key.
+GET
+/v1/names/:name/namespace
+Returns the namespace metadata for a root name — policy, resolver status, subname count, and latest valid record summary.
+GET https://api.bnrp.name/v1/names/satoshi.btc/namespace
+// Response
+{
+"name": "satoshi.btc",
+"policy": "parent-controlled",
+"resolverStatus": "verified",
+"subnameCount": 0,
+"latestRecord": {
+"inscriptionId": "abc123...i0",
+"op": "profile",
+"nonce": 1,
+"confirmedAt": 840000
+}
+}
+GET
+/v1/names/:name/subnames
+Returns all active subname records issued under a root name. Revoked, superseded, and unauthorized subnames are excluded by default. Pass ?includeInvalid=true to include them.
+GET https://api.bnrp.name/v1/names/satoshi.btc/subnames
+// Subname record schema
+{
+"name": "vault.satoshi.btc",
+"parent": "satoshi.btc",
+"owner": "bc1p...",
+"op": "subname_register",
+"records": {},
+"provenance": {
+"inscriptionId": "def456...i0",
+"confirmedAt": 841500,
+"nonce": 1
+},
+"status": "active"
+}
+GET
+/v1/names/:name/history
+Returns the full BNRP inscription history for a name in reverse chronological order. Every inscription ever associated with the name is included, valid or not. Validity state is annotated per record.
+GET https://api.bnrp.name/v1/names/satoshi.btc/history
+// Response
+{
+"name": "satoshi.btc",
+"history": [
+{
+"inscriptionId": "abc123...i0",
+"op": "profile",
+"nonce": 2,
+"confirmedAt": 842000,
+"valid": true,
+"validityState": "active"
+},
+{
+"inscriptionId": "old789...i0",
+"op": "profile",
+"nonce": 1,
+"confirmedAt": 840000,
+"valid": false,
+"validityState": "superseded"
+}
+]
+}
+GET
+/v1/names/:name/current-record
+Returns only the latest valid BNRP inscription for a name. This is the authoritative current state. Re-inscriptions with an equal or lower nonce, unauthorized signers, or revoked records are never returned here.
+GET https://api.bnrp.name/v1/names/satoshi.btc/current-record
+// Response
+{
+"name": "satoshi.btc",
+"inscriptionId": "abc123...i0",
+"op": "profile",
+"nonce": 2,
+"owner": "bc1p...",
+"records": {
+"btc": "bc1p...",
+"com.twitter": "satoshi"
+},
+"confirmedAt": 842000,
+"validityState": "active"
+}
+Latest valid inscription wins. A valid update must be authorized by the current owner or delegated manager, match the namespace policy, use a newer nonce, be confirmed on-chain, and not be revoked or superseded.
+Namespace endpoints are Phase 2 roadmap. The resolver stub is live — subname issuance is not yet active. Learn about namespaces →
+Subnames
+Subnames are Bitcoin-native child records created under a root name. They use the BNRP subname_register op and are indexed from Bitcoin inscriptions.
+Event format
+{
+"p": "bnrp",
+"op": "subname_register",
+"name": "artist.btc", // parent name
+"sub": "shop.artist.btc", // full subname
+"to": "bc1p...", // primary destination
+"records": { // optional extended records
+"btc": "bc1p...",
+"website": "https://...",
+"lightning": "lnbc...",
+"com.twitter": "@handle"
+},
+"nonce": 1, // must strictly increase
+"v": 1 // protocol version
+}
+Validity rules
+A subname record is valid if:
+The inscription was made by the current owner of the parent name, or an approved delegate
+The nonce strictly increases from the previous record for this subname
+The record has not been revoked by a subsequent subname_revoke event
+The record conforms to the parent namespace policy
+The inscription is confirmed on-chain
+Supported ops
+Op Status Description
+subname_register Experimental Create a new subname
+subname_update Experimental Update an existing subname's records
+subname_revoke Experimental Revoke a subname record
+delegate_add Experimental Authorize a manager wallet to update subnames
+delegate_remove Experimental Remove a delegated manager
+subname_transfer Coming soon Transfer subname ownership (requires policy)
+subname_freeze Coming soon Freeze a subname (prevent further updates)
+GET /names/:name/subnames
+Returns all active subnames for a given parent name.
+GET https://api.bnrp.name/v1/names/artist.btc/subnames
+Response:
+{
+"name": "artist.btc",
+"count": 3,
+"subnames": [
+{
+"name": "shop.artist.btc",
+"records": { "btc": "bc1p...", "website": "https://..." },
+"status": "active",
+"nonce": 1
+}
+]
+}
+Open Subname Manager
+Protocol overview
+Contact
+BNRP is an open protocol. Bug reports, integration questions, and protocol proposals are welcome.
+Open an issue on GitHub
+hello@btcnative.name
+@btc_native
+BTC
+NATIVE
+Powered by BNRP open resolution
+for BTC-native names.
+Explore
+Categories
+Listings
+Market Data
+Bulk Search
+Subnames
+What Are Subnames?
+Subname Manager
+Event Tool
+Account
+List a Name
+My Names
+My Points
+Protocol
+Powered by BNRP
+Docs
+About
+GitHub
+Security
+API
+Support
+@btc_native
+hello@btcnative.name
+&copy; 2026 BTC Native. Trustless by design.
+Verifiable on Bitcoin
+Open Protocol

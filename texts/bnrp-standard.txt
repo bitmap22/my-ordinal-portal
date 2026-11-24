@@ -1,0 +1,500 @@
+BNRP: Bitcoin Name Resolution Protocol — BTCNative
+BTC
+NATIVE
+Names
+Market
+Sell
+Subnames
+Namespaces
+What Are Subnames?
+Subname Manager
+Event Tool
+Extensions
+Lightning Address
+Sign in with Bitcoin
+Agent Namespace
+Profile Standard
+Sub-registry
+Tokens
+My Names
+Roblox
+Wallet Beta
+Get the wallet
+Web Wallet
+Chrome Extension
+0
+Connect
+Open Resolution Standard
+BNRP: Bitcoin Name
+Resolution Protocol
+An open resolution layer for BTC-native names. BTCNative uses BNRP to read name records, verify ownership, resolve avatars, and display provenance — without claiming to own the names.
+Permanent history. Current state. Latest valid inscription wins.
+API Reference
+GitHub
+01
+What is BNRP?
+BNRP is an open resolution layer for BTC-native names. It gives wallets, marketplaces, and apps a shared way to read name records — ownership, avatars, addresses, inscriptions, and provenance data — directly from Bitcoin-native sources.
+It is not a registry. It does not issue names. It is the resolver: a standard for reading what already exists on-chain.
+BNRP resolves
+→
+name
+·
+owner address
+→
+name
+·
+primary Bitcoin address
+→
+name
+·
+avatar / inscription link
+→
+name
+·
+text records (Twitter, website, description)
+→
+name
+·
+marketplace listing status
+→
+address
+·
+primary name (reverse lookup)
+→
+namespace
+·
+supported resolver / indexer
+02
+What BTCNative uses it for
+BTCNative uses BNRP to index, verify, and display BTC-native identity records across supported namespaces including .btc , .sats , .x , .ord , and others.
+Verify ownership
+Cross-reference name inscriptions with on-chain owner data before displaying any listing.
+Resolve identity cards
+Display avatars, display names, descriptions, and linked social handles from on-chain records.
+Address resolution
+Map Bitcoin names to wallet addresses for display and payment routing.
+Provenance signals
+Flag first-inscription canonicality and surface re-inscription warnings on buy/sell surfaces.
+Reverse lookup
+When a wallet connects, resolve the address back to a primary name for display in the nav.
+Marketplace status
+Show whether a name is currently listed, its price, and last sale data alongside BNRP records.
+03
+What BNRP does not mean
+✕
+BNRP does not custody names.
+Names are Bitcoin inscriptions. They live on-chain. BNRP only reads them.
+✕
+BNRP does not own names.
+Ownership is determined by which address holds the inscription on Bitcoin.
+✕
+BNRP does not replace Bitcoin.
+It is a read layer on top of Bitcoin. Bitcoin consensus is the ground truth.
+✕
+BNRP does not guarantee market value.
+Resolution and indexing have no bearing on price. Markets determine value.
+✕
+BNRP is not a partnership claim.
+Displaying a name from any collection does not imply partnership with that project, marketplace, or wallet unless explicitly stated.
+04
+Resolver examples
+These are illustrative examples of how BNRP reads name data. Live data is fetched from on-chain sources at resolution time.
+satoshi.btc
+.btc namespace · BNRP verified
+verified
+Owner verified on-chain
+Primary address bc1p… connected
+Avatar inscription-linked
+Listing not listed
+pizza.btc
+.btc namespace · BNRP verified
+verified
+Owner verified on-chain
+Primary address bc1p… connected
+Avatar none set
+Listing listed
+puppet.btc
+.btc namespace · unresolved
+unresolved
+Owner unresolved placeholder
+Primary address unavailable
+Avatar none set
+Listing listed
+05
+Developer reference
+BNRP provides a normalized record model for BTC-native names. The API returns a consistent shape regardless of which underlying indexer resolved the name.
+GET
+/v1/resolve/{name}
+Forward resolve — name → records
+GET
+/v1/reverse/{address}
+Reverse resolve — address → primary name
+GET
+/v1/batch?names=a,b,c
+Batch resolve — up to 20 names
+Base URL: https://api.bnrp.name/v1/
+Normalized record model
+{
+"name": "example.btc",
+"owner": "bc1p...",
+"primaryAddress": "bc1p...",
+"avatar": "inscriptionId or URL",
+"records": {
+"twitter": "",
+"website": "",
+"description": ""
+},
+"listing": {
+"status": "listed",
+"price": "",
+"marketplace": "BTCNative"
+},
+"provenance": {
+"source": "unisat | btcname | sns",
+"verifiedAt": "2026-01-01T00:00:00Z"
+}
+}
+Live API
+Source on GitHub
+Records
+One name. Many addresses.
+A single BTC-native name can carry records for any chain. Your .btc name is the canonical identity root. Every record below is optional and set by the owner.
+Bitcoin (P2TR)
+Primary on-chain address. Verified against the inscription owner at resolution time.
+Lightning address
+LNURL or Lightning address for instant, low-fee BTC payments without on-chain fees.
+Ethereum
+Optional ETH address record for cross-ecosystem interoperability. Never the root of trust.
+Solana
+Optional SOL address record. Useful for holders who operate across chains.
+Website
+URL to a personal site, portfolio, or project. Resolved and surfaced on name profiles.
+X / Twitter
+Social handle stored in your inscription record. Displayed on your BTC Native profile page.
+Example — full record set
+GET https://api.bnrp.name/v1/resolve?name=satoshi.btc
+{
+"name": "satoshi.btc",
+"owner": "bc1p...",
+"addresses": {
+"BTC": "bc1p...",
+"LIGHTNING": "satoshi@getalby.com",
+"ETH": "0x...",
+"SOL": "So1..."
+},
+"profile": {
+"display": "Satoshi",
+"com.twitter": "satoshi",
+"url": "https://bitcoin.org"
+},
+"via": "unisat",
+"resolved_at": "2026-04-23T20:00:00Z",
+"cached": true
+}
+Bitcoin is always the root. All other address fields are optional owner-set records.
+06
+Messaging
+A Bitcoin name can now serve as a messaging address. Set a messaging field in your BNRP routing inscription and any app that resolves BNRP can reach you directly — no email, no phone number, no centralized directory.
+The first supported protocol is XMTP — end-to-end encrypted, quantum-resistant, decentralized, and in production with 55M+ reachable inboxes. Your name routes to your XMTP inbox ID. Anyone who knows your name can open an encrypted conversation.
+Inscription — add messaging to your name
+{
+"p": "bnrp",
+"op": "routing",
+"name": "alice.btc",
+"btc_taproot": "bc1p...",
+"messaging": {
+"xmtp": "a1b2c3d4e5f6..."
+}
+}
+How it works
+A resolver reads the messaging.xmtp field from the canonical BNRP inscription. The sender opens an XMTP conversation to that inbox ID. Messages are end-to-end encrypted. Neither BTCNative nor the resolver can read them.
+Why XMTP
+MLS encryption (audited by the same firm that reviews Signal and WhatsApp). Quantum-resistant. No company in the middle. Decentralized node operators. Open source from top to bottom. ~$5 per 100k messages.
+Privacy
+Adding a messaging field is opt-in. It makes your inbox ID public — but not your messages. XMTP has built-in consent: you control who can reach you. Block senders across the entire network in one action.
+Extensible
+The messaging object supports multiple protocols. xmtp is the first. Reserved keys exist for Nostr (npub), Matrix, and SimpleX. Unknown keys are ignored — no breaking changes when new protocols are added.
+GET
+/v1/messaging/{name}
+Resolve messaging identifiers for a name
+API response
+GET https://api.bnrp.name/v1/messaging/alice.btc
+{
+"name": "alice.btc",
+"messaging": {
+"xmtp": "a1b2c3d4e5f6..."
+},
+"resolved_at_block": 845000
+}
+Message a Name
+Set up messaging on your name
+Spec: BNRP-IP-08 — Messaging Records. Status: Draft.
+07
+Agent Skills
+Every BNRP name has a machine-readable skill file — a single URL any AI agent can fetch to learn how to pay you, message you, and interact with you correctly.
+Name owners can also write agent instructions directly into their BNRP record. These are stored on-chain and surfaced automatically in the skill file. Instructions persist as long as the inscription exists — no account, no API key, no service to trust.
+Fetch a name's agent skill
+GET https://api.bnrp.name/v1/skill/trump.btc
+Response (Markdown — readable by any agent)
+# Agent skill: trump.btc
+**Display name:** Trump
+**Bio:** Protocol architect. Built BNRP — open standard for Bitcoin-native identity.
+**Inscription:** `0243d0e1...`
+**Owner:** `bc1pkdqs4...`
+## Pay trump.btc
+1. Use address: `bc1pkdqs4...`
+2. Verified on-chain taproot address
+3. Always verify before signing
+## Message trump.btc
+- Inbox ID: `0e614b04...`
+- Open: https://xmtp.chat/dm/0e614b04...
+## Instructions from Trump
+[custom agent_instructions set by the owner]
+How to set agent instructions
+Add an agent_instructions field to your BNRP routing inscription. Up to 500 characters. Inscribe it once and it persists on-chain. Update it anytime by re-inscribing — latest valid record wins.
+What to put in it
+Payment preferences, minimum amounts, contact rules, time zone, preferred currency, or anything an agent should know before initiating a transaction or conversation. You define the terms.
+How agents use it
+An agent resolves a name, fetches the skill file, reads the verified BTC address and XMTP inbox ID, checks your instructions, then acts. No scraping. No inference. Verified, on-chain data every time.
+Why it matters
+AI agents are already moving money and sending messages. BNRP gives them a trustless way to find verified addresses and owner-defined rules — with Bitcoin as the root of truth. No middleman in the resolution path.
+Inscription — add agent instructions to your name
+{
+"p": "bnrp",
+"op": "routing",
+"name": "alice.btc",
+"btc_taproot": "bc1p...",
+"messaging": {
+"xmtp": "a1b2c3..."
+},
+"agent_instructions": "BTC payments only. Minimum 10,000 sats. Contact via XMTP before initiating any transaction."
+}
+GET
+/v1/skill/{name}
+Personalized agent skill file for any registered name
+GET
+/skill.md
+Base BNRP skill — payment and messaging instructions for any agent
+Payment Policy
+Name owners can publish machine-readable payment rules in their BNRP record. Compliant agents read these rules before sending any funds.
+Require approval
+Set require_approval: true and agents must send an XMTP message to your inbox and wait for your reply before initiating any payment. The approval thread is the audit trail. No escrow, no smart contract.
+Spending limits
+Set min_sats to filter dust payments, and max_sats_per_day to cap daily agent spend. These are on-chain signals — any compliant agent reads and respects them before sending.
+Inscription — full payment policy
+{
+"p": "bnrp",
+"op": "routing",
+"name": "alice.btc",
+"btc_taproot": "bc1p...",
+"messaging": { "xmtp": "a1b2c3..." },
+"payment_policy": {
+"require_approval": true,
+"approval_channel": "xmtp",
+"min_sats": 10000,
+"max_sats_per_day": 1000000
+}
+}
+Spec: BNRP-IP-09 — Agent Payment Policy. Status: Draft. | Set yours now using the BNRP profile editor or the SDK: nlgal/bnrp-sdk .
+Subnames
+Build beneath your name
+BNRP supports a parent-child namespace model. A name owner can register subnames beneath their root name and assign records to each.
+What is a subname?
+A subname is a Bitcoin-native record created by the owner of a root name. It is not a smart contract. It is a BNRP inscription event with op: subname_register , referencing the parent name and a label.
+shop.artist.btc
+← label.parent.tld
+Parent namespace model
+The root name owner controls all subnames. They can register, update, revoke, or delegate control of any subname under their root. Delegation requires an additional inscription with op: delegate_add .
+Permanent history, current state
+Every subname event is inscribed on Bitcoin. Nothing is deleted. BNRP resolvers determine the current state by applying the latest valid inscription win rule: the newest authorized, unrevoked, conforming inscription is the active record.
+Latest valid inscription wins
+A newer update only counts as the active record if it was authorized by the owner or an approved manager, follows the namespace policy, has a strictly increasing nonce, and has not been revoked or superseded.
+Checklist:
+✓ Authorized by owner or approved delegate
+✓ Nonce strictly increases from previous record
+✓ Not revoked by a later revocation event
+✓ Conforms to namespace policy
+✓ Confirmed on-chain
+subname_register event
+{
+"p": "bnrp",
+"op": "subname_register",
+"name": "artist.btc",
+"sub": "shop.artist.btc",
+"to": "bc1p...",
+"records": {
+"btc": "bc1p...",
+"website": "https://shop.artist.btc"
+},
+"nonce": 1,
+"v": 1
+}
+Phase label: Experimental
+Subname issuance is in prototype phase. The event format is finalized. Indexer support is live on testnet. Mainnet resolver activation is roadmap. Do not use for high-value transfers without independent verification.
+Explore subnames
+Open Subname Manager
+Technical docs
+Resolution model
+Permanent history. Current state.
+Bitcoin inscriptions are permanent. BNRP does not edit old inscriptions. Instead, each update creates a new Bitcoin-native record. The resolver reads the latest valid record, while the full history remains visible.
+Latest valid inscription wins.
+A newer inscription is not automatically valid. BNRP validates each update against these requirements:
+Authorized by the current owner or delegated manager
+Matches the namespace policy
+Uses a newer nonce or version number
+Is confirmed or safely indexed (not unconfirmed or chain-reorged)
+Has not been revoked or superseded by a later valid record
+A newer inscription is not valid unless it is authorized by the correct owner, delegate, or namespace policy. Do not assume the newest inscription is the current record.
+Supported record operations
+register record_register
+update record_update
+revoke record_revoke
+register subname_register
+update subname_update
+revoke subname_revoke
+delegate delegate_add
+delegate delegate_remove
+update policy_update
+register subname_transfer
+revoke subname_freeze
+Not all operations are live on BNRP indexing today. This is the full planned operation set. Current support: record_register, record_update. Subname ops are roadmap.
+Scope
+What BNRP does not mean
+BNRP does not custody names.
+BNRP does not own names.
+BNRP does not replace Bitcoin.
+BNRP does not guarantee market value.
+BNRP is not a claim of partnership with any collection, marketplace, wallet, or protocol unless explicitly stated.
+BNRP does not use Ethereum-style smart contracts. Subnames are Bitcoin-native records interpreted through BNRP resolver rules.
+Developer model
+Full resolver record schema
+This is the extended BNRP record model including resolver state, namespace data, record history, and provenance.
+Extended record model
+{
+"name": "example.btc",
+"owner": "bc1...",
+"primaryAddress": "bc1...",
+"avatar": "inscriptionId or URL",
+"records": {
+"twitter": "",
+"website": "",
+"description": ""
+},
+"listing": {
+"status": "listed",
+"price": "",
+"marketplace": "BTCNative"
+},
+"provenance": {
+"source": "unisat | btcname | sns",
+"verifiedAt": ""
+},
+"resolver": {
+"protocol": "BNRP",
+"rule": "latest-valid-inscription-wins",
+"currentRecord": "",
+"recordHistory": []
+},
+"namespace": {
+"enabled": false,
+"policy": "parent-controlled",
+"subnameCount": 0,
+"delegates": []
+}
+}
+Subname record (roadmap)
+{
+"name": "shop.artist.btc",
+"type": "subname",
+"parent": "artist.btc",
+"label": "shop",
+"status": "active",
+"authorization": {
+"authorized": true,
+"method": "parent-owner",
+"verifiedAt": ""
+},
+"owner": "bc1...",
+"records": {
+"btc": "bc1...",
+"website": "https://example.com",
+"avatar": "inscription-id"
+},
+"policy": { "type": "parent-controlled" },
+"currentRecord": {
+"rule": "latest-valid-inscription-wins",
+"inscriptionId": "",
+"nonce": 3,
+"op": "subname_update",
+"verifiedAt": ""
+},
+"recordHistory": [
+{ "inscriptionId": "", "op": "subname_register", "nonce": 1, "status": "superseded" },
+{ "inscriptionId": "", "op": "subname_update", "nonce": 2, "status": "superseded" },
+{ "inscriptionId": "", "op": "subname_update", "nonce": 3, "status": "current" }
+],
+"provenance": { "source": "bnrp", "createdAt": "", "updatedAt": "" },
+"resolver": { "health": "ok", "verifiedAt": "" }
+}
+Full API reference
+Source on GitHub
+++
+Protocol Extensions
+BNRP is a living standard. The following Improvement Proposals extend the core resolve schema with new capabilities. Each is a standalone spec with a demo page and API support.
+BNRP-IP-09
+Draft
+Lightning Address
+Set a Lightning Address on your .btc name. satoshi.btc resolves as a standard LNURL-pay endpoint. Compatible with any Lightning wallet.
+View spec &rarr;
+BNRP-IP-10
+Draft
+Sign in with Bitcoin
+PSBT-challenge authentication for .btc names. No passwords. No OAuth. No ETH. Wallet signs a nonce. Server verifies ownership on-chain.
+View spec &rarr;
+BNRP-IP-11
+NEW
+AI Agent Namespace
+Register AI agents under your .btc name. agent.company.btc is a first-class BNRP subname with a payment address, pubkey, and capability declarations.
+View spec &rarr;
+BNRP-IP-12
+NEW
+Profile Record Standard
+Extended profile schema: Nostr pubkey, Lightning Address, DID, Telegram, Farcaster. One inscription sets your full cross-protocol identity.
+View spec &rarr;
+BNRP-IP-13
+NEW
+Sub-registry Delegation
+Delegate namespace control to an operator. company.btc owners can authorize an address to issue and manage *.company.btc at scale.
+View spec &rarr;
+All improvement proposals are open for feedback. Open an issue on GitHub or message @btc_native .
+BTC
+NATIVE
+Powered by BNRP open resolution
+for BTC-native names.
+Explore
+Categories
+Listings
+Market Data
+Bulk Search
+Subnames
+What Are Subnames?
+Subname Manager
+Event Tool
+Account
+List a Name
+My Names
+My Points
+Protocol
+Powered by BNRP
+Docs
+About
+GitHub
+Security
+Messaging
+API
+Support
+@btc_native
+hello@btcnative.name
+&copy; 2026 BTC Native. Trustless by design.
+Verifiable on Bitcoin
+Open Protocol
