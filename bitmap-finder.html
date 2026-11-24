@@ -312,7 +312,7 @@ void main(){vec2 q=gl_PointCoord-.5;if(dot(q,q)>.25)discard;o=vC;}`));
       row('Mined', date(b.timestamp)) + row('Transactions (its parcels)', fmt(b.transaction_count)) +
       row('Size', b.total_size >= 1e6 ? (b.total_size / 1e6).toFixed(2) + ' MB' : (b.total_size / 1e3).toFixed(1) + ' KB') +
       row('Fees', btc(b.total_fee || 0)) + row('Reward', btc(b.subsidy ?? 0)) +
-      (Array.isArray(b.feerate_percentiles) && b.feerate_percentiles.length > 2 ? row('Middle fee rate', b.feerate_percentiles[2] + ' sat/vB') : '') +
+      (Array.isArray(b.feerate_percentiles) && b.feerate_percentiles.length > 2 ? row('Middle fee rate', (b.feerate_percentiles[2] > 0 ? b.feerate_percentiles[2] : 'under 1') + ' sat/vB') : '') +
       row('Halving era', `${era + 1} · ${ERA_NAMES[Math.min(6, era)]}`) + row('Ring', `${fmt(Math.floor(h / PERIOD))} · block ${(h % PERIOD) + 1} of ${PERIOD}`) +
       row('Hash', `<span class="mono">${esc(b.hash)}</span>`) + `<div class="row"><span>Hash checked</span><span id="hcheck" class="dim">asking a second site…</span></div>` +
       `</div><div class="claimbox"><div class="sub">The official bitmap</div><div id="claim"><span class="dim">Looking for the first valid claim of ${h}.bitmap…</span></div></div>` +
@@ -334,7 +334,10 @@ void main(){vec2 q=gl_PointCoord-.5;if(dot(q,q)>.25)discard;o=vC;}`));
   }
   async function claimOf(h) {
     if (S.claims.has(h)) return S.claims.get(h);
-    const r = await ET.claimOf(h, io); if (r && (r.id || r.none)) S.claims.set(h, r); return r;
+    // (from 942,000 up the claim is looked for in blocks N to N+11; near the newest block, only up to the newest one, since later blocks aren't mined yet)
+    const near = h >= 942000 && h + 11 > S.tip, r = await ET.claimOf(h, io, near ? {block: S.tip} : undefined);
+    if (r && r.none && near) r.why = 'no claim of ' + h + '.bitmap yet in blocks ' + fmt(h) + ' to ' + fmt(S.tip) + ' (the newest block): a claim can still come in a later block';
+    if (r && (r.id || (r.none && !near))) S.claims.set(h, r); return r;
   }
   $('info').addEventListener('click', e => {
     const c = e.target.closest('[data-copy]'), s = e.target.closest('[data-step]'), rt = e.target.closest('[data-retry]'), rc = e.target.closest('[data-reclaim]');
