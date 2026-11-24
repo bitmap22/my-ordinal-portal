@@ -1,0 +1,40 @@
+# Keeps sitemap.xml's dates right by itself: when a change to the portal's pages is proposed, this sets each changed page's
+# <lastmod> to that day and adds the update to the same change, so search engines know which pages are new.
+# Free: GitHub runs it. It only edits sitemap.xml. © 2026 bitmap22. All rights reserved.
+name: Sitemap dates
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['**.html']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sitemap-dates-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  dates:
+    # only for changes made inside this repository (a change from a copy elsewhere can't be written to)
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Set the changed pages' dates
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -e
+          git diff --name-only "$BASE"...HEAD > changed.txt
+          node .github/checks/sitemap-dates.js changed.txt
+          rm changed.txt
+          if git diff --quiet -- sitemap.xml; then echo "dates already right"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Sitemap: changed pages dated today" -- sitemap.xml
+          git push origin HEAD:${{ github.head_ref }}
