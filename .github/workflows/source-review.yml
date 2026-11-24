@@ -1,0 +1,76 @@
+# Source Review: once a month, look again at every site the Ord Portal stopped reading (SOURCES.md, "No longer read"), and
+# open one GitHub issue listing each one and whether its terms changed, so a person can see if any now allows the portal's
+# use. It only tells: nothing on the portal is changed. Free: GitHub runs it. It writes only to the source-review branch and
+# to issues. To run it by hand: Actions > Source Review > Run workflow. © 2026 bitmap22. All rights reserved.
+name: Source Review
+
+on:
+  schedule:
+    # GitHub starts timed jobs late, sometimes by hours, so it is asked on the first three days of each month and the
+    # first step skips it if a review was saved in the last 20 days: it still runs once a month.
+    - cron: '23 9 1-3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write    # to keep last month's wording on the source-review branch
+  issues: write      # to open the monthly review
+
+concurrency:
+  group: source-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Was there a review in the last 20 days?
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/source-review" --jq .commit.committer.date 2>/dev/null || true)
+          age=99999999
+          if [ -n "$last" ]; then age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) )); fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$age" -lt 1728000 ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "The last review was saved $((age / 86400)) days ago: not due yet."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.due.outputs.go == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.due.outputs.go == 'true'
+        with:
+          node-version: 20
+      - name: Last month's review
+        if: steps.due.outputs.go == 'true'
+        run: |
+          mkdir -p review
+          if git fetch -q origin source-review; then git --work-tree=review checkout FETCH_HEAD -- . || { echo "Couldn't read last month's review, so nothing is reviewed this time."; exit 1; }
+          else h=$(git ls-remote --heads origin source-review) || { echo "Couldn't read last month's review, so nothing is reviewed this time."; exit 1; }; [ -z "$h" ] || { echo "Couldn't read last month's review, so nothing is reviewed this time."; exit 1; }; fi
+          git reset -q
+      - name: Make sure the issue label is there
+        if: steps.due.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh label create source-review --color 0E8A16 --description "Monthly look at the sites the portal stopped reading" -R "${GITHUB_REPOSITORY}" 2>/dev/null || true
+      - name: Look at each site again
+        if: steps.due.outputs.go == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/terms-check/review.js review
+      - name: Save it
+        if: steps.due.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch -q origin source-review 2>/dev/null && had=yes || had=no
+          cd review
+          git init -q -b source-review
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          if [ "$had" = yes ]; then git fetch -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" source-review && git reset -q --soft FETCH_HEAD; fi
+          git add -A
+          git commit -qm "Source review: $(date -u +%F)" || git commit -q --allow-empty -m "Source review: $(date -u +%F) (no change)"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" source-review

@@ -81,7 +81,8 @@ async function issue(title, body) {
   console.log((same ? 'Added to issue: ' : 'Opened issue: ') + title);
 }
 
-(async () => {
+module.exports = {textOf, fingerprint, read, changes, UA};   // (the monthly Source Review, review.js, uses the same reader)
+if (require.main === module) (async () => {
   const dir = process.argv[2]; if (!dir) throw new Error('give the folder');
   fs.mkdirSync(path.join(dir, 'texts'), {recursive: true});
   const sf = path.join(dir, 'state.json');
