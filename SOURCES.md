@@ -35,6 +35,10 @@ Removed because their terms don't allow this use, or don't clearly allow it:
 - Blockchair, BlockCypher, BitPay's Bitcore and 3xpl: back-up explorers
 - Doggy Market: Doginal files
 
+Never read (kept an eye on):
+
+- **Alkanes**: Agent Blockhall, the Block Manifest and Blockspace Share spot Alkanes from each block's own bytes, under Alkanes' own rules, so no site is needed for that. Their names, balances and contract details are not shown: the public Alkanes readers we found need a paid key (Ordiscan) or are UniSat's, which the portal does not use. Alkanes is in the monthly review in case a reader whose terms allow it appears.
+
 **These sites are looked at again once a month** (a GitHub job, Source Review), to see if any now allows the portal's use. It opens one GitHub issue a month listing each site and whether its terms changed. A site comes back only after its new terms are read and clearly allow it.
 
 Because of this:

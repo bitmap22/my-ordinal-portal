@@ -27,6 +27,7 @@ const REVIEW = [
   {id: 'blockcypher', site: 'BlockCypher', gave: 'a back-up explorer; Dogecoin fees', page: 'https://www.blockcypher.com/terms-of-service.html', html: true},
   {id: 'bitcore', site: 'BitPay’s Bitcore (api.bitcore.io)', gave: 'a back-up explorer; Dogecoin blocks', page: null, home: 'https://bitpay.com/legal/'},
   {id: '3xpl', site: '3xpl', gave: 'a back-up explorer', page: null, home: 'https://3xpl.com/'},
+  {id: 'alkanes-official', site: 'Alkanes (names, balances and contract details: no site read yet)', gave: 'nothing yet: Alkanes are only spotted in the block’s own bytes. Watched for a public Alkanes reader whose terms allow the portal’s use', page: 'https://raw.githubusercontent.com/kungfuflex/alkanes-rs/main/README.md'},
   {id: 'doggy-market', site: 'Doggy Market', gave: 'Doginal files (Doge Cube)', page: null, home: 'https://doggy.market/'}
 ];
 
