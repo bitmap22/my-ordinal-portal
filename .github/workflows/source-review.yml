@@ -7,7 +7,7 @@ name: Source Review
 on:
   schedule:
     # GitHub starts timed jobs late, sometimes by hours, so it is asked on the first three days of each month and the
-    # first step skips it if a review was saved in the last 20 days: it still runs once a month.
+    # first step skips it if this month's review was already saved: it still runs once a month.
     - cron: '23 9 1-3 * *'
   workflow_dispatch:
 
@@ -24,16 +24,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Was there a review in the last 20 days?
+      - name: Was this month's review already saved?
         id: due
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           last=$(gh api "repos/${GITHUB_REPOSITORY}/commits/source-review" --jq .commit.committer.date 2>/dev/null || true)
-          age=99999999
-          if [ -n "$last" ]; then age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) )); fi
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$age" -lt 1728000 ]; then
-            echo "go=false" >> "$GITHUB_OUTPUT"; echo "The last review was saved $((age / 86400)) days ago: not due yet."
+          lastm=""; if [ -n "$last" ]; then lastm=$(date -u -d "$last" +%Y-%m); fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$lastm" = "$(date -u +%Y-%m)" ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "This month's review was saved on $last: not due yet."
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
           fi
