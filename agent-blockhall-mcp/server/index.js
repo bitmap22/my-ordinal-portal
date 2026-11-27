@@ -339,7 +339,7 @@ async function block({height, from = 0, limit = 100}) {
   try { const x = await ordJson('/r/blockinfo/' + height, 15000); info = x.j; src = x.site; } catch (e) {}
   if (!info) { const hash = (await (await mpFetch('/api/block-height/' + height, 15000)).r.text()).trim(); const x = await mpJson('/api/block/' + hash, 15000); info = {hash: x.j.id, height: x.j.height, timestamp: x.j.timestamp, transaction_count: x.j.tx_count, total_size: x.j.size, total_weight: x.j.weight}; src = x.site; }
   let check;
-  try { const second = /ordinals|unisat|ordiscan|ordinalswallet|xverse/.test(src) ? await hashFromMempool(height) : await hashFromOrd(height); check = checked(second.site, second.hash === info.hash, 'block hash'); }
+  try { const second = /ordinals/.test(src) ? await hashFromMempool(height) : await hashFromOrd(height); check = checked(second.site, second.hash === info.hash, 'block hash'); }
   catch (e) { check = notChecked('the second site did not answer'); }
   limit = Math.max(1, Math.min(500, +limit || 100)); from = Math.max(0, +from || 0);
   let ins;
