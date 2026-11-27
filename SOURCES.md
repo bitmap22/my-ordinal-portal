@@ -2,7 +2,7 @@
 
 © 2026 bitmap22. All rights reserved.
 
-The Ord Portal (https://ordportal.com) and its free agent tool, Agent Blockhall (`io.github.bitmap22/agent-blockhall`), read only the sites below. Each site's own terms were read on **24 November 2026**, and the portal reads a site only when its terms allow this use. **The terms are checked once a day for changes.** A GitHub job (Terms Check) reads each site's terms every day and compares them with the day before. If they change, bitmap22 is told at once, and the new terms are read before the portal decides whether to keep reading that site. The record of every check is on the `terms-check` branch.
+The Ord Portal (https://ordportal.com) and its free agent tool, Agent Blockhall (`io.github.bitmap22/agent-blockhall`), read only the sites below. Each site's own terms were read on **24 November 2026** and read again on **27 November 2026**, and the portal reads a site only when its terms allow this use. **The terms are checked once a day for changes.** A GitHub job (Terms Check) reads each site's terms every day and compares them with the day before. If they change, bitmap22 is told at once, and the new terms are read before the portal decides whether to keep reading that site. The record of every check is on the `terms-check` branch.
 
 Every page asks these sites gently: a few asks at a time, and a site that asks the portal to slow down is rested.
 
@@ -15,7 +15,7 @@ Every page asks these sites gently: a few asks at a time, and a site that asks t
 | ordpool.space | The same as mempool.space (a back-up), and its ordinal tags (CAT-21, Labitbu, OpenTimestamps) | Its terms are the same as mempool.space's: the same rules are followed |
 | blockstream.info | Bitcoin blocks and transactions, as a back-up and as a second check | Asked gently; named as the source |
 | ordinals.com | Inscriptions, their files, parents and children, block hashes, rune pages | Asked gently; named as the source; risky files are linked to, never run |
-| CoinGecko (api.coingecko.com) | The price of bitcoin now | "Powered by CoinGecko" is shown, with a link, wherever its price is used |
+| CoinGecko (api.coingecko.com) | The price of bitcoin now | "Powered by CoinGecko" is shown, with a link, wherever its price is used. Its free plan carries no commercial licence, so it is read only while the portal is free |
 
 ## Links only (nothing is read from them)
 
@@ -50,8 +50,19 @@ Because of this:
 - **The rare sats board is removed.** Only sites whose terms don't allow this use list rare sat prices.
 - **The price of bitcoin now comes from 2 sources** (mempool.space and CoinGecko), not 6. A past day's price comes from mempool.space alone, and says so.
 
-## Not data sites
+## Not data sites (their terms were read on 27 November 2026)
 
-GitHub (the portal's own data files, made by its own jobs from the chain), jsDelivr (a back-up copy of those files), the portal's own visit counter on Cloudflare, nostr relays (Play Together's messages between players), Google Fonts and GoatCounter (counting visits).
+These are not sources of Bitcoin data: they host, count or carry. They are not in the daily Terms Check; their terms are read by hand.
+
+| Site | What the portal uses it for | What its terms say, and what the portal does |
+| --- | --- | --- |
+| GitHub | Hosts the site and its own data files (made by its own jobs from the chain); runs the timed jobs | Pages: a site may be up to 1 GB (this one is well under) and may not be an online business; a tip button is allowed. Actions: for building and publishing this project, with no load on GitHub's machines out of proportion to the good it does. Since 27 November 2026 the keeper job waits without holding a machine |
+| jsDelivr | A back-up copy of the portal's own data files | Free for personal and commercial use. Not to be used as general file storage: only the portal's own small data files are read through it |
+| GoatCounter | Counting visits | Free for reasonable public use (personal sites and small businesses) |
+| Cloudflare | The domain, and the portal's own visit counter (its free plan) | Its free network is for web pages, which is what the portal is; the counter stays inside the free plan's daily allowance |
+| Google Fonts | The lettering on 2 pages | Allowed. Google sees a visitor's internet address when the lettering loads; the Terms page says so |
+| Nostr relays: relay.primal.net, nostr.oxtr.dev, offchain.pub, relay.snort.social, relay.nostr.net | Play Together's messages between players | Each calls itself a public relay and publishes no rules. nostr-01.yakihonne.com was taken out on 27 November 2026: it says it is mainly for long form content creators |
+
+**If the portal ever earns money**, two things must change first: GitHub Pages may not be used to run a business, and CoinGecko's free plan has no commercial licence.
 
 Something wrong here? Report it: https://github.com/bitmap22/my-ordinal-portal/issues
