@@ -34,8 +34,7 @@
   const SITES = [
     mp('mempool.space', 'blocks, transactions, fees and prices'), mp('ordpool.space', 'blocks and transactions, from its own node'),
     mp('mempool.fra.mempool.space', 'mempool.space\'s own second server'), mp('blockstream.info', 'blocks and transactions'),
-    ord('ordinals.com', 'inscriptions, their files and records (ord’s own site)'),
-    {site: 'api.bnrp.name', chain: 'bitcoin', kind: 'none', group: 'Names', what: 'names (.sats, .btc and the like)'}
+    ord('ordinals.com', 'inscriptions, their files and records (ord’s own site)')
   ];
   const CHAINS = {bitcoin: 'Bitcoin'};
   const pick = () => SITES;   // (Bitcoin only)

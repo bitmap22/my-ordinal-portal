@@ -1,4 +1,4 @@
-// Source Review, by bitmap22: once a month, look again at every site the Ord Portal stopped reading on 24 November 2026
+// Source Review, by bitmap22: once a month, look again at every site the Ord Portal stopped reading (24 November 2026 and since)
 // (SOURCES.md, "No longer read"), to see if any of them now allows the portal's use. It opens one GitHub issue a month
 // listing each site, its terms page, and whether that page changed since last month. A person reads the changed ones and
 // decides; nothing on the portal is changed by this job. Pages a script can't read are listed to read by hand.
@@ -28,7 +28,8 @@ const REVIEW = [
   {id: 'bitcore', site: 'BitPay’s Bitcore (api.bitcore.io)', gave: 'a back-up explorer; Dogecoin blocks', page: null, home: 'https://bitpay.com/legal/'},
   {id: '3xpl', site: '3xpl', gave: 'a back-up explorer', page: null, home: 'https://3xpl.com/'},
   {id: 'alkanes-official', site: 'Alkanes (names, balances and contract details: no site read yet)', gave: 'nothing yet: Alkanes are only spotted in the block’s own bytes. Watched for a public Alkanes reader whose terms allow the portal’s use', page: 'https://raw.githubusercontent.com/kungfuflex/alkanes-rs/main/README.md'},
-  {id: 'doggy-market', site: 'Doggy Market', gave: 'Doginal files (Doge Cube)', page: null, home: 'https://doggy.market/'}
+  {id: 'doggy-market', site: 'Doggy Market', gave: 'Doginal files (Doge Cube)', page: null, home: 'https://doggy.market/'},
+  {id: 'bnrp', site: 'BNRP (api.bnrp.name)', gave: 'names (.sats, .btc and the like). Stopped on 27 November 2026: its guide says it reads from UniSat, which the portal does not use. Watched in case that changes', page: 'https://btcnative.pages.dev/docs', html: true}
 ];
 
 async function issue(title, body) {
