@@ -11889,7 +11889,7 @@ const FEED = (() => {
         if (INS_SHELF.has(k) && ids) ids.forEach((id, j) => items.push({t, id, j, of: ids.length, pair: two}));
         else if (ids && t.word && (two || ids.length > 1)) ids.forEach((id, j) => items.push({t, id, j, of: ids.length, pair: true}));   // a token that carries inscriptions: each beside its tile
         else if (t.word && isPic(t.art) && !artPic(t)) items.push({t, pair: true});   // a picture its tile would hide (not from an inscription)
-        else { items.push({t}); if (ids) ids.forEach((id, j) => items.push({t, id, j, of: ids.length})); }   // (anything else that carries inscriptions: they follow it)
+        else { items.push({t}); if (ids && !t.word) ids.forEach((id, j) => items.push({t, id, j, of: ids.length})); }   // (a parcel with no tile that carries inscriptions, as a CAT-21 can: they follow it)
       }
       out.push({k, name: TYPES[k].name, css: TYPES[k].css, items, at: 0, chip: null});
     }
@@ -12037,8 +12037,23 @@ const FEED = (() => {
     }, () => { K.pay = 1; });
   }
   // an inscription to be fetched: what it is decides how it is shown (asked of ordinals.com first, as in the hall)
+  // no file type came back: an inscription with nothing in it (ord itself says it has no file and points to no other), or one that could not be checked just now
+  function bare(K, Kd) {
+    const id = K.it.id, shut = () => { if (!K.dead) panel(K, insClosedEl(Kd, id)); };
+    galQuick('/r/inscription/' + id).then(j => {
+      if (K.dead) return; if (!(j && j.id === id && j.content_type == null && j.delegate == null)) return shut();
+      if (K.t2) {   // beside a tile it would only be an empty half: the tile stands alone, as in the hall
+        const m = K.t2.m; K.el.textContent = ''; K.el.classList.remove('two'); K.el.style.gap = K.el.style.flexDirection = ''; K.el.appendChild(m);
+        K.m = m; K.shape = 'square'; K.word = K.t2.word; K.cv = K.t2.cv; K.amb = K.t2.amb; K.cap = 1536 / dpr(); K.host = K.t2 = K.ring = null; fit(K); if (F.cur === K) glow(); return;
+      }
+      const d = document.createElement('div'), b = document.createElement('b'), w = document.createElement('span'), a = document.createElement('a'); d.className = 'pvm pvx';
+      b.textContent = 'NOTHING INSIDE'; w.textContent = 'This inscription has no file.'; a.textContent = 'ITS PAGE ON ORDINALS.COM \u2197'; a.href = 'https://ordinals.com/inscription/' + id; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      d.append(b, w, a); panel(K, d);
+    }, shut);
+  }
   function kind(K, Kd) {
     const id = K.it.id, ct = K.ct = Kd.ct || '', G = window.FamilyGuard;
+    if (!ct) return bare(K, Kd);
     if (/^text\/html\b/.test(ct) || Kd.kind === 'model') {   // played in ordinals.com's preview, sealed, and only while on screen
       if (Kd.kind !== 'model' && G && G.strict()) return panel(K, insClosedEl(Kd, id));
       frame(K, 'square', 'fr'); K.src = (Kd.base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (K.live) play(K); return;
