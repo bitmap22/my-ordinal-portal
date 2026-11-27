@@ -12026,7 +12026,7 @@ const FEED = (() => {
   function words(K, pre, js) {
     if (!pre) return panel(K, insClosedEl({ct: K.ct}, K.it.id));
     mount(K, 'text', 'tx' + (js ? ' js' : '')).appendChild(pre); K.pre = pre;
-    const wait = () => /^reading its words/.test(pre.textContent || ''), done = () => { if (K.dead) return; fit(K); ready(K); };
+    const wait = () => /^reading its words/.test(pre.textContent || ''), done = () => { if (K.dead) return; if (K.t2 && (pre.textContent || '').trim() === '(it has no words)') return alone(K); fit(K); ready(K); };
     if (!wait()) return done();
     K.mo = new MutationObserver(() => { if (wait()) return; K.mo.disconnect(); K.mo = null; done(); }); K.mo.observe(pre, {childList: true, characterData: true, subtree: true});
   }
@@ -12045,15 +12045,18 @@ const FEED = (() => {
     }, () => { K.pay = 1; });
   }
   // an inscription to be fetched: what it is decides how it is shown (asked of ordinals.com first, as in the hall)
+  // nothing to show beside the tile after all (an inscription with no file, or a text with no words): the tile stands alone, as in the hall (its facts still name the inscription)
+  function alone(K) {
+    const m = K.t2.m; if (K.mo) { K.mo.disconnect(); K.mo = null; }
+    K.el.textContent = ''; K.el.classList.remove('two'); K.el.style.gap = K.el.style.flexDirection = ''; K.el.appendChild(m);
+    K.m = m; K.shape = 'square'; K.word = K.t2.word; K.cv = K.t2.cv; K.amb = K.t2.amb; K.cap = 1536 / dpr(); K.pre = K.host = K.t2 = K.ring = null; K.alone = true; fit(K); if (F.cur === K) glow();
+  }
   // no file type came back: an inscription with nothing in it (ord itself says it has no file and points to no other), or one that could not be checked just now
   function bare(K, Kd) {
     const id = K.it.id, shut = () => { if (!K.dead) panel(K, insClosedEl(Kd, id)); };
     galQuick('/r/inscription/' + id).then(j => {
       if (K.dead) return; if (!(j && j.id === id && j.content_type == null && j.delegate == null)) return shut();
-      if (K.t2) {   // beside a tile it would only be an empty half: the tile stands alone, as in the hall
-        const m = K.t2.m; K.el.textContent = ''; K.el.classList.remove('two'); K.el.style.gap = K.el.style.flexDirection = ''; K.el.appendChild(m);
-        K.m = m; K.shape = 'square'; K.word = K.t2.word; K.cv = K.t2.cv; K.amb = K.t2.amb; K.cap = 1536 / dpr(); K.host = K.t2 = K.ring = null; K.alone = true; fit(K); if (F.cur === K) glow(); return;
-      }
+      if (K.t2) return alone(K);
       const d = document.createElement('div'), b = document.createElement('b'), w = document.createElement('span'), a = document.createElement('a'); d.className = 'pvm pvx';
       b.textContent = 'NOTHING INSIDE'; w.textContent = 'This inscription has no file.'; a.textContent = 'ITS PAGE ON ORDINALS.COM \u2197'; a.href = 'https://ordinals.com/inscription/' + id; a.target = '_blank'; a.rel = 'noopener noreferrer';
       d.append(b, w, a); panel(K, d);
