@@ -11935,6 +11935,10 @@ const FEED = (() => {
     const tx = (pre.textContent || '').trim(), g = F.W < 720 ? 28 : 0; aw = Math.max(120, Math.min(aw, F.W - g)); ah = Math.max(120, Math.min(ah, F.H - g));
     const note = tx.length <= 140 && tx.split('\n').length <= 5;
     m.classList.toggle('big', note); m.classList.remove('more', 'brk');
+    if (note && !K.soft) {   // (a short line with no spaces, as JSON or a link: it may turn at its commas, colons and slashes, so it can be shown big; its words are not changed)
+      K.soft = true; const raw = pre.textContent || ''; pre.textContent = '';
+      raw.split(/([,;:&?\/=])/).forEach((p, i) => { if (!p) return; pre.appendChild(document.createTextNode(p)); if (i % 2) pre.appendChild(document.createElement('wbr')); });
+    }
     if (note) {
       const side = Math.floor(Math.min(aw, ah, 620)); m.style.width = m.style.height = side + 'px'; m.style.maxHeight = '';
       const ok = v => { pre.style.fontSize = v + 'px'; return pre.scrollHeight <= pre.clientHeight + 1 && pre.scrollWidth <= pre.clientWidth + 1; };
@@ -11983,14 +11987,14 @@ const FEED = (() => {
   /* ---- a card: the thing itself, nothing more (its facts are a tap away) ---- */
   const ring = () => { const r = document.createElement('i'); r.className = 'fdsp'; return r; };
   const ready = K => { if (K.ring) { K.ring.remove(); K.ring = null; } if (K.m) K.m.classList.add('in'); };
-  function frame(K, shape, cls) { const m = document.createElement('div'); m.className = 'fdm ' + cls; (K.host || K.el).appendChild(m); K.m = m; K.shape = shape; return m; }
+  function mount(K, shape, cls) { const m = document.createElement('div'); m.className = 'fdm ' + cls; (K.host || K.el).appendChild(m); K.m = m; K.shape = shape; return m; }
   function twin(K) {   // a token that carries more: what it carries in one half, its tile in the other
     const a = document.createElement('div'), b = document.createElement('div'), m = document.createElement('div');
     a.className = b.className = 'fdhf'; m.className = 'fdm ti in'; b.appendChild(m); K.el.classList.add('two'); K.el.append(a, b);
     K.host = a; K.t2 = {m, cv: null, word: K.it.t.word, amb: null}; fit(K);
   }
   function pic(K, url, key, src, own) {
-    const m = frame(K, 'ratio', 'pi'), im = new Image(); im.alt = ''; im.draggable = false; im.decoding = 'async'; if (own) K.urls.push(url); else im.referrerPolicy = 'no-referrer';
+    const m = mount(K, 'ratio', 'pi'), im = new Image(); im.alt = ''; im.draggable = false; im.decoding = 'async'; if (own) K.urls.push(url); else im.referrerPolicy = 'no-referrer';
     K.img = im;
     im.addEventListener('load', () => {
       if (K.dead) return;
@@ -12000,10 +12004,10 @@ const FEED = (() => {
     im.addEventListener('error', () => { if (K.dead) return; K.shape = 'panel'; K.img = null; m.style.width = m.style.height = ''; m.classList.remove('pi'); m.classList.add('pn'); ready(K); });   // (the hall's own "can't show this picture" note takes its place)
     picFail(im, key, src); im.src = url; m.appendChild(fgShow(im, key, src));
   }
-  function tile(K, w) { K.word = w; K.cap = 1536 / dpr(); frame(K, 'square', 'ti'); fit(K); K.amb = K.cv ? small(K.cv) : null; ready(K); }
+  function tile(K, w) { K.word = w; K.cap = 1536 / dpr(); mount(K, 'square', 'ti'); fit(K); K.amb = K.cv ? small(K.cv) : null; ready(K); }
   function film(K, v) {
     if (!v) return panel(K, insClosedEl({ct: K.ct}, K.it.id));
-    frame(K, 'ratio', 'pi'); v.controls = false; v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata'; K.vid = v;
+    mount(K, 'ratio', 'pi'); v.controls = false; v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata'; K.vid = v;
     v.addEventListener('loadedmetadata', () => { if (K.dead) return; K.nw = v.videoWidth || 16; K.nh = v.videoHeight || 9; fit(K); ready(K); if (K.live) v.play().catch(() => {}); });
     v.addEventListener('error', () => {
       if (K.dead || K.nw) return; K.vid = null; K.shape = 'panel'; K.m.classList.remove('pi'); K.m.classList.add('pn');
@@ -12015,21 +12019,21 @@ const FEED = (() => {
   }
   function sound(K, a) {
     if (!a) return panel(K, insClosedEl({ct: K.ct}, K.it.id));
-    const m = frame(K, 'panel', 'pn au');
+    const m = mount(K, 'panel', 'pn au');
     m.innerHTML = '<svg viewBox="0 0 96 56" fill="currentColor" aria-hidden="true">' + [14, 30, 46, 24, 52, 36, 18, 44, 28, 12].map((h, k) => '<rect x="' + (4 + k * 9.2) + '" y="' + (28 - h / 2) + '" width="5" height="' + h + '" rx="2.5" opacity="' + (.45 + (h / 52) * .55).toFixed(2) + '"/>').join('') + '</svg>';
     a.preload = 'none'; m.appendChild(a); ready(K);
   }
   function words(K, pre, js) {
     if (!pre) return panel(K, insClosedEl({ct: K.ct}, K.it.id));
-    frame(K, 'text', 'tx' + (js ? ' js' : '')).appendChild(pre); K.pre = pre;
+    mount(K, 'text', 'tx' + (js ? ' js' : '')).appendChild(pre); K.pre = pre;
     const wait = () => /^reading its words/.test(pre.textContent || ''), done = () => { if (K.dead) return; fit(K); ready(K); };
     if (!wait()) return done();
     K.mo = new MutationObserver(() => { if (wait()) return; K.mo.disconnect(); K.mo = null; done(); }); K.mo.observe(pre, {childList: true, characterData: true, subtree: true});
   }
-  function panel(K, node) { frame(K, 'panel', 'pn').appendChild(node); ready(K); }
+  function panel(K, node) { mount(K, 'panel', 'pn').appendChild(node); ready(K); }
   // a payment: how much moved, then its coins in and out once the transaction has been read (only asked for while it is on screen)
   function pay(K) {
-    const t = K.it.t, n = innerWidth < 640, m = frame(K, 'ratio', 'py'); K.nw = n ? 420 : 640; K.nh = n ? 340 : 300; K.cap = 900; K.pay = 1;
+    const t = K.it.t, n = innerWidth < 640, m = mount(K, 'ratio', 'py'); K.nw = n ? 420 : 640; K.nh = n ? 340 : 300; K.cap = 900; K.pay = 1;
     m.innerHTML = '<div class="fdv"><b>' + vwEsc(t.value != null ? btc(t.value) : '') + '</b><span>' + vwEsc(t.rate != null ? (+t.rate).toFixed(1) + ' sat/vB' : '') + '</span></div>';
     fit(K); ready(K);
   }
@@ -12060,7 +12064,7 @@ const FEED = (() => {
     if (!ct) return bare(K, Kd);
     if (/^text\/html\b/.test(ct) || Kd.kind === 'model') {   // played in ordinals.com's preview, sealed, and only while on screen
       if (Kd.kind !== 'model' && G && G.strict()) return panel(K, insClosedEl(Kd, id));
-      frame(K, 'square', 'fr'); K.src = (Kd.base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (K.live) play(K); return;
+      mount(K, 'square', 'fr'); K.src = (Kd.base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (K.live) play(K); return;
     }
     if (Kd.kind === 'image' && Kd.url) return pic(K, Kd.url, id, Kd.url, false);
     if (Kd.kind === 'video') return film(K, insSafeEl(Kd, id));
