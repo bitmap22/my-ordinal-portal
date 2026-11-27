@@ -9598,7 +9598,7 @@ precision mediump float;in vec4 vC;out vec4 o;void main(){vec2 q=gl_PointCoord-.
   box.querySelector('#mpx').onclick = close;
   box.querySelector('#mpt').addEventListener('submit', e => { e.preventDefault(); $i.blur();   // (27 Nov 2026: GO, for phones whose number keyboard has no Enter; the keyboard closes so the block shows)
     const v = parseInt(String($i.value).replace(/[^0-9]/g, ''), 10); if (v >= 0) { if (v > S.tip) note('block ' + fmt(v) + ' has not been mined yet: the newest is ' + fmt(S.tip), 6); else if (!(window.__hall3d && window.__hall3d.pick(v))) pick(v, true); } });
-  box.querySelector('#mp3').onclick = () => { const H3 = window.__hall3d; if (!H3) return; if (H3.on()) { H3.hide(); size(); S.dirty = true; } else H3.show(); };   // (27 Nov 2026) the 3D flight, and back
+  box.querySelector('#mp3').onclick = () => { const H3 = window.__hall3d; if (!H3) return; if (H3.on()) { const p = H3.state().picked; H3.hide(); size(); S.dirty = true; if (p != null) pick(p, true); } else H3.show(); };   // (27 Nov 2026) the 3D flight, and back (the block picked on one map is the block shown on the other)
   $i.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { $i.blur(); close(); } });
   $l.addEventListener('click', e => { const m = e.target.closest('.mpm'); if (m) pick(+m.dataset.h, true); });
   const ptr = new Map(); let moved = 0, pinch = 0;
@@ -9826,7 +9826,7 @@ void main(){if(vE>1.5){o=vec4(vC*1.5,vE>2.5?.8:1.);return;}
     const M = (HALLMAP.marks || []).filter(([h]) => h <= S.tip), d = [];
     M.forEach(([h]) => d.push(h, 0)); if (S.here >= 0) d.push(S.here, 2);
     S.markN = d.length / 2; gl.bindBuffer(gl.ARRAY_BUFFER, P.markBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d), gl.DYNAMIC_DRAW);
-    box.querySelector('#m3l').innerHTML = '<span class="m3t sun" data-sun="1">☀ Satoshi Nakamoto</span>' + M.map(([h, nm]) => '<span class="m3t" data-h="' + h + '">' + nm + '</span>').join('') +
+    box.querySelector('#m3l').innerHTML = '<span class="m3t sun" data-sun="1">☀ Satoshi Nakamoto</span>' + M.filter(([h]) => h !== S.here).map(([h, nm]) => '<span class="m3t" data-h="' + h + '">' + nm + '</span>').join('') +   // (a landmark you are standing in: YOU ARE HERE alone, as on the flat map, not two labels on top of each other; its card still names it)
       (S.here >= 0 ? '<span class="m3t here" data-h="' + S.here + '">YOU ARE HERE</span>' : '');
   }
   const spTop = () => 10 + sp.alt * 1.4;   // fly higher to go faster
@@ -9912,7 +9912,13 @@ void main(){if(vE>1.5){o=vec4(vC*1.5,vE>2.5?.8:1.);return;}
         if (cw <= 0.1) { const toC = [p[0] - sp.x, p[2] - sp.z], rel = Math.atan2(toC[0] * -F[2] + toC[1] * F[0], toC[0] * F[0] + toC[1] * F[2]); ex = Math.sin(rel); ey = Math.cos(rel); }
         const limX = Math.max(0.2, 1 - (el.offsetWidth + 24) / innerWidth), limY = ey < 0 ? 0.6 : 0.7, out = cw <= 0.1 || Math.abs(ex) > limX || Math.abs(ey) > 0.86;
         if (out) { const k = 1 / Math.max(Math.abs(ex) / limX, Math.abs(ey) / limY, 1e-6); ex *= k; ey *= k; }
-        el.classList.toggle('edge', out); el.style.display = ''; el.style.transform = 'translate(' + ((ex * 0.5 + 0.5) * innerWidth).toFixed(0) + 'px,' + ((0.5 - ey * 0.5) * innerHeight).toFixed(0) + 'px)';
+        let lx = (ex * 0.5 + 0.5) * innerWidth, ly = (0.5 - ey * 0.5) * innerHeight;
+        if (out) {   // (parked at the edge, it keeps clear of the bar, the compass, the status line and the pad: on a phone they fill the bottom)
+          if (!S.keepAt || t - S.keepAt > 400) { S.keepAt = t; S.keep = ['#mpt', '#m3s', '#m3n', '#m3p'].map(q => document.querySelector(q)).filter(e => e && e.offsetWidth).map(e => e.getBoundingClientRect()).sort((a, b) => b.top - a.top); }
+          const w = el.offsetWidth, hh = el.offsetHeight;
+          for (let pass = 0; pass < 2; pass++) for (const r of S.keep || []) { if (lx + w / 2 + 8 > r.left && lx - w / 2 - 8 < r.right && ly - 12 + hh + 8 > r.top && ly - 12 - 8 < r.bottom) ly = r.top + r.height / 2 > innerHeight / 2 ? r.top - hh - 8 + 12 : r.bottom + 8 + 12; }
+        }
+        el.classList.toggle('edge', out); el.style.display = ''; el.style.transform = 'translate(' + lx.toFixed(0) + 'px,' + ly.toFixed(0) + 'px)';
         continue;
       }
       const q = proj(VP, p);
@@ -10020,6 +10026,7 @@ void main(){if(vE>1.5){o=vec4(vC*1.5,vE>2.5?.8:1.);return;}
     box.classList.add('m3'); document.getElementById('mp3').textContent = '2D'; document.getElementById('mp3').setAttribute('aria-label', 'back to the flat map');
     marks(); size(); flyFrom(S.here >= 0 ? S.here : S.tip); sp.alt = 6; backOff();   // (where you are: just ahead, in view)
     keys.clear(); say(); on = true;
+    if (st.picked != null && st.picked !== S.here && st.picked <= S.tip) find(st.picked);   // (a block found on the flat map: the flight starts at it)
     if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
     return true;
   }
