@@ -9619,7 +9619,7 @@ precision mediump float;in vec4 vC;out vec4 o;void main(){vec2 q=gl_PointCoord-.
   // keys while the map is open: Esc or M closes it, Enter walks into the block picked, arrows step through blocks (the room's keys wait)
   addEventListener('keydown', e => {
     if (!box.classList.contains('on')) {
-      if ((e.key === 'm' || e.key === 'M') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !(e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) && !(room && rmBoxOpen())) { e.preventDefault(); e.stopImmediatePropagation(); open(); }
+      if ((e.key === 'm' || e.key === 'M') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !window.__feedOn && !(e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) && !(room && rmBoxOpen())) { e.preventDefault(); e.stopImmediatePropagation(); open(); }
       return;
     }
     if (e.target === $i) return;
@@ -10711,7 +10711,7 @@ async function srBitmap(n, live) {
 
 /* going in and out: the house button (a short fade; from room to room there is no cut at all) */
 // (14 Nov 2026) the house button's words follow what it does: walk into the block, or back out to the cube from inside
-{ const th = document.getElementById('th'); if (th) { const say = () => { const w = th.classList.contains('on') ? 'back out to the cube' : 'walk into the block'; th.title = w; th.setAttribute('aria-label', w); }; new MutationObserver(say).observe(th, {attributes: true, attributeFilter: ['class']}); say(); } }
+{ const th = document.getElementById('th'); if (th) { new MutationObserver(() => thSay()).observe(th, {attributes: true, attributeFilter: ['class']}); thSay(); } }   // (27 Nov 2026: three ways round, see thSay)
 const $rf = document.getElementById('rf'), $rl = document.getElementById('rl'), $rj = document.getElementById('rj'), $rk = document.getElementById('rk'), $th = document.getElementById('th');
 const coarse = matchMedia('(pointer: coarse)').matches;
 const rmFade = on => new Promise(r => { $rf.classList.toggle('on', on); setTimeout(r, on ? 420 : 0); });
@@ -11787,7 +11787,195 @@ async function roomExit() {
   if (h != null) go(h); else goLive();
   rmFade(false);
 }
-$th.onclick = () => room ? roomExit() : roomEnter();
+$th.onclick = async () => {   // (27 Nov 2026) the cube, then the block's hall, then the feed, then the cube again
+  if (window.__feedOn) return FEED.close();
+  if (room) { const a = room.at, h = a && (a.gal ? a.gal.from : a.gd ? a.gd.from.h : a.cl ? a.cl.from : a.common ? tipH : a.h); await roomExit(); FEED.open(h >= 0 ? h : tipH); return; }
+  roomEnter();
+};
+/* ---- (27 Nov 2026) THE FEED: a block's contents one at a time, full screen, like a phone feed. The house button goes round:
+   the cube, the block's hall, the feed, then back to the cube. Up and down: the next or last thing on the shelf. Left and right:
+   the next or last shelf, in the hall's own order (each inscription its own card; a token its own tile; a payment its coins in and
+   out). Tap a card for its facts. Only the card on screen is opened, and the next two are got ready, so nothing loads all at once.
+   SAFETY (27 Nov 2026, bitmap22's choice): a web page inscription plays in ordinals.com's own preview, inside a sealed frame
+   (scripts only: it can't reach this page, open windows or take you anywhere), and only while its card is on screen; 3D models
+   the same, as in the hall. Pictures pass the 18+ check first; in Family mode no web page is played. ---- */
+const FEED = (() => {
+  const st = document.createElement('style');
+  st.textContent = '#fd{position:fixed;inset:0;z-index:19;display:none;background:#030304;color:#eee;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none}body.feed #fd{display:block}' +
+    '#fds{position:absolute;inset:0;bottom:calc(58px + env(safe-area-inset-bottom));overflow:hidden}' +
+    '.fdc{position:absolute;inset:0;display:grid;place-items:center;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .28s}.fdc.up{transform:translateY(-100%)}.fdc.dn{transform:translateY(100%)}.fdc.lf{transform:translateX(-100%)}.fdc.rt{transform:translateX(100%)}.fdc.go{transition:none}' +
+    '.fdc>*{max-width:100%;max-height:100%}.fdc img,.fdc canvas,.fdc video{width:100%;height:100%;object-fit:contain;display:block}.fdc img.px{image-rendering:pixelated}' +
+    '.fdc iframe{width:100%;height:100%;border:0;background:#000;pointer-events:none}.fdc pre{box-sizing:border-box;width:min(720px,100%);max-height:100%;overflow:hidden;margin:0;padding:22px;white-space:pre-wrap;word-break:break-word;font:15px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#eee}' +
+    '.fdc svg.pay{width:min(760px,96%);height:auto}.fdc .pvm{max-width:min(520px,92%);padding:18px;border:1px solid rgba(247,147,26,.4);border-radius:14px;background:#120c08;display:grid;gap:10px;font:13px/1.45 system-ui,sans-serif}.fdc .pvm b{color:#ffb04a;font-family:ui-monospace,Menlo,Consolas,monospace}.fdc .pvm a{color:#ffd29a}' +
+    '.fdw{font:700 12px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;color:#7a6a55}' +
+    '#fdb{position:absolute;left:0;right:0;bottom:0;height:calc(58px + env(safe-area-inset-bottom));box-sizing:border-box;padding:9px 10px calc(9px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:8px;background:#0b0907;border-top:1px solid rgba(247,147,26,.25);font:700 12px/1 ui-monospace,Menlo,Consolas,monospace}' +
+    '#fdb input{width:84px;height:36px;box-sizing:border-box;border:1px solid rgba(247,147,26,.35);border-radius:18px;background:#000;color:#fff;font:inherit;padding:0 12px;outline:0}#fdb input:focus{border-color:#f7931a}' +
+    '#fdb button{height:36px;min-width:36px;border:1px solid rgba(247,147,26,.45);border-radius:18px;background:rgba(247,147,26,.14);color:#ffd29a;font:inherit;padding:0 11px;cursor:pointer}#fdb button:disabled{opacity:.3;cursor:default}' +
+    '#fdn{flex:1;min-width:0;text-align:center;overflow:hidden}#fdn b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.06em}#fdn small{display:block;margin-top:4px;color:#9a8a72;font-weight:600;letter-spacing:.04em}' +
+    '#fdf{position:absolute;left:0;right:0;bottom:calc(58px + env(safe-area-inset-bottom));z-index:2;max-height:62%;overflow:auto;padding:14px 16px 16px;background:rgba(11,9,7,.96);border-top:1px solid rgba(247,147,26,.35);transform:translateY(105%);transition:transform .22s;touch-action:pan-y;font:13px/1.4 system-ui,sans-serif}#fdf.on{transform:none}' +
+    '#fdf .r{display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)}#fdf .r span{color:#9a8a72}#fdf .r b{font:600 12.5px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#f3ead8;text-align:right;word-break:break-all}' +
+    '#fdf .l{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}#fdf .l a{padding:8px 12px;border:1px solid rgba(247,147,26,.45);border-radius:16px;color:#ffd29a;text-decoration:none;font:700 11.5px/1 ui-monospace,Menlo,Consolas,monospace}' +
+    '@media (min-width:900px){#fdb{justify-content:center}#fdn{flex:0 1 420px}}';
+  document.head.appendChild(st);
+  const box = document.createElement('div'); box.id = 'fd'; box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'The block as a feed: one thing at a time');
+  box.innerHTML = '<div id="fds"></div><div id="fdf" role="dialog" aria-label="facts"></div>' +
+    '<form id="fdb" autocomplete="off"><input id="fdi" inputmode="numeric" spellcheck="false" placeholder="block" aria-label="a block number"><button type="submit" id="fdg" aria-label="show this block">GO</button>' +
+    '<button type="button" id="fdp" aria-label="the shelf before">‹</button><div id="fdn" aria-live="polite"><b></b><small></small></div><button type="button" id="fdx" aria-label="the next shelf">›</button></form>';
+  document.body.appendChild(box);
+  const $s = box.querySelector('#fds'), $f = box.querySelector('#fdf'), $i = box.querySelector('#fdi'), $n = box.querySelector('#fdn');
+  const F = {on: false, h: -1, B: null, cats: [], c: 0, i: 0, ask: 0, el: null, url: [], frame: null};
+  const INS_SHELF = new Set(SECT.concat([ETCHP]));
+  // the shelves of a block, in the hall's order; an inscription shelf has a card for each inscription, the others one for each transaction
+  function shelves(B) {
+    const by = new Map();
+    for (const t of B.txs) { const k = shelfOf(t); if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
+    const out = [];
+    for (const k of SECT_ALL) {
+      const txs = by.get(k); if (!txs) continue;
+      const items = [];
+      for (const t of txs) { if (INS_SHELF.has(k) && t.ordIds && t.ordIds.length) t.ordIds.forEach((id, j) => items.push({t, id, j, of: t.ordIds.length})); else items.push({t}); }
+      out.push({k, name: TYPES[k].name, css: TYPES[k].css, items});
+    }
+    return out;
+  }
+  const say = (a, b) => { $n.querySelector('b').textContent = a; $n.querySelector('small').textContent = b || ''; };
+  function bar() {
+    const C = F.cats[F.c];
+    box.querySelector('#fdp').disabled = F.c <= 0; box.querySelector('#fdx').disabled = F.c >= F.cats.length - 1;
+    if (!C) return say(F.B ? 'NOTHING HERE' : 'READING BLOCK ' + fmt(F.h) + '…', F.B ? 'block ' + fmt(F.h) : '');
+    $n.querySelector('b').style.color = C.css || '';
+    say(C.name.toUpperCase(), fmt(F.i + 1) + ' of ' + fmt(C.items.length) + ' · block ' + fmt(F.h));
+  }
+  const free = () => { for (const u of F.url) URL.revokeObjectURL(u); F.url = []; };
+  // what a card shows: the thing itself, nothing more (facts are a tap away)
+  function body(it, now) {
+    const d = document.createElement('div'); d.className = 'fdc';
+    const wait = w => { const p = document.createElement('span'); p.className = 'fdw'; p.textContent = w; d.appendChild(p); return p; };
+    const t = it.t;
+    if (it.id) {
+      if (t.art && it.of === 1 && /^image\//.test(t.art.ct || '') && !t.art.mdl) {   // a picture already read from the block's own bytes: no download
+        const u = shownPic(t.art.bytes, t.art.ct); F.url.push(u); const im = new Image(); im.alt = ''; im.src = u; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320);
+        d.appendChild(fgShow(im, it.id, {bytes: t.art.bytes, type: t.art.ct})); return d;
+      }
+      const w = wait('LOADING…');
+      insKind(it.id, insBases('https://ordinals.com')).then(K => {
+        if (!d.isConnected && !now) return; w.remove();
+        let el = null;
+        if (/^text\/html\b/.test(K.ct || '') || K.kind === 'model') {   // played in ordinals.com's preview, sealed, while on screen
+          if (window.FamilyGuard && FamilyGuard.strict && FamilyGuard.strict() && K.kind !== 'model') el = insClosedEl(K, it.id);
+          else { el = document.createElement('iframe'); el.setAttribute('sandbox', 'allow-scripts'); el.setAttribute('referrerpolicy', 'no-referrer'); el.title = 'inscription ' + it.id.slice(0, 10) + ', in ordinals.com’s preview'; el.dataset.src = (K.base || 'https://ordinals.com') + '/preview/' + it.id; if (d.classList.contains('cur')) el.src = el.dataset.src; }
+        } else if (K.kind === 'video') { el = insSafeEl(K, it.id); el.controls = false; el.muted = true; el.loop = true; el.autoplay = true; el.playsInline = true; el.preload = 'auto'; }
+        else el = insSafeEl(K, it.id) || insClosedEl(K, it.id);
+        d.appendChild(el);
+        if (d.classList.contains('cur') && el.tagName === 'VIDEO') el.play().catch(() => {});
+      });
+      return d;
+    }
+    if (t.word) { const c = paintWord(t.word, 512); d.appendChild(c); return d; }   // a token, a message, a file: its own tile, big
+    if (t.art && /^image\//.test(t.art.ct || '')) { const u = shownPic(t.art.bytes, t.art.ct); F.url.push(u); const im = new Image(); im.alt = ''; im.src = u; d.appendChild(fgShow(im, t.id || t, {bytes: t.art.bytes, type: t.art.ct})); return d; }
+    // a payment: its coins in and out, once the transaction has been read
+    const w = wait((t.value != null ? btc(t.value) : '') + (t.rate != null ? '  ·  ' + (+t.rate).toFixed(1) + ' sat/vB' : ''));
+    if (now) Promise.race([txInfo(t), new Promise(r => setTimeout(r, 8000))]).then(() => { const svg = vwPay(t); if (svg && d.isConnected) { w.remove(); d.insertAdjacentHTML('beforeend', svg); } }, () => {});
+    return d;
+  }
+  // show the card at F.c / F.i, sliding in from where it came; the next two on the shelf are got ready
+  function show(from) {
+    if (F.frame) { F.frame.removeAttribute('src'); F.frame = null; }
+    const C = F.cats[F.c]; bar(); closeFacts();
+    const old = F.el; F.el = null;
+    if (old) { old.classList.remove('cur'); old.querySelectorAll('video,audio').forEach(v => { try { v.pause(); } catch (e) {} }); const away = {up: 'dn', dn: 'up', lf: 'rt', rt: 'lf'}[from] || 'up'; old.classList.add(away); setTimeout(() => old.remove(), 320); }
+    if (!C) return;
+    const it = C.items[F.i], d = body(it, true); d.classList.add('cur');
+    if (from) { d.classList.add('go', from); $s.appendChild(d); void d.offsetWidth; d.classList.remove('go', from); } else $s.appendChild(d);
+    F.el = d; d.querySelectorAll('iframe[data-src]').forEach(f => { f.src = f.dataset.src; F.frame = f; });
+    const v = d.querySelector('video'); if (v) v.play().catch(() => {});
+    for (const k of [1, 2]) { const nx = C.items[F.i + k]; if (nx && nx.id && !(nx.t.art && nx.of === 1)) insKind(nx.id, insBases('https://ordinals.com')).then(K => { if (K.kind === 'image' && K.url) { const im = new Image(); im.referrerPolicy = 'no-referrer'; im.src = K.url; } }); }
+    if (F.url.length > 12) { const keep = F.url.splice(-4); free(); F.url = keep; }
+  }
+  function step(dy) { const C = F.cats[F.c]; if (!C) return; const i = F.i + dy; if (i < 0 || i >= C.items.length) return bump(dy > 0 ? 'up' : 'dn'); F.i = i; show(dy > 0 ? 'dn' : 'up'); }
+  function shelf(dx) { const c = F.c + dx; if (c < 0 || c >= F.cats.length) return; F.c = c; F.i = 0; show(dx > 0 ? 'rt' : 'lf'); }
+  function bump(dir) { if (!F.el) return; F.el.style.transform = 'translateY(' + (dir === 'up' ? -18 : 18) + 'px)'; setTimeout(() => { if (F.el) F.el.style.transform = ''; }, 160); }
+  // the facts of the card on screen
+  function facts() {
+    const C = F.cats[F.c]; if (!C) return; const it = C.items[F.i], t = it.t, E = vwEsc;
+    const rows = [['block', fmt(F.h)], ['parcel', t.idx != null ? '#' + fmt(t.idx) : '?'], ['shelf', C.name]];
+    if (it.id) { rows.push(['inscription', it.id]); const K = insKindOf(it.id); if (K && K.ct) rows.push(['type', K.ct.split(';')[0]]); if (it.of > 1) rows.push(['in this transaction', (it.j + 1) + ' of ' + it.of]); }
+    if (t.word && (t.word.a || t.word.b)) rows.push(['says', [t.word.a, t.word.b].filter(Boolean).join(' · ')]);
+    if (t.value != null) rows.push(['moved', btc(t.value)]);
+    if (t.fee != null) rows.push(['fee', fmt(t.fee) + ' sats' + (t.rate != null ? ' · ' + (+t.rate).toFixed(1) + ' sat/vB' : '')]);
+    if (t.vsize != null) rows.push(['size', fmt(Math.round(t.vsize)) + ' vB']);
+    if (t.id) rows.push(['transaction', t.id]);
+    const L = [];
+    if (it.id) { L.push(['ORDINALS.COM ↗', 'https://ordinals.com/inscription/' + it.id], ['PROVENANCE CHECK ↗', 'provenance-check.html?id=' + it.id]); }
+    L.push(['BLOCK MANIFEST ↗', 'block-manifest.html?block=' + F.h]);
+    $f.innerHTML = rows.map(([a, b]) => '<div class="r"><span>' + E(a) + '</span><b>' + E(b) + '</b></div>').join('') + '<div class="l">' + L.map(([a, u]) => '<a href="' + E(u) + '" target="_blank" rel="noopener noreferrer">' + E(a) + '</a>').join('') + '</div>';
+    $f.classList.add('on');
+  }
+  function closeFacts() { $f.classList.remove('on'); }
+  // a block: read once (the hall's own reader, so the same shelves), then its first shelf
+  async function load(h) {
+    h = Math.max(0, Math.min(tipH, Math.round(h))); if (!(h >= 0)) return;
+    const my = ++F.ask; F.h = h; F.B = null; F.cats = []; F.c = 0; F.i = 0; $i.value = ''; $i.placeholder = String(h); free();
+    if (F.el) { F.el.remove(); F.el = null; } $s.innerHTML = ''; bar();
+    const w = document.createElement('div'); w.className = 'fdc'; w.innerHTML = '<span class="fdw">READING BLOCK ' + fmt(h) + '…</span>'; $s.appendChild(w);
+    let B = null; try { B = await rmLoad(h); } catch (e) {}
+    if (my !== F.ask || !F.on) return; w.remove();
+    if (!B) { say('BLOCK ' + fmt(h) + ' COULD NOT BE READ', 'try again in a moment'); return; }
+    F.B = B; F.cats = shelves(B); show();
+  }
+  function open(h) {
+    if (F.on) return; F.on = true; window.__feedOn = true; document.body.classList.add('feed'); $th.classList.add('on'); thSay();
+    if (document.pointerLockElement) document.exitPointerLock();
+    load(h != null && h >= 0 ? h : mode === 'block' && want >= 0 ? want : tipH);
+  }
+  function close() {
+    if (!F.on) return; F.on = false; window.__feedOn = false; F.ask++; closeFacts();
+    if (F.frame) { F.frame.removeAttribute('src'); F.frame = null; }
+    $s.innerHTML = ''; F.el = null; free(); document.body.classList.remove('feed'); $th.classList.remove('on'); thSay();
+    if (F.h >= 0) go(F.h);
+  }
+  // touch and mouse: a swipe up or down for the next thing, left or right for the next shelf; a tap for the facts
+  let p0 = null;
+  $s.addEventListener('pointerdown', e => { p0 = {x: e.clientX, y: e.clientY, t: performance.now()}; try { $s.setPointerCapture(e.pointerId); } catch (x) {} });
+  $s.addEventListener('pointermove', e => { if (!p0 || !F.el) return; const dx = e.clientX - p0.x, dy = e.clientY - p0.y; F.el.classList.add('go'); F.el.style.transform = Math.abs(dy) > Math.abs(dx) ? 'translateY(' + dy * .6 + 'px)' : 'translateX(' + dx * .6 + 'px)'; });
+  const up = e => {
+    if (!p0) return; const dx = e.clientX - p0.x, dy = e.clientY - p0.y, q = p0; p0 = null;
+    if (F.el) { F.el.classList.remove('go'); F.el.style.transform = ''; }
+    if (e.type !== 'pointerup') return;
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && performance.now() - q.t < 400) return $f.classList.contains('on') ? closeFacts() : facts();
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 40) step(dy < 0 ? 1 : -1);
+    else if (Math.abs(dx) > 40) shelf(dx < 0 ? 1 : -1);
+  };
+  $s.addEventListener('pointerup', up); $s.addEventListener('pointercancel', up);
+  let wheelAt = 0;
+  $s.addEventListener('wheel', e => { e.preventDefault(); const t = performance.now(); if (t - wheelAt < 350) return; const ax = Math.abs(e.deltaX) > Math.abs(e.deltaY); if (Math.abs(ax ? e.deltaX : e.deltaY) < 12) return; wheelAt = t; if (ax) shelf(e.deltaX > 0 ? 1 : -1); else step(e.deltaY > 0 ? 1 : -1); }, {passive: false});
+  box.querySelector('#fdp').onclick = () => shelf(-1); box.querySelector('#fdx').onclick = () => shelf(1);
+  box.querySelector('#fdb').addEventListener('submit', e => { e.preventDefault(); $i.blur(); const v = parseInt(String($i.value).replace(/[^0-9]/g, ''), 10); if (!(v >= 0)) return; if (v > tipH) { say('BLOCK ' + fmt(v) + ' IS NOT MINED YET', 'the newest is ' + fmt(tipH)); return; } load(v); });
+  $i.addEventListener('keydown', e => e.stopPropagation());
+  // keys: up and down, left and right; Esc closes the facts, then the feed
+  addEventListener('keydown', e => {
+    if (!F.on || e.target === $i) return;
+    const k = e.key;
+    if (k === 'ArrowDown') step(1); else if (k === 'ArrowUp') step(-1);
+    else if (k === 'ArrowRight') shelf(1); else if (k === 'ArrowLeft') shelf(-1);
+    else if (k === 'Enter' || k === ' ') { $f.classList.contains('on') ? closeFacts() : facts(); }
+    else if (k === 'Escape') { if ($f.classList.contains('on')) closeFacts(); else close(); }
+    else return;
+    e.preventDefault(); e.stopImmediatePropagation();
+  }, true);
+  return {open, close, on: () => F.on, load, step, shelf, facts,
+    state: () => { const C = F.cats[F.c], it = C && C.items[F.i]; return {open: F.on, block: F.h, shelves: F.cats.map(c => ({name: c.name, count: c.items.length})), shelf: C ? C.name : null, at: C ? F.i + 1 : 0, of: C ? C.items.length : 0,
+      card: it ? {parcel: it.t.idx, txid: it.t.id, inscription: it.id || null, type: it.id && insKindOf(it.id) ? (insKindOf(it.id).ct || null) : null, says: it.t.word ? [it.t.word.a, it.t.word.b].filter(Boolean).join(' · ') : null} : null}; }};
+})();
+// the house button goes round: the cube, the block's hall, the feed, then the cube again
+function thSay() {
+  const th = document.getElementById('th'); if (!th) return;
+  const f = !!window.__feedOn, w = f ? 'back out to the cube' : room ? 'the block as a feed' : 'walk into the block';
+  th.title = w; th.setAttribute('aria-label', w);
+  th.innerHTML = f ? '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 2.6 16.4 6.2v7.6L10 17.4 3.6 13.8V6.2z"/><path d="M3.6 6.2 10 9.8l6.4-3.6M10 9.8v7.6"/></svg>'
+    : room ? '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><rect x="5" y="2.5" width="10" height="15" rx="2"/><path d="M8 7.5h4M8 10.5h4"/></svg>'
+    : '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M5.5 17V3h9v14"/><path d="M3 17h14"/><circle cx="12" cy="10.5" r=".95" fill="currentColor" stroke="none"/></svg>';
+}
 // controls: keys; on a computer the mouse (click to look around with it, Esc to let go); on a phone the pad and a drag
 addEventListener('keydown', e => {
   if (!room || e.target.tagName === 'INPUT') return;
@@ -18658,6 +18846,14 @@ window.AgentKit = window.AgentKit || (() => {
         await until(() => (room && room.at !== from) || fresh(), 25000); await until(() => roomReady(), 60000); await until(fresh, 8000);   // (answers once you are there, with the new arrow)
         const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search. Gives back {ok} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"ok":{},"error":{"type":"string"}}}, run: () => { $('src').click(); return {ok: true}; }},
+    {name: 'feed', does: 'The feed: the block\u2019s contents one at a time, full screen, as the house button\u2019s third press shows them (the cube, the hall, the feed). Shelves in the hall\u2019s order; each inscription its own card, a token its tile, a payment its coins in and out. open: false closes it (back to the cube); block: a block number; shelf: a shelf\u2019s name (e.g. "images", "runes minted"); next: move that many cards down the shelf (negative: back up); nextShelf: move that many shelves along. Web pages play in ordinals.com\u2019s sealed preview, only while on screen. Gives back {open, block, shelves[{name, count}], shelf, at, of, card{parcel, txid, inscription, type, says}} (or {ok: false, error} if it could not).', untrusted: true, out: {"type":"object","properties":{"open":{"type":"boolean"},"block":{},"shelves":{"type":"array"},"shelf":{},"at":{},"of":{},"card":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the feed (the default), false to close it'}, {name: 'block', type: 'number', does: 'a block number to show'}, {name: 'shelf', type: 'string', does: 'a shelf to go to, by its name'}, {name: 'next', type: 'number', does: 'cards to move down the shelf (negative: up)'}, {name: 'nextShelf', type: 'number', does: 'shelves to move along (negative: back)'}],
+      run: async ({open, block, shelf, next, nextShelf}) => { if (open === false || open === 'false') { FEED.close(); await wait(400); return FEED.state(); } if (tipH < 0) return {ok: false, error: 'the newest block is not known yet'};
+        const h = block != null ? +String(block).replace(/[^0-9]/g, '') : null; if (h != null && !(h >= 0 && h <= tipH)) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH};
+        if (!FEED.on()) { if (room) await roomExit(); FEED.open(h); } else if (h != null && h !== FEED.state().block) FEED.load(h);
+        await until(() => FEED.state().shelves.length > 0, 60000);
+        if (shelf) { const S = FEED.state(), j = S.shelves.findIndex(c => c.name.toLowerCase() === String(shelf).toLowerCase()); if (j < 0) return Object.assign({ok: false, error: 'no shelf called ' + shelf + ' in this block'}, FEED.state()); const c0 = S.shelves.findIndex(c => c.name === S.shelf); if (j !== c0) FEED.shelf(j - c0); }
+        if (+nextShelf) FEED.shelf(+nextShelf); if (+next) { const n = Math.max(-500, Math.min(500, Math.round(+next))); for (let k = 0; k < Math.abs(n); k++) FEED.step(Math.sign(n)); }
+        await wait(300); return FEED.state(); }},
     {name: 'map', does: 'The map: every block on rings that grow (the first block at the heart, one ring for every 2,016 blocks), with you are here marked, as M or the map button opens it (on a phone, in the tablet). open: false closes it; walkTo: a block number walks into that block\u2019s hall from the map. view: "3d" flies a small ship over the same spiral in 3D (W A S D Q E, or the pad), "2d" goes back to the flat map. Gives back {open, youAreHere, here, picked, newest, flight{view, overBlock, picked, height, speed}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"open":{"type":"boolean"},"youAreHere":{},"here":{},"picked":{},"newest":{},"flight":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the map (the default), false to close it'}, {name: 'walkTo', type: 'number', does: 'a block number to walk into from the map'}, {name: 'view', type: 'string', enum: ['2d', '3d'], does: '3d flies a small ship over every block (the same spiral, in 3D), 2d is the flat map'}],
       run: async ({open, walkTo, view}) => { if (walkTo != null) { const h = +String(walkTo).replace(/[^0-9]/g, ''); if (!(h >= 0) || h > tipH) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH}; if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'}; HALLMAP.pick(h, true); await wait(600); await HALLMAP.walk(h); return HALLMAP.state(); } if (open === false || open === 'false') { HALLMAP.close(); return HALLMAP.state(); } if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'}; const H3 = window.__hall3d; if (H3 && view === '3d' && !H3.on() && !H3.show()) return {ok: false, error: 'the 3D map needs WebGL 2 in this browser'}; if (H3 && view === '2d' && H3.on()) document.getElementById('mp3').click(); return Object.assign(HALLMAP.state(), H3 ? {flight: H3.state()} : {}); }},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block". Gives back {in, ready, x, y, z, facing, pitch, sitting, roomX, roomD, area} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"in":{},"ready":{},"x":{},"y":{},"z":{},"facing":{},"pitch":{},"sitting":{},"roomX":{},"roomD":{},"area":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
