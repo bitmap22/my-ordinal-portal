@@ -1,13 +1,23 @@
 # The keeper. GitHub starts this repo's timed jobs late, or not at all (23 Nov 2026: in 48 hours the keeper's own timer fired 4
-# times out of 96, and Highlights was not made for 33 hours). So the keeper keeps itself going, the way the Bitmap Record does:
-# each run looks at what is due every 10 minutes for about 50 minutes, then starts the next keeper run itself. GitHub's timer and
-# every push to main also start it, in case that chain ever breaks. Each look starts what is due: Source Health if its last check
+# times out of 96, and Highlights was not made for 33 hours). So the keeper keeps itself going: each run takes one look at what
+# is due and starts it, then waits 10 minutes and starts the next keeper run itself. GitHub's timer and every push to main also
+# start it, in case that chain ever breaks. Each look starts what is due: Source Health if its last check
 # is 55 minutes old or more, the Safety Scan if its last scan is an hour old or more, the Truth League if its last is 175
 # minutes old or more, Daily Data from 00:20 UTC if the day before isn't saved yet,
 # Highlights once yesterday's Daily Data is saved and they were made before it,
 # the Corridor shelves if they last ran 35 minutes ago or more, Hall Visits if it last ran 5 hours ago or more, and the Bitmap
 # Record if it has not run for 75 minutes. It only starts those workflows, each of which still checks for itself that there is
-# something to do. Free: GitHub runs it (the repository is public). © 2026 bitmap22. All rights reserved.
+# something to do. Free: GitHub runs it (the repository is public).
+#
+# (27 Nov 2026) The 10 minute wait holds none of GitHub's machines. It is GitHub's own wait timer, set on the "keeper-wait"
+# environment (Settings > Environments > keeper-wait > Wait timer: 10 minutes): a job that names that environment is held back
+# for 10 minutes before any machine is given to it. Before this, each run slept on a machine for about 50 minutes, which came to
+# about 23 machine-hours a day; GitHub's terms ask that Actions put no load on its machines that is out of proportion to the
+# good it does. Now a run uses a machine for a few seconds.
+# If that wait setting is ever missing, the job would start at once, so the keeper checks how long it really waited and, if it
+# was not held back, does not start the next run: it can never spin. GitHub's timer and each push to main then still start it.
+# To try it without starting anything: Actions > Keeper > Run workflow > try: yes (it only says what it would start, and it
+# waits on "keeper-wait-test", a 1 minute wait). © 2026 bitmap22. All rights reserved.
 name: Keeper
 
 on:
@@ -16,25 +26,43 @@ on:
   schedule:
     - cron: '17,47 * * * *'
   workflow_dispatch:
+    inputs:
+      try:
+        description: 'yes: a test. It starts nothing (it says what it would start) and waits 1 minute, not 10.'
+        required: false
+        default: ''
+      left:
+        description: 'In a test: how many more runs to chain after this one (0 to 5).'
+        required: false
+        default: '0'
 
 permissions:
   actions: write
   contents: read
 
 concurrency:
-  group: keeper
+  # (a test has its own group, so it never stops the real keeper)
+  group: ${{ inputs.try == 'yes' && 'keeper-test' || 'keeper' }}
   cancel-in-progress: true
 
 jobs:
-  keep:
+  look:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 10
+    outputs:
+      at: ${{ steps.when.outputs.at }}
     steps:
-      - name: Start what is due, every 10 minutes for about 50 minutes
+      - name: When this look began
+        id: when
+        run: echo "at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+      - name: Start what is due
         env:
           GH_TOKEN: ${{ github.token }}
           R: ${{ github.repository }}
+          DRY: ${{ inputs.try }}
         run: |
+          # start a workflow (in a test: only say so)
+          start() { wf=$1; shift; if [ "$DRY" = yes ]; then echo "(test: this would start $wf)"; else gh api -X POST "repos/$R/actions/workflows/$wf/dispatches" -f ref=main "$@"; fi; }
           busy() { gh api "repos/$R/actions/workflows/$1/runs?per_page=10" --jq '[.workflow_runs[] | select(.status != "completed")] | length'; }
           lastrun() { gh api "repos/$R/actions/workflows/$1/runs?per_page=1" --jq '.workflow_runs[0].created_at // ""' 2>/dev/null || true; }
           look() {
@@ -44,19 +72,19 @@ jobs:
             age=999999; [ -n "$last" ] && age=$(( now - $(date -u -d "$last" +%s) ))
             if [ "$age" -lt 3300 ]; then echo "Source Health: not due (its last check was $((age / 60)) minutes ago)"
             elif [ "$(busy source-health.yml)" != "0" ]; then echo "Source Health: already running"
-            else gh api -X POST "repos/$R/actions/workflows/source-health.yml/dispatches" -f ref=main -f "inputs[ifDue]=yes" && echo "Source Health: started (its last check was $((age / 60)) minutes ago)"; fi
+            else start source-health.yml -f "inputs[ifDue]=yes" && echo "Source Health: started (its last check was $((age / 60)) minutes ago)"; fi
             # Safety Scan: about once an hour
             last=$(gh api "repos/$R/commits/safety-scan" --jq .commit.committer.date 2>/dev/null || true)
             age=999999; [ -n "$last" ] && age=$(( now - $(date -u -d "$last" +%s) ))
             if [ "$age" -lt 3600 ]; then echo "Safety Scan: not due (its last scan was $((age / 60)) minutes ago)"
             elif [ "$(busy safety-scan.yml)" != "0" ]; then echo "Safety Scan: already running"
-            else gh api -X POST "repos/$R/actions/workflows/safety-scan.yml/dispatches" -f ref=main -f "inputs[ifDue]=yes" && echo "Safety Scan: started (its last scan was $((age / 60)) minutes ago)"; fi
+            else start safety-scan.yml -f "inputs[ifDue]=yes" && echo "Safety Scan: started (its last scan was $((age / 60)) minutes ago)"; fi
             # Truth League: about every 3 hours
             last=$(gh api "repos/$R/commits/truth-league" --jq .commit.committer.date 2>/dev/null || true)
             age=999999; [ -n "$last" ] && age=$(( now - $(date -u -d "$last" +%s) ))
             if [ "$age" -lt 10500 ]; then echo "Truth League: not due (its last check was $((age / 60)) minutes ago)"
             elif [ "$(busy truth-league.yml)" != "0" ]; then echo "Truth League: already running"
-            else gh api -X POST "repos/$R/actions/workflows/truth-league.yml/dispatches" -f ref=main -f "inputs[ifDue]=yes" && echo "Truth League: started (its last check was $((age / 60)) minutes ago)"; fi
+            else start truth-league.yml -f "inputs[ifDue]=yes" && echo "Truth League: started (its last check was $((age / 60)) minutes ago)"; fi
             # Daily Data (from 00:20 UTC): the day before, if it isn't saved yet
             DAY=$(date -u -d yesterday +%F); mins=$(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) ))
             for x in "daily-data.yml daily-data 20"; do
@@ -64,7 +92,7 @@ jobs:
               if [ "$mins" -lt "$3" ]; then echo "$1: not yet (it starts at 00:$3 UTC)"; continue; fi
               if gh api "repos/$R/contents/days/$DAY.json?ref=$2" --silent 2>/dev/null; then echo "$1: $DAY is saved"; continue; fi
               if [ "$(busy "$1")" != "0" ]; then echo "$1: already running"; continue; fi
-              gh api -X POST "repos/$R/actions/workflows/$1/dispatches" -f ref=main -f "inputs[onlyIfMissing]=yes" && echo "$1: started for $DAY"
+              start "$1" -f "inputs[onlyIfMissing]=yes" && echo "$1: started for $DAY"
             done
             # Highlights: once yesterday's Daily Data is saved, if they were made before it
             saved=$(gh api "repos/$R/commits?sha=daily-data&path=days/$DAY.json&per_page=1" --jq '.[0].commit.committer.date // ""' 2>/dev/null || true)
@@ -72,26 +100,55 @@ jobs:
             if [ -z "$saved" ]; then echo "Highlights: waiting for Daily Data's $DAY"
             elif [ -n "$made" ] && [ "$(date -u -d "$made" +%s)" -ge "$(date -u -d "$saved" +%s)" ]; then echo "Highlights: made after $DAY was saved"
             elif [ "$(busy highlights.yml)" != "0" ]; then echo "Highlights: already running"
-            else gh api -X POST "repos/$R/actions/workflows/highlights.yml/dispatches" -f ref=main && echo "Highlights: started (made ${made:-never})"; fi
+            else start highlights.yml && echo "Highlights: started (made ${made:-never})"; fi
             # Corridor shelves (35 minutes), Hall Visits (5 hours), Bitmap Record (75 minutes): if they have not run for that long
             for x in "corridor-shelves.yml 2100" "hall-visits.yml 18000" "bitmap-record.yml 4500"; do
               set -- $x; l=$(lastrun "$1"); a=999999; [ -n "$l" ] && a=$(( $(date -u +%s) - $(date -u -d "$l" +%s) ))
               if [ "$a" -lt "$2" ]; then echo "$1: ran $((a / 60)) minutes ago"
               elif [ "$(busy "$1")" != "0" ]; then echo "$1: already running"
-              else gh api -X POST "repos/$R/actions/workflows/$1/dispatches" -f ref=main && echo "$1: started (it last ran $((a / 60)) minutes ago)"; fi
+              else start "$1" && echo "$1: started (it last ran $((a / 60)) minutes ago)"; fi
             done
           }
-          start=$(date -u +%s)
-          while :; do
-            echo "== $(date -u +%H:%M) UTC"; look || echo "(that look had an error; trying again next time)"
-            [ $(( $(date -u +%s) - start )) -ge 2700 ] && break
-            sleep 600
-          done
+          echo "== $(date -u +%H:%M) UTC"; look || echo "(that look had an error; the next one tries again)"
+
+  next:
+    # (held back by the environment's wait timer: no machine is used while it waits)
+    needs: look
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ${{ inputs.try == 'yes' && 'keeper-wait-test' || 'keeper-wait' }}
+      deployment: false
+    steps:
       - name: Start the next keeper run
-        if: success() || failure()
         env:
           GH_TOKEN: ${{ github.token }}
           R: ${{ github.repository }}
+          AT: ${{ needs.look.outputs.at }}
+          TRY: ${{ inputs.try }}
+          LEFT: ${{ inputs.left }}
+          REF: ${{ github.ref_name }}
         run: |
-          n=$(gh api "repos/$R/actions/workflows/keeper.yml/runs?per_page=10" --jq '[.workflow_runs[] | select(.status == "queued" or .status == "waiting" or .status == "pending")] | length')
-          if [ "$n" != "0" ]; then echo "A keeper run is already waiting: not starting another"; else gh workflow run keeper.yml --repo "$R" --ref main && echo "Next keeper run started"; fi
+          now=$(date -u +%s)
+          # when the look began (if it did not say, when this run began)
+          at="$AT"; if ! [ "$at" -gt 0 ] 2>/dev/null; then at=$(date -u -d "$(gh api "repos/$R/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)" +%s 2>/dev/null || echo "$now"); fi
+          waited=$(( now - at ))
+          need=480; [ "$TRY" = yes ] && need=45
+          echo "Waited $(( waited / 60 )) minutes $(( waited % 60 )) seconds before this job was given a machine."
+          if [ "$waited" -lt "$need" ]; then
+            echo "::warning::The keeper was not held back (it waited $waited seconds, and should wait at least $need). The wait timer on its environment is missing, so the next run is NOT started: the keeper must never spin. GitHub's own timer and each push to main still start it. To mend it: Settings > Environments > keeper-wait > Wait timer: 10 minutes."
+            exit 0
+          fi
+          if [ "$TRY" = yes ]; then
+            left=$(( ${LEFT:-0} + 0 )); if [ "$left" -le 0 ]; then echo "Test: the chain ends here."; exit 0; fi
+            [ "$left" -gt 5 ] && left=5
+            set -- --ref "$REF" -f try=yes -f left=$(( left - 1 ))
+          else
+            set -- --ref main
+          fi
+          for n in 1 2 3; do
+            if gh workflow run keeper.yml --repo "$R" "$@"; then echo "Next keeper run started"; exit 0; fi
+            echo "(could not start the next run, try $n of 3)"; sleep 5
+          done
+          echo "::warning::The next keeper run could not be started. GitHub's own timer and each push to main still start it."
