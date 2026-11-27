@@ -2,7 +2,7 @@
    Which of the free public data sites the portal's tools read are answering, how fast, and whether their answers are up to
    date, so a person or an AI agent knows how far to trust an answer and which site to ask. Each site is asked one small thing
    (most: the newest block's height, which says both whether it answers and whether it has kept up with the chain):
-   - Bitcoin: mempool.space, ordpool.space, mempool.space's Frankfurt server, blockstream.info, ordinals.com and api.bnrp.name
+   - Bitcoin: mempool.space, ordpool.space, mempool.space's Frankfurt server, blockstream.info and ordinals.com
    (24 Nov 2026: only sites whose terms allow the portal's use are asked; see SOURCES.md in the portal's repository)
    What each says is only ever what it said: nothing is guessed. A site that answers in 2.5 seconds or more is slow (the
    portal's tools ask the next site after 2.5 seconds); a site 2 or more blocks behind the others is behind.
@@ -29,9 +29,7 @@
     mp('ordpool.space', 'a copy of mempool.space, and the only site that tags CAT-21, Labitbu and OpenTimestamps in mined blocks'),
     mp('mempool.fra.mempool.space', 'mempool.space\'s own second server'),
     mp('blockstream.info', 'blocks and transactions (the last copy asked)'),
-    ord('ordinals.com', 'inscriptions, their files and records, rune pages and each block\'s list of inscriptions'),
-    {site: 'api.bnrp.name', chain: 'bitcoin', group: 'Names', what: 'names (.sats, .btc and the like)', path: '/v1/resolve/satoshi.sats',
-      read: t => { const j = json(t); return j && /^[0-9a-f]{64}i\d+$/.test(j.inscription_id || '') ? {name: j.name, inscription: j.inscription_id} : null; }, kind: 'name'}
+    ord('ordinals.com', 'inscriptions, their files and records, rune pages and each block\'s list of inscriptions')
   ];
   for (const s of SITES) s.url = (s.base || 'https://' + s.site) + s.path;
   const CHAINS = {bitcoin: 'Bitcoin'};

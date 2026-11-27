@@ -4,7 +4,7 @@
 
 Agent Blockhall's free Bitcoin catalogue, for AI agents. **Always free.** No keys, no accounts.
 
-[Agent Blockhall](https://ordportal.com/block-cube.html) is a 3D Bitcoin block explorer world for players and agents. This tool gives an AI agent the same catalogue without opening a browser. It runs on your own computer and reads free public sites whose terms allow it (mempool.space and its Frankfurt server, ordpool.space, blockstream.info, ordinals.com, CoinGecko for prices and BNRP for names), gently: at most 30 asks at once, then 6 a second per site, and it rests any site that asks it to slow down and uses a back-up instead.
+[Agent Blockhall](https://ordportal.com/block-cube.html) is a 3D Bitcoin block explorer world for players and agents. This tool gives an AI agent the same catalogue without opening a browser. It runs on your own computer and reads free public sites whose terms allow it (mempool.space and its Frankfurt server, ordpool.space, blockstream.info, ordinals.com, and CoinGecko for prices), gently: at most 30 asks at once, then 6 a second per site, and it rests any site that asks it to slow down and uses a back-up instead.
 
 ## What it can do
 

@@ -18,9 +18,7 @@ const WATCH = [
   {id: 'blockstream-privacy', site: 'blockstream.info', url: 'https://blockstream.com/privacy', see: 'https://blockstream.com/privacy', start: 'At Blockstream, we are committed', endAfter: 'This Privacy Policy was last updated', html: true, optional: true},
   {id: 'ord-licence', site: 'ordinals.com', url: RAW + 'ordinals/ord/master/LICENSE', see: 'https://github.com/ordinals/ord/blob/master/LICENSE'},
   {id: 'coingecko-api-terms', site: 'CoinGecko', url: 'https://www.coingecko.com/en/api_terms', see: 'https://www.coingecko.com/en/api_terms', start: 'Latest Version:', endBefore: 'Coingecko provides a fundamental analysis', html: true},
-  {id: 'coingecko-keyless', site: 'CoinGecko', url: 'https://docs.coingecko.com/docs/keyless-public-api', see: 'https://docs.coingecko.com/docs/keyless-public-api', start: 'The Keyless Public API lets you', endBefore: 'Was this page helpful?', html: true, optional: true},
-  {id: 'bnrp-docs', site: 'BNRP (api.bnrp.name)', url: 'https://btcnative.pages.dev/docs', see: 'https://btcnative.pages.dev/docs', start: 'Protocol overview', endBefore: 'Powered by BNRP open resolution', html: true},
-  {id: 'bnrp-standard', site: 'BNRP (api.bnrp.name)', url: 'https://btcnative.pages.dev/bnrp.html', see: 'https://btcnative.pages.dev/bnrp.html', start: 'What is BNRP?', endBefore: 'Powered by BNRP open resolution', html: true, optional: true}
+  {id: 'coingecko-keyless', site: 'CoinGecko', url: 'https://docs.coingecko.com/docs/keyless-public-api', see: 'https://docs.coingecko.com/docs/keyless-public-api', start: 'The Keyless Public API lets you', endBefore: 'Was this page helpful?', html: true, optional: true}
 ];
 // (optional: a page that is often hard for a script to read, because it is built in the browser or sits behind a bot
 // check. Its words are compared when they can be read; it only raises an issue for a change, never for not being read.)

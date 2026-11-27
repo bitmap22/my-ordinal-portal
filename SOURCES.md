@@ -16,7 +16,6 @@ Every page asks these sites gently: a few asks at a time, and a site that asks t
 | blockstream.info | Bitcoin blocks and transactions, as a back-up and as a second check | Asked gently; named as the source |
 | ordinals.com | Inscriptions, their files, parents and children, block hashes, rune pages | Asked gently; named as the source; risky files are linked to, never run |
 | CoinGecko (api.coingecko.com) | The price of bitcoin now | "Powered by CoinGecko" is shown, with a link, wherever its price is used |
-| BNRP (api.bnrp.name) | Bitcoin names (.sats) | Asked gently; named as the source |
 
 ## Links only (nothing is read from them)
 
@@ -34,6 +33,10 @@ Removed because their terms don't allow this use, or don't clearly allow it:
 - mempool.emzy.de, mempool.ninja and mempool.bitaroo.net: copies of mempool.space
 - Blockchair, BlockCypher, BitPay's Bitcore and 3xpl: back-up explorers
 - Doggy Market: Doginal files
+
+Removed on 27 November 2026:
+
+- BNRP (api.bnrp.name): Bitcoin names (.sats, .btc and the like). Its own terms allow the portal's use, but its guide says it gets its answers from other indexers, UniSat among them, and the portal does not use UniSat. Names other than bitmaps are no longer looked up: ordinals.com has no way to find an inscription from a name. Bitmaps (840000.bitmap) and parcels are not touched: they are read from ordinals.com and the chain itself.
 
 Never read (kept an eye on):
 
