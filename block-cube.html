@@ -5765,7 +5765,7 @@ function picTick(ts) {
   if (P.tried && ts - P.tried > 10000) { P.tried = 0; P.up = 4000; }   // (it held up: the next try comes as soon as usual)
 }
 function frame(ts) {
-  if (document.hidden || cmPaintShown || crewAway) { paused = true; return; }   // (hidden, or resting while you are in Block Paint)
+  if (document.hidden || cmPaintShown || crewAway || window.__feedOn) { paused = true; return; }   // (hidden, or resting while you are in Block Paint or in the block feed)
   requestAnimationFrame(frame);   // (asked for first: an error while drawing one frame must never stop the game)
   if (!picBeat(ts)) return;   // (a fast screen kept busy: every other refresh)
   picTick(ts);
@@ -11795,37 +11795,81 @@ $th.onclick = async () => {   // (27 Nov 2026) the cube, then the block's hall, 
 /* ---- (27 Nov 2026) THE FEED: a block's contents one at a time, full screen, like a phone feed. The house button goes round:
    the cube, the block's hall, the feed, then back to the cube. Up and down: the next or last thing on the shelf. Left and right:
    the next or last shelf, in the hall's own order (each inscription its own card; a token its own tile; a payment its coins in and
-   out). Tap a card for its facts. Only the card on screen is opened, and the next two are got ready, so nothing loads all at once.
+   out). Tap a card for its facts. Only the card on screen is opened; the one either side of it is got ready, so nothing loads all
+   at once.
+   THE LOOK (27 Nov 2026): every card is measured against the real screen and shown whole, as big as it will go, on a computer, a
+   tablet or a phone, upright or on its side (small pixel pictures on whole screen dots, so they stay sharp). Behind it glows a
+   soft light of the picture's own colours. Cards follow the finger and the next one comes with it. Every control sits along the
+   bottom (the house button too, while the feed is up), so the screen above is all picture.
    SAFETY (27 Nov 2026, bitmap22's choice): a web page inscription plays in ordinals.com's own preview, inside a sealed frame
    (scripts only: it can't reach this page, open windows or take you anywhere), and only while its card is on screen; 3D models
-   the same, as in the hall. Pictures pass the 18+ check first; in Family mode no web page is played. ---- */
+   the same, as in the hall. Pictures pass the 18+ check first (and the glow is only made from a picture that has passed it); in
+   Family mode no web page is played. ---- */
 const FEED = (() => {
+  const MONO = 'ui-monospace,"SF Mono",Menlo,Consolas,monospace', EASE = 'cubic-bezier(.2,.84,.24,1)', LIFT = '0 28px 90px rgba(0,0,0,.62)';
   const st = document.createElement('style');
-  st.textContent = '#fd{position:fixed;inset:0;z-index:55;display:none;background:#030304;color:#eee;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none}body.feed #fd{display:block}' +
-    '#fds{position:absolute;inset:0;bottom:calc(58px + env(safe-area-inset-bottom));overflow:hidden}' +
-    '.fdc{position:absolute;inset:0;display:grid;place-items:center;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .28s}.fdc.up{transform:translateY(-100%)}.fdc.dn{transform:translateY(100%)}.fdc.lf{transform:translateX(-100%)}.fdc.rt{transform:translateX(100%)}.fdc.go{transition:none}' +
-    '.fdc>*{max-width:100%;max-height:100%}.fdc img,.fdc canvas,.fdc video{width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none;user-select:none}.fdc img.px{image-rendering:pixelated}' +
-    '.fdc iframe{width:100%;height:100%;border:0;background:#000;pointer-events:none}.fdc pre{box-sizing:border-box;width:min(720px,100%);max-height:100%;overflow:hidden;margin:0;padding:22px;white-space:pre-wrap;word-break:break-word;font:15px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#eee}' +
-    '.fdc svg.pay{width:min(760px,96%);height:auto}.fdc .pvm{max-width:min(520px,92%);padding:18px;border:1px solid rgba(247,147,26,.4);border-radius:14px;background:#120c08;display:grid;gap:10px;font:13px/1.45 system-ui,sans-serif}.fdc .pvm b{color:#ffb04a;font-family:ui-monospace,Menlo,Consolas,monospace}.fdc .pvm a{color:#ffd29a}' +
-    '.fdw{font:700 12px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;color:#7a6a55}' +
-    '#fdb{position:absolute;left:0;right:0;bottom:0;height:calc(58px + env(safe-area-inset-bottom));box-sizing:border-box;padding:9px 10px calc(9px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:8px;background:#0b0907;border-top:1px solid rgba(247,147,26,.25);font:700 12px/1 ui-monospace,Menlo,Consolas,monospace}' +
-    '#fdb input{width:84px;height:36px;box-sizing:border-box;border:1px solid rgba(247,147,26,.35);border-radius:18px;background:#000;color:#fff;font:inherit;padding:0 12px;outline:0}#fdb input:focus{border-color:#f7931a}' +
-    '#fdb button{height:36px;min-width:36px;border:1px solid rgba(247,147,26,.45);border-radius:18px;background:rgba(247,147,26,.14);color:#ffd29a;font:inherit;padding:0 11px;cursor:pointer}#fdb button:disabled{opacity:.3;cursor:default}' +
-    '#fdn{flex:1;min-width:0;text-align:center;overflow:hidden}#fdn b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.06em}#fdn small{display:block;margin-top:4px;color:#9a8a72;font-weight:600;letter-spacing:.04em}' +
-    '#fdf{position:absolute;left:0;right:0;bottom:calc(58px + env(safe-area-inset-bottom));z-index:2;max-height:62%;overflow:auto;padding:14px 16px 16px;background:rgba(11,9,7,.96);border-top:1px solid rgba(247,147,26,.35);transform:translateY(calc(100% + 90px));visibility:hidden;transition:transform .22s,visibility 0s .22s;touch-action:pan-y;font:13px/1.4 system-ui,sans-serif}#fdf.on{transform:none;visibility:visible;transition:transform .22s}' +
-    '#fdf .r{display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)}#fdf .r span{color:#9a8a72}#fdf .r b{font:600 12.5px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#f3ead8;text-align:right;word-break:break-all}' +
-    '#fdf .l{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}#fdf .l a{padding:8px 12px;border:1px solid rgba(247,147,26,.45);border-radius:16px;color:#ffd29a;text-decoration:none;font:700 11.5px/1 ui-monospace,Menlo,Consolas,monospace}' +
-    '@media (min-width:900px){#fdb{justify-content:center}#fdn{flex:0 1 420px}}body.feed #th{z-index:56}' +
-    '.fdc pre{background:none!important;border:0!important;min-height:0!important;height:auto!important}.fdc pre.short{width:auto;max-width:92%;text-align:center;font-size:clamp(22px,7vw,44px);line-height:1.25;font-weight:700}';
+  st.textContent =
+    // the feed's page: the glow behind, the card in the middle, the controls along the bottom
+    '#fd{position:fixed;inset:0;z-index:55;display:none;overflow:hidden;background:#040304;color:#f3ead8;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;font:700 11px/1 ' + MONO + ';--bh:56px;--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--k:#f7931a}body.feed #fd{display:block}' +
+    '#fda{position:absolute;inset:0;pointer-events:none}#fda canvas{position:absolute;left:-15%;top:-15%;width:130%;height:130%;opacity:0;transition:opacity .8s ease;filter:blur(44px) saturate(1.5) brightness(.8)}#fda canvas.on{opacity:.6}' +
+    '#fda i{position:absolute;inset:0;background:radial-gradient(ellipse 90% 80% at 50% 44%,rgba(4,3,4,0) 28%,rgba(4,3,4,.5) 72%,rgba(4,3,4,.88) 100%)}' +
+    '#fds{position:absolute;left:var(--sl);right:var(--sr);top:env(safe-area-inset-top,0px);bottom:calc(var(--bh) + var(--sb));overflow:hidden;cursor:grab}#fds:active{cursor:grabbing}#fds,#fds *{touch-action:none}' +
+    '.fdc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:translate3d(0,0,0);will-change:transform}#fds.mv .fdc{transition:transform .4s ' + EASE + '}' +
+    // what a card shows: sized by the script to fit the screen whole
+    '.fdm{position:relative;flex:none;opacity:0;transform:scale(.975);transition:opacity .32s ease,transform .32s ' + EASE + '}.fdm.in{opacity:1;transform:none}' +
+    '.fdm.pi,.fdm.ti{box-shadow:' + LIFT + '}.fdm>img,.fdm>video,.fdm>canvas,.fdm>iframe{display:block;width:100%;height:100%;border:0;-webkit-user-drag:none;user-select:none;-webkit-user-select:none}.fdm>img.px{image-rendering:pixelated}' +
+    '.fdm.fr{background:#000;box-shadow:0 0 0 1px rgba(255,255,255,.08),' + LIFT + '}.fdm>iframe{position:absolute;inset:0;background:#000;pointer-events:none}' +
+    '.fdsp{position:absolute;left:50%;top:50%;z-index:2;width:30px;height:30px;margin:-15px 0 0 -15px;box-sizing:border-box;border-radius:50%;border:2px solid rgba(255,255,255,.1);border-top-color:var(--k);animation:fdsp .8s linear infinite;pointer-events:none}@keyframes fdsp{to{transform:rotate(360deg)}}' +
+    '.fdz{position:absolute;inset:0;pointer-events:none}.fdw{position:absolute;left:0;right:0;top:calc(50% + 32px);padding:0 22px;text-align:center;font:700 11px/1.7 ' + MONO + ';letter-spacing:.2em;color:#cbb994}.fdw small{display:block;font:600 10.5px/1.7 ' + MONO + ';letter-spacing:.14em;color:#8a7c68}' +
+    // words: a note card (a few words, big) or a page (many)
+    '.fdm.tx{box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;padding:34px 36px;border-radius:12px;background:#f1e8d4;color:#2a2118;box-shadow:' + LIFT + '}.fdm.tx.js{background:#1a132b;color:#dccdff;box-shadow:0 0 0 1px rgba(176,140,255,.28),' + LIFT + '}' +
+    '#fd .fdm.tx pre{flex:0 1 auto;min-height:0;width:auto;height:auto;max-height:100%;margin:0;padding:0;border:0;border-radius:0;background:none;color:inherit;overflow:hidden;font:500 15px/1.5 ' + MONO + ';white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;tab-size:2;user-select:none;-webkit-user-select:none}' +
+    '#fd .fdm.tx.big pre{text-align:center;font-weight:700;line-height:1.2;overflow-wrap:normal;word-break:normal}#fd .fdm.tx.big.brk pre{overflow-wrap:anywhere}' +
+    '.fdm.tx.more pre{-webkit-mask-image:linear-gradient(#000 calc(100% - 72px),transparent);mask-image:linear-gradient(#000 calc(100% - 72px),transparent)}' +
+    // a notice (not opened here, can't be shown), a sound, a payment
+    '#fd .fdm.pn{box-sizing:border-box;max-width:min(calc(100% - 28px),520px);padding:26px 24px;border-radius:18px;border:1px solid rgba(255,255,255,.1);background:rgba(16,11,8,.78);box-shadow:' + LIFT + ';text-align:center}' +
+    '#fd .fdm .pvm{display:flex;flex-direction:column;align-items:center;gap:12px;height:auto!important;min-height:0;max-width:none;margin:0;padding:0;border:0;border-radius:0;background:none;font:500 13px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;color:#d8c9b3}' +
+    '#fd .fdm .pvm b{font:700 11.5px/1.3 ' + MONO + ';letter-spacing:.16em;color:#ffb04a}#fd .fdm .pvm a{display:inline-flex;align-items:center;height:36px;padding:0 16px;border-radius:18px;border:1px solid rgba(247,147,26,.45);background:rgba(247,147,26,.1);color:#ffd29a;text-decoration:none;font:700 11px/1 ' + MONO + ';letter-spacing:.08em}' +
+    '.fdm.au{display:grid;justify-items:center;gap:20px}.fdm.au svg{width:96px;height:56px;color:var(--k)}.fdm.au audio{display:block;width:min(72vw,400px);height:40px}' +
+    '.fdm.py{box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:18px;border:1px solid rgba(255,255,255,.09);background:rgba(14,10,7,.66);box-shadow:' + LIFT + '}#fd .fdm.py svg.pay{display:block;width:100%;height:100%;max-height:none;margin:0}' +
+    '.fdv{display:grid;gap:12px;text-align:center}.fdv b{font:700 clamp(20px,5.4vw,40px)/1 ' + MONO + ';letter-spacing:-.01em;color:#ffe2b0}.fdv span{font:600 12px/1 ' + MONO + ';letter-spacing:.16em;color:#9a8a72}' +
+    // the bar: house, where you are, the shelves, the block, GO
+    '#fdb{position:absolute;left:0;right:0;bottom:0;z-index:2;box-sizing:border-box;height:calc(var(--bh) + var(--sb));margin:0;padding:8px calc(12px + var(--sr)) calc(8px + var(--sb)) calc(12px + var(--sl));display:grid;grid-template-columns:40px 108px minmax(0,1fr) 108px 40px;grid-template-areas:"h q t b g";gap:8px;align-items:center;background:linear-gradient(rgba(10,8,6,.4),rgba(7,5,4,.82));border-top:1px solid rgba(255,255,255,.07);transition:transform .18s}' +
+    '#fdo{position:absolute;left:0;right:0;top:-1px;height:2px;pointer-events:none}#fdo i{display:block;height:100%;background:var(--k);box-shadow:0 0 12px var(--k);transform-origin:0 50%;transform:scaleX(0);transition:transform .4s ' + EASE + ',background-color .4s}' +
+    '#fdhs{grid-area:h}#fdq{grid-area:q}#fdtw{grid-area:t}#fdbl{grid-area:b}#fdg{grid-area:g}' +
+    '.fdk{box-sizing:border-box;height:40px;min-width:0;display:flex;align-items:center;justify-content:center;border-radius:20px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#f3ead8;letter-spacing:.04em;white-space:nowrap;font-variant-numeric:tabular-nums}' +
+    '#fdbl{gap:3px;padding:0 12px;cursor:text;transition:border-color .2s,box-shadow .2s}#fdbl:focus-within{border-color:rgba(247,147,26,.85);box-shadow:0 0 0 3px rgba(247,147,26,.16)}#fdbl span{color:#8a7c68}' +
+    '#fdi{flex:1;width:100%;min-width:0;height:100%;margin:0;padding:0;border:0;outline:0;background:none;color:#ffb04a;font:inherit;letter-spacing:.04em;text-align:center;font-variant-numeric:tabular-nums}#fdi::placeholder{color:#f3ead8;opacity:1}#fdi:focus::placeholder{color:#6d6152}' +
+    '#fdg{width:40px;height:40px;margin:0;padding:0;border-radius:20px;border:1px solid rgba(247,147,26,.55);background:rgba(247,147,26,.16);color:#ffd29a;font:inherit;letter-spacing:.06em;cursor:pointer;transition:background .2s,transform .15s}#fdg:hover{background:rgba(247,147,26,.3)}#fdg:active{transform:scale(.93)}' +
+    '#fdtw{display:flex;align-items:center;min-width:0;height:40px}#fdp,#fdx{flex:none;width:28px;height:100%;margin:0;padding:0;border:0;border-radius:14px;background:none;color:#b9aa93;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .2s,opacity .2s}#fdp svg,#fdx svg{width:18px;height:18px}#fdp:hover,#fdx:hover{color:#fff}#fdp:disabled,#fdx:disabled{opacity:.2;cursor:default}' +
+    '#fdr{position:relative;flex:1;min-width:0;height:100%;display:flex;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x;overscroll-behavior:contain;-webkit-mask-image:linear-gradient(90deg,transparent,#000 30px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent,#000 30px,#000 calc(100% - 30px),transparent)}#fdr::-webkit-scrollbar{display:none}#fdr::before,#fdr::after{content:"";flex:none;width:50%;height:1px}' +
+    '.fdch{flex:none;box-sizing:border-box;height:30px;margin:0;display:inline-flex;align-items:center;gap:7px;padding:0 12px;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);color:#a99a84;font:inherit;letter-spacing:.09em;white-space:nowrap;cursor:pointer;transition:color .25s,background .25s,border-color .25s,box-shadow .25s}' +
+    '.fdch i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--c)}.fdch small{font:600 10.5px/1 ' + MONO + ';letter-spacing:.02em;color:#7e715f;font-variant-numeric:tabular-nums}.fdch:hover{color:#f3ead8;border-color:rgba(255,255,255,.22)}' +
+    '.fdch.on{color:#fff;background:var(--c1);border-color:var(--c2);box-shadow:0 0 22px -6px var(--c)}.fdch.on small{color:rgba(255,255,255,.72)}' +
+    '#fd button:focus-visible,#fd a:focus-visible{outline:2px solid #ffb04a;outline-offset:2px}' +
+    // the facts of a card, and a word when something can't be done
+    '#fdf{position:absolute;left:50%;bottom:calc(var(--bh) + var(--sb) + 10px);z-index:3;box-sizing:border-box;width:min(560px,calc(100% - 20px - var(--sl) - var(--sr)));max-height:min(64%,540px);overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin;padding:10px 18px 16px;border-radius:20px;border:1px solid rgba(255,255,255,.1);background:rgba(15,11,8,.82);-webkit-backdrop-filter:blur(26px) saturate(1.4);backdrop-filter:blur(26px) saturate(1.4);box-shadow:0 30px 90px rgba(0,0,0,.7);transform:translate(-50%,calc(100% + 170px));visibility:hidden;transition:transform .36s ' + EASE + ',visibility 0s .36s;font:500 13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}#fdf.on{transform:translate(-50%,0);visibility:visible;transition:transform .36s ' + EASE + '}' +
+    '#fdf .r{display:flex;justify-content:space-between;align-items:baseline;gap:18px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07)}#fdf .r span{flex:none;font:600 10.5px/1.45 ' + MONO + ';letter-spacing:.14em;text-transform:uppercase;color:#9a8a72}#fdf .r b{font:600 12.5px/1.45 ' + MONO + ';color:#f3ead8;text-align:right;word-break:break-all;user-select:text;-webkit-user-select:text}' +
+    '#fdf .l{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px}#fdf .l a{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:17px;border:1px solid rgba(247,147,26,.45);background:rgba(247,147,26,.08);color:#ffd29a;text-decoration:none;font:700 11px/1 ' + MONO + ';letter-spacing:.06em;transition:background .2s}#fdf .l a:hover{background:rgba(247,147,26,.22)}' +
+    '#fdy{position:absolute;left:50%;bottom:calc(var(--bh) + var(--sb) + 14px);z-index:4;box-sizing:border-box;max-width:calc(100% - 28px);padding:11px 16px;border-radius:14px;border:1px solid rgba(247,147,26,.4);background:rgba(15,11,8,.94);color:#ffd29a;letter-spacing:.1em;line-height:1.6;text-align:center;opacity:0;transform:translate(-50%,10px);pointer-events:none;transition:opacity .25s,transform .25s}#fdy.on{opacity:1;transform:translate(-50%,0)}#fdy small{display:block;font:600 10.5px/1.6 ' + MONO + ';color:#9a8a72}' +
+    // the house button: in the bar while the feed is up, so the top of the screen is all picture
+    'body.feed #th{z-index:56;left:calc(12px + env(safe-area-inset-left,0px));top:auto;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:40px;height:40px;border-radius:20px}' +
+    // a narrow screen: the shelves get a row of their own
+    '@media (max-width:719px){#fd{--bh:98px}#fdb{grid-template-rows:34px 40px;grid-template-areas:"t t t t t" "h q . b g"}#fdtw{height:34px}.fdm.tx{padding:26px 22px;border-radius:10px}}@media (max-width:359px){#fdb{grid-template-columns:40px 90px minmax(0,1fr) 90px 40px;gap:6px}.fdk{letter-spacing:0}}' +
+    '@media (prefers-reduced-motion:reduce){#fds.mv .fdc,.fdm,#fda canvas,#fdf,#fdf.on,#fdo i{transition-duration:.01s}.fdsp{animation-duration:2.4s}}';
   document.head.appendChild(st);
+  const ARW = d => '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
   const box = document.createElement('div'); box.id = 'fd'; box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'The block as a feed: one thing at a time');
-  box.innerHTML = '<div id="fds"></div><div id="fdf" role="dialog" aria-label="facts"></div>' +
-    '<form id="fdb" autocomplete="off"><input id="fdi" inputmode="numeric" spellcheck="false" placeholder="block" aria-label="a block number"><button type="submit" id="fdg" aria-label="show this block">GO</button>' +
-    '<button type="button" id="fdp" aria-label="the shelf before">‹</button><div id="fdn" aria-live="polite"><b></b><small></small></div><button type="button" id="fdx" aria-label="the next shelf">›</button></form>';
+  box.innerHTML = '<div id="fda" aria-hidden="true"><canvas width="24" height="24"></canvas><canvas width="24" height="24"></canvas><i></i></div><div id="fds"></div><div id="fdf" role="dialog" aria-label="facts"></div><div id="fdy" role="status"></div>' +
+    '<form id="fdb" autocomplete="off"><div id="fdo" aria-hidden="true"><i></i></div><div id="fdhs"></div><div id="fdq" class="fdk" aria-live="polite" aria-label="where you are on this shelf"></div>' +
+    '<div id="fdtw"><button type="button" id="fdp" aria-label="the shelf before">' + ARW('M12.5 4.5 7 10l5.5 5.5') + '</button><div id="fdr" role="tablist" aria-label="the shelves of this block"></div><button type="button" id="fdx" aria-label="the next shelf">' + ARW('M7.5 4.5 13 10l-5.5 5.5') + '</button></div>' +
+    '<label id="fdbl" class="fdk"><span aria-hidden="true">#</span><input id="fdi" inputmode="numeric" enterkeyhint="go" spellcheck="false" placeholder="block" aria-label="a block number"></label><button type="submit" id="fdg" aria-label="show this block">GO</button></form>';
   document.body.appendChild(box);
-  const $s = box.querySelector('#fds'), $f = box.querySelector('#fdf'), $i = box.querySelector('#fdi'), $n = box.querySelector('#fdn');
-  const F = {on: false, h: -1, B: null, cats: [], c: 0, i: 0, ask: 0, el: null, url: [], frame: null};
-  const INS_SHELF = new Set(SECT.concat([ETCHP]));
+  const Q = s => box.querySelector(s), $a = [...box.querySelectorAll('#fda canvas')], $s = Q('#fds'), $f = Q('#fdf'), $y = Q('#fdy'), $b = Q('#fdb'), $i = Q('#fdi'), $q = Q('#fdq'), $r = Q('#fdr'), $o = Q('#fdo i'), $p = Q('#fdp'), $x = Q('#fdx');
+  const F = {on: false, h: -1, B: null, cats: [], c: 0, i: 0, ask: 0, W: 0, H: 0, cards: new Map(), cur: null, mv: null, pull: null, near: 0, ga: 0, gsig: ''};
+  const GAP = 16, INS_SHELF = new Set(SECT.concat([ETCHP])), bases = () => insBases('https://ordinals.com'), calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches, dpr = () => devicePixelRatio || 1;
+  const rgb = h => { h = String(h || '').trim(); let m = /^#([0-9a-f]{3})$/i.exec(h); if (m) h = '#' + m[1].replace(/./g, '$&$&'); m = /^#([0-9a-f]{6})$/i.exec(h); const n = m ? parseInt(m[1], 16) : 0xf7931a; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const rgba = (h, a) => 'rgba(' + rgb(h).join(',') + ',' + a + ')';
   // the shelves of a block, in the hall's order; an inscription shelf has a card for each inscription, the others one for each transaction
   function shelves(B) {
     const by = new Map();
@@ -11835,68 +11879,271 @@ const FEED = (() => {
       const txs = by.get(k); if (!txs) continue;
       const items = [];
       for (const t of txs) { if (INS_SHELF.has(k) && t.ordIds && t.ordIds.length) t.ordIds.forEach((id, j) => items.push({t, id, j, of: t.ordIds.length})); else items.push({t}); }
-      out.push({k, name: TYPES[k].name, css: TYPES[k].css, items});
+      out.push({k, name: TYPES[k].name, css: TYPES[k].css, items, at: 0, chip: null});
     }
     return out;
   }
-  const say = (a, b) => { $n.querySelector('b').textContent = a; $n.querySelector('small').textContent = b || ''; };
-  function bar() {
-    const C = F.cats[F.c];
-    box.querySelector('#fdp').disabled = F.c <= 0; box.querySelector('#fdx').disabled = F.c >= F.cats.length - 1;
-    if (!C) return say(F.B ? 'NOTHING HERE' : 'READING BLOCK ' + fmt(F.h) + '…', F.B ? 'block ' + fmt(F.h) : '');
-    $n.querySelector('b').style.color = C.css || '';
-    say(C.name.toUpperCase(), fmt(F.i + 1) + ' / ' + fmt(C.items.length));
+  const at = c => { const C = F.cats[c]; return C ? Math.max(0, Math.min(C.at || 0, C.items.length - 1)) : -1; };   // (each shelf keeps your place on it)
+
+  /* ---- fitting: every card whole on the screen, as big as it will go ---- */
+  // room left around a card: none on a phone held upright (edge to edge), a little on anything wider
+  function pads() { const W = F.W, H = F.H; if (W < 720 && H >= W) return [0, 0]; const p = Math.round(Math.max(10, Math.min(36, Math.min(W, H) * .035))); return [p, p]; }
+  function fit(K) {
+    const m = K.m; if (!m || !F.W) return;
+    const [px, py] = pads(), aw = Math.max(40, F.W - 2 * px), ah = Math.max(40, F.H - 2 * py), d = dpr();
+    if (K.shape === 'ratio') {   // a picture, a film, a payment: its own shape, scaled to fit both ways
+      const w = K.nw > 0 ? K.nw : 1, h = K.nh > 0 ? K.nh : 1, dot = v => Math.max(1 / d, Math.round(v * d) / d);
+      let s = Math.min(aw / w, ah / h, K.cap ? K.cap / w : Infinity), sharp = false;
+      if (K.px) { const q = Math.floor(s * d + 1e-6); sharp = q >= 1; if (q >= 1 && q < 8) s = q / d; }   // (a small pixel picture: each of its dots a whole number of screen dots, while that still shows)
+      if (K.img) K.img.classList.toggle('px', sharp);
+      m.style.width = Math.min(aw, dot(w * s)) + 'px'; m.style.height = Math.min(ah, dot(h * s)) + 'px';
+    } else if (K.shape === 'square') {   // a tile, a web page, a 3D model
+      const side = Math.floor(Math.min(aw, ah, K.cap || Infinity)); m.style.width = m.style.height = side + 'px';
+      if (K.word) paintTile(K, side);
+    } else if (K.shape === 'text') fitText(K);
   }
-  const free = () => { for (const u of F.url) URL.revokeObjectURL(u); F.url = []; };
-  // what a card shows: the thing itself, nothing more (facts are a tap away)
-  function body(it, now) {
-    const d = document.createElement('div'); d.className = 'fdc';
-    const wait = w => { const p = document.createElement('span'); p.className = 'fdw'; p.textContent = w; d.appendChild(p); return p; };
-    const t = it.t;
-    if (it.id) {
-      if (t.art && it.of === 1 && /^image\//.test(t.art.ct || '') && !t.art.mdl) {   // a picture already read from the block's own bytes: no download
-        const u = shownPic(t.art.bytes, t.art.ct); F.url.push(u); const im = new Image(); im.alt = ''; im.src = u; im.onload = () => im.classList.toggle('px', im.naturalWidth < 320);
-        d.appendChild(fgShow(im, it.id, {bytes: t.art.bytes, type: t.art.ct})); return d;
-      }
-      const w = wait('LOADING…');
-      insKind(it.id, insBases('https://ordinals.com')).then(K => {
-        if (!d.isConnected && !now) return; w.remove();
-        let el = null;
-        if (/^text\/html\b/.test(K.ct || '') || K.kind === 'model') {   // played in ordinals.com's preview, sealed, while on screen
-          if (window.FamilyGuard && FamilyGuard.strict && FamilyGuard.strict() && K.kind !== 'model') el = insClosedEl(K, it.id);
-          else { el = document.createElement('iframe'); el.setAttribute('sandbox', 'allow-scripts'); el.setAttribute('referrerpolicy', 'no-referrer'); el.title = 'inscription ' + it.id.slice(0, 10) + ', in ordinals.com’s preview'; el.dataset.src = (K.base || 'https://ordinals.com') + '/preview/' + it.id; if (d.classList.contains('cur')) el.src = el.dataset.src; }
-        } else if (K.kind === 'video') { el = insSafeEl(K, it.id); el.controls = false; el.muted = true; el.loop = true; el.autoplay = true; el.playsInline = true; el.preload = 'auto'; }
-        else el = insSafeEl(K, it.id) || insClosedEl(K, it.id);
-        d.appendChild(el);
-        if (el.tagName === 'PRE') { let n = 0; const chk = () => { const tx = el.textContent; if (/^reading its words/.test(tx) && n++ < 40) return setTimeout(chk, 150); el.classList.toggle('short', tx.length <= 60 && !tx.includes('\n')); }; chk(); }   // (a few words: big, in the middle)
-        if (d.classList.contains('cur') && el.tagName === 'VIDEO') el.play().catch(() => {});
-      });
-      return d;
+  // words: a few (a note: a square card, the words as big as fit without breaking one) or many (a page, faded at the foot when there is more)
+  function fitText(K) {
+    const pre = K.pre, m = K.m; if (!pre || !m || !F.W) return;
+    const tx = (pre.textContent || '').trim(), [px, py] = pads(), g = F.W < 720 ? 14 : 0, aw = Math.max(120, F.W - 2 * Math.max(px, g)), ah = Math.max(120, F.H - 2 * Math.max(py, g));
+    const note = tx.length <= 140 && tx.split('\n').length <= 5;
+    m.classList.toggle('big', note); m.classList.remove('more', 'brk');
+    if (note) {
+      const side = Math.floor(Math.min(aw, ah, 620)); m.style.width = m.style.height = side + 'px'; m.style.maxHeight = '';
+      const ok = v => { pre.style.fontSize = v + 'px'; return pre.scrollHeight <= pre.clientHeight + 1 && pre.scrollWidth <= pre.clientWidth + 1; };
+      let lo = 13, hi = Math.max(14, Math.floor(side * .22));
+      if (!ok(lo)) { m.classList.add('brk'); if (!ok(lo)) m.classList.add('more'); return; }   // (one word too long for the card even small: it may break)
+      if (ok(hi)) return;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (ok(mid)) lo = mid; else hi = mid; }
+      ok(lo);
+    } else {
+      m.style.width = Math.floor(Math.min(aw, 720)) + 'px'; m.style.height = ''; m.style.maxHeight = Math.floor(ah) + 'px';
+      pre.style.fontSize = (tx.length <= 600 ? 16 : tx.length <= 2400 ? 14.5 : 13.5) + 'px';
+      m.classList.toggle('more', pre.scrollHeight > pre.clientHeight + 1);
     }
-    if (t.word) { const c = paintWord(t.word, 512); d.appendChild(c); return d; }   // a token, a message, a file: its own tile, big
-    if (t.art && /^image\//.test(t.art.ct || '')) { const u = shownPic(t.art.bytes, t.art.ct); F.url.push(u); const im = new Image(); im.alt = ''; im.src = u; d.appendChild(fgShow(im, t.id || t, {bytes: t.art.bytes, type: t.art.ct})); return d; }
-    // a payment: its coins in and out, once the transaction has been read
-    const w = wait((t.value != null ? btc(t.value) : '') + (t.rate != null ? '  ·  ' + (+t.rate).toFixed(1) + ' sat/vB' : ''));
-    if (now) Promise.race([txInfo(t), new Promise(r => setTimeout(r, 8000))]).then(() => { const svg = vwPay(t); if (svg && d.isConnected) { w.remove(); d.insertAdjacentHTML('beforeend', svg); } }, () => {});
-    return d;
   }
-  // show the card at F.c / F.i, sliding in from where it came; the next two on the shelf are got ready
-  function show(from) {
-    if (F.frame) { F.frame.removeAttribute('src'); F.frame = null; }
-    const C = F.cats[F.c]; bar(); closeFacts();
-    const old = F.el; F.el = null;
-    if (old) { old.classList.remove('cur'); old.querySelectorAll('video,audio').forEach(v => { try { v.pause(); } catch (e) {} }); const away = {up: 'dn', dn: 'up', lf: 'rt', rt: 'lf'}[from] || 'up'; old.classList.add(away); setTimeout(() => old.remove(), 320); }
-    if (!C) return;
-    const it = C.items[F.i], d = body(it, true); d.classList.add('cur');
-    if (from) { d.classList.add('go', from); $s.appendChild(d); void d.offsetWidth; d.classList.remove('go', from); } else $s.appendChild(d);
-    F.el = d; d.querySelectorAll('iframe[data-src]').forEach(f => { f.src = f.dataset.src; F.frame = f; });
-    const v = d.querySelector('video'); if (v) v.play().catch(() => {});
-    for (const k of [1, 2]) { const nx = C.items[F.i + k]; if (nx && nx.id && !(nx.t.art && nx.of === 1)) insKind(nx.id, insBases('https://ordinals.com')).then(K => { if (K.kind === 'image' && K.url) { const im = new Image(); im.referrerPolicy = 'no-referrer'; im.src = K.url; } }); }
-    if (F.url.length > 12) { const keep = F.url.splice(-4); free(); F.url = keep; }
+  // a token's tile: its own drawing (the hall's painter paints on a shared sheet, so the feed keeps a copy), sharp at the size shown
+  function paintTile(K, side) {
+    const N = side * dpr() > 560 ? 1024 : 512; if (K.cv && K.cv.width === N) return;
+    if (!K.cv) { K.cv = document.createElement('canvas'); K.m.appendChild(K.cv); }
+    K.cv.width = K.cv.height = N;
+    try { K.cv.getContext('2d').drawImage(paintWord(K.word, N), 0, 0, N, N); } catch (e) {}
   }
-  function step(dy) { const C = F.cats[F.c]; if (!C) return; const i = F.i + dy; if (i < 0 || i >= C.items.length) return bump(dy > 0 ? 'up' : 'dn'); F.i = i; show(dy > 0 ? 'dn' : 'up'); }
-  function shelf(dx) { const c = F.c + dx; if (c < 0 || c >= F.cats.length) return; F.c = c; F.i = 0; show(dx > 0 ? 'rt' : 'lf'); }
-  function bump(dir) { if (!F.el) return; F.el.style.transform = 'translateY(' + (dir === 'up' ? -18 : 18) + 'px)'; setTimeout(() => { if (F.el) F.el.style.transform = ''; }, 160); }
+  // a picture's colours, very small: what the glow behind a card is made from
+  function small(src) {
+    try {
+      const w = src.naturalWidth || src.videoWidth || src.width, h = src.naturalHeight || src.videoHeight || src.height; if (!w || !h) return null;
+      const c = document.createElement('canvas'); c.width = c.height = 16; const s = Math.max(16 / w, 16 / h);
+      c.getContext('2d').drawImage(src, (16 - w * s) / 2, (16 - h * s) / 2, w * s, h * s); return c;
+    } catch (e) { return null; }
+  }
+  function glow() {   // the light behind: the card's own colours once its picture has passed the 18+ check, else its shelf's colour
+    const K = F.cur, C = F.cats[F.c], css = (C && C.css) || '#f7931a', sig = K && K.amb ? 'p' + F.h + ':' + K.key : 't' + css;
+    if (sig === F.gsig) return; F.gsig = sig;
+    const a = $a[F.ga ^= 1], b = $a[F.ga ^ 1], x = a.getContext('2d'); x.clearRect(0, 0, 24, 24);
+    if (K && K.amb) x.drawImage(K.amb, 0, 0, 24, 24);
+    else { const g = x.createRadialGradient(12, 11, 0, 12, 12, 16); g.addColorStop(0, rgba(css, .5)); g.addColorStop(.6, rgba(css, .16)); g.addColorStop(1, rgba(css, 0)); x.fillStyle = g; x.fillRect(0, 0, 24, 24); }
+    a.classList.add('on'); b.classList.remove('on');
+  }
+  function ambient(K, im, key) {
+    const G = window.FamilyGuard, draw = () => { if (K.dead) return; K.amb = small(im); if (K.amb && F.cur === K) glow(); };
+    if (!G) return draw();
+    if (G.strict() || !G.hurry(key, true)) return;   // (Family mode: pictures wait to be chosen, so no glow of them either)
+    G.check(null, key).then(v => { if (v === 'ok' && !G.strict()) draw(); }, () => {});
+  }
+
+  /* ---- a card: the thing itself, nothing more (its facts are a tap away) ---- */
+  const ring = () => { const r = document.createElement('i'); r.className = 'fdsp'; return r; };
+  const ready = K => { if (K.ring) { K.ring.remove(); K.ring = null; } if (K.m) K.m.classList.add('in'); };
+  function frame(K, shape, cls) { const m = document.createElement('div'); m.className = 'fdm ' + cls; K.el.appendChild(m); K.m = m; K.shape = shape; return m; }
+  function pic(K, url, key, src, own) {
+    const m = frame(K, 'ratio', 'pi'), im = new Image(); im.alt = ''; im.draggable = false; im.decoding = 'async'; if (own) K.urls.push(url); else im.referrerPolicy = 'no-referrer';
+    K.img = im;
+    im.addEventListener('load', () => {
+      if (K.dead) return;
+      if (!K.sized) { K.sized = true; K.nw = im.naturalWidth || 0; K.nh = im.naturalHeight || 0; K.px = K.nw > 0 && K.nw < 320; ambient(K, im, key); }   // (a picture with no size of its own, as some SVGs: a square)
+      fit(K); ready(K);
+    });
+    im.addEventListener('error', () => { if (K.dead) return; K.shape = 'panel'; K.img = null; m.style.width = m.style.height = ''; m.classList.remove('pi'); m.classList.add('pn'); ready(K); });   // (the hall's own "can't show this picture" note takes its place)
+    picFail(im, key, src); im.src = url; m.appendChild(fgShow(im, key, src));
+  }
+  function tile(K, w) { K.word = w; K.cap = 1536 / dpr(); frame(K, 'square', 'ti'); fit(K); K.amb = K.cv ? small(K.cv) : null; ready(K); }
+  function film(K, v) {
+    if (!v) return panel(K, insClosedEl({ct: K.ct}, K.it.id));
+    frame(K, 'ratio', 'pi'); v.controls = false; v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata'; K.vid = v;
+    v.addEventListener('loadedmetadata', () => { if (K.dead) return; K.nw = v.videoWidth || 16; K.nh = v.videoHeight || 9; fit(K); ready(K); if (K.live) v.play().catch(() => {}); });
+    v.addEventListener('error', () => {
+      if (K.dead || K.nw) return; K.vid = null; K.shape = 'panel'; K.m.classList.remove('pi'); K.m.classList.add('pn');
+      const d = document.createElement('div'), b = document.createElement('b'), w = document.createElement('span'), a = document.createElement('a'); d.className = 'pvm pvx';
+      b.textContent = 'CAN’T PLAY THIS FILM HERE'; w.textContent = 'This browser cannot play this film. Its own page:'; a.textContent = 'open it there ↗'; a.href = 'https://ordinals.com/inscription/' + K.it.id; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      d.append(b, w, a); if (v._fgNote) { v._fgNote.remove(); v._fgNote = null; } v.replaceWith(d); ready(K);
+    });
+    K.m.appendChild(v);
+  }
+  function sound(K, a) {
+    if (!a) return panel(K, insClosedEl({ct: K.ct}, K.it.id));
+    const m = frame(K, 'panel', 'pn au');
+    m.innerHTML = '<svg viewBox="0 0 96 56" fill="currentColor" aria-hidden="true">' + [14, 30, 46, 24, 52, 36, 18, 44, 28, 12].map((h, k) => '<rect x="' + (4 + k * 9.2) + '" y="' + (28 - h / 2) + '" width="5" height="' + h + '" rx="2.5" opacity="' + (.45 + (h / 52) * .55).toFixed(2) + '"/>').join('') + '</svg>';
+    a.preload = 'none'; m.appendChild(a); ready(K);
+  }
+  function words(K, pre, js) {
+    if (!pre) return panel(K, insClosedEl({ct: K.ct}, K.it.id));
+    frame(K, 'text', 'tx' + (js ? ' js' : '')).appendChild(pre); K.pre = pre;
+    const wait = () => /^reading its words/.test(pre.textContent || ''), done = () => { if (K.dead) return; fitText(K); ready(K); };
+    if (!wait()) return done();
+    K.mo = new MutationObserver(() => { if (wait()) return; K.mo.disconnect(); K.mo = null; done(); }); K.mo.observe(pre, {childList: true, characterData: true, subtree: true});
+  }
+  function panel(K, node) { frame(K, 'panel', 'pn').appendChild(node); ready(K); }
+  // a payment: how much moved, then its coins in and out once the transaction has been read (only asked for while it is on screen)
+  function pay(K) {
+    const t = K.it.t, n = innerWidth < 640, m = frame(K, 'ratio', 'py'); K.nw = n ? 420 : 640; K.nh = n ? 340 : 300; K.cap = 900; K.pay = 1;
+    m.innerHTML = '<div class="fdv"><b>' + vwEsc(t.value != null ? btc(t.value) : '') + '</b><span>' + vwEsc(t.rate != null ? (+t.rate).toFixed(1) + ' sat/vB' : '') + '</span></div>';
+    fit(K); ready(K);
+  }
+  function payLoad(K) {
+    if (K.pay !== 1) return; K.pay = 2; const t = K.it.t;
+    Promise.race([txInfo(t), new Promise(r => setTimeout(r, 9000))]).then(() => {
+      if (K.dead) return; const svg = vwPay(t); if (!svg) { K.pay = 1; return; }
+      K.m.innerHTML = svg; const e = K.m.firstElementChild, vb = e && e.viewBox && e.viewBox.baseVal; if (vb && vb.width > 0 && vb.height > 0) { K.nw = vb.width; K.nh = vb.height; } fit(K);
+    }, () => { K.pay = 1; });
+  }
+  // an inscription to be fetched: what it is decides how it is shown (asked of ordinals.com first, as in the hall)
+  function kind(K, Kd) {
+    const id = K.it.id, ct = K.ct = Kd.ct || '', G = window.FamilyGuard;
+    if (/^text\/html\b/.test(ct) || Kd.kind === 'model') {   // played in ordinals.com's preview, sealed, and only while on screen
+      if (Kd.kind !== 'model' && G && G.strict()) return panel(K, insClosedEl(Kd, id));
+      frame(K, 'square', 'fr'); K.src = (Kd.base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (K.live) play(K); return;
+    }
+    if (Kd.kind === 'image' && Kd.url) return pic(K, Kd.url, id, Kd.url, false);
+    if (Kd.kind === 'video') return film(K, insSafeEl(Kd, id));
+    if (Kd.kind === 'audio') return sound(K, insSafeEl(Kd, id));
+    if (Kd.kind === 'text') return words(K, insSafeEl(Kd, id), /json/.test(ct));
+    panel(K, insClosedEl(Kd, id));
+  }
+  function build(K) {
+    const it = K.it, t = it.t, img = a => !!a && /^image\//.test(a.ct || '') && !a.mdl, own = key => pic(K, shownPic(t.art.bytes, t.art.ct), key, {bytes: t.art.bytes, type: t.art.ct}, true);
+    K.ring = ring(); K.el.appendChild(K.ring);
+    if (it.id) {
+      if (it.of === 1 && t.word && t.word.k === 'bitmap' && !t.art) return tile(K, t.word);   // a bitmap: its tile, as on its shelf in the hall
+      if (it.of === 1 && img(t.art)) return own(it.id);   // a picture already read from the block's own bytes: no download
+      insKind(it.id, bases()).then(Kd => { if (!K.dead) kind(K, Kd); });
+      return;
+    }
+    if (artPic(t) && img(t.art)) return own(t.id || t);   // (as in the hall: a parcel that shows its picture)
+    if (t.word) return tile(K, t.word);   // a token, a message, a file: its own tile, big
+    if (img(t.art)) return own(t.id || t);
+    pay(K);
+  }
+  function mk(c, i) {   // the card for item i of shelf c: made once, kept while it is on screen or next to it
+    const key = c + ':' + i, had = F.cards.get(key); if (had) return had;
+    const C = F.cats[c], it = C && C.items[i]; if (!it) return null;
+    const el = document.createElement('div'); el.className = 'fdc'; el.style.visibility = 'hidden';
+    const K = {key, c, i, it, el, m: null, shape: '', nw: 0, nh: 0, px: false, cap: 0, urls: [], amb: null, live: false, dead: false};
+    F.cards.set(key, K); $s.appendChild(el); build(K); return K;
+  }
+  // what only happens on screen: a web page or a 3D model starts (in ordinals.com's sealed preview), a film plays, a payment is read
+  function play(K) {
+    if (K.src && !K.frame && K.m) { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = K.title; const r = ring(); f.addEventListener('load', () => r.remove()); f.src = K.src; K.m.append(f, r); K.frame = f; K.fring = r; }
+    if (K.vid) K.vid.play().catch(() => {});
+    if (K.pay === 1) setTimeout(() => { if (F.cur === K && !K.dead) payLoad(K); }, 260);
+  }
+  function stop(K) {
+    if (K.frame) { K.frame.remove(); K.frame = null; if (K.fring) { K.fring.remove(); K.fring = null; } }
+    K.el.querySelectorAll('video,audio').forEach(v => { try { v.pause(); } catch (e) {} });
+  }
+  function kill(K) { K.dead = true; K.live = false; stop(K); if (K.mo) K.mo.disconnect(); K.el.remove(); for (const u of K.urls) { try { URL.revokeObjectURL(u); } catch (e) {} } F.cards.delete(K.key); if (F.cur === K) F.cur = null; }
+  function wipe() { clearTimeout(F.near); if (F.mv) { clearTimeout(F.mv.timer); F.mv = null; } $s.classList.remove('mv'); F.pull = null; for (const K of [...F.cards.values()]) kill(K); F.cur = null; F.gsig = ''; }
+
+  /* ---- moving: the card on screen, and the one above, below, left and right of it ---- */
+  // where a card stands next to the one on screen: [0, 0] it, [0, 1] the next on the shelf, [1, 0] the next shelf's
+  function slot(K) {
+    if (K.c === F.c) { const d = K.i - F.i; return d === 0 ? [0, 0] : d === 1 ? [0, 1] : d === -1 ? [0, -1] : null; }
+    if (K.c === F.c + 1 && K.i === at(K.c)) return [1, 0];
+    if (K.c === F.c - 1 && K.i === at(K.c)) return [-1, 0];
+    return null;
+  }
+  const T = (x, y) => 'translate3d(' + x + 'px,' + y + 'px,0)';
+  function layout(ox, oy) {   // every card to its place (ox, oy: how far a finger has pulled them)
+    const X = F.W + GAP, Y = F.H + GAP, mv = F.mv;
+    for (const K of F.cards.values()) {
+      let s = slot(K);
+      if (mv && mv.from) { if (K === mv.from) s = [-mv.sx, -mv.sy]; else if (s && s[0] === -mv.sx && s[1] === -mv.sy) s = null; }   // (the card leaving goes out the far side)
+      const e = K.el;
+      if (!s) { e.style.visibility = 'hidden'; continue; }
+      const t = T(s[0] * X + (ox || 0), s[1] * Y + (oy || 0));
+      if (e.style.visibility === 'hidden') { e.style.transition = 'none'; e.style.transform = t; e.style.visibility = ''; void e.offsetWidth; e.style.transition = ''; }   // (a card just brought in stands in its place at once: it does not fly there)
+      else e.style.transform = t;
+    }
+  }
+  function settle() {   // a move is over: only the card on screen runs, and its neighbours are got ready
+    for (const K of [...F.cards.values()]) { if (K === F.cur) continue; if (!slot(K)) kill(K); else if (K.live) { K.live = false; stop(K); } }
+    layout(0, 0);
+    const K = F.cur; if (K && !K.live) { K.live = true; play(K); }
+    clearTimeout(F.near); F.near = setTimeout(nearby, 140);
+  }
+  function finish() { const mv = F.mv; if (!mv) return; clearTimeout(mv.timer); F.mv = null; $s.classList.remove('mv'); settle(); }
+  function nearby() {
+    clearTimeout(F.near); if (!F.on || !F.cur) return;
+    for (const [c, i] of [[F.c, F.i + 1], [F.c, F.i - 1], [F.c + 1, at(F.c + 1)], [F.c - 1, at(F.c - 1)]]) if (F.cats[c] && i >= 0 && i < F.cats[c].items.length) mk(c, i);
+    if (!F.mv) { const o = F.pull || [0, 0]; layout(o[0], o[1]); }
+    const C = F.cats[F.c], nx = C && C.items[F.i + 2];   // (one further down the shelf: its picture is asked for, so it is there in time)
+    if (nx && nx.id && !(nx.t.art && nx.of === 1)) insKind(nx.id, bases()).then(Kd => { if (Kd.kind === 'image' && Kd.url) { const im = new Image(); im.referrerPolicy = 'no-referrer'; im.src = Kd.url; } });
+  }
+  // to card i of shelf c, which comes in from (sx, sy): 0, 1 from below; 1, 0 from the right
+  function move(c, i, sx, sy) {
+    const C = F.cats[c]; if (!C || !C.items[i]) return false;
+    finish();
+    const from = F.cur, to = mk(c, i); if (!to || to === from) return false;
+    const X = F.W + GAP, Y = F.H + GAP, o = F.pull || [0, 0]; F.pull = null;
+    for (const K of F.cards.values()) if (K !== to && K !== from) { const s = slot(K); if (s && s[0] === sx && s[1] === sy) K.el.style.visibility = 'hidden'; }   // (a jump: the card that stood where the new one comes from steps aside)
+    to.el.style.transition = 'none'; to.el.style.transform = T(sx * X + o[0], sy * Y + o[1]); to.el.style.visibility = ''; void to.el.offsetWidth; to.el.style.transition = '';
+    F.c = c; F.i = i; C.at = i; F.cur = to; F.mv = {from, sx, sy, timer: 0};
+    $s.classList.add('mv'); layout(0, 0); F.mv.timer = setTimeout(finish, calm() ? 40 : 440);
+    closeFacts(); bar(); glow();
+    return true;
+  }
+  function back() { F.pull = null; if (!F.cur || F.mv) return; $s.classList.add('mv'); layout(0, 0); F.mv = {from: null, sx: 0, sy: 0, timer: setTimeout(finish, calm() ? 40 : 440)}; }   // (let go too soon, or nothing that way: the card springs back)
+  function nudge(sx, sy) {   // the end of a shelf, or of the shelves: a small push and back
+    if (F.mv || !F.cur) return; $s.classList.add('mv'); layout(-sx * 24, -sy * 24);
+    const mv = F.mv = {from: null, sx: 0, sy: 0, timer: setTimeout(() => { if (F.mv !== mv) return; layout(0, 0); mv.timer = setTimeout(finish, 420); }, 140)};
+  }
+  const step = (d, quiet) => { const C = F.cats[F.c]; if (!C) return false; const i = F.i + d; if (i < 0 || i >= C.items.length) { if (!quiet) nudge(0, d); return false; } return move(F.c, i, 0, d > 0 ? 1 : -1); };
+  const shelf = (d, quiet) => { const c = F.c + d; if (c < 0 || c >= F.cats.length) { if (!quiet) nudge(d, 0); return false; } return move(c, at(c), d > 0 ? 1 : -1, 0); };
+  // straight to a card: shelf c (or the one on screen), card i (or where you were on that shelf)
+  function jump(c, i) {
+    if (c == null) c = F.c; const C = F.cats[c]; if (!C) return false;
+    i = i == null ? at(c) : Math.max(0, Math.min(C.items.length - 1, Math.round(i) || 0));
+    if (c === F.c && i === F.i) return false;
+    return c === F.c ? move(c, i, 0, i > F.i ? 1 : -1) : move(c, i, c > F.c ? 1 : -1, 0);
+  }
+
+  /* ---- the bar ---- */
+  function chips() {
+    $r.textContent = '';
+    F.cats.forEach((C, c) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'fdch'; b.setAttribute('role', 'tab'); b.setAttribute('aria-label', C.name + ': ' + fmt(C.items.length));
+      b.style.setProperty('--c', C.css || '#f7931a'); b.style.setProperty('--c1', rgba(C.css, .16)); b.style.setProperty('--c2', rgba(C.css, .75));
+      b.innerHTML = '<i></i>' + vwEsc(C.name.toUpperCase()) + '<small>' + fmt(C.items.length) + '</small>';
+      b.onclick = () => { if (c === F.c) jump(c, 0); else jump(c); };   // (the shelf you are on: back to its first card)
+      $r.appendChild(b); C.chip = b;
+    });
+  }
+  function centre(b, now) { const x = b.offsetLeft - ($r.clientWidth - b.offsetWidth) / 2; try { $r.scrollTo({left: x, behavior: now || calm() ? 'auto' : 'smooth'}); } catch (e) { $r.scrollLeft = x; } }
+  function bar(now) {
+    const C = F.cats[F.c], n = F.cats.length;
+    $p.disabled = !C || F.c <= 0; $x.disabled = !C || F.c >= n - 1;
+    F.cats.forEach((S, c) => { if (S.chip) { S.chip.classList.toggle('on', c === F.c); S.chip.setAttribute('aria-selected', c === F.c ? 'true' : 'false'); } });
+    $q.textContent = C ? fmt(F.i + 1) + ' / ' + fmt(C.items.length) : '';
+    box.style.setProperty('--k', (C && C.css) || '#f7931a');
+    $o.style.transform = 'scaleX(' + (C ? (F.i + 1) / C.items.length : 0) + ')';
+    if (C && C.chip) centre(C.chip, now);
+  }
+  let sayT = 0;
+  function say(a, b) { $y.innerHTML = vwEsc(a) + (b ? '<small>' + vwEsc(b) + '</small>' : ''); $y.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => $y.classList.remove('on'), 3400); }
+  function status(a, b, spin) {
+    $s.querySelectorAll('.fdz').forEach(n => n.remove()); if (!a) return;
+    const d = document.createElement('div'); d.className = 'fdz'; d.innerHTML = (spin ? '<i class="fdsp"></i>' : '') + '<div class="fdw">' + vwEsc(a) + (b ? '<small>' + vwEsc(b) + '</small>' : '') + '</div>'; $s.appendChild(d);
+  }
   // the facts of the card on screen
   function facts() {
     const C = F.cats[F.c]; if (!C) return; const it = C.items[F.i], t = it.t, E = vwEsc;
@@ -11911,65 +12158,118 @@ const FEED = (() => {
     if (it.id) { L.push(['ORDINALS.COM ↗', 'https://ordinals.com/inscription/' + it.id], ['PROVENANCE CHECK ↗', 'provenance-check.html?id=' + it.id]); }
     L.push(['BLOCK MANIFEST ↗', 'block-manifest.html?block=' + F.h]);
     $f.innerHTML = rows.map(([a, b]) => '<div class="r"><span>' + E(a) + '</span><b>' + E(b) + '</b></div>').join('') + '<div class="l">' + L.map(([a, u]) => '<a href="' + E(u) + '" target="_blank" rel="noopener noreferrer">' + E(a) + '</a>').join('') + '</div>';
-    $f.classList.add('on');
+    $f.scrollTop = 0; $f.classList.add('on');
   }
   function closeFacts() { $f.classList.remove('on'); }
-  // a block: read once (the hall's own reader, so the same shelves), then its first shelf
+  const factsOn = () => $f.classList.contains('on');
+
+  /* ---- a block: read once (the hall's own reader, so the same shelves), then its first shelf ---- */
+  function size() {
+    const W = $s.clientWidth, H = $s.clientHeight; if (!W || !H || (W === F.W && H === F.H)) return;
+    F.W = W; F.H = H; finish(); for (const K of F.cards.values()) fit(K); layout(0, 0);
+    const C = F.cats[F.c]; if (C && C.chip) centre(C.chip, true);
+  }
   async function load(h) {
     h = Math.max(0, Math.min(tipH, Math.round(h))); if (!(h >= 0)) return;
-    const my = ++F.ask; F.h = h; F.B = null; F.cats = []; F.c = 0; F.i = 0; $i.value = ''; $i.placeholder = String(h); free();
-    if (F.el) { F.el.remove(); F.el = null; } $s.innerHTML = ''; bar();
-    const w = document.createElement('div'); w.className = 'fdc'; w.innerHTML = '<span class="fdw">READING BLOCK ' + fmt(h) + '…</span>'; $s.appendChild(w);
+    const my = ++F.ask; wipe(); closeFacts(); F.h = h; F.B = null; F.cats = []; F.c = 0; F.i = 0; $i.value = ''; $i.placeholder = fmt(h); chips(); bar(true); glow();
+    status('READING BLOCK ' + fmt(h), '', true);
     let B = null; try { B = await rmLoad(h); } catch (e) {}
-    if (my !== F.ask || !F.on) return; w.remove();
-    if (!B) { say('BLOCK ' + fmt(h) + ' COULD NOT BE READ', 'try again in a moment'); return; }
-    F.B = B; F.cats = shelves(B); show();
+    if (my !== F.ask || !F.on) return;
+    if (!B) return status('BLOCK ' + fmt(h) + ' COULD NOT BE READ', 'try again in a moment');
+    status(''); F.B = B; F.cats = shelves(B); chips();
+    if (!F.cats.length) { bar(true); return status('NOTHING TO SHOW IN BLOCK ' + fmt(h)); }
+    F.cur = mk(0, 0); bar(true); glow(); settle();
   }
   function open(h) {
     if (F.on) return; F.on = true; window.__feedOn = true; document.body.classList.add('feed'); $th.classList.add('on'); thSay();
     if (document.pointerLockElement) document.exitPointerLock();
+    F.W = F.H = 0; size();
     load(h != null && h >= 0 ? h : mode === 'block' && want >= 0 ? want : tipH);
   }
   function close() {
-    if (!F.on) return; F.on = false; window.__feedOn = false; F.ask++; closeFacts();
-    if (F.frame) { F.frame.removeAttribute('src'); F.frame = null; }
-    $s.innerHTML = ''; F.el = null; free(); document.body.classList.remove('feed'); $th.classList.remove('on'); thSay();
+    if (!F.on) return; F.on = false; window.__feedOn = false; F.ask++; closeFacts(); wipe(); status(''); $i.blur(); $y.classList.remove('on'); $b.style.transform = '';
+    document.body.classList.remove('feed'); $th.classList.remove('on'); thSay();
+    if (paused && !document.hidden) { paused = false; lastFT = 0; requestAnimationFrame(frame); }   // (the cube rested while the feed was up)
     if (F.h >= 0) go(F.h);
   }
-  // touch and mouse: a swipe up or down for the next thing, left or right for the next shelf; a tap for the facts
-  let p0 = null;
+  if (window.ResizeObserver) new ResizeObserver(() => { if (F.on) size(); }).observe($s); else addEventListener('resize', () => { if (F.on) size(); });
+
+  /* ---- touch and mouse: the card follows the finger; let go far or fast enough and the next one takes its place; a tap for the facts ---- */
+  let P = null;
+  const rub = (d, n) => Math.sign(d) * n * .3 * (1 - 1 / (Math.abs(d) / (n * .45) + 1));   // (nothing that way: it gives a little, like rubber)
+  function pull(ox, oy) {
+    const C = F.cats[F.c]; if (!C) return;
+    if (oy && !(oy < 0 ? F.i < C.items.length - 1 : F.i > 0)) oy = rub(oy, F.H);
+    if (ox && !(ox < 0 ? F.c < F.cats.length - 1 : F.c > 0)) ox = rub(ox, F.W);
+    F.pull = [ox, oy]; layout(ox, oy);
+  }
   $s.addEventListener('dragstart', e => e.preventDefault());   // (a picture is never dragged away: the swipe is the feed's)
-  $s.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('audio,.pvm a')) { p0 = null; return; }   // (a sound's player and a card's links take their own taps)
-    p0 = {x: e.clientX, y: e.clientY, t: performance.now()}; try { $s.setPointerCapture(e.pointerId); } catch (x) {} });
-  $s.addEventListener('pointermove', e => { if (!p0 || !F.el) return; const dx = e.clientX - p0.x, dy = e.clientY - p0.y; F.el.classList.add('go'); F.el.style.transform = Math.abs(dy) > Math.abs(dx) ? 'translateY(' + dy * .6 + 'px)' : 'translateX(' + dx * .6 + 'px)'; });
-  const up = e => {
-    if (!p0) return; const dx = e.clientX - p0.x, dy = e.clientY - p0.y, q = p0; p0 = null;
-    if (F.el) { F.el.classList.remove('go'); F.el.style.transform = ''; }
-    if (e.type !== 'pointerup') return;
-    if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && performance.now() - q.t < 400) return $f.classList.contains('on') ? closeFacts() : facts();
-    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 40) step(dy < 0 ? 1 : -1);
-    else if (Math.abs(dx) > 40) shelf(dx < 0 ? 1 : -1);
+  $s.addEventListener('pointerdown', e => {
+    if (P || e.button > 0 || (e.target.closest && e.target.closest('.fg-note,audio,a,button'))) return;   // (a warning's button, a sound's player and a card's links take their own taps)
+    finish(); const t = performance.now();
+    P = {id: e.pointerId, x: e.clientX, y: e.clientY, t, ax: 0, lx: e.clientX, ly: e.clientY, lt: t, vx: 0, vy: 0};
+    try { $s.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  $s.addEventListener('pointermove', e => {
+    if (!P || e.pointerId !== P.id) return;
+    const dx = e.clientX - P.x, dy = e.clientY - P.y, t = performance.now(), dt = t - P.lt;
+    if (dt > 0) { const k = Math.min(1, dt / 50); P.vx += ((e.clientX - P.lx) / dt - P.vx) * k; P.vy += ((e.clientY - P.ly) / dt - P.vy) * k; P.lx = e.clientX; P.ly = e.clientY; P.lt = t; }
+    if (!P.ax) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; P.ax = Math.abs(dy) >= Math.abs(dx) ? 2 : 1; nearby(); closeFacts(); }   // (up and down, or left and right: whichever the finger set off along)
+    pull(P.ax === 1 ? dx : 0, P.ax === 2 ? dy : 0);
+  });
+  const lift = e => {
+    if (!P || e.pointerId !== P.id) return; const q = P; P = null;
+    try { $s.releasePointerCapture(e.pointerId); } catch (x) {}
+    if (e.type !== 'pointerup') return back();
+    if (!q.ax) { F.pull = null; if (performance.now() - q.t < 500) { if (factsOn()) closeFacts(); else facts(); } return; }
+    if (performance.now() - q.lt > 90) q.vx = q.vy = 0;   // (held still before letting go: no flick)
+    const d = q.ax === 2 ? e.clientY - q.y : e.clientX - q.x, v = q.ax === 2 ? q.vy : q.vx, n = q.ax === 2 ? F.H : F.W;
+    const fast = Math.abs(v) > .35 && Math.abs(d) > 14, goes = fast ? Math.sign(v) === Math.sign(d) : Math.abs(d) > n * .22;
+    if (!(goes && (q.ax === 2 ? step(d < 0 ? 1 : -1, true) : shelf(d < 0 ? 1 : -1, true)))) back();
   };
-  $s.addEventListener('pointerup', up); $s.addEventListener('pointercancel', up);
-  let wheelAt = 0;
-  $s.addEventListener('wheel', e => { e.preventDefault(); const t = performance.now(); if (t - wheelAt < 350) return; const ax = Math.abs(e.deltaX) > Math.abs(e.deltaY); if (Math.abs(ax ? e.deltaX : e.deltaY) < 12) return; wheelAt = t; if (ax) shelf(e.deltaX > 0 ? 1 : -1); else step(e.deltaY > 0 ? 1 : -1); }, {passive: false});
-  box.querySelector('#fdp').onclick = () => shelf(-1); box.querySelector('#fdx').onclick = () => shelf(1);
-  box.querySelector('#fdb').addEventListener('submit', e => { e.preventDefault(); $i.blur(); const v = parseInt(String($i.value).replace(/[^0-9]/g, ''), 10); if (!(v >= 0)) return; if (v > tipH) { say('BLOCK ' + fmt(v) + ' IS NOT MINED YET', 'the newest is ' + fmt(tipH)); return; } load(v); });
+  $s.addEventListener('pointerup', lift); $s.addEventListener('pointercancel', lift);
+  // the wheel, or two fingers on a trackpad: one card for each push (the long tail a trackpad sends after a flick is not a second push)
+  let wAt = 0, wMag = 0, wSum = 0, wHold = 0, wTail = false;
+  $s.addEventListener('wheel', e => {
+    if (e.ctrlKey) return; e.preventDefault();
+    const side = Math.abs(e.deltaX) > Math.abs(e.deltaY), d = (side ? e.deltaX : e.deltaY) * (e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? 400 : 1), mag = Math.abs(d), t = performance.now(), gap = t - wAt;
+    if (gap > 160) { wSum = 0; wTail = false; } else if (wTail && t >= wHold && (mag > wMag * 1.5 + 4 || (mag >= 60 && t - wHold > 130))) wTail = false;
+    wAt = t; wMag = mag;
+    if (wTail || t < wHold) return;
+    wSum += d; if (Math.abs(wSum) < 40) return;
+    const dir = wSum > 0 ? 1 : -1; wSum = 0; wTail = true; wHold = t + 320;
+    if (side) shelf(dir); else step(dir);
+  }, {passive: false});
+  $r.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { $r.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 32 : 1); e.preventDefault(); } }, {passive: false});   // (a mouse wheel over the shelves slides them along)
+  $p.onclick = () => shelf(-1); $x.onclick = () => shelf(1);
+  $b.addEventListener('submit', e => {
+    e.preventDefault(); const v = parseInt(String($i.value).replace(/[^0-9]/g, ''), 10); $i.blur(); if (!(v >= 0)) return;
+    if (v > tipH) { $i.value = ''; return say('BLOCK ' + fmt(v) + ' IS NOT MINED YET', 'the newest is ' + fmt(tipH)); }
+    load(v);
+  });
   $i.addEventListener('keydown', e => e.stopPropagation());
-  // keys: up and down, left and right; Esc closes the facts, then the feed
+  // a phone's keyboard: the bar rides up above it while a block number is typed
+  const vv = window.visualViewport, ride = () => { const up = vv && F.on && document.activeElement === $i ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0; $b.style.transform = up > 60 ? 'translateY(' + -Math.round(up) + 'px)' : ''; };
+  if (vv) { vv.addEventListener('resize', ride); vv.addEventListener('scroll', ride); } $i.addEventListener('focus', () => setTimeout(ride, 80)); $i.addEventListener('blur', ride);
+  // keys: up and down, left and right; Home and End for the ends of a shelf; Enter or Space for the facts; Esc closes the facts, then the feed
   addEventListener('keydown', e => {
-    if (!F.on || e.target === $i) return;
-    const k = e.key;
-    if (k === 'ArrowDown') step(1); else if (k === 'ArrowUp') step(-1);
+    if (!F.on) return;
+    if (e.target === $i) { if (e.key === 'Escape') { $i.value = ''; $i.blur(); e.preventDefault(); e.stopImmediatePropagation(); } return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key, C = F.cats[F.c], onBtn = !!(e.target && e.target.closest && e.target.closest('button,a,audio,input,select,textarea'));
+    if (k === 'ArrowDown' || k === 'PageDown') step(1); else if (k === 'ArrowUp' || k === 'PageUp') step(-1);
     else if (k === 'ArrowRight') shelf(1); else if (k === 'ArrowLeft') shelf(-1);
-    else if (k === 'Enter' || k === ' ') { $f.classList.contains('on') ? closeFacts() : facts(); }
-    else if (k === 'Escape') { if ($f.classList.contains('on')) closeFacts(); else close(); }
-    else return;
+    else if (k === 'Home') { if (C) jump(F.c, 0); } else if (k === 'End') { if (C) jump(F.c, C.items.length - 1); }
+    else if ((k === 'Enter' || k === ' ') && !onBtn) { if (factsOn()) closeFacts(); else facts(); }
+    else if (k === 'Escape') { if (factsOn()) closeFacts(); else close(); }
+    else { if (k.length === 1 && !onBtn) e.stopImmediatePropagation(); return; }   // (the cube's own letter keys rest while the feed is up)
     e.preventDefault(); e.stopImmediatePropagation();
   }, true);
-  return {open, close, on: () => F.on, load, step, shelf, facts,
-    state: () => { const C = F.cats[F.c], it = C && C.items[F.i]; return {open: F.on, block: F.h, shelves: F.cats.map(c => ({name: c.name, count: c.items.length})), shelf: C ? C.name : null, at: C ? F.i + 1 : 0, of: C ? C.items.length : 0,
-      card: it ? {parcel: it.t.idx, txid: it.t.id, inscription: it.id || null, type: it.id && insKindOf(it.id) ? (insKindOf(it.id).ct || null) : null, says: it.t.word ? [it.t.word.a, it.t.word.b].filter(Boolean).join(' · ') : null} : null}; }};
+  return {open, close, on: () => F.on, load, step: d => step(d), shelf: d => shelf(d), jump, facts,
+    state: () => { const C = F.cats[F.c], it = C && C.items[F.i], K = F.cur, m = K && K.m && K.m.classList.contains('in') ? K.m.getBoundingClientRect() : null, s = F.on ? $s.getBoundingClientRect() : null;
+      return {open: F.on, block: F.h, shelves: F.cats.map(c => ({name: c.name, count: c.items.length})), shelf: C ? C.name : null, at: C ? F.i + 1 : 0, of: C ? C.items.length : 0,
+        card: it ? {parcel: it.t.idx, txid: it.t.id, inscription: it.id || null, type: it.id && insKindOf(it.id) ? (insKindOf(it.id).ct || null) : null, says: it.t.word ? [it.t.word.a, it.t.word.b].filter(Boolean).join(' · ') : null} : null,
+        view: s ? {screen: [Math.round(s.width), Math.round(s.height)], shown: m ? [Math.round(m.left - s.left), Math.round(m.top - s.top), Math.round(m.width), Math.round(m.height)] : null} : null}; }};
 })();
 // the house button goes round: the cube, the block's hall, the feed, then the cube again
 function thSay() {
@@ -18850,14 +19150,15 @@ window.AgentKit = window.AgentKit || (() => {
         await until(() => (room && room.at !== from) || fresh(), 25000); await until(() => roomReady(), 60000); await until(fresh, 8000);   // (answers once you are there, with the new arrow)
         const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search. Gives back {ok} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"ok":{},"error":{"type":"string"}}}, run: () => { $('src').click(); return {ok: true}; }},
-    {name: 'blockFeed', does: 'The block feed (not the live feed): the block\u2019s contents one at a time, full screen, as the house button\u2019s third press shows them (the cube, the hall, the feed). Shelves in the hall\u2019s order; each inscription its own card, a token its tile, a payment its coins in and out. open: false closes it (back to the cube); block: a block number; shelf: a shelf\u2019s name (e.g. "images", "runes minted"); next: move that many cards down the shelf (negative: back up); nextShelf: move that many shelves along. Web pages play in ordinals.com\u2019s sealed preview, only while on screen. Gives back {open, block, shelves[{name, count}], shelf, at, of, card{parcel, txid, inscription, type, says}} (or {ok: false, error} if it could not).', untrusted: true, out: {"type":"object","properties":{"open":{"type":"boolean"},"block":{},"shelves":{"type":"array"},"shelf":{},"at":{},"of":{},"card":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the feed (the default), false to close it'}, {name: 'block', type: 'number', does: 'a block number to show'}, {name: 'shelf', type: 'string', does: 'a shelf to go to, by its name'}, {name: 'next', type: 'number', does: 'cards to move down the shelf (negative: up)'}, {name: 'nextShelf', type: 'number', does: 'shelves to move along (negative: back)'}],
+    {name: 'blockFeed', does: 'The block feed (not the live feed): the block\u2019s contents one at a time, full screen, as the house button\u2019s third press shows them (the cube, the hall, the feed). Shelves in the hall\u2019s order; each inscription its own card, a token its tile, a payment its coins in and out. open: false closes it (back to the cube); block: a block number; shelf: a shelf\u2019s name (e.g. "images", "runes minted"); next: move that many cards down the shelf (negative: back up); nextShelf: move that many shelves along. Web pages play in ordinals.com\u2019s sealed preview, only while on screen. Gives back {open, block, shelves[{name, count}], shelf, at, of, card{parcel, txid, inscription, type, says}, view{screen[w, h], shown[x, y, w, h]}} (view: the room a card has on the screen and where the card on it sits, in CSS pixels; shown is null while it loads) (or {ok: false, error} if it could not).', untrusted: true, out: {"type":"object","properties":{"open":{"type":"boolean"},"block":{},"shelves":{"type":"array"},"shelf":{},"at":{},"of":{},"card":{},"view":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the feed (the default), false to close it'}, {name: 'block', type: 'number', does: 'a block number to show'}, {name: 'shelf', type: 'string', does: 'a shelf to go to, by its name'}, {name: 'next', type: 'number', does: 'cards to move down the shelf (negative: up)'}, {name: 'nextShelf', type: 'number', does: 'shelves to move along (negative: back)'}],
       run: async ({open, block, shelf, next, nextShelf}) => { if (open === false || open === 'false') { FEED.close(); await wait(400); return FEED.state(); } if (tipH < 0) return {ok: false, error: 'the newest block is not known yet'};
         const h = block != null ? +String(block).replace(/[^0-9]/g, '') : null; if (h != null && !(h >= 0 && h <= tipH)) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH};
         if (!FEED.on()) { if (room) await roomExit(); FEED.open(h); } else if (h != null && h !== FEED.state().block) FEED.load(h);
         await until(() => FEED.state().shelves.length > 0, 60000);
-        if (shelf) { const S = FEED.state(), j = S.shelves.findIndex(c => c.name.toLowerCase() === String(shelf).toLowerCase()); if (j < 0) return Object.assign({ok: false, error: 'no shelf called ' + shelf + ' in this block'}, FEED.state()); const c0 = S.shelves.findIndex(c => c.name === S.shelf); if (j !== c0) FEED.shelf(j - c0); }
-        if (+nextShelf) FEED.shelf(+nextShelf); if (+next) { const n = Math.max(-500, Math.min(500, Math.round(+next))); for (let k = 0; k < Math.abs(n); k++) FEED.step(Math.sign(n)); }
-        await wait(300); return FEED.state(); }},
+        if (shelf) { const S = FEED.state(), j = S.shelves.findIndex(c => c.name.toLowerCase() === String(shelf).toLowerCase()); if (j < 0) return Object.assign({ok: false, error: 'no shelf called ' + shelf + ' in this block'}, FEED.state()); FEED.jump(j, 0); }
+        if (+nextShelf) { const S = FEED.state(), c0 = S.shelves.findIndex(c => c.name === S.shelf); FEED.jump(Math.max(0, Math.min(S.shelves.length - 1, c0 + Math.round(+nextShelf))), 0); }
+        if (+next) { const S = FEED.state(); FEED.jump(null, Math.max(0, Math.min(S.of - 1, S.at - 1 + Math.round(+next)))); }
+        await wait(600); return FEED.state(); }},
     {name: 'map', does: 'The map: every block on rings that grow (the first block at the heart, one ring for every 2,016 blocks), with you are here marked, as M or the map button opens it (on a phone, in the tablet). open: false closes it; walkTo: a block number walks into that block\u2019s hall from the map. view: "3d" flies a small ship over the same spiral in 3D (W A S D Q E, or the pad), "2d" goes back to the flat map. Gives back {open, youAreHere, here, picked, newest, flight{view, overBlock, picked, height, speed}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"open":{"type":"boolean"},"youAreHere":{},"here":{},"picked":{},"newest":{},"flight":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the map (the default), false to close it'}, {name: 'walkTo', type: 'number', does: 'a block number to walk into from the map'}, {name: 'view', type: 'string', enum: ['2d', '3d'], does: '3d flies a small ship over every block (the same spiral, in 3D), 2d is the flat map'}],
       run: async ({open, walkTo, view}) => { if (walkTo != null) { const h = +String(walkTo).replace(/[^0-9]/g, ''); if (!(h >= 0) || h > tipH) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH}; if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'}; HALLMAP.pick(h, true); await wait(600); await HALLMAP.walk(h); return HALLMAP.state(); } if (open === false || open === 'false') { HALLMAP.close(); return HALLMAP.state(); } if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'}; const H3 = window.__hall3d; if (H3 && view === '3d' && !H3.on() && !H3.show()) return {ok: false, error: 'the 3D map needs WebGL 2 in this browser'}; if (H3 && view === '2d' && H3.on()) document.getElementById('mp3').click(); return Object.assign(HALLMAP.state(), H3 ? {flight: H3.state()} : {}); }},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block". Gives back {in, ready, x, y, z, facing, pitch, sitting, roomX, roomD, area} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"in":{},"ready":{},"x":{},"y":{},"z":{},"facing":{},"pitch":{},"sitting":{},"roomX":{},"roomD":{},"area":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
