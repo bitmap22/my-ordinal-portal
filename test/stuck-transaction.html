@@ -379,5 +379,62 @@
   if (t0 && /^[0-9a-f]{64}$/i.test(t0)) { $('q').value = t0; check(t0).catch(() => {}); }
 })();
 </script>
+<!-- visitor counter: start -->
+<script>
+/* The visitor counter (GoatCounter: no cookies, nothing personal kept). (27 Nov 2026: the same counter on every page)
+   One visit is counted for the page, under its plain address (/block-cube.html: never ?v=... links), and only on ordportal.com:
+   test copies, the old github.io address and any other copy of the page are never counted. A few moments are counted as events:
+   an AI agent using the page's agent kit (agent/...), walking into a hall (walked-in/...), and errors in the page's own code
+   (error/..., at most 3 a visit, addresses and long numbers taken out; other sites' and browser add-ons' errors are left out).
+   To leave your own visits out, open any page with #toggle-goatcounter on the end of its address (again to count them again).
+   window.__visitCounter says what this page counted, or why it counted nothing. */
+(function () {
+  var GC = 'https://bitmap22portal.goatcounter.com/count';
+  var file = (location.pathname.split('/').pop() || 'index.html').replace(/[^A-Za-z0-9._-]/g, '');
+  var page = file.replace(/\.html?$/, '') || 'index', path = page === 'index' ? '/' : '/' + page + '.html';
+  var title = String(document.title || '').split(' | ')[0].split(': ')[0].trim() || page;
+  var KIT = /^(index|block-cube|block-cube-together|block-paint|inscription-cost-calculator|ordinal-view-tester|sentinel-id-viewer)$/.test(page);   // (these mark window.__agentOn themselves)
+  var store = null; try { store = window.localStorage; } catch (e) {}
+  var mine = false; try { mine = !!store && store.getItem('skipgc') === 't'; } catch (e) {}
+  if (location.hash === '#toggle-goatcounter') {
+    mine = !mine; try { if (mine) store.setItem('skipgc', 't'); else store.removeItem('skipgc'); } catch (e) {}
+    try { var n = document.createElement('div'); n.setAttribute('role', 'status'); n.textContent = mine ? 'Your visits in this browser are no longer counted.' : 'Your visits in this browser are counted again.';
+      n.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:2147483647;background:#111;color:#ffb04a;border:1px solid #ffb04a;padding:8px 14px;font:14px/1.3 system-ui,sans-serif;border-radius:6px';
+      document.body.appendChild(n); setTimeout(function () { n.remove(); }, 5000); } catch (e) {}
+  }
+  var why = location.hostname.replace(/^www\./, '') !== 'ordportal.com' ? 'not counted: this is not ordportal.com' : /\/test\//.test(location.pathname) ? 'not counted: a test copy'
+    : mine ? 'not counted: this browser is set not to be counted (#toggle-goatcounter)' : '';
+  var info = window.__visitCounter = {page: path, title: title, counting: !why, note: why || 'counted on ordportal.com with GoatCounter', sent: []};
+  var seen = {}, errs = 0;
+  function send(p, t, ev) {
+    if (why || seen[p]) return; seen[p] = 1; info.sent.push(p);
+    var q = '?p=' + encodeURIComponent(p) + '&t=' + encodeURIComponent(t);
+    if (ev) q += '&e=true'; else q += '&r=' + encodeURIComponent(document.referrer || '') + '&s=' + encodeURIComponent((screen.width || 0) + ',' + (screen.height || 0) + ',' + (window.devicePixelRatio || 1));
+    try { var i = new Image(); i.src = GC + q + '&rnd=' + Math.random().toString(36).slice(2); } catch (e) {}
+  }
+  send(path, title, false);
+  var agentSeen = function () { send('agent/' + page, 'An AI agent used ' + title, true); };
+  function clean(m) { return String(m || 'unknown').replace(/(bc1|tb1)[a-z0-9]{8,}/gi, '...').replace(/[0-9a-f]{16,}/gi, '...').replace(/\d{5,}/g, '#').slice(0, 80); }
+  var skipErr = /failed to fetch|networkerror|load failed|network request failed|abort|timed? ?out|ResizeObserver loop|^Script error\.?$/i;   // (a data site not answering, or the browser's own harmless notes)
+  function err(m) { if (errs >= 3 || !m || skipErr.test(m)) return; errs++; send('error/' + page + ': ' + clean(m), 'An error on ' + title, true); }
+  addEventListener('error', function (e) {
+    if (!e || typeof e.message !== 'string') return;
+    if (e.filename && e.filename.indexOf(location.origin) !== 0) return;   // (another site's script, or a browser add-on: not the page's fault)
+    err(e.message);
+  });
+  addEventListener('unhandledrejection', function (e) { err(e && e.reason ? (e.reason.message || String(e.reason)) : ''); });
+  var tries = 0, iv = setInterval(function () {
+    if (window.__agentOn) agentSeen();
+    try { if (typeof room !== 'undefined' && room) send('walked-in/' + page, 'Walked into a hall or the common room of ' + title, true); } catch (e) {}
+    if (!KIT && ++tries <= 5) {   // (the tool pages: an agent calling any command of window.agent)
+      var a = window.agent;
+      if (a && typeof a === 'object' && !a.__counted) {
+        try { Object.keys(a).forEach(function (k) { var f = a[k]; if (typeof f === 'function') a[k] = function () { agentSeen(); return f.apply(this, arguments); }; }); Object.defineProperty(a, '__counted', {value: true}); } catch (e) {}
+      }
+    }
+  }, 2000);
+})();
+</script>
+<!-- visitor counter: end -->
 </body>
 </html>
