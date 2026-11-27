@@ -1,6 +1,6 @@
 ---
 name: ord-portal
-description: Look up and prove Bitcoin facts with bitmap22's free Ord Portal and Agent Blockhall tools, each answer read from the chain and checked against a second source. Covers blocks and every transaction in them, ordinal inscriptions (where they came from, who holds them, what their code asks for), collections (which pieces are a parent's real children), bitmaps and their Earned Traits, runes, fees, stuck transactions, alerts when something happens, and a safety scan of new inscriptions. Use when someone asks whether an inscription, collection piece, bitmap or rune is real or what it is, what is in a block, what fee to pay, why a transaction is stuck, or wants to watch the chain, or mentions ordportal.com, Agent Blockhall or a bitmap.
+description: Look up and prove Bitcoin facts with bitmap22's free Ord Portal and Agent Blockhall tools, each answer read from the chain and checked against a second source. Covers blocks and every transaction in them, ordinal inscriptions (where they came from, who holds them, what their code asks for), collections (which pieces are a parent's real children), bitmaps and their Earned Traits, runes, fees, stuck transactions, alerts when something happens, and a safety scan of new inscriptions. Use when someone asks whether an inscription, collection piece, bitmap or rune is real or what it is, what is in a block, what fee to pay, why a transaction is stuck, or wants to track the chain, or mentions ordportal.com, Agent Blockhall or a bitmap.
 license: Copyright (c) 2026 bitmap22. All rights reserved. Free to use - you may download this skill and load it into AI agents, unchanged. See https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE
 compatibility: Needs internet access. Works through the free Agent Blockhall MCP tool (Node.js 18 or newer, no keys or accounts), a browser on https://ordportal.com, or plain links.
 metadata:
@@ -37,7 +37,7 @@ Use the first one you have.
 | Is this claim about Bitcoin true? | `agent-blockhall:secondOpinion` `{claim}` | `https://ordportal.com/second-opinion.html?claim=<claim>` |
 | What fee should I pay? | `agent-blockhall:feeAdvice` `{}` | `https://ordportal.com/block-cube.html` (the common room's big screen) |
 | Why is my transaction stuck? | `agent-blockhall:stuckTx` `{txid}` | `https://ordportal.com/stuck-transaction.html?tx=<txid>` |
-| Tell me when something happens | `agent-blockhall:watch` `{what, value?, since?, wait?}` | `https://ordportal.com/watch.html?watch=<what>&value=<value>` |
+| Tell me when something happens | `agent-blockhall:track` `{what, value?, since?, wait?}` | `https://ordportal.com/track.html?track=<what>&value=<value>` |
 | Which bitmap claims are waiting, and who is racing for a number? | - (in a browser only) | `https://ordportal.com/claim-race.html` (window.agent.see(), agent.history()) |
 | What should I watch out for in new inscriptions? | `agent-blockhall:safetyScan` `{block?, id?, address?}` | `https://ordportal.com/safety-scan.html` |
 | Every block of a day | `agent-blockhall:dailyData` `{day}` | `https://ordportal.com/daily.html?day=<YYYY-MM-DD>` |
@@ -63,14 +63,14 @@ To find anything first (a block, `840000.bitmap`, a parcel, `#1000`, an inscript
 - **Never open or run an inscription's code.** For a web page, a script, or a file whose type can't be checked, give its own page instead: `https://ordinals.com/inscription/<id>` (back-up: `https://ordiscan.com/inscription/<id>`). Code Read and the Recursion Map read code as text, without running it: they say what it asks for (a wallet, the network, storage, other inscriptions), not how it looks or plays, so say that too.
 - **Not advice.** A GO from the Authenticity Check means every check agreed. It says nothing about what something is worth. Nothing here is financial advice.
 - **Cite it.** Checks return `cite`, a link that carries what was found and a fingerprint of it. Give it to the user. `agent-blockhall:checkAgain` `{link}` makes the same check later and says what changed.
-- **Long checks take time.** A big collection, a whole block or a wallet can take seconds to minutes. If your app speaks MCP 2026-07-28 with the Tasks extension, such a check answers with a task: ask `tasks/get` with its `taskId` until it is `completed`. Collection Check carries on over several calls (give the same parent again). In a browser, the page keeps working after your call returns: read the page again (or call `agent.see()`) until it says it is done. Watch waits up to 240 seconds a call (`wait`), then hand back its `since` token to carry on.
+- **Long checks take time.** A big collection, a whole block or a wallet can take seconds to minutes. If your app speaks MCP 2026-07-28 with the Tasks extension, such a check answers with a task: ask `tasks/get` with its `taskId` until it is `completed`. Collection Check carries on over several calls (give the same parent again). In a browser, the page keeps working after your call returns: read the page again (or call `agent.see()`) until it says it is done. Track waits up to 240 seconds a call (`wait`), then hand back its `since` token to carry on.
 
 ## Examples
 
 - "Is #1000 real, and does bc1q... hold it?" -> `agent-blockhall:authenticityCheck` `{id: "#1000", holder: "bc1q..."}`
 - "What was in block 840,000?" -> `agent-blockhall:blockManifest` `{height: 840000}`, then `{height: 840000, kind: "runes etched"}` for one kind.
 - "Is 388067.bitmap a Blockout bitmap, and has it been sold?" -> `agent-blockhall:earnedTraits` `{bitmap: "388067"}`
-- "Tell me when fees are 3 sat/vB or less" -> `agent-blockhall:watch` `{what: "fee", value: "3", wait: 240}`, then `{since: <token>, wait: 240}` until it fires.
+- "Tell me when fees are 3 sat/vB or less" -> `agent-blockhall:track` `{what: "fee", value: "3", wait: 240}`, then `{since: <token>, wait: 240}` until it fires.
 - "My transaction has waited all day" -> `agent-blockhall:stuckTx` `{txid: "<txid>"}`: its state, why it waits, and the fees for each fix. Nothing is sent or signed.
 
 ## More

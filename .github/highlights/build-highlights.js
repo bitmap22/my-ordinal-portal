@@ -81,12 +81,12 @@ async function main() {
     return {text: 'On ' + Dw + ', ' + k.kind + ' used ' + pc(k.shareOfAll) + ' of Bitcoin\'s block space but paid only ' + pc(k.shareOfFees) + ' of the fees.',
       link: PORTAL + 'blockspace-share.html?by=day&at=' + D + '&show=fees', linkText: 'See who used the space and who paid', period: D};
   });
-  await fact('watch.html', 'Watch', async () => {
+  await fact('track.html', 'Track', async () => {
     const bs = blocksOf(need(btcDay, 'Daily Data')); let gap = 0, at = null;
     for (let i = 1; i < bs.length; i++) { const g = Date.parse(bs[i].time) - Date.parse(bs[i - 1].time); if (g > gap) { gap = g; at = bs[i]; } }
     if (!at) throw new Error('too few blocks');
-    return {text: 'The longest wait for a Bitcoin block on ' + Dw + ' was ' + mins(gap) + ', before block ' + n0(at.height) + ' (by the times written in the blocks). Watch tells you the moment the next one comes.',
-      link: PORTAL + 'watch.html', linkText: 'Watch for the next block', period: D};
+    return {text: 'The longest wait for a Bitcoin block on ' + Dw + ' was ' + mins(gap) + ', before block ' + n0(at.height) + ' (by the times written in the blocks). Track tells you the moment the next one comes.',
+      link: PORTAL + 'track.html', linkText: 'Track the next block', period: D};
   });
   await fact('stuck-transaction.html', 'Stuck Transaction Doctor', async () => {
     const r = await T.stuckTx({}), f = r.facts || {}, aim = ((r.fees || {}).aims || [])[0], sc = (r.fees || {}).keepsScoreOfItself;
