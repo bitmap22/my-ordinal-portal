@@ -11815,10 +11815,10 @@ const FEED = (() => {
   const st = document.createElement('style');
   st.textContent =
     // the feed's page: the glow behind, the card in the middle, the controls along the bottom
-    '#fd{position:fixed;inset:0;z-index:55;display:none;overflow:hidden;background:#040304;color:#f3ead8;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;font:700 11px/1 ' + MONO + ';--bh:56px;--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--k:#f7931a}body.feed #fd{display:block}' +
-    '#fda{position:absolute;inset:0;pointer-events:none}#fda canvas{position:absolute;left:-15%;top:-15%;width:130%;height:130%;opacity:0;transition:opacity .8s ease;filter:blur(44px) saturate(1.5) brightness(.8)}#fda canvas.on{opacity:.6}' +
+    '#fd{position:fixed;inset:0;z-index:55;display:none;overflow:hidden;overflow:clip;background:#040304;color:#f3ead8;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;font:700 11px/1 ' + MONO + ';--bh:56px;--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--k:#f7931a}body.feed #fd{display:block}' +
+    '#fda{position:absolute;inset:0;overflow:hidden;pointer-events:none}#fda canvas{position:absolute;left:-15%;top:-15%;width:130%;height:130%;opacity:0;transition:opacity .8s ease;filter:blur(44px) saturate(1.5) brightness(.8)}#fda canvas.on{opacity:.6}' +
     '#fda i{position:absolute;inset:0;background:radial-gradient(ellipse 90% 80% at 50% 44%,rgba(4,3,4,0) 28%,rgba(4,3,4,.5) 72%,rgba(4,3,4,.88) 100%)}' +
-    '#fds{position:absolute;left:var(--sl);right:var(--sr);top:env(safe-area-inset-top,0px);bottom:calc(var(--bh) + var(--sb));overflow:hidden;cursor:grab}#fds:active{cursor:grabbing}#fds,#fds *{touch-action:none}' +
+    '#fds{position:absolute;left:var(--sl);right:var(--sr);top:env(safe-area-inset-top,0px);bottom:calc(var(--bh) + var(--sb));overflow:hidden;overflow:clip;cursor:grab}#fds:active{cursor:grabbing}#fds,#fds *{touch-action:none}' +
     '.fdc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:translate3d(0,0,0);will-change:transform}#fds.mv .fdc{transition:transform .4s ' + EASE + '}' +
     // what a card shows: sized by the script to fit the screen whole
     '.fdm{position:relative;flex:none;opacity:0;transform:scale(.975);transition:opacity .32s ease,transform .32s ' + EASE + '}.fdm.in{opacity:1;transform:none}' +
@@ -11924,6 +11924,10 @@ const FEED = (() => {
       const side = Math.floor(Math.min(aw, ah, K.cap || Infinity)); m.style.width = m.style.height = side + 'px';
       if (K.word) paintTile(K, side);
     } else if (K.shape === 'text') fitText(K, aw, ah);
+    if (K.t2 && (K.shape === 'ratio' || K.shape === 'text')) {   // (a pair stays even: the tile no bigger than the longer side of what stands beside it)
+      const big = Math.max(parseFloat(m.style.width) || 0, parseFloat(m.style.height) || 0), now = parseFloat(K.t2.m.style.width) || 0;
+      if (big >= 40 && big < now) K.t2.m.style.width = K.t2.m.style.height = Math.round(big) + 'px';
+    }
   }
   // words: a few (a note: a square card, the words as big as fit without breaking one) or many (a page, faded at the foot when there is more)
   function fitText(K, aw, ah) {
@@ -12044,7 +12048,7 @@ const FEED = (() => {
       if (K.dead) return; if (!(j && j.id === id && j.content_type == null && j.delegate == null)) return shut();
       if (K.t2) {   // beside a tile it would only be an empty half: the tile stands alone, as in the hall
         const m = K.t2.m; K.el.textContent = ''; K.el.classList.remove('two'); K.el.style.gap = K.el.style.flexDirection = ''; K.el.appendChild(m);
-        K.m = m; K.shape = 'square'; K.word = K.t2.word; K.cv = K.t2.cv; K.amb = K.t2.amb; K.cap = 1536 / dpr(); K.host = K.t2 = K.ring = null; fit(K); if (F.cur === K) glow(); return;
+        K.m = m; K.shape = 'square'; K.word = K.t2.word; K.cv = K.t2.cv; K.amb = K.t2.amb; K.cap = 1536 / dpr(); K.host = K.t2 = K.ring = null; K.alone = true; fit(K); if (F.cur === K) glow(); return;
       }
       const d = document.createElement('div'), b = document.createElement('b'), w = document.createElement('span'), a = document.createElement('a'); d.className = 'pvm pvx';
       b.textContent = 'NOTHING INSIDE'; w.textContent = 'This inscription has no file.'; a.textContent = 'ITS PAGE ON ORDINALS.COM \u2197'; a.href = 'https://ordinals.com/inscription/' + id; a.target = '_blank'; a.rel = 'noopener noreferrer';
@@ -12114,6 +12118,7 @@ const FEED = (() => {
       let s = slot(K);
       if (mv && mv.from) { if (K === mv.from) s = [-mv.sx, -mv.sy]; else if (s && s[0] === -mv.sx && s[1] === -mv.sy) s = null; }   // (the card leaving goes out the far side)
       const e = K.el;
+      e.inert = K !== F.cur;   // (only the card on screen can be reached with the keyboard: its neighbours wait off to the sides)
       if (!s) { e.style.visibility = 'hidden'; continue; }
       const t = T(s[0] * X + (ox || 0), s[1] * Y + (oy || 0));
       if (e.style.visibility === 'hidden') { e.style.transition = 'none'; e.style.transform = t; e.style.visibility = ''; void e.offsetWidth; e.style.transition = ''; }   // (a card just brought in stands in its place at once: it does not fly there)
@@ -12195,7 +12200,7 @@ const FEED = (() => {
   function facts() {
     const C = F.cats[F.c]; if (!C) return; const it = C.items[F.i], t = it.t, E = vwEsc;
     const rows = [['block', fmt(F.h)], ['parcel', t.idx != null ? '#' + fmt(t.idx) : '?'], ['shelf', C.name]];
-    if (it.id) { rows.push(['inscription', it.id]); const K = insKindOf(it.id); if (K && K.ct) rows.push(['type', K.ct.split(';')[0]]); if (it.of > 1) rows.push(['in this transaction', (it.j + 1) + ' of ' + it.of]); }
+    if (it.id) { rows.push(['inscription', it.id]); const K = insKindOf(it.id), ty = (K && K.ct) || (it.of === 1 && t.art && !t.art.mdl && t.art.ct) || ''; if (ty) rows.push(['type', ty.split(';')[0]]); if (it.of > 1) rows.push(['in this transaction', (it.j + 1) + ' of ' + it.of]); }
     if (t.word && (t.word.a || t.word.b)) rows.push(['says', [t.word.a, t.word.b].filter(Boolean).join(' · ')]);
     if (t.value != null) rows.push(['moved', btc(t.value)]);
     if (t.fee != null) rows.push(['fee', fmt(t.fee) + ' sats' + (t.rate != null ? ' · ' + (+t.rate).toFixed(1) + ' sat/vB' : '')]);
@@ -12240,6 +12245,8 @@ const FEED = (() => {
     if (F.h >= 0) go(F.h);
   }
   if (window.ResizeObserver) new ResizeObserver(() => { if (F.on) size(); }).observe($s); else addEventListener('resize', () => { if (F.on) size(); });
+  // the feed's page never slides: a box being typed in or a link reached with Tab is not allowed to scroll it (cards wait off to the sides, and would be dragged into view)
+  for (const e of [box, $s]) e.addEventListener('scroll', () => { if (e.scrollTop || e.scrollLeft) e.scrollTop = e.scrollLeft = 0; });
 
   /* ---- touch and mouse: the card follows the finger; let go far or fast enough and the next one takes its place; a tap for the facts ---- */
   let P = null;
@@ -12315,7 +12322,7 @@ const FEED = (() => {
   return {open, close, on: () => F.on, load, step: d => step(d), shelf: d => shelf(d), jump, facts,
     state: () => { const C = F.cats[F.c], it = C && C.items[F.i], K = F.cur, s = F.on ? $s.getBoundingClientRect() : null, P = K ? [...K.el.querySelectorAll('.fdm.in')].map(e => e.getBoundingClientRect()).filter(r => r.width > 0) : [], m = K && K.m && K.m.classList.contains('in') && P.length ? {left: Math.min(...P.map(r => r.left)), top: Math.min(...P.map(r => r.top)), width: Math.max(...P.map(r => r.right)) - Math.min(...P.map(r => r.left)), height: Math.max(...P.map(r => r.bottom)) - Math.min(...P.map(r => r.top))} : null;
       return {open: F.on, block: F.h, shelves: F.cats.map(c => ({name: c.name, count: c.items.length})), shelf: C ? C.name : null, at: C ? F.i + 1 : 0, of: C ? C.items.length : 0,
-        card: it ? {parcel: it.t.idx, txid: it.t.id, withTile: !!it.pair, inscription: it.id || null, type: it.id && insKindOf(it.id) ? (insKindOf(it.id).ct || null) : null, says: it.t.word ? [it.t.word.a, it.t.word.b].filter(Boolean).join(' · ') : null} : null,
+        card: it ? {parcel: it.t.idx, txid: it.t.id, withTile: !!(it.pair && !(K && K.alone)), inscription: it.id || null, type: it.id && insKindOf(it.id) ? (insKindOf(it.id).ct || null) : null, says: it.t.word ? [it.t.word.a, it.t.word.b].filter(Boolean).join(' · ') : null} : null,
         view: s ? {screen: [Math.round(s.width), Math.round(s.height)], shown: m ? [Math.round(m.left - s.left), Math.round(m.top - s.top), Math.round(m.width), Math.round(m.height)] : null} : null}; }};
 })();
 // the house button goes round: the cube, the block's hall, the feed, then the cube again
