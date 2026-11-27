@@ -168,7 +168,7 @@ async function main() {
     what: 'Every Bitcoin block whose time falls in this UTC day, read the Block Manifest way: each block’s transactions sorted into Agent Blockhall’s hall kinds (counts), its fees and who mined it, and its checks: its hash worked out from its own bytes and asked of a second site, each transaction’s id and size worked out from the bytes against mempool.space’s list, its kinds against ordpool.space’s tags, its inscriptions against ordinals.com’s list, and rune etchings against the runes ordinals.com says the block made. [matched, of] pairs. null means that check could not be made because a site did not answer: it is not a disagreement. totals.notes says in plain words which checks could not be made.',
     totals: Object.assign({blocks: blocks.length, firstBlock: blocks.length ? blocks[0].height : null, lastBlock: blocks.length ? blocks[blocks.length - 1].height : null}, T),
     blocks,
-    links: {page: PORTAL + 'daily.html?day=' + day, blockManifest: PORTAL + 'block-manifest.html?block=<height>', watch: PORTAL + 'watch.html?watch=block', agentBlockhall: PORTAL + 'block-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', csv: RAW + 'days/' + day + '.csv'}
+    links: {page: PORTAL + 'daily.html?day=' + day, blockManifest: PORTAL + 'block-manifest.html?block=<height>', track: PORTAL + 'track.html?track=block', agentBlockhall: PORTAL + 'block-cube.html', mcpTool: 'io.github.bitmap22/agent-blockhall (dailyData)', csv: RAW + 'days/' + day + '.csv'}
   };
   fs.mkdirSync(path.join(out, 'days'), {recursive: true});
   fs.writeFileSync(path.join(out, 'days', day + '.json'), JSON.stringify(file));
