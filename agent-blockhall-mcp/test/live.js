@@ -56,6 +56,7 @@ const call = async (name, args) => { const t0 = Date.now(); const m = await ask(
   results.provenance = calls.filter(c => c.name === 'provenanceCheck').map(c => c.args.id + ' (' + c.ms + ' ms): ' + (c.out && c.out.verdict ? c.out.verdict + ' | ' + Object.entries(c.out.checked).map(([k, v]) => k + '=' + v.agrees + (v.against ? '@' + v.against.replace('https://', '') : '')).join(' ') + ' | trail ' + c.out.trail.length : 'ERROR ' + c.out));
   // Watch: the next block from two blocks back, a fee level far above today's, an address, a kind, and a bad kind
   const tipNow = calls.find(c => c.name === 'chain' && c.out && c.out.newestBlock);
+  calls.push(await call('track', {what: 'block'}));   // (27 Nov 2026: track is the new name; the calls below use the old name, watch, which must keep working)
   const wb = await call('watch', {what: 'block'}); calls.push(wb);
   if (wb.out && wb.out.since) { const o = JSON.parse(Buffer.from(wb.out.since, 'base64').toString()); o.s.hash = null; o.s.tip -= 2; const t = Buffer.from(JSON.stringify(o)).toString('base64'); calls.push(await call('watch', {since: t})); }
   const wf = await call('watch', {what: 'fee', value: '500'}); calls.push(wf);
