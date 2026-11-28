@@ -259,10 +259,10 @@
     if (document.getElementById('fg-css')) return;
     const s = document.createElement('style'); s.id = 'fg-css';
     s.textContent = '.fg-wait{filter:blur(22px) saturate(.5)!important;transition:filter .3s}.fg-hold{filter:blur(36px) brightness(.35) saturate(.3)!important;pointer-events:none!important}' +
-      '.fg-note{box-sizing:border-box;z-index:5;max-width:min(420px,calc(100% - 24px));padding:10px 14px;border-radius:12px;background:rgba(14,9,5,.94);border:1px solid rgba(247,147,26,.45);color:#f2e6d6;font:600 12px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center}' +
-      '.fg-note.fg-over{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}.fg-note.fg-below{margin:8px auto 0}' +
+      '.fg-note{box-sizing:border-box;z-index:5;max-width:min(420px,calc(100% - 24px));padding:10px 14px;border-radius:12px;background:rgba(14,9,5,.94);border:1px solid rgba(247,147,26,.45);color:#f2e6d6;font:600 12px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;text-wrap:balance}' +
+      '.fg-note.fg-over{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:max-content}.fg-note.fg-below{margin:8px auto 0}' +
       '.fg-note b{display:block;font-size:13px;color:#ffb04a;letter-spacing:.06em;margin-bottom:3px}.fg-note b.fg-18{display:inline-block;margin:0 0 6px;padding:2px 9px;border-radius:9px;background:#b3261e;color:#fff;font-size:14px}' +
-      '.fg-note button{margin-top:8px;padding:5px 12px;border-radius:10px;border:1px solid rgba(247,147,26,.55);background:rgba(247,147,26,.12);color:#ffb04a;font:700 12px system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer}' +
+      '.fg-note button{display:block;margin:8px auto 0;padding:5px 12px;border-radius:10px;border:1px solid rgba(247,147,26,.55);background:rgba(247,147,26,.12);color:#ffb04a;font:700 12px system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer}' +
       '.fg-note button:focus-visible{outline:2px solid #ffb04a;outline-offset:2px}.fg-note.fg-small{padding:6px 10px;font-size:11px}';
     document.head.appendChild(s);
   }
@@ -340,5 +340,5 @@
     return {familyMode: strict, reduceMotion: reduceMotion(), framesChecked: typeof ImageDecoder !== 'undefined' ? 'several frames of a moving picture' : 'the first frame of a moving picture (this browser cannot split it into frames)', checker: dead ? 'not working here: ' + dead : W ? 'ready' : 'starts with the first picture', checksOn: engine || (W && !dead ? 'starting' : 'not started yet'), checked: stats.checked, hiddenAsMaybeAdult: stats.adult, couldNotCheck: stats.unchecked, shownByAPerson: stats.shownByPerson,
       recent: recent.slice(-15), rule: 'A picture is hidden behind an 18+ warning when the checker (NSFWJS, in this browser) scores it 0.5 or more for adult content. Only a person can choose to show it. A moving picture is checked on four of its frames where the browser can split it (Chrome, Edge). A moving picture or film that flashes more than 3 times a second (the WCAG rule) shows still with a warning until a person plays it; with reduce motion on, every moving picture shows still. Words in inscriptions and chat are checked for rude words (AllProfanity). Neither checker is perfect.'};
   }
-  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.3.2'};
+  window.FamilyGuard = {check, hurry, checkWords, known: knownOf, motion: metaOf, flashes, guard, placard, coarse, sample, loadWords, rude, tidy, strict: () => strict, setStrict, state, onChange: f => { subs.add(f); return () => subs.delete(f); }, base: BASE, version: '1.3.3'};
 })();
