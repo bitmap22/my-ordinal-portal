@@ -11,7 +11,7 @@
   else root.BlockManifest = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const U8D = new TextDecoder('utf-8'), L1D = new TextDecoder('latin1'), U8F = new TextDecoder('utf-8', {fatal: true});
 
   /* ---------- SHA-256 (for each transaction's id and the block's hash, worked out from the bytes themselves) ---------- */
@@ -551,10 +551,13 @@
 
   /* (23 Nov 2026) more sources, at the asker's own wait: every separate site that gives a block's hash by its height (ord indexers,
      block explorers on other software), each asked once. get(url) -> the answer's text. Gives [{site, kind, says, agrees}] */
+  // (28 Nov 2026) a browser can't read ordpool.space's blocks and transactions any more: it sends the ask on to api.ordpool.space, whose
+  // answer gives other sites no permission to read it. So a browser leaves it out; the MCP tool, which is not a browser, still asks it
+  const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
   const MORE_HASH = [
     ['ordinals.com', 'ord', h => 'https://ordinals.com/r/blockhash/' + h, t => t],
     ['blockstream.info', 'explorer', h => 'https://blockstream.info/api/block-height/' + h, t => t],
-    ['ordpool.space', 'explorer', h => 'https://ordpool.space/api/block-height/' + h, t => t]];   // (24 Nov 2026: only sites whose terms allow it)
+    ['ordpool.space', 'explorer', h => 'https://ordpool.space/api/block-height/' + h, t => t]].filter(x => !(IN_BROWSER && x[0] === 'ordpool.space'));   // (24 Nov 2026: only sites whose terms allow it)
   async function moreHashes(height, hash, get) {
     return Promise.all(MORE_HASH.map(async ([site, kind, url, pick]) => {
       try { const v = String(pick(await get(url(height))) || '').trim().replace(/^"|"$/g, '').toLowerCase(); return {site, kind, says: v || null, agrees: v ? v === String(hash).toLowerCase() : null}; }

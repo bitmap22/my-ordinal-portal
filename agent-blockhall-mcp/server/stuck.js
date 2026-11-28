@@ -19,7 +19,7 @@
   else root.StuckDoctor = make(root.ProvenanceCheck);
 })(typeof self !== 'undefined' ? self : this, function (PV) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const INCREMENTAL = 1;      // sat/vB a replacement adds for its own size (1: what every node still accepts; Bitcoin Core 29.1 and later ask 0.1)
   const r1 = v => v == null || !isFinite(v) ? '?' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');   // (a fee rate a site didn't give: ?, never NaN)
   const fmt = n => n == null || !isFinite(Number(n)) ? '–' : Number(n).toLocaleString('en-GB');   // (a number a site didn't give: a dash, never NaN)
@@ -98,7 +98,7 @@
     try { const x = await io.mpJson('/api/tx/' + txid); T = x.j; site = x.site; } catch (e) { if (!/404|not found/i.test(String(e && e.message || e))) throw e; }
     const out = {txid, checked: new Date().toISOString().replace(/\.\d{3}/, ''), sources: site ? [site] : []};
     if (!T) {
-      const m = await io.mpJson('/api/v1/fees/recommended').catch(() => null);
+      const m = await io.mpJson('/api/v1/fees/precise').catch(() => io.mpJson('/api/v1/fees/recommended')).catch(() => null);   // (1.0.1: to the decimal: the rounded list gives 1 where nodes keep 0.1)
       return Object.assign(out, {state: 'not found', verdict: 'Not found: ' + (io.askedAll ? io.askedAll() : 'mempool.space and its back-ups') + ' have no transaction with this ID, waiting or mined.',
         why: ['It was never sent to the network, or nodes have dropped it (a transaction paying under what full nodes keep' + (m && m.j ? ', now ' + r1(m.j.minimumFee) + ' sat/vB,' : '') + ' can be dropped, and so can one that waited two weeks), or the ID has a mistake in it.',
           'If it was dropped, its coins were never spent: the wallet that made it can send it again, with a higher fee.'], fixes: null});
@@ -116,7 +116,7 @@
     const vsize = Math.ceil(T.weight / 4), rate = T.fee / vsize;
     const [cp, rec, times, outsp, hexX, adv] = await Promise.all([
       io.mpJson('/api/v1/cpfp/' + txid).then(x => x.j).catch(() => null),
-      io.mpJson('/api/v1/fees/recommended').then(x => x.j).catch(() => null),
+      io.mpJson('/api/v1/fees/precise').catch(() => io.mpJson('/api/v1/fees/recommended')).then(x => x.j).catch(() => null),   // (28 Nov 2026, 1.0.1: to the decimal, so "nodes drop under" agrees with the fees it aims for)
       io.mpJson('/api/v1/transaction-times?txId[]=' + txid).then(x => x.j).catch(() => null),
       io.mpJson('/api/tx/' + txid + '/outspends').then(x => x.j).catch(() => null),
       io.mpText('/api/tx/' + txid + '/hex').then(x => x.t).catch(() => null),

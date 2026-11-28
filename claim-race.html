@@ -3,8 +3,8 @@
   Claim Race, made by bitmap22. © 2026 bitmap22. All rights reserved.
   Under the Ord Portal's licence: https://github.com/bitmap22/my-ordinal-portal/blob/main/LICENCE
   Code, look and writing are Claim Race's own. Its block reader (agent-blockhall-mcp/server/manifest.js) and bitmap rules (traits.js) are part of
-  the Agent Blockhall MCP tool, under that tool's licence. Live data comes from the public APIs of mempool.space, ordpool.space
-  (the second site), ordinals.com and the portal's Bitmap Record. Bitcoin's data is public and is not part of this work.
+  the Agent Blockhall MCP tool, under that tool's licence. Live data comes from the public APIs of mempool.space (and its Frankfurt
+  server, the second check), ordinals.com and the portal's Bitmap Record. Bitcoin's data is public and is not part of this work.
   Claim Race is not made by, affiliated with, or endorsed by Mempool Space K.K. or ordinals.com.
 -->
 <html lang="en">
@@ -109,7 +109,7 @@
 <div class="wrap">
   <h1>Claim Race</h1>
   <p class="lead">Bitmap claims waiting to be mined, watched live. For each one: is its number already taken, and is another claim for the same number waiting with a higher fee? Only the first claim of a number is a bitmap; a later one is a copy.</p>
-  <p class="lead"><b>Read first:</b> claims appear as soon as mempool.space reports them, so you see them fast. Each one says "checking…" until a second site (ordpool.space) agrees, and only then gets its tick. Some claims may not be confirmed yet, and some may not be mined at all. This page only shows what we can see right now.</p>
+  <p class="lead"><b>Read first:</b> claims appear as soon as mempool.space reports them, so you see them fast. Each one says "checking…" until a second node (mempool.space's Frankfurt server) agrees, and only then gets its tick. Some claims may not be confirmed yet, and some may not be mined at all. This page only shows what we can see right now.</p>
 
   <div class="status">
     <div class="stat"><b id="s-live"><span class="live" id="dot"></span>…</b><span>live feed (mempool.space)</span></div>
@@ -136,7 +136,7 @@
   <h2>How it works, and what it can't see</h2>
   <ul class="note">
     <li>The live feed is mempool.space's: new waiting transactions arrive in batches about every 10 seconds, each with its bytes. Each claim is read from its own bytes by the Block Manifest's reader (the halls' rules: the body exactly "N.bitmap", no delegate, no compression).</li>
-    <li>Each claim is also looked up on a second site (ordpool.space, its own node) to show it is really waiting there too. A new transaction can take a little while to reach it, so it is asked up to 3 times before "not found"; a site that doesn't answer is shown as that, not as "not found".</li>
+    <li>Each claim is also looked up on a second node (mempool.space's Frankfurt server, mempool.fra.mempool.space, with its own copy of the waiting transactions) to show it is really waiting there too. A new transaction can take a little while to reach it, so it is asked up to 3 times before "not found"; a site that doesn't answer is shown as that, not as "not found".</li>
     <li>A transaction can hold more than one claim: every one is read. Answers of "not taken yet" are asked again at each new block, in case a claim this page never saw took the number; claims still waiting are looked up again too, in case one was mined before its bytes were read.</li>
     <li>Taken or not: below block 942,000, bop's on-chain index (checked with ord); from 942,000, the portal's Bitmap Record, and for the newest blocks the blocks themselves.</li>
     <li>Fee: what the claim pays per vbyte, counting any child transaction paying for it. Higher usually wins, but a miner decides: nothing here is certain until it is mined.</li>
@@ -146,7 +146,7 @@
 </div>
 
 <script src="agent-blockhall-mcp/server/site-order.js"></script>
-<script src="agent-blockhall-mcp/server/manifest.js?v=20261124"></script>
+<script src="agent-blockhall-mcp/server/manifest.js?v=20261128"></script>
 <script src="agent-blockhall-mcp/server/traits.js?v=20261123"></script>
 <script>
 (function () {
@@ -242,7 +242,7 @@
       else if (T.unsure) { vcls = 'wait'; verdict = 'Taken or not: ' + esc(T.why) + '.'; }
       else if (waiting.length > 1) { cls = 'clash'; vcls = 'warn'; verdict = 'Not taken yet (' + esc(T.why) + '). ' + waiting.length + ' claims are racing for it: the one paying most is likeliest to be mined first, and only that one would count.' + (waiting[0].rate != null ? ' To get ahead of the leader now, a claim would need more than ' + waiting[0].rate.toFixed(1) + ' sat/vB.' : ''); }
       else { vcls = 'ok'; verdict = 'Not taken yet (' + esc(T.why) + '), and no other claim for it is waiting.'; }
-      const SECOND = {checking: 'checking…', waiting: '✓ waiting on ordpool.space too', mined: '✓ mined (ordpool.space)', missing: '‼ not found on ordpool.space (asked 3 times)', noanswer: '· ordpool.space did not answer'};
+      const SECOND = {checking: 'checking…', waiting: '✓ waiting on the Frankfurt node too', mined: '✓ mined (Frankfurt node)', missing: '‼ not found on the Frankfurt node (asked 3 times)', noanswer: '· the Frankfurt node did not answer'};   // (28 Nov 2026: was ordpool.space, which a browser can no longer read; blockstream.info's nodes often leave out inscription transactions)
       const rows = list.slice().sort((a, b) => (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || (b.rate || 0) - (a.rate || 0)).map(c =>
         '<tr><td><a href="https://mempool.space/tx/' + esc(c.txid) + '" target="_blank" rel="noopener noreferrer">' + esc(c.txid.slice(0, 10)) + '…</a></td><td>' + (c.rate != null ? c.rate.toFixed(1) + ' sat/vB' : '–') + '</td><td>' +
         (c.gone ? esc(c.gone) : (c.pos != null ? 'heading for the ' + (c.pos === 0 ? 'next block' : (c.pos + 1) + 'th block from now') : '–')) + '</td><td>' +
@@ -282,7 +282,7 @@
   // the second site: asked up to 3 times (a new transaction can take a little while to reach it), and a site that doesn't answer is
   // told apart from one that hasn't got it; a 200 is read: waiting, or already mined
   function second(c, k) {
-    fetchT('https://ordpool.space/api/tx/' + c.txid + '/status', 15000).then(r => r.json()).then(j => { c.second = j && j.confirmed ? 'mined' : 'waiting'; render(); },
+    fetchT('https://mempool.fra.mempool.space/api/tx/' + c.txid + '/status', 15000).then(r => r.json()).then(j => { c.second = j && j.confirmed ? 'mined' : 'waiting'; render(); },
       e => { const miss = /http 404/.test(String(e && e.message)); if (k < 3) { setTimeout(() => second(c, k + 1), 15000 * k); return; } c.second = miss ? 'missing' : 'noanswer'; render(); });
   }
   async function onRemoved(txid) {

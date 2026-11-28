@@ -95,8 +95,8 @@
   .examples.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 640px; margin: 10px auto 0; } .examples.grid button { margin: 0; }
   .kgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: left; }
   .kind { border: 1px solid #2c2c2c; border-radius: 10px; padding: 10px; position: relative; } .kind b { display: block; color: #fff; font-weight: normal; margin: 0 26px 4px 0; }
-  .kind.found { border-color: rgba(247, 147, 26, .85); } .kind.clear { border-color: rgba(61, 220, 132, .45); }
-  .kind .kmark { position: absolute; top: 8px; right: 10px; font-size: 18px; } .kind.found .kmark { color: var(--orange); } .kind.clear .kmark { color: var(--green); }
+  .kind.found { border-color: rgba(247, 147, 26, .85); } .kind.clear { border-color: rgba(61, 220, 132, .45); } .kind.part { border-color: rgba(255, 216, 74, .5); }
+  .kind .kmark { position: absolute; top: 8px; right: 10px; font-size: 18px; } .kind.found .kmark { color: var(--orange); } .kind.clear .kmark { color: var(--green); } .kind.part .kmark { color: #ffd84a; }
   .kind .kw { font-size: 12px; color: var(--dim); line-height: 1.4; }
   .checks { list-style: none; padding: 0; margin: 0; text-align: left; }
   .checks li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; border: 1px solid #2c2c2c; border-radius: 10px; padding: 10px; margin-bottom: 8px; min-width: 0; }
@@ -265,7 +265,9 @@
     R = r;
     $('out').classList.remove('hidden');
     const nFound = (r.kinds || []).filter(k => k.found).length;
-    const a = $('answer'); a.textContent = !r.isCode ? 'NOT CODE' : nFound ? 'FOUND ' + nFound + ' OF ' + r.kinds.length : 'NOTHING FOUND'; a.className = 'answer ' + (!r.isCode ? '' : nFound ? 'mixed' : 'true');
+    // (28 Nov 2026: when not everything was read, "nothing found" and its green ticks only cover what was read, and say so, as the limits promise)
+    const part = r.isCode && r.complete === false;
+    const a = $('answer'); a.textContent = !r.isCode ? 'NOT CODE' : nFound ? 'FOUND ' + nFound + ' OF ' + r.kinds.length : part ? 'NOTHING FOUND IN WHAT WAS READ' : 'NOTHING FOUND'; a.className = 'answer ' + (!r.isCode ? '' : nFound || part ? 'mixed' : 'true');
     $('title').textContent = (r.number != null ? '#' + fmt(r.number) : short(r.id)) + (r.contentType ? ' · ' + r.contentType.replace(/;.*$/, '') : '') + (r.bytes != null ? ' · ' + fmt(r.bytes) + ' bytes' : '');
     $('verdict').textContent = r.verdict;
     $('note').textContent = r.isCode ? r.note : '';
@@ -273,8 +275,8 @@
     if (r.isCode) {
       const K = $('kinds'); K.textContent = '';
       for (const k of r.kinds) {
-        const d = el('div', 'kind ' + (k.found ? 'found' : 'clear')); d.appendChild(el('div', 'kmark', k.found ? '!' : '✓'));
-        d.appendChild(el('b', null, k.name)); d.appendChild(el('div', 'kw', k.found ? fmt(k.count) + ' found: ' + k.whats.join('; ') : 'none found'));
+        const d = el('div', 'kind ' + (k.found ? 'found' : part ? 'part' : 'clear')); d.appendChild(el('div', 'kmark', k.found ? '!' : part ? '?' : '✓'));
+        d.appendChild(el('b', null, k.name)); d.appendChild(el('div', 'kw', k.found ? fmt(k.count) + ' found: ' + k.whats.join('; ') : part ? 'none found in what was read' : 'none found'));
         K.appendChild(d);
       }
       drawFinds();
@@ -296,7 +298,7 @@
     add('find it in Agent Blockhall', 'block-cube.html#find=' + r.id, true);
     try { history.replaceState(null, '', location.pathname + '?id=' + r.id); } catch (e) {}
     try { Cite.show('code', R, $('cite')); } catch (e) {}
-    say((byAgent ? 'An AI agent read ' : 'Read ') + (r.number != null ? '#' + fmt(r.number) : short(r.id)) + ': ' + (!r.isCode ? 'not code' : nFound ? nFound + ' kind' + (nFound === 1 ? '' : 's') + ' found' : 'nothing found') + '.');
+    say((byAgent ? 'An AI agent read ' : 'Read ') + (r.number != null ? '#' + fmt(r.number) : short(r.id)) + ': ' + (!r.isCode ? 'not code' : nFound ? nFound + ' kind' + (nFound === 1 ? '' : 's') + ' found' : r.complete === false ? 'nothing found in what was read' : 'nothing found') + '.');
   }
   function drawFinds() {
     const U = $('finds'); U.textContent = ''; const all = R.findings, list = allFinds ? all : all.slice(0, 12);

@@ -631,9 +631,8 @@ const BC_MODE = typeof window.BC_MODE === 'string' ? window.BC_MODE : '', BC_COM
 let room = null;   // the walk-in room, when you are in it (see 'walk-in room' below)
 const SRC0 = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;   // the page as it arrived, for the grab-code button
 /* ---------- data sources: set on:false to switch one off ---------- */
-const SOURCES = [   // (tried in this order: the five mempool.space-style sites give fee rates too; the others list a block from its raw bytes)
+const SOURCES = [   // (tried in this order: the mempool.space-style sites give fee rates too; the others list a block from its raw bytes)
   {name:'mempool.space', on:true, kind:'mempool', base:'https://mempool.space'},
-  {name:'ordpool.space', on:true, kind:'mempool', base:'https://ordpool.space'},
   {name:'mempool.space (Frankfurt)', on:true, kind:'mempool', base:'https://mempool.fra.mempool.space'},
   {name:'this ordinal',  on:true, kind:'ord',     base:''},
   {name:'ordinals.com',  on:true, kind:'ord',     base:'https://ordinals.com'},
@@ -642,14 +641,16 @@ const SOURCES = [   // (tried in this order: the five mempool.space-style sites 
 const LIVE_FEED = 'wss://mempool.space/api/v1/ws';   // mempool.space's live feed of the next block
 const LIVE_FEEDS = [LIVE_FEED, 'wss://mempool.fra.mempool.space/api/v1/ws'];   // (the same feed from other sites, if one is down)
 // the same API as mempool.space's, from other sites (the first five also have mempool.space's /api/v1 extras)
-const MIRRORS = ['https://mempool.space', 'https://ordpool.space', 'https://mempool.fra.mempool.space', 'https://blockstream.info'], MIRROR_V1 = 3;
+// (28 Nov 2026: ordpool.space left out. A browser can no longer read its blocks and transactions: it sends them on to
+// api.ordpool.space, whose answers give other sites no permission to read them. Its ordinal tags still come through, and are read)
+const MIRRORS = ['https://mempool.space', 'https://mempool.fra.mempool.space', 'https://blockstream.info'], MIRROR_V1 = 2;
 // ord's recursive endpoints (/r/...) and inscription content, from other sites
 const ORD_R = ['https://ordinals.com'];
 const ORD_EXPLORERS = ['https://ordinals.com', ''];
 // ---- system health: each outside source the game reads, whether it answered last time, from which site, and what is left
 //      unshown while it does not (nothing is guessed: what cannot be known is not shown). For the agent kit: health(), events() ----
 const HEALTH = {
-  mempool: {what: 'blocks, transactions, fees and prices', from: 'mempool.space, ordpool.space, mempool.space\'s Frankfurt server and blockstream.info', many: true},
+  mempool: {what: 'blocks, transactions, fees and prices', from: 'mempool.space, mempool.space\'s Frankfurt server and blockstream.info', many: true},
   ord: {what: 'inscriptions: their content, owner and records', from: 'ordinals.com (no copy)'},
   feed: {what: 'the live feed: new blocks and the waiting transactions', from: 'mempool.space and its Frankfurt server', many: true},
   tags: {what: 'ordinal tags for mined blocks', from: 'ordpool.space (no copy)', whileDown: 'OpenTimestamps is not shown (only ordpool.space tags it); CAT-21, Labitbu and every other kind are read from the block itself'},
@@ -924,7 +925,9 @@ let lastDraw = performance.now(); (function drawn() { lastDraw = performance.now
 // (After waiting for a frame the next burst is a steady 8 ms: the wait itself says nothing about a slow device, and letting it
 // grow the burst made some bursts 100 ms long.)
 const yieldNow = () => new Promise(r => { const t = performance.now(), go = f => { const c = new MessageChannel(); c.port1.onmessage = () => { burst = room ? 4 : f ? 8 : Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); };
-  if (!document.hidden && t - lastDraw > 10) requestAnimationFrame(() => go(true)); else go(false); });
+  if (!document.hidden && t - lastDraw > 10) { let done = false; const once = f => { if (!done) { done = true; go(f); } }; requestAnimationFrame(() => once(true)); setTimeout(() => once(false), 100); } else go(false); });
+// (28 Nov 2026: a frame is waited for at most a tenth of a second. A browser can stop giving frames without saying the page is
+// hidden (a pane put away, a window behind others, an AI agent's own browser): halls then sat on "READING THE BLOCK" for minutes)
 // pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
 // If a block has many very big transactions, near-cube boxes can't stack inside (e.g. nine 59,000 vB boxes, 24 units a
 // side: only four fit across, so a third layer pokes out of the top). Then it is packed again with those big boxes
@@ -1414,7 +1417,7 @@ const REG = TYPES.length - 1;
 const OVER_X = 100, OVER_FEE = 100000;   // (fees here are in sats)
 function overpays(B) {
   if (!B || !B.txs) return;
-  const R = B.txs.slice(1).map(t => t.rate).filter(r => r > 0).sort((a, b) => a - b), med = R.length ? R[R.length >> 1] : 0;
+  const med = medianRate(B.txs);   // (28 Nov 2026: the middle by size, as the floor and mempool.space give it; it was the middle by count, so a card could say 51.9 where the block's middle is 27)
   B.medRate = med;
   if (med > 0) for (const t of B.txs.slice(1)) { const k = t.rate > 0 ? t.rate / med : 0; t.over = t.fee >= OVER_FEE && k >= OVER_X ? k : 0; t.med = med; t._k = null; }
 }
@@ -1798,8 +1801,11 @@ function coinbaseWords(u) {
     if (!(n >= 0) || i + h + n > u.length) break;
     parts.push(u.subarray(i + h, i + h + n)); i += h + n;
   }
-  const runs = (i === u.length ? parts : [u]).flatMap(b => L1D.decode(b).match(/[\x20-\x7e]{4,}/g) || []);
-  return runs.map(r => r.trim().replace(/^\S{1,3}\s+(?=\S{3})/, m => /^[a-z0-9]+\s/i.test(m) ? m : '').replace(/^[^\s\/]{1,5}(?=\/[^\/]{2,}\/)/, '').replace(/(\/[^\/]*[a-z][^\/]*\/)[^\s\/]{1,3}$/i, '$1')).filter(r => /[a-z]{2}/i.test(r)).join(' · ');
+  // (28 Nov 2026: a pool that also mines other coins writes their commitment here: fabe6d6d ("\xfa\xbemm"), a 32-byte hash and
+  // two 4-byte numbers. Those are not words: they are left out, so the board no longer shows "mm%[" or "7xVaj" from inside the hash)
+  const noMM = b => { let c = null; for (let j = 0; j + 4 <= b.length; j++) if (b[j] === 0xfa && b[j + 1] === 0xbe && b[j + 2] === 0x6d && b[j + 3] === 0x6d) { if (!c) c = Uint8Array.from(b); c.fill(0, j, Math.min(b.length, j + 44)); j += 43; } return c || b; };
+  const runs = (i === u.length ? parts : [u]).map(noMM).flatMap(b => L1D.decode(b).match(/[\x20-\x7e]{4,}/g) || []);
+  return runs.map(r => r.trim().replace(/[\[{<$%^&*|\\~`@#;:'",=+]+$/, '').replace(/^\S{1,3}\s+(?=\S{3})/, m => /^[a-z0-9]+\s/i.test(m) ? m : '').replace(/^[^\s\/]{1,5}(?=\/[^\/]{2,}\/)/, '').replace(/(\/[^\/]*[a-z][^\/]*\/)[^\s\/]{1,3}$/i, '$1')).filter(r => /[a-z]{2}/i.test(r)).join(' · ');
 }
 const POOLS = [[/foundry/i, 'Foundry USA'], [/antpool/i, 'AntPool'], [/viabtc/i, 'ViaBTC'], [/f2pool/i, 'F2Pool'], [/\bmara\b/i, 'MARA Pool'],
   [/spiderpool/i, 'SpiderPool'], [/binance/i, 'Binance Pool'], [/luxor/i, 'Luxor'], [/braiins|slush/i, 'Braiins Pool'], [/secpool/i, 'SECPOOL'],
@@ -2140,6 +2146,7 @@ function picFail(el, key, src) {
     if (el._fgNote) { el._fgNote.remove(); el._fgNote = null; } el.replaceWith(d);
   }, {once: true});
 }
+function fgShowP(el, key, pSrc, o) { const G = window.FamilyGuard; if (!G || !el) return el; picFail(el, key, null); G.guard(el, pSrc.then(src => G.check(src, key, {soon: true, label: (o && o.label) || 'an inscription'})), Object.assign({key}, o || {})); return el; }   // (as fgShow, for a picture whose bytes are still coming: checked once they are in)
 function fgShow(el, key, src, o) { const G = window.FamilyGuard; if (!G || !el) return el; picFail(el, key, src); G.guard(el, G.check(src, key, {soon: true, label: (o && o.label) || 'an inscription'}), Object.assign({key}, o || {})); return el; }
 function fgWords(el, key, url) { const G = window.FamilyGuard; if (!G || !el) return el; G.guard(el, fetch(url).then(r => r.ok ? r.text() : Promise.reject()).then(t => G.checkWords(t.slice(0, 200000), key, {label: 'a text inscription'}), () => 'unchecked'), {key, kind: 'text'}); return el; }
 let artGen = 0;
@@ -2154,8 +2161,38 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texPara
 const artCv = document.createElement('canvas'); artCv.width = artCv.height = 128;
 const artCx = artCv.getContext('2d');
 // raster images decode off the main thread; SVG goes through an <img>
+// (28 Nov 2026) an SVG that draws other inscriptions' pictures (href="/content/<id>", as on-chain collections are built): shown as a
+// picture, an SVG can load nothing from outside itself, so those parts came out black (block 824,471's geese). Each picture it names
+// is read from ordinals.com (up to 12, each a plain picture of up to 1.5 MB, 6 MB in all; an SVG it names is filled the same way, one
+// level down) and written into it, so it shows whole, and Family mode checks it whole: the picture checked is the picture shown.
+// Only /content/ pictures are filled: code, pages and addresses off the chain stay out, and it is still shown only as a picture.
+const SVG_REF = /((?:xlink:)?href\s*=\s*["']\s*|url\(\s*["']?)\/content\/([0-9a-f]{64}i\d+)/gi, svgFilled = new WeakMap();
+function svgFill(bytes, depth) {
+  const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (u.length > 2e6) return Promise.resolve(u);
+  if (svgFilled.has(u)) return svgFilled.get(u);
+  const p = (async () => {
+    const txt = new TextDecoder().decode(u), ids = [...new Set([...txt.matchAll(SVG_REF)].map(m => m[2].toLowerCase()))].slice(0, 12);
+    if (!ids.length) return u;
+    const got = new Map(); let total = 0;
+    await Promise.all(ids.map(async id => {
+      let b; try { b = await galGet('/content/' + id, 'bytes'); } catch (e) { return; }
+      if (!b || !b.length || b.length > 1.5e6 || (total += b.length) > 6e6) return;
+      let ct = sniffImg(b); if (!ct) return;
+      if (ct === 'image/svg+xml') { if (depth) return; b = await svgFill(b, 1); }
+      let x = ''; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+      got.set(id, 'data:' + ct + ';base64,' + btoa(x));
+    }));
+    if (!got.size) return u;
+    return new TextEncoder().encode(txt.replace(SVG_REF, (m, pre, id) => got.has(id.toLowerCase()) ? pre + got.get(id.toLowerCase()) : m));
+  })().catch(() => u);
+  svgFilled.set(u, p); return p;
+}
+const svgNeedsFill = (bytes, ct) => /svg/i.test(ct || '') && bytes && bytes.length <= 2e6 && /\/content\/[0-9a-f]{64}i\d+/i.test(new TextDecoder().decode(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)));
 async function decodeArt(a) {
-  const blob = new Blob([a.bytes], {type: a.ct}); /* blob-ok: decoded off-screen into the cube's picture sheet, its address dropped at once */
+  let bytes = a.bytes;
+  if (/svg/.test(a.ct)) { const b = await svgFill(bytes); if (b !== bytes) { bytes = b; try { a.bytes = b; } catch (e) {} } }   // (an SVG that draws other inscriptions' pictures: filled first, so what is checked and shown is whole)
+  const blob = new Blob([bytes], {type: a.ct}); /* blob-ok: decoded off-screen into the cube's picture sheet, its address dropped at once */
   if (!/svg/.test(a.ct) && window.createImageBitmap) return createImageBitmap(blob);
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
@@ -3592,7 +3629,7 @@ const $fut = document.getElementById('fut'), $past = document.getElementById('pa
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
 const feeCss = r => { const k = feeCol({fee: r, vsize: 1}); return `rgb(${k.map(x => Math.round(x * 255)).join(',')})`; };
 const ago = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago'; };
-const r1 = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');
+const r1 = v => v >= 1000 ? Math.round(v).toLocaleString('en-US') : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '');   // (28 Nov 2026: 448,430 with its comma)
 function gotBlocks(list) { pastBlocks = list.slice().sort((a, b) => b.height - a.height).slice(0, 8); strip(); if (!feedPrimed) { feedPrimed = true; pastBlocks.slice(0, 3).forEach(b => spawnText(b.id, true)); list.slice(-3).forEach(b => feedBlock(b, false)); if (pastBlocks[0]) feedOrdinals(pastBlocks[0]); } }
 let pulseT = -100, newH = -1;
 function gotBlock(b) { pulseT = now(); newH = b.height; setTimeout(() => { newH = -1; }, 2600); spawnText(b.id, true); if (!pastBlocks.some(x => x.height === b.height)) { pastBlocks.unshift(b); pastBlocks = pastBlocks.slice(0, 8); } strip(); feedBlock(b, true); feedOrdinals(b); }
@@ -3736,7 +3773,7 @@ let fwSumC = '';
 const fwCAt = e => { const r = $fwc.getBoundingClientRect(); return Math.max(0, Math.min(fwC.length - 1, Math.floor((e.clientX - r.left) / r.width * fwC.length))); };
 $fwc.addEventListener('pointermove', e => {
   const x = fwC[fwCAt(e)]; if (!x) return; fwHover = true;
-  $fwS.textContent = 'blocks ' + fmt(x.h0) + '–' + fmt(x.h1) + ' · middle ' + r1(x.p50) + ' · most paid ' + r1(x.p25) + '–' + r1(x.p75) + ' sat/vB · ' + new Date(x.t * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short'});
+  $fwS.textContent = 'blocks ' + fmt(x.h0) + '–' + fmt(x.h1) + ' · middle ' + r1(x.p50) + ' · most paid ' + r1(x.p25) + '–' + r1(x.p75) + ' sat/vB · ' + new Date(x.t * 1000).toLocaleDateString('en-GB', {timeZone: 'UTC', day: 'numeric', month: 'short'});
 });
 $fwc.addEventListener('pointerleave', () => { fwHover = false; $fwS.textContent = fwSumC; });
 $fwc.addEventListener('click', e => { const x = fwC[fwCAt(e)]; if (x) go(Math.round((x.h0 + x.h1) / 2)); });   // tap a candle to open the block in its middle
@@ -3786,7 +3823,7 @@ async function feedOrdinals(b) {
   try {
     const s = await (await fetchT(ORDPOOL + '/api/v1/block/' + b.id + '/summary', null, 60000)).json(), n = KINDS.map(() => 0);
     for (const x of s) { let f; try { f = BigInt(x.flags); } catch (e) { continue; } for (let i = 0; i < KINDS.length; i++) if (KINDS[i].bit != null && (f >> KINDS[i].bit) & 1n) { n[i]++; break; } }
-    const parts = []; for (let i = KINDS.length - 1; i >= 0; i--) if (n[i]) parts.push(`${chip(KINDS[i].css)}${fmt(n[i])} ${KINDS[i].name === 'runes' ? '<span title="ordpool.space counts every runestone: the runes and Alkanes shelves together">runestones (runes and Alkanes)</span>' : KINDS[i].name}`);
+    const parts = []; for (let i = KINDS.length - 1; i >= 0; i--) if (n[i]) parts.push(`${chip(KINDS[i].css)}${fmt(n[i])} ${KINDS[i].name === 'runes' ? '<span title="ordpool.space counts every runestone: the runes and Alkanes shelves together">' + (n[i] === 1 ? 'runestone' : 'runestones') + ' (runes and Alkanes)</span>' : n[i] === 1 && /^(bitmaps|inscriptions)$/.test(KINDS[i].name) ? KINDS[i].name.slice(0, -1) : KINDS[i].name}`);   // (28 Nov 2026: "1 inscription", not "1 inscriptions")
     feedRow('ord', `<b>Block ${fmt(b.height)}</b> ordinals <span style="opacity:.6">(ordpool.space)</span><br>` + (parts.length ? parts.join(' &nbsp;') : 'none'), clock24());   // (told when it came in: the feed stays in order)
   } catch (e) {}
   try {
@@ -3811,7 +3848,7 @@ const mfl = (t, b) => Math.floor((t.fl || 0) / Math.pow(2, b)) % 2 === 1, tcss =
 const LR_CB = new Uint8Array([1, 0, 0, 0, 1].concat(new Array(32).fill(0), [255, 255, 255, 255, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0]));   // a stand-in first transaction (the reader skips a block's first)
 const lrSeen = new Map();   // what each read found, by transaction id (the last few thousand)
 let lrQ = [], lrOn = 0, lrAt = 0, lrT = 0, lrRR = 0;
-const LR_SITES = ['https://mempool.space', 'https://ordpool.space'];   // (blockstream.info's mempool often lacks inscription transactions)
+const LR_SITES = ['https://mempool.space', 'https://mempool.fra.mempool.space'];   // (blockstream.info's mempool often lacks inscription transactions; ordpool.space can't be read from a browser)
 function lrApply(t, r) {
   runeCarry(t, r); t.sc = r.sc; t.msg = r.msg; t.ins = r.ins; t.rn = r.rn; t.tick = r.tick; t.op2 = r.op; t.mint = r.mint || null; t.nat = r.nat || false; t.dele = r.dele || false; t.b4 = r.b4 || null; t.src20 = r.src20 || false; t._k = null;
   if (r.word) t.word = r.word;
@@ -4759,8 +4796,8 @@ function head(msg) {
     else $st.textContent = 'ordinal data is not available here';
     return;
   }
-  $st.textContent = d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) + ' ' +
-    d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}) + ' · ' + fmt(cur.count) + (cur.count === 1 ? ' transaction' : ' transactions') + ' · ' +
+  $st.textContent = d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}) + ' ' +
+    d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC' + ' · ' + fmt(cur.count) + (cur.count === 1 ? ' transaction' : ' transactions') + ' · ' +
     (cur.size / 1e6).toFixed(2) + ' MB · ' + pct(cur.weight / 4e6) + ' full' + (cur.fees ? feeRange(cur.txs) : ' · fees not in this data');
 }
 // header in the ORDINALS view: a coloured dot and count for each kind found, how much of the block they take, and the source
@@ -5894,6 +5931,10 @@ function frame(ts) {
 function frameErr(e) { const m = String(e && e.message || e).slice(0, 300), o = window.__bcFrameErr; window.__bcFrameErr = {at: new Date().toISOString(), error: m, times: (o && o.error === m ? o.times : 0) + 1}; if (frameErr.last !== m) { frameErr.last = m; console.error('frame:', e); } }
 // one whole frame, drawn now (the frame loop's own drawing; an agent's picture can ask for one when the browser gives no frames)
 let lastDrawn = 0;
+// (28 Nov 2026) an AI agent's browser may give the page no frames at all (a hidden or background tab, a pane put away, a browser
+// with no screen). While the agent kit is in use and no frame has come for a quarter of a second, the game steps itself on a timer,
+// about 15 times a second, so walking, picking up and halls being built go on. A person's hidden tab still rests.
+setInterval(() => { if (!window.__agentOn || cmPaintShown || window.__feedOn || now() - lastDrawn < .25) return; try { drawFrame(); } catch (e) { frameErr(e); } }, 66);
 setInterval(() => { try { if (now() - lastDrawn > 1) { if (crew.on) crewSend(now()); tradeKeep(); } } catch (e) {} }, 1000);
 function drawFrame() {
   lastDrawn = now();
@@ -6129,16 +6170,20 @@ function labWrap(x, y, w, h, main, col, right, sub) {
   if (LABH) { const lw = c.lineWidth; c.lineWidth = Math.max(1, h * .008); c.globalAlpha = .45; c.strokeRect(x + lw * 2.2, y + lw * 2.2, w - lw * 4.4, h - lw * 4.4); c.globalAlpha = 1; }
   const sh = h * .1, mw = w - m * 3, mh = h - m * 2.4 - sh * 1.3;
   const wrap = sz => {
-    c.font = F(sz); const out = []; let line = '';
+    c.font = F(sz); const out = []; let line = ''; out.hard = false;
     for (let word of main.split(/\s+/)) {
-      while (c.measureText(word).width > mw) { let k = word.length - 1; while (k > 1 && c.measureText(word.slice(0, k)).width > mw) k--; if (line) { out.push(line); line = ''; } out.push(word.slice(0, k)); word = word.slice(k); }
+      while (c.measureText(word).width > mw) {   // (28 Nov 2026: a word too long for a line breaks after a "/" if it can, as in "/ViaBTC/ Mined by…", never "Mine|d")
+        let k = word.length - 1; while (k > 1 && c.measureText(word.slice(0, k)).width > mw) k--;
+        const sl = word.lastIndexOf('/', k - 1); if (sl > 0) k = sl + 1; else out.hard = true;
+        if (line) { out.push(line); line = ''; } out.push(word.slice(0, k)); word = word.slice(k);
+      }
       const t = line ? line + ' ' + word : word;
       if (c.measureText(t).width > mw && line) { out.push(line); line = word; } else line = t;
     }
     if (line) out.push(line); return out;
   };
   let sz = Math.round(h * .26), lines = wrap(sz);
-  while (sz > 7 && lines.length * sz * 1.18 > mh) lines = wrap(--sz);
+  while (sz > 7 && (lines.length * sz * 1.18 > mh || (lines.hard && sz > h * .14))) lines = wrap(--sz);   // (smaller letters before a word is cut in two)
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = col; c.font = F(sz);
   const y0 = y + m * 1.2 + (mh - lines.length * sz * 1.18) / 2 + sz * .59;
   if (LABH) { c.shadowColor = col; c.shadowBlur = h * .07; lines.forEach((l, i) => c.fillText(l, x + w / 2, y0 + i * sz * 1.18)); c.shadowBlur = 0; }
@@ -6442,8 +6487,8 @@ function rmFix(R) {
 function rmFacts(B) {
   const r = B.txs.filter(t => t.fee > 0).map(t => t.rate), cb = B.cb || {}, d = new Date((B.time || 0) * 1000);
   const tabs = [0, 0, 0, 0]; for (const t of B.txs) { const k = shelfOf(t); tabs[TYPES[k].g]++; }
-  const out = [[fmt(B.count || B.txs.length), 'TRANSACTIONS IN ALL'], [(B.height === 0 ? 'SATOSHI NAKAMOTO' : cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
-    [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})], [B.size < 1e5 ? fmt(B.size) + ' BYTES' : (B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
+  const out = [[fmt(B.count || B.txs.length), (B.count || B.txs.length) === 1 ? 'TRANSACTION IN ALL' : 'TRANSACTIONS IN ALL'], [(B.height === 0 ? 'SATOSHI NAKAMOTO' : cb.pool || B.pool || 'UNKNOWN POOL').toUpperCase(), 'MINED IT'],
+    [d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).toUpperCase(), 'AT ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC'], [B.size < 1e5 ? fmt(B.size) + ' BYTES' : (B.size / 1e6).toFixed(2) + ' MB', pct(B.weight / 4e6) + ' FULL']];
   if (r.length) out.push([r1(Math.min(...r)) + '–' + r1(Math.max(...r)), 'SAT/VB PAID']);
   for (const g of [0, 3, 1, 2]) if (tabs[g]) out.push([fmt(tabs[g]), 'ON THE ' + CATS[g][0] + ' SHELVES']);   // (in the order the bookcases stand)
   if (out.length + (cb.words ? 2 : 0) > 10) { out[1] = [out[1][0], 'MINED IT · ' + out[2][0] + ' ' + out[2][1]]; out.splice(2, 1); }   // (one board too many: when goes with who)
@@ -8311,7 +8356,8 @@ const cmWhole = fr => fr.every(v => Math.abs(v - Math.round(v)) < 1e-9);
 async function cmFineLoad(top) {
   if (cmFineBusy || performance.now() - cmFineAt < 1500) return; let h = -1; for (let x = top; x > top - 144; x--) if (!cmFine.has(x)) { h = x; break; } if (h < 0) return;
   cmFineBusy = true; cmFineAt = performance.now();
-  for (const site of ['https://ordpool.space']) { try { const a = await (await fetchT(site + '/api/v1/blocks/' + h, null, 12000)).json(); if (!Array.isArray(a) || !a.length) continue; let ok = 0;
+  // (28 Nov 2026: the site here was ordpool.space, which a browser can no longer read: none is asked, and the page's own, rounded, list is used)
+  for (const site of []) { try { const a = await (await fetchT(site + '/api/v1/blocks/' + h, null, 12000)).json(); if (!Array.isArray(a) || !a.length) continue; let ok = 0;
       for (const b of a) { const e = b.extras; if (e && e.feeRange && e.feeRange.length > 1 && !cmFine.get(b.height)) { cmFine.set(b.height, {fr: e.feeRange, med: e.medianFee, fine: !cmWhole(e.feeRange)}); ok++; } } if (ok) break; } catch (e) {} }
   if (!cmFine.has(h)) cmFine.set(h, null);   // (asked and not had: not asked again)
   if (cmFine.size > 600) for (const k of [...cmFine.keys()]) if (k < top - 300) cmFine.delete(k);
@@ -9075,10 +9121,21 @@ async function checkedRow(t, tx) {
 }
 // (22 Nov 2026) sleeping coins: how long the coins a parcel spends sat untouched, from when each was made (asked only when it is
 // picked up, at most 25 earlier transactions, so a hall never slows). z for a year or more, zz for 5 years, zzz for 10 years.
+// (28 Nov 2026) how long after Genesis a block came, in years, from the real times of the halving blocks and the newest block
+// (each read from mempool.space and checked on blockstream.info), in between them by block count. It used to take every block
+// as 10 minutes, which put the newest block ~19 years out when it is under 18
+const GEN_T = [[0, 1231006505], [210000, 1354116278], [420000, 1468082773], [630000, 1589225023], [840000, 1713571767]];
+function blockYears(h) {
+  const P = GEN_T.slice(), tb = typeof pastBlocks !== 'undefined' && pastBlocks && pastBlocks[0];
+  if (tb && tb.height > P[P.length - 1][0] && tb.timestamp) P.push([tb.height, tb.timestamp]);
+  let i = 1; while (i < P.length - 1 && h > P[i][0]) i++;
+  const [h0, t0] = P[i - 1], [h1, t1] = P[i];
+  return (t0 + (h - h0) * (t1 - t0) / (h1 - h0) - P[0][1]) / 31557600;
+}
 function sleepWords(sec) {
   const d = sec / 86400;
   if (d < 1) { if (sec < 3600) return Math.max(1, Math.round(sec / 60)) + ' min'; const hh = Math.round(sec / 3600); return hh + (hh === 1 ? ' hour' : ' hours'); }
-  if (d < 61) return Math.round(d) + ' days';
+  if (d < 61) { const dd = Math.round(d); return dd + (dd === 1 ? ' day' : ' days'); }
   const m = Math.floor(d / 30.44), y = Math.floor(m / 12), mm = m % 12;
   return y ? y + (y === 1 ? ' year' : ' years') + (mm ? ' ' + mm + (mm === 1 ? ' month' : ' months') : '') : m + ' months';
 }
@@ -9106,7 +9163,7 @@ async function heldInfo(t) {
       if (tx.vin.length > 4) rows.push(['', '+ ' + fmt(tx.vin.length - 4) + ' more in']);
       tx.vout.slice(0, 4).forEach((o, k) => rows.push(['out ' + (k + 1), btc(o.value) + ' · ' + (o.scriptpubkey_type === 'op_return' ? 'OP_RETURN data' : shortA(o.scriptpubkey_address) || typeName(o.scriptpubkey_type))]));
       if (tx.vout.length > 4) rows.push(['', '+ ' + fmt(tx.vout.length - 4) + ' more out']);
-      if (tx.status && tx.status.confirmed) rows.push(['confirmed', new Date(tx.status.block_time * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
+      if (tx.status && tx.status.confirmed) rows.push(['confirmed', new Date(tx.status.block_time * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC']);
       show(rows);
       try { show(await checkedRow(t, tx)); } catch (e) {}   // (against fake data: see checkedRow)
       if (!cb && tx.status && tx.status.confirmed) try {   // sleeping coins: when each earlier transaction it spends from was mined
@@ -9115,7 +9172,7 @@ async function heldInfo(t) {
         if (got.length) {
           const old = got.reduce((a, x) => x.block_time < a.block_time ? x : a), sec = Math.max(0, tx.status.block_time - old.block_time);
           t._zzz = sec; if (still()) zzzShow(t);
-          show([['coins slept', 'up to ' + sleepWords(sec) + ' (the oldest made ' + new Date(old.block_time * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) + ', in block ' + fmt(old.block_height) + ')' + (got.length < prev.length ? ' · ' + got.length + ' of the ' + prev.length + ' earlier transactions it spends from asked' : ''), sec >= 31557600 ? '#bfe3ff' : undefined]]);
+          show([['coins slept', 'up to ' + sleepWords(sec) + ' (the oldest made ' + new Date(old.block_time * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}) + ', in block ' + fmt(old.block_height) + ')' + (got.length < prev.length ? ' · ' + got.length + ' of the ' + prev.length + ' earlier transactions it spends from asked' : ''), sec >= 31557600 ? '#bfe3ff' : undefined]]);
         }
       } catch (e) {}
     }
@@ -9263,7 +9320,7 @@ async function vwBasics(t, tx) {
   const R = room && room.rooms.find(R => R && R.plan && R.plan.items && R.plan.items.some(it => it.t === t));
   if (R && R.h != null && !R.live) try {   // (when its block was made, by the block's own clock)
     const s = await RR.blockTime(R.h);
-    if (s) rows.push(['confirmed', new Date(s * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
+    if (s) rows.push(['confirmed', new Date(s * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC']);
   } catch (e) {}
   return rows;
 }
@@ -9424,6 +9481,12 @@ function insKind(id, bases) {
   P.set(id, pr); return pr;
 }
 function insSafeEl(K, id, cls) {   // the element that shows it, or null when it is not opened here
+  if (K.kind === 'image' && /^image\/svg\+xml/i.test(K.ct || '')) {   // (28 Nov 2026: an SVG is read, the pictures it names filled in (svgFill), and shown as a picture from its own bytes: checked as it is shown)
+    const im = new Image(); im.alt = ''; if (cls) im.className = cls; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320);
+    const got = fetch(K.url, {referrerPolicy: 'no-referrer'}).then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error('http ' + r.status))).then(b => svgFill(new Uint8Array(b)));
+    got.then(b => { im.src = shownPic(b, 'image/svg+xml'); }, () => { im.referrerPolicy = 'no-referrer'; im.src = K.url; });
+    return fgShowP(im, id, got.then(b => ({bytes: b, type: 'image/svg+xml'}), () => K.url), {below: cls === 'pa'});
+  }
   if (K.kind === 'image') { const im = new Image(); im.alt = ''; if (cls) im.className = cls; im.referrerPolicy = 'no-referrer'; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); im.src = K.url; return fgShow(im, id, K.url, {below: cls === 'pa'}); }
   if (K.kind === 'audio') { const a = document.createElement('audio'); a.controls = true; a.preload = 'none'; a.src = K.url; return a; }
   if (K.kind === 'video') { const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.src = K.url; return fgShow(v, id, K.url, {below: cls === 'pa', kind: 'film', label: 'a film'}); }
@@ -9436,10 +9499,17 @@ function insSafeEl(K, id, cls) {   // the element that shows it, or null when it
   if (K.kind === 'model') { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.setAttribute('loading', 'lazy'); f.title = 'a 3D model, in ' + K.base.replace('https://', '') + '’s own viewer'; f.src = K.base + '/preview/' + id; return window.FamilyGuard ? (FamilyGuard.guard(f, mdlVerdict(id, K.ct), {key: id, kind: '3D model', below: cls === 'pa', quiet: /^model\/(stl|obj)\b/.test(K.ct || '')}), f) : f; }   // (28 Nov 2026: the pictures inside it are checked first, as any picture is)
   return null;
 }
+// (28 Nov 2026) what a file that is not opened here is, in words: only kinds that can carry code are said to (a Word file or a 3D model cannot)
+const closedWhat = ct => { ct = String(ct || '').split(';')[0].trim().toLowerCase(); const sub = ct.split('/')[1] || ct;
+  if (/^(text\/html|application\/xhtml\+xml|image\/svg\+xml|(text|application)\/(x-)?(javascript|ecmascript)|(text|application)\/xml|application\/pdf)$/.test(ct) || /(^|\/)(x-)?(javascript|ecmascript)\b|\+xml$/.test(ct) && !/openxmlformats/.test(ct)) return {code: true, words: ct};
+  const n = /^model\//.test(ct) ? 'a 3D model' : /wordprocessing|msword/.test(ct) ? 'a Word document' : /spreadsheet|ms-excel/.test(ct) ? 'a spreadsheet' : /presentation|powerpoint/.test(ct) ? 'a slide show' : /zip|gzip|x-tar|x-7z|x-rar/.test(ct) ? 'a packed file' : /^font\//.test(ct) ? 'a font' : /octet-stream|^unknown/.test(ct) || !sub ? 'a file of no stated kind' : (w => (/^[aeiou]/.test(w) ? 'an ' : 'a ') + w + ' file')(sub.split(/[.+]/).pop());
+  return {code: false, words: n};
+};
 function insClosedEl(K, id) {
   const d = document.createElement('div'), b = document.createElement('b'), w = document.createElement('span'); d.className = 'pvm pvx';
   b.textContent = 'NOT OPENED HERE';
-  w.textContent = K.ct ? 'This inscription is ' + K.ct.split(';')[0] + ', which can run code. To keep you safe, Agent Blockhall never runs an inscription’s code. Open it on its own page:' : 'Its file type could not be checked just now, so it is not opened here. Its own page:';
+  const cw = closedWhat(K.ct);
+  w.textContent = K.ct ? (cw.code ? 'This inscription is ' + cw.words + ', which can run code. To keep you safe, Agent Blockhall never runs an inscription’s code. Open it on its own page:' : 'This inscription is ' + cw.words + ', which is not shown here. Open it on its own page:') : 'Its file type could not be checked just now, so it is not opened here. Its own page:';
   d.append(b, w);
   for (const [t, u] of [['OPEN ON ORDINALS.COM \u2197', 'https://ordinals.com/inscription/' + id], ['BACK-UP: ORDISCAN \u2197', 'https://ordiscan.com/inscription/' + id]]) { const a = document.createElement('a'); a.textContent = t; a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.onclick = e => e.stopPropagation(); d.append(a); }
   return d;
@@ -10090,7 +10160,7 @@ void main(){if(vE>1.5){o=vec4(vC*1.5,vE>2.5?.8:1.);return;}
     if (S.sel >= 0) { const q = proj(VP, at3(S.sel)); if (q && q[0] > -60 && q[0] < innerWidth + 60 && q[1] > 0 && q[1] < innerHeight + 60) { $k.style.left = q[0] + 'px'; $k.style.top = q[1] + 'px'; $k.classList.add('on'); } else $k.classList.remove('on'); }
     else $k.classList.remove('on');
     { // compass: the way to the Satoshi Nakamoto star, from where the ship points (straight up = dead ahead)
-      const toC = [-sp.x, -sp.z], rings = Math.max(0, Math.hypot(...toC) - RR0 * U), years = rings * RP / 52596;
+      const toC = [-sp.x, -sp.z], rings = Math.max(0, Math.hypot(...toC) - RR0 * U), years = blockYears(rings * RP);
       const rel = Math.atan2(toC[0] * -F[2] + toC[1] * F[0], toC[0] * F[0] + toC[1] * F[2]);
       box.querySelector('#m3a').setAttribute('transform', 'rotate(' + (rel * 180 / Math.PI).toFixed(1) + ')');
       const txt = rings < 3 ? 'You are at the heart of Bitcoin' : fmt(Math.round(rings)) + ' rings out · ~' + (years < 10 ? years.toFixed(1) : Math.round(years)) + ' years from Genesis';
@@ -10369,7 +10439,7 @@ const $fol = document.createElement('div'); $fol.id = 'fol';
 $fol.innerHTML = '<button id="folp" type="button" aria-label="earlier">&#9664;</button><div id="folt"><b></b><span></span></div><button id="foln" type="button" aria-label="later">&#9654;</button><button id="folx" type="button" aria-label="stop following">&times;</button>';
 document.body.appendChild($fol);
 const folAddr = a => !a ? '' : a.length > 16 ? a.slice(0, 7) + '…' + a.slice(-5) : a;
-const folDay = s => s ? new Date(s * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) : '';
+const folDay = s => s ? new Date(s * 1000).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}) : '';
 function folBar() {
   document.body.classList.toggle('folon', !!fol);
   if (!fol) return;
@@ -11176,7 +11246,7 @@ async function galTravel(pid, focus, fromO) {
     while (room === mine && !C.ready && !C.failed && performance.now() - t < 90000) await new Promise(r => setTimeout(r, 150));
     if (room !== mine) return;
     if (!C.ready) { await srTravel(from >= 0 || from === COMMON ? from : tipH); note(C.failed === 'none' ? 'that inscription has no children: it is not a collection' : 'that collection could not be read just now: try again in a moment', 8); return; }
-    if (focus && GAL_ST >= 4) srT = {h: GALLERY, gid: focus, id: focus.slice(0, 64), label: focus === pid ? 'the parent' : 'your piece', R: null, it: null};
+    if (focus && GAL_ST >= 4) srT = {h: GALLERY, gid: focus, id: focus.slice(0, 64), label: focus === pid ? 'the parent' : 'the piece you came from', R: null, it: null};   // (28 Nov 2026: it said "your piece" with no wallet connected)
     rmFade(false);
   } finally { setTimeout(() => { if ($rfx.dataset.say === say && !$rfx.classList.contains('on')) delete $rfx.dataset.say; }, 450); }
 }
@@ -11223,7 +11293,7 @@ function galCard(t) {
   $cn.textContent = t.par ? 'the parent of this collection' + (G ? ' · ' + fmt(G.n) + (G.n === 1 ? ' piece' : ' pieces') : '') : 'piece ' + fmt(t.gi + 1) + (G ? ' of ' + fmt(G.n) + ' · collection #' + fmt(G.num) : '');
   const rows = [['inscription', '#' + fmt(t.n)]];
   if (t.h != null) rows.push(['made in block', fmt(t.h)]);
-  if (t.ts) rows.push(['made', new Date(t.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
+  if (t.ts) rows.push(['made', new Date(t.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC']);
   if (t.ct) rows.push(['type', t.ct + (t.len ? ' · ' + fmt(t.len) + ' bytes' : '')]);
   if (t.sat != null) rows.push(['on sat', fmt(t.sat)]);
   $cr.innerHTML = ''; addRows(rows); if (t._held && t._held.length && room && room.held && room.held.it.t === t) addRows(t._held);
@@ -11761,7 +11831,7 @@ function tradeAsk(k) {
     if (t && t.art && t.art.bytes && /^image\//.test(t.art.ct || '')) { if (trade.picUrl) URL.revokeObjectURL(trade.picUrl); trade.picUrl = shownPic(t.art.bytes, t.art.ct); const im = el('img', 'pic'); im.alt = ''; im.src = trade.picUrl; s.append(im); if (typeof fgShow === 'function') fgShow(im, t.art, {bytes: t.art.bytes, type: t.art.ct}, {below: true, still: true}); }   // (a crewmate's stand: a moving picture waits for a tap)
     kv(s, [['inscription', r.n != null ? '#' + fmt(r.n) : b.n ? '#' + fmt(b.n) : ''], ['inscription id', X],
       ['what it is', t && t.art && t.art.mdl ? '3D model (' + (r.ct || 'glTF') + '), drawn here from the model' : r.ct ? r.ct.split(';')[0] : ''], ['size', r.len ? fmt(r.len) + ' bytes' : ''],
-      ['made', (r.ts ? new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' · ' : '') + (r.h != null ? 'block ' + fmt(r.h) : '')],
+      ['made', (r.ts ? new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC' + ' · ' : '') + (r.h != null ? 'block ' + fmt(r.h) : '')],
       ['sits on', c && c.v != null ? fmt(c.v) + ' sats (the sats this inscription sits on, as the chain says)' : ''], ['held by', mine ? 'your wallet: the chain says so' : 'their wallet: the chain says so']]);
     row(s, [I && !room.held ? btn('PICK IT UP TO LOOK CLOSER', () => { close(); rmHold(I.it); }) : null, X ? btn('OPEN ON ORDINALS.COM ↗', () => { try { window.open('https://ordinals.com/inscription/' + X, '_blank', 'noopener'); } catch (e) {} }) : null, X ? btn('RUN IT IN THE VIEWER ↗', () => { try { window.open(VIEWER + '#' + X, '_blank', 'noopener'); } catch (e) {} }) : null]);
     s.append(el('p', 'fine', 'Picked up, it shows on your tablet; VIEW BIG shows it full size' + (t && t.art && t.art.mdl ? (stlOf(t) ? ', where you turn the 3D model by dragging it.' : ', where ordinals.com\u2019s own viewer turns the 3D model.') : '.')));
@@ -11838,7 +11908,7 @@ function showCard(t) {
     rows.push(['collection', t.par ? 'the parent' : 'piece ' + fmt(t.gi + 1)]);
     if (t.n) rows.push(['inscription', '#' + fmt(t.n)]);
     if (t.h != null) rows.push(['made in block', fmt(t.h)]);
-    if (t.ts) rows.push(['made', new Date(t.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
+    if (t.ts) rows.push(['made', new Date(t.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC']);
   } else {
     rows.push(['from block', fmt(t.h)]); rows.push(['transaction', fmt(t.idx) + ' in that block']);
     rows.push(['kind', TYPES[t.kk] ? TYPES[t.kk].name : '?']);
@@ -11846,7 +11916,7 @@ function showCard(t) {
     if (r.n != null) rows.push(['inscription', '#' + fmt(r.n)]);
   }
   if (X) rows.push(['inscription id', X]);
-  if (r.ts && !t.gal) rows.push(['made', new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'})]);
+  if (r.ts && !t.gal) rows.push(['made', new Date(r.ts * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC']);
   if (!t.ct && r.ct) rows.push(['type', r.ct + (r.len ? ' · ' + fmt(r.len) + ' bytes' : '')]);
   if (t.art && t.art.mdl) rows.push(['picture', stlOf(t) ? 'its 3D model (STL), drawn here from the model · in VIEW BIG, drag it to turn it' : 'its 3D model, drawn here from the model · VIEW BIG turns the model (in ordinals.com\u2019s own viewer)']);
   { const c = tradeCost(t.gal ? t.gid : t.ordIds && t.ordIds[0]); if (c && c.v != null) rows.push(['sits on', fmt(c.v) + ' sats']); }
@@ -12324,6 +12394,11 @@ const FEED = (() => {
     if (!ct) return bare(K, Kd);
     if (Kd.kind === 'model') return at ? (OWN3D.test(ct) ? drawn3(K, id) : seal3(K, id, Kd.base, ct || true)) : model3(K, Kd);
     if (/^text\/html\b/.test(ct)) { if (G && G.strict()) return panel(K, insClosedEl(Kd, id)); return seal3(K, id, Kd.base); }
+    if (Kd.kind === 'image' && Kd.url && /^image\/svg\+xml/i.test(ct)) {   // (28 Nov 2026: an SVG that names other inscriptions' pictures has them filled in, else they show black)
+      fetch(Kd.url, {referrerPolicy: 'no-referrer'}).then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(b => svgFill(new Uint8Array(b)))
+        .then(b => { if (!K.dead) pic(K, shownPic(b, 'image/svg+xml'), id, {bytes: b, type: 'image/svg+xml'}, true); }, () => { if (!K.dead) pic(K, Kd.url, id, Kd.url, false); });
+      return;
+    }
     if (Kd.kind === 'image' && Kd.url) return pic(K, Kd.url, id, Kd.url, false);
     if (Kd.kind === 'video') return film(K, insSafeEl(Kd, id));
     if (Kd.kind === 'audio') return sound(K, insSafeEl(Kd, id));
@@ -12332,7 +12407,8 @@ const FEED = (() => {
     panel(K, insClosedEl(Kd, id));
   }
   function build(K) {
-    const it = K.it, t = it.t, img = isPic, own = key => pic(K, shownPic(t.art.bytes, t.art.ct), key, {bytes: t.art.bytes, type: t.art.ct}, true);
+    const it = K.it, t = it.t, img = isPic, own = key => svgNeedsFill(t.art.bytes, t.art.ct) ? svgFill(t.art.bytes).then(b => { if (!K.dead) pic(K, shownPic(b, t.art.ct), key, {bytes: b, type: t.art.ct}, true); })   // (an SVG naming other pictures: filled first)
+      : pic(K, shownPic(t.art.bytes, t.art.ct), key, {bytes: t.art.bytes, type: t.art.ct}, true);
     if (t.need) return need(K);
     if (it.pair) twin(K);
     K.ring = ring(); (K.host || K.el).appendChild(K.ring);
@@ -12483,9 +12559,10 @@ const FEED = (() => {
       : [['block', fmt(F.h)], ['parcel', t.idx != null ? '#' + fmt(t.idx) : '?'], ['shelf', C.name]];
     if (it.id) { rows.push(['inscription', it.id]); const K = insKindOf(it.id), ty = (K && K.ct) || (it.of === 1 && t.art && !t.art.mdl && t.art.ct) || ''; if (ty) rows.push(['type', ty.split(';')[0]]); if (it.of > 1) rows.push(['in this transaction', (it.j + 1) + ' of ' + it.of]); }
     if (t.word && (t.word.a || t.word.b)) rows.push(['says', [t.word.a, t.word.b].filter(Boolean).join(' · ')]);
-    if (t.value != null) rows.push(['moved', btc(t.value)]);
-    if (t.fee != null) rows.push(['fee', fmt(t.fee) + ' sats' + (t.rate != null ? ' · ' + (+t.rate).toFixed(1) + ' sat/vB' : '')]);
-    if (t.vsize != null) rows.push(['size', fmt(Math.round(t.vsize)) + ' vB']);
+    const many = it.of > 1, noTx = t.gal && !(t.fee >= 0);   // (28 Nov 2026: the fee of one of 4 inscriptions in one transaction read as its own; a gallery piece showed "fee -1")
+    if (t.value != null && !noTx) rows.push(['moved', btc(t.value)]);
+    if (t.fee != null && t.fee >= 0) rows.push([many ? 'transaction fee' : 'fee', fmt(t.fee) + ' sats' + (t.rate != null ? ' · ' + (+t.rate).toFixed(1) + ' sat/vB' : '') + (many ? ' · for all ' + it.of : '')]);
+    if (t.vsize > 0) rows.push([many ? 'transaction size' : 'size', fmt(Math.round(t.vsize)) + ' vB']);
     if (t.id) rows.push(['transaction', t.id]);
     const L = [];
     if (it.id) {
@@ -12586,9 +12663,17 @@ const FEED = (() => {
     if (add === (j >= 0)) return {ok: true, favourite: add};
     if (!add) { if (!person) return {ok: false, error: 'only the person at the screen can take a favourite away'}; L.splice(j, 1); }
     else { if (L.length >= FAV_MAX) { say('FAVOURITES ARE FULL', fmt(FAV_MAX) + ' saved: take one away to save another'); return {ok: false, error: 'favourites are full (' + FAV_MAX + ')'}; }
-      L.unshift({h: f.h, k: f.k, s: it.fav ? it.fav.s : C.fav || C.gal ? '' : C.name, p: it.fav ? it.fav.p || 0 : it.pair || !it.id ? 1 : 0, at: Date.now()}); }
+      L.unshift({h: f.h, k: f.k, s: it.fav ? it.fav.s : C.fav || C.gal ? '' : C.name, p: it.fav ? it.fav.p || 0 : it.pair || !it.id || (it.t && it.t.word) ? 1 : 0, at: Date.now()}); }   // (28 Nov 2026: a tile, like a bitmap's, needs its block too: saved as a plain inscription it came back as a cream text card)
     try { localStorage.setItem(FAV_KEY, JSON.stringify(L)); } catch (e) { say('NOT SAVED', 'this browser would not keep it'); return {ok: false, error: 'this browser would not keep it (its storage may be full or turned off)'}; }
+    if (!add && F.gal && F.gal.fav) favDrop(f);
     favShow(); return {ok: true, favourite: add};
+  }
+  // (28 Nov 2026) one taken away while the favourites are on screen: its card goes, so the counts stay true (they kept saying 2 of 2);
+  // the last one taken away goes back to the block
+  function favDrop(f) {
+    const C = F.cats[0]; if (!C || !C.fav) return; const i = C.items.findIndex(x => x.fav && x.fav.h === f.h && x.fav.k === f.k); if (i < 0) return;
+    if (C.items.length === 1) { ungallery(); return; }
+    C.items.splice(i, 1); wipe(); F.c = 0; F.i = Math.min(i, C.items.length - 1); chips(); F.cur = mk(F.c, F.i); bar(true); glow(); settle();
   }
   function favShow() { if (!F.on) return; if (!F.gal) chips(); bar(true); }   // (the star, and the favourites chip and its count)
   addEventListener('storage', e => { if (e.key === FAV_KEY) favShow(); });   // (saved or taken away in another tab)
@@ -18569,7 +18654,8 @@ if (findBoot && !cmPaintBoot) { try { history.replaceState(null, '', location.pa
 const feedBoot = /^#feed=(\d{1,8})\/([0-9a-f]{64}(?:i\d+)?)$/i.exec(location.hash);
 if (feedBoot && !findBoot && !cmPaintBoot) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   (async () => { const w = ms => new Promise(r => setTimeout(r, ms)); for (let i = 0; i < 600 && !(tipH >= 0); i++) await w(100); const h = +feedBoot[1]; if (!(tipH >= 0 && h <= tipH)) return;
-    FEED.open(h); for (let i = 0; i < 900 && FEED.on() && !(FEED.state().block === h && FEED.state().shelves.length); i++) await w(100); if (FEED.on()) FEED.to(feedBoot[2]); })(); }
+    FEED.open(h); for (let i = 0; i < 3000 && FEED.on() && FEED.state().block === h && !FEED.state().shelves.length; i++) await w(200);   // (28 Nov 2026: up to 10 minutes, for as long as the feed is still on that block: it gave up after 90 s and landed on the first card)
+    if (FEED.on() && FEED.state().block === h && FEED.state().shelves.length) FEED.to(feedBoot[2]); })(); }
 // (20 Nov 2026) a link straight into one block's hall (the Ord Portal's front page uses it): #block=<height> walks you into that hall
 const blockBoot = (/^#block=(\d{1,8})$/.exec(location.hash) || [])[1];
 if (blockBoot != null && !findBoot && !cmPaintBoot) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
@@ -18764,7 +18850,8 @@ window.AgentKit = window.AgentKit || (() => {
       const args = norm(c, a);
       for (const d of c.args || []) if (d.req && (args[d.name] === undefined || args[d.name] === null || args[d.name] === '')) return {ok: false, error: 'missing ' + d.name + ': ' + d.does};
       for (const d of c.args || []) { const v = args[d.name]; if (v === undefined || v === null) continue;   // (a number or a yes/no given as words works; anything else gets a clear answer, never a broken game)
-        if (d.type === 'number') { const x = typeof v === 'string' ? (/^\s*\d+\.bitmap\s*$/i.test(v) ? parseInt(v, 10) : /^\s*-?\d[\d,]*(\.\d+)?\s*$/.test(v) ? +v.replace(/,/g, '') : NaN) : v; if (typeof x !== 'number' || !isFinite(x)) return {ok: false, error: d.name + ' must be a number: ' + d.does}; args[d.name] = x; }
+        // (28 Nov 2026: {next: true} or {nextShelf: true} is one on, as agents write it)
+        if (d.type === 'number') { const x = v === true && /^(next|nextShelf)$/.test(d.name) ? 1 : typeof v === 'string' ? (/^\s*\d+\.bitmap\s*$/i.test(v) ? parseInt(v, 10) : /^\s*-?\d[\d,]*(\.\d+)?\s*$/.test(v) ? +v.replace(/,/g, '') : NaN) : v; if (typeof x !== 'number' || !isFinite(x)) return {ok: false, error: d.name + ' must be a number: ' + d.does}; args[d.name] = x; }
         else if (d.type === 'boolean' && typeof v !== 'boolean') { if (v === 'true' || v === 1) args[d.name] = true; else if (v === 'false' || v === 0) args[d.name] = false; else return {ok: false, error: d.name + ' must be true or false: ' + d.does}; } }
       try { const r = await c.run(args); if (c.name === 'events' && r && Array.isArray(r.events)) { const M = boxNew(args.all); if (M.length) { r.events = r.events.concat(M); delete r.note; } } return r === undefined ? {ok: true} : plain(r); }
       catch (e) { return {ok: false, error: String(e && e.message || e)}; }
@@ -19212,7 +19299,13 @@ window.AgentKit = window.AgentKit || (() => {
       }
     } else {
       const G = K.GRID.map(([nm, fx, fy]) => { const h = probe(fx, fy); return h ? nm + ' (x ' + fx + ', y ' + fy + '): ' + say(h) : null; }).filter(Boolean);
-      L.push(G.length ? 'Across your view: ' + G.join('; ') + '.' : 'Nothing to pick in your view.');
+      if (G.length) L.push('Across your view: ' + G.join('; ') + '.');
+      else {   // (28 Nov 2026: the nine points can all fall between parcels, on shelf boards and posts, while parcels are in view: a finer look finds them, with where to click)
+        const seen = new Map(); for (let j = 1; j < 14; j++) for (let i = 1; i < 24; i++) { const h = probe(i / 24, j / 14); if (h) { const k = JSON.stringify(h); if (!seen.has(k)) seen.set(k, [i / 24, j / 14, h]); } }
+        const F = [...seen.values()];
+        L.push(F.length ? 'None of the nine points across your view lands on something to pick, but ' + F.length + ' thing' + (F.length === 1 ? ' is' : 's are') + ' in view, e.g. ' + F.slice(0, 6).map(([x, y, h]) => say(h) + ' at x ' + r2(x) + ', y ' + r2(y)).join('; ') + ' (clickAt({x, y}) picks one).'
+          : 'Nothing to pick in your view (things can be picked up from as far as 7 m: walk closer, or turn).');
+      }
     }
     if (crew.on) { const A = [...crew.mates.values()].map(m => [m, mateInfo(m)]); const here = A.filter(([, o]) => o.withYou), away = A.filter(([, o]) => !o.withYou); if (here.length) L.push('Crewmates here (untrusted names): ' + here.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.withYou.where + ', ' + Math.round(o.withYou.metres) + ' m, ' + o.withYou.facing + ', ' + o.doing + (o.talking ? ', talking' : '')).join('; ') + '.'); if (away.length) L.push('Crewmates elsewhere: ' + away.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.where + ', ' + o.doing).join('; ') + '.'); }
     return L.join('\n');
