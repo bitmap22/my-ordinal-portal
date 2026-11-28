@@ -1,4 +1,4 @@
-/* Family Guard word layer, version 2 (© 2026 bitmap22, all rights reserved).
+/* Family Guard word layer, version 3 (© 2026 bitmap22, all rights reserved).
    It sits on top of AllProfanity (words.min.js, MIT licence, kept unchanged) and makes the rude-word check harder to get round:
    - fancy letters (maths, circled, full-width, small capitals, flag letters), look-alike letters from other alphabets, hidden and
      direction-flipping characters and stacked marks are turned back into plain letters before the list is asked;
@@ -6,7 +6,8 @@
    - letters spaced or dotted apart ("f u c k") are joined, and words written backwards after a direction flip are read the right way;
    - the worst words are found inside longer words and names glued with _ too;
    - it adds terms the list lacks (slurs, bullying phrases, swearing in other languages);
-   - it lets through words and phrases the list gets wrong ("that sucks", "cum laude", "Moby Dick", "escort mission").
+   - it lets through words and phrases the list gets wrong ("that sucks", "cum laude", "Moby Dick", "escort mission"), and a field name
+     in data ("nonce": in JSON, 27 Nov 2026, version 3).
    Nothing leaves the device. No word filter catches everything: this one is much harder to fool than the list alone. */
 (() => {
   const W = window.FamilyWords; if (!W || W.plus) return;
@@ -35,7 +36,7 @@
   }
   const plain = s => letters(s).toLowerCase();
   // harmless words and phrases the list gets wrong: taken out before checking
-  const ALLOW = /\b(summa |magna )?cum laude\b|\bmoby dick\b|\bdick (turpin|van dyke|whittington)\b|\bspic and span\b|\bshitterton\b|\bmatsushita\b|\bsnigger(s|ed|ing)?\b|\bscunthorpe\b|\bpenistone\b|\bclitheroe\b|\bescort(s|ed|ing)?\b|\b(that |it |this )?sucks?\b|\bsexy beast\b|\bnude (colou?r|shade|tone|lipstick)s?\b|\b(blue|great|coal|marsh|willow|crested|long-tailed) tits?\b|\btits are birds\b|\bshii?take\b/g;
+  const ALLOW = /\b(summa |magna )?cum laude\b|\bmoby dick\b|\bdick (turpin|van dyke|whittington)\b|\bspic and span\b|\bshitterton\b|\bmatsushita\b|\bsnigger(s|ed|ing)?\b|\bscunthorpe\b|\bpenistone\b|\bclitheroe\b|\bescort(s|ed|ing)?\b|\b(that |it |this )?sucks?\b|\bsexy beast\b|\bnude (colou?r|shade|tone|lipstick)s?\b|\b(blue|great|coal|marsh|willow|crested|long-tailed) tits?\b|\btits are birds\b|\bshii?take\b|["']nonce["']\s*:/g;   // (27 Nov 2026, bitmap22: "let that word through" when it is only a data label, as a JSON field name: "nonce": is a number used once, so a plain data inscription is not hidden as 18+; the word anywhere else is still caught)
   // the worst words: found even inside a longer word or a glued name
   const STRONG = /fuck|fvck|fcuk|fukk|cunt|nigg(er|a|uh)|fagg?ot|whore|slut|bitch|shit|motherf|dickhead|cocksuck|jizz|paedo|pedophil|anilingus|arsehole|asshole|bestiality|blowjob|bukkake|bulldyke|camwhore|creampie|cunnilingus|deepthroat|dildo|fellatio|fisting|footjob|goatse|handjob|hentai|jailbait|kike|poontang|raghead|rimjob|shemale|slanteye|splooge|strapon|threesome|towelhead|tranny|wetback|zoophilia|porn/;
   // terms the list lacks: slurs, bullying phrases, hate codes, and swearing in other languages (whole words only)
