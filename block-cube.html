@@ -9427,7 +9427,7 @@ function insSafeEl(K, id, cls) {   // the element that shows it, or null when it
     got.then(t => { pre.textContent = t.length > 200000 ? t.slice(0, 200000) + '\n\n\u2026 (only the first 200,000 characters are shown here: open it on its own page for the rest)' : t || '(it has no words)'; }, () => { pre.textContent = 'Its words could not be loaded just now.'; });
     const G = window.FamilyGuard; if (G) G.guard(pre, got.then(t => G.checkWords(t.slice(0, 200000), id, {label: 'a text inscription'}), () => 'unchecked'), {key: id, kind: 'text'});
     return pre; }
-  if (K.kind === 'model') { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.setAttribute('loading', 'lazy'); f.title = 'a 3D model, in ' + K.base.replace('https://', '') + '’s own viewer'; f.src = K.base + '/preview/' + id; return window.FamilyGuard ? (FamilyGuard.guard(f, mdlVerdict(id, K.ct), {key: id, kind: '3D model', below: cls === 'pa'}), f) : f; }   // (28 Nov 2026: the pictures inside it are checked first, as any picture is)
+  if (K.kind === 'model') { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.setAttribute('loading', 'lazy'); f.title = 'a 3D model, in ' + K.base.replace('https://', '') + '’s own viewer'; f.src = K.base + '/preview/' + id; return window.FamilyGuard ? (FamilyGuard.guard(f, mdlVerdict(id, K.ct), {key: id, kind: '3D model', below: cls === 'pa', quiet: /^model\/(stl|obj)\b/.test(K.ct || '')}), f) : f; }   // (28 Nov 2026: the pictures inside it are checked first, as any picture is)
   return null;
 }
 function insClosedEl(K, id) {
@@ -12227,7 +12227,7 @@ const FEED = (() => {
   function hold3(K, id, ct) {
     const G = window.FamilyGuard; if (!G || !K.m) return false;
     const m = K.m, held = () => m.classList.contains('fg-hold') || m.classList.contains('fg-wait');
-    G.guard(m, mdlVerdict(id, typeof ct === 'string' ? ct : ''), {key: id, kind: '3D model'}); if (!held()) return false;
+    ct = typeof ct === 'string' ? ct : ''; G.guard(m, mdlVerdict(id, ct), {key: id, kind: '3D model', quiet: /^model\/(stl|obj)\b/.test(ct)}); if (!held()) return false;   // (quiet: a file of shapes only is answered at once, so no "Checking" note)
     K.hold = () => K.m === m && held();
     const mo = new MutationObserver(() => { if (K.dead || K.m !== m) return mo.disconnect(); if (held()) return; mo.disconnect(); K.hold = null; if (K.go3) { const g = K.go3; K.go3 = null; g(); } if (K.live) play(K); });
     mo.observe(m, {attributes: true, attributeFilter: ['class']}); return true;
