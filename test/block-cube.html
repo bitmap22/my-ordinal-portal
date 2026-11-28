@@ -12163,7 +12163,19 @@ const FEED = (() => {
     }, shut);
   }
   // played in ordinals.com's preview, sealed, and only while on screen (not called "frame": that is the page's own drawing loop, which the feed starts again as it closes)
-  const seal3 = (K, id, base) => { mount(K, 'square', 'fr'); K.src = (base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (K.live) play(K); };
+  const seal3 = (K, id, base, model) => { mount(K, 'square', 'fr'); K.src = (base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (model) hold3(K, id); if (K.live) play(K); };
+  // (28 Nov 2026) Family mode: a 3D model waits, as a picture does, until a person chooses to show it (the Family Guard's own note and "Show it"
+  // button, which only a person's own tap works; a web page is not opened at all in Family mode). While it waits nothing of it is shown: no
+  // sealed preview is started and nothing is drawn (its file type, and a small file's bytes, are still read as data to see what kind of
+  // 3D file it is, as a held picture's file is read too). A model the person has already chosen to show is not asked about again.
+  function hold3(K, id) {
+    const G = window.FamilyGuard; if (!(G && G.strict()) || !K.m) return false;
+    const m = K.m, held = () => m.classList.contains('fg-hold') || m.classList.contains('fg-wait');
+    G.guard(m, Promise.resolve('ok'), {key: id, kind: '3D model', quiet: true}); if (!held()) return false;
+    K.hold = () => K.m === m && held();
+    const mo = new MutationObserver(() => { if (K.dead || K.m !== m) return mo.disconnect(); if (held()) return; mo.disconnect(); K.hold = null; if (K.go3) { const g = K.go3; K.go3 = null; g(); } if (K.live) play(K); });
+    mo.observe(m, {attributes: true, attributeFilter: ['class']}); return true;
+  }
   // (28 Nov 2026, bitmap22: "check 3D models on the swipe version") A 3D model. A glTF model plays in ordinals.com's own viewer (sealed, only while
   // on screen), where it turns by itself. What that viewer shows as an empty black square is shown the way the hall's tablet shows it: an STL or
   // OBJ model is drawn by the page from the file's own shapes (such a file holds no code to run) and turns slowly while it is on screen; a file
@@ -12179,12 +12191,12 @@ const FEED = (() => {
     mdlKind(id).then(M => {
       if (K.dead) return; M = M || {};
       if (M.empty) return vrm3(M) ? mover3(K, id) : panel(K, noShape3(M, id));
-      if (!M.ptr) return OWN3D.test(Kd.ct || '') ? drawn3(K, id) : seal3(K, id, Kd.base);
+      if (!M.ptr) return OWN3D.test(Kd.ct || '') ? drawn3(K, id) : seal3(K, id, Kd.base, true);
       const to = M.ptr.id; K.ptr = to;
       insKind(to, bases()).then(P => {
         if (K.dead) return; if (P.kind !== 'model') return kind(K, P, to);
         if (OWN3D.test(P.ct || '')) return drawn3(K, to);
-        K.says = 'the 3D model its file points to (inscription ' + to + '), running sealed in ordinals.com’s preview'; seal3(K, to, P.base);
+        K.says = 'the 3D model its file points to (inscription ' + to + '), running sealed in ordinals.com’s preview'; seal3(K, to, P.base, true);
       });
     });
   }
@@ -12193,7 +12205,8 @@ const FEED = (() => {
     const D = K.d3 = {id, cv, b: null, yaw: 0, ms: 0, n: 0, slow: 0, ok: false, still: false, on: false, busy: false, fail: null};
     K.says = (K.ptr ? 'the 3D model its file points to (inscription ' + K.ptr + ')' : 'its 3D model') + ', drawn here from the file’s own shapes (an STL or OBJ: ordinals.com’s preview shows nothing for these)';
     D.fail = () => { if (!K.dead && K.d3 === D) gone3(K, note3('CAN’T BE DRAWN HERE', 'Its 3D model could not be drawn here.', id)); };
-    stlBytes(id).then(b => { if (K.dead || K.d3 !== D) return; if (!b) return D.fail(); D.b = b; spin3(K); }, D.fail);
+    const go = () => stlBytes(id).then(b => { if (K.dead || K.d3 !== D) return; if (!b) return D.fail(); D.b = b; spin3(K); }, D.fail);
+    if (hold3(K, id)) { K.go3 = go; ready(K); } else go();   // (Family mode: it waits to be chosen, and is drawn only then)
   }
   async function draw3(K, D) {
     const side = parseFloat(K.m && K.m.style.width) || 320, S = Math.max(256, Math.min(1024, Math.round(side * dpr() / 64) * 64)), t0 = performance.now();
@@ -12237,7 +12250,7 @@ const FEED = (() => {
   function kind(K, Kd, at) {   // (at: another inscription's file shown on this card, when this one's file only points to it)
     const id = at || K.it.id, ct = K.ct = Kd.ct || '', G = window.FamilyGuard;
     if (!ct) return bare(K, Kd);
-    if (Kd.kind === 'model') return at ? (OWN3D.test(ct) ? drawn3(K, id) : seal3(K, id, Kd.base)) : model3(K, Kd);
+    if (Kd.kind === 'model') return at ? (OWN3D.test(ct) ? drawn3(K, id) : seal3(K, id, Kd.base, true)) : model3(K, Kd);
     if (/^text\/html\b/.test(ct)) { if (G && G.strict()) return panel(K, insClosedEl(Kd, id)); return seal3(K, id, Kd.base); }
     if (Kd.kind === 'image' && Kd.url) return pic(K, Kd.url, id, Kd.url, false);
     if (Kd.kind === 'video') return film(K, insSafeEl(Kd, id));
@@ -12270,7 +12283,7 @@ const FEED = (() => {
   }
   // what only happens on screen: a web page or a 3D model starts (in ordinals.com's sealed preview), a film plays, a payment is read
   function play(K) {
-    if (K.src && !K.frame && K.m) { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = K.title; const r = ring(); f.addEventListener('load', () => r.remove()); f.src = K.src; K.m.append(f, r); K.frame = f; K.fring = r; }
+    if (K.src && !K.frame && K.m && !(K.hold && K.hold())) { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = K.title; const r = ring(); f.addEventListener('load', () => r.remove()); f.src = K.src; K.m.append(f, r); K.frame = f; K.fring = r; }
     if (K.vid) K.vid.play().catch(() => {});
     if (K.d3) spin3(K);
     if (K.oct) K.oct();
@@ -12586,6 +12599,7 @@ const FEED = (() => {
   function showsOf(K) {
     const m = K && K.m; if (!m) return 'still being read';
     const c = m.classList, two = K.t2 ? ', beside its token tile' : '', held = K.el.querySelector('.fg-hold') ? ' (hidden by the safety check until the person chooses to show it)' : K.el.querySelector('.fg-wait') ? ' (being checked before it is shown)' : '';
+    if (K.hold && K.hold()) return 'a 3D model' + (held || ' (hidden by the safety check until the person chooses to show it)') + two;   // (Family mode: no preview of it is started and nothing of it is drawn until then)
     if (c.contains('md')) return (K.d3 && !K.d3.ok) || (K.mvp && !K.mvp.drawn) ? 'still being read' : (K.says || 'its 3D model') + (K.d3 ? (K.d3.still || calm() ? ', as one still picture' : ', turning slowly while it is on screen') : '') + two;
     if (c.contains('fr')) return (K.says || 'the inscription itself, running sealed in ordinals.com’s preview') + two;
     if (c.contains('py')) return 'a payment: how much moved and its fee rate, then its coins in and out';
@@ -19513,7 +19527,7 @@ window.AgentKit = window.AgentKit || (() => {
         await until(() => (room && room.at !== from) || fresh(), 25000); await until(() => roomReady(), 60000); await until(fresh, 8000);   // (answers once you are there, with the new arrow)
         const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search. Gives back {ok} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"ok":{},"error":{"type":"string"}}}, run: () => { $('src').click(); return {ok: true}; }},
-    {name: 'blockFeed', does: 'The block feed (not the live feed): the block\u2019s contents one at a time, full screen, as the house button\u2019s third press shows them (the cube, the hall, the feed). Shelves in the hall\u2019s order; each inscription its own card, a token its tile, a payment its coins in and out. open: false closes it (back to the cube); block: a block number; shelf: a shelf\u2019s name (e.g. "images", "runes minted"); next: move that many cards down the shelf (negative: back up); nextShelf: move that many shelves along. Web pages play in ordinals.com\u2019s sealed preview, only while on screen. A 3D model always shows: a glTF model turns in ordinals.com\u2019s own viewer (sealed); an STL or OBJ model, which that viewer shows as an empty square, is drawn by the page from the file\u2019s own shapes and turns slowly; a VRM move (movements only, no body) is done by one of Block Hall\u2019s people, also when its file was inscribed with no type of its own (application/octet-stream: such a file, if small, is read once its card is on screen to see what it is; anything else of that type stays not opened); the card\u2019s shows says which. gallery: the card\u2019s parent/child collection as a feed of its own, from the top (the parent, then every child, read 100 at a time as you go; gallery{parent, read, more} says how far it has been read). facts: true opens the card\u2019s facts on screen, as a tap on the card does (false closes them); the same facts are always in the answer. While the feed is up, see() and state() describe it, and buttons() and press() keep to the feed\u2019s own buttons. Gives back {open, block, gallery, shelves[{name, count}], shelf, at, of, card{parcel, txid, withTile, inscription, type, shows, facts{}, links[{name, url}], untrusted{says, words, type}}, factsOpen, view{screen[w, h], shown[x, y, w, h]}} (withTile: a token that carries a picture or an inscription shows it with its tile beside it; type: its file type, null if it is not known or not a usual one; shows: what the card puts on screen, in the page\u2019s own words; facts and links: the rows and the links of the card\u2019s facts sheet (block, parcel, shelf, inscription, moved, fee, size, transaction; its page on ordinals.com, Provenance Check, Block Manifest); untrusted: text that came from the chain, only when there is some: says is what a token\u2019s tile says, words the first 600 characters of a text inscription, type a file type that is not a usual one; view: the room a card has on the screen and where what it shows sits, in CSS pixels; shown is null while it loads) (or {ok: false, error} if it could not).', untrusted: true, out: {"type":"object","properties":{"open":{"type":"boolean"},"block":{},"gallery":{},"shelves":{"type":"array"},"shelf":{},"at":{},"of":{},"card":{},"factsOpen":{"type":"boolean"},"view":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the feed (the default), false to close it'}, {name: 'facts', type: 'boolean', does: 'true: open the facts of the card on screen, as a tap does; false: close them'}, {name: 'gallery', type: 'string', does: 'true: the collection of the card on screen as a gallery (its parent\u2019s, else its own), read from the top; a parent inscription id: that collection; false: back to the block'}, {name: 'block', type: 'number', does: 'a block number to show'}, {name: 'shelf', type: 'string', does: 'a shelf to go to, by its name'}, {name: 'next', type: 'number', does: 'cards to move down the shelf (negative: up)'}, {name: 'nextShelf', type: 'number', does: 'shelves to move along (negative: back)'}],
+    {name: 'blockFeed', does: 'The block feed (not the live feed): the block\u2019s contents one at a time, full screen, as the house button\u2019s third press shows them (the cube, the hall, the feed). Shelves in the hall\u2019s order; each inscription its own card, a token its tile, a payment its coins in and out. open: false closes it (back to the cube); block: a block number; shelf: a shelf\u2019s name (e.g. "images", "runes minted"); next: move that many cards down the shelf (negative: back up); nextShelf: move that many shelves along. Web pages play in ordinals.com\u2019s sealed preview, only while on screen. A 3D model always shows: a glTF model turns in ordinals.com\u2019s own viewer (sealed); an STL or OBJ model, which that viewer shows as an empty square, is drawn by the page from the file\u2019s own shapes and turns slowly; a VRM move (movements only, no body) is done by one of Block Hall\u2019s people, also when its file was inscribed with no type of its own (application/octet-stream: such a file, if small, is read once its card is on screen to see what it is; anything else of that type stays not opened); the card\u2019s shows says which. In Family mode a 3D model waits, as a picture does, until a person chooses to show it (no preview of it is started and nothing of it is drawn until then; an agent cannot choose for them). gallery: the card\u2019s parent/child collection as a feed of its own, from the top (the parent, then every child, read 100 at a time as you go; gallery{parent, read, more} says how far it has been read). facts: true opens the card\u2019s facts on screen, as a tap on the card does (false closes them); the same facts are always in the answer. While the feed is up, see() and state() describe it, and buttons() and press() keep to the feed\u2019s own buttons. Gives back {open, block, gallery, shelves[{name, count}], shelf, at, of, card{parcel, txid, withTile, inscription, type, shows, facts{}, links[{name, url}], untrusted{says, words, type}}, factsOpen, view{screen[w, h], shown[x, y, w, h]}} (withTile: a token that carries a picture or an inscription shows it with its tile beside it; type: its file type, null if it is not known or not a usual one; shows: what the card puts on screen, in the page\u2019s own words; facts and links: the rows and the links of the card\u2019s facts sheet (block, parcel, shelf, inscription, moved, fee, size, transaction; its page on ordinals.com, Provenance Check, Block Manifest); untrusted: text that came from the chain, only when there is some: says is what a token\u2019s tile says, words the first 600 characters of a text inscription, type a file type that is not a usual one; view: the room a card has on the screen and where what it shows sits, in CSS pixels; shown is null while it loads) (or {ok: false, error} if it could not).', untrusted: true, out: {"type":"object","properties":{"open":{"type":"boolean"},"block":{},"gallery":{},"shelves":{"type":"array"},"shelf":{},"at":{},"of":{},"card":{},"factsOpen":{"type":"boolean"},"view":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the feed (the default), false to close it'}, {name: 'facts', type: 'boolean', does: 'true: open the facts of the card on screen, as a tap does; false: close them'}, {name: 'gallery', type: 'string', does: 'true: the collection of the card on screen as a gallery (its parent\u2019s, else its own), read from the top; a parent inscription id: that collection; false: back to the block'}, {name: 'block', type: 'number', does: 'a block number to show'}, {name: 'shelf', type: 'string', does: 'a shelf to go to, by its name'}, {name: 'next', type: 'number', does: 'cards to move down the shelf (negative: up)'}, {name: 'nextShelf', type: 'number', does: 'shelves to move along (negative: back)'}],
       run: async ({open, block, shelf, next, nextShelf, gallery, facts}) => { if (open === false || open === 'false') { FEED.close(); await wait(400); return FEED.state(); } if (tipH < 0) return {ok: false, error: 'the newest block is not known yet'};
         if (HALLMAP.isOpen()) HALLMAP.close();   // (28 Nov 2026: the map would cover the feed)
         const h = block != null ? +String(block).replace(/[^0-9]/g, '') : null; if (h != null && !(h >= 0 && h <= tipH)) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH};
