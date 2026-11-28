@@ -6359,7 +6359,7 @@ function rmFix(R) {
       box(p.s * (RW / 2 - .325), (RH + CASEH) / 2 + .1, ze, .012, RH - CASEH - .5, .045, K.neon, 2);
     }
     const t = R.cs.bay[b];
-    if (t) tiles(p.s * (RW / 2 - .327), CASEH + 1.05, zc, -p.s, 0, .3, t.x, t.y, R.cs.w / 4, 4, 6, .008);   // the case's sign: on the pillars' faces, between their lights (it used to sit back between the pillars, which cut its ends off and hid it from along the hall)
+    if (t && t.x != null) tiles(p.s * (RW / 2 - .327), CASEH + 1.05, zc, -p.s, 0, .3, t.x, t.y, R.cs.w / 4, 4, 6, .008);   // the case's sign: on the pillars' faces, between their lights (it used to sit back between the pillars, which cut its ends off and hid it from along the hall)
   }
   // labels: tab signs on top of the first bookcase of each tab, a plate on the edge of each chip's first shelf
   for (const c of P.cats) {
@@ -6367,6 +6367,7 @@ function rmFix(R) {
     tiles(p.s * (RW / 2 - DEEP / 2 - .05), CASEH + .3, p.zs + p.dz * BAY / 2, -p.s, 0, .27, c.lx, c.ly, 128, 4);
   }
   for (const l of P.labs) {
+    if (l.lx == null) continue;   // (no room left for it on the sheet)
     const p = bayAt(P, l.bay);
     tiles(p.s * (RW / 2 - DEEP - .008), PLANKS[l.row] - .062, p.zs + p.dz * (.06 + .17), -p.s, 0, .085, l.lx, l.ly, 48, 4);
   }
@@ -6504,12 +6505,17 @@ function* rmLabelsG(R) {
   }
   px = LT;
   R.cs = rmCaseSigns(P);
-  const left = y0 + LSLOT - (py + rh) - Math.ceil(P.labs.length / (lim / 192)) * 48, cw = Math.ceil(R.cs.groups.length / (lim / 512)) * 128 <= left ? 512 : Math.ceil(R.cs.groups.length / (lim / 384)) * 96 <= left ? 384 : Math.ceil(R.cs.groups.length / (lim / 320)) * 80 <= left ? 320 : 256;   // (as sharp as the sheet has room for)
+  // (28 Nov 2026: the case signs as sharp as the sheet has room for, found by laying them out for real, the shelf labels after them.
+  // It used to be a sum that counted part of a sign on the end of a row; in a hall with many kinds of chip (block 860,000) the
+  // shelf labels then ran off the bottom of the hall's third of the sheet, onto the next hall's door signs, and its shelves showed
+  // pieces of "◀ BLOCK 859,998". A label that can still not fit is left off rather than painted over another hall's)
+  const fits = w => { let x = LT, y = py, h = rh; const at = (a, b) => { if (x + a > lim) { x = 0; y += h; h = 0; } x += a; h = Math.max(h, b); }; for (const _ of R.cs.groups) at(w, w / 4); x = LT; for (const _ of P.labs) at(192, 48); return y + h <= y0 + LSLOT; };
+  const cw = [512, 384, 320, 256, 224, 192, 160, 128].find(fits) || 128, inSlot = (y, h) => y + h <= y0 + LSLOT;
   R.cs.w = cw;
-  { let q = 0; for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); g.x = x; g.y = y; labPaintH(x, y, cw, cw / 4, g.main, g.col, null, g.sub); if (++q % 6 === 0) yield; } }
+  { let q = 0; for (const g of R.cs.groups) { const [x, y] = place(cw, cw / 4); if (!inSlot(y, cw / 4)) { g.x = g.y = null; continue; } g.x = x; g.y = y; labPaintH(x, y, cw, cw / 4, g.main, g.col, null, g.sub); if (++q % 6 === 0) yield; } }
   yield;
   px = LT;
-  { let q = 0; for (const l of P.labs) { const [x, y] = place(192, 48); l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaintH(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); if (++q % 8 === 0) yield; } }
+  { let q = 0; for (const l of P.labs) { const [x, y] = place(192, 48); if (!inSlot(y, 48)) { l.lx = l.ly = null; continue; } l.lx = x; l.ly = y; const T = TYPES[l.k]; labPaintH(x, y, 192, 48, T.name.toUpperCase(), T.css, fmt(l.n)); if (++q % 8 === 0) yield; } }
 }
 const rmNear = (R, end) => { const r = room && room.rooms; if (!r) return null; const i = r.indexOf(R); return end === 'front' ? r[i + 1] : r[i - 1]; };
 function rmSignPaint(R, quiet) {
