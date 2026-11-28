@@ -9649,7 +9649,7 @@ precision mediump float;in vec4 vC;out vec4 o;void main(){vec2 q=gl_PointCoord-.
   }, true);
   document.getElementById('tmap').onclick = () => box.classList.contains('on') ? close() : open();
   document.getElementById('srmp').onclick = () => open();   // (on a phone the map is in the tablet)
-  return {open, close, walk, pick, marks: MARKS, isOpen: () => box.classList.contains('on'), state: () => ({open: box.classList.contains('on'), youAreHere: S.here >= 0 ? S.here : null, here: S.hereSay, picked: S.sel >= 0 ? S.sel : null, newest: S.tip || tipH})};
+  return {open, close, walk, pick, marks: MARKS, isOpen: () => box.classList.contains('on'), state: () => ({open: box.classList.contains('on'), youAreHere: S.here >= 0 ? S.here : null, here: S.hereSay, picked: S.sel >= 0 ? S.sel : null, newest: S.tip || tipH, places: MARKS.filter(([h]) => h <= (S.tip || tipH)).map(([h, n]) => ({block: h, name: n}))})};   // (28 Nov 2026: places, the named dots a person sees, for agents)
 })();
 /* ---- (27 Nov 2026) THE MAP in 3D: fly a small ship over every Bitcoin block, then walk into the one you pick.
    From bitmap22's Bitcoin Worlds star map, trimmed to the flight: no planets, finds, music, pirates, cockpit or VR, and no
@@ -9965,7 +9965,7 @@ void main(){if(vE>1.5){o=vec4(vC*1.5,vE>2.5?.8:1.);return;}
   // the line at the bottom: the block under the ship, or the one picked, and how to fly
   function say() {
     const h = S.sel >= 0 ? S.sel : sp.under, mk = (HALLMAP.marks || []).find(([x]) => x === h);
-    box.querySelector('#m3sb').textContent = (S.sel >= 0 ? 'BLOCK ' : 'OVER BLOCK ') + fmt(h) + (mk ? ' · ' + mk[1] : h === S.here ? ' · you are here' : '');
+    box.querySelector('#m3sb').textContent = h < 0 ? '' : (S.sel >= 0 ? 'BLOCK ' : 'OVER BLOCK ') + fmt(h) + (mk ? ' · ' + mk[1] : h === S.here ? ' · you are here' : '');
     const n = box.querySelector('#m3n'), st = box.querySelector('#m3s');   // (on a phone the compass sits on top of this line: when a long name takes two lines, the compass moves up with it)
     if (n && st) n.style.bottom = S.phone ? 'calc(' + (62 + st.offsetHeight + 10) + 'px + env(safe-area-inset-bottom))' : '';
   }
@@ -10058,7 +10058,7 @@ void main(){if(vE>1.5){o=vec4(vC*1.5,vE>2.5?.8:1.);return;}
     const b = document.getElementById('mp3'); if (b) { b.textContent = '3D'; b.setAttribute('aria-label', 'the map in 3D: fly over the blocks'); }
   }
   return {on: () => on, show, hide, key, find, walkIn, pick: h => { if (on && h >= 0 && h <= S.tip) { find(h); return true; } return false; },
-    state: () => on ? {view: '3d', overBlock: sp.under, picked: S.sel >= 0 ? S.sel : null, height: +sp.alt.toFixed(1), speed: +sp.v.toFixed(1)} : {view: '2d'}};
+    state: () => on ? {view: '3d', overBlock: sp.under >= 0 ? sp.under : null, picked: S.sel >= 0 ? S.sel : null, height: +sp.alt.toFixed(1), speed: +sp.v.toFixed(1), line: (box.querySelector('#m3sb').textContent || '').trim() || null, toTheHeart: (box.querySelector('#m3nt').textContent || '').trim() || null} : {view: '2d'}};   // (28 Nov 2026: overBlock is null until a block is under the ship; line and toTheHeart are the two lines a person reads)
 })();
 // places to go
 document.getElementById('tsr').onclick = () => { if (room) srOpen(); };
@@ -12229,8 +12229,9 @@ const FEED = (() => {
     const d = document.createElement('div'); d.className = 'fdz'; d.innerHTML = (spin ? '<i class="fdsp"></i>' : '') + '<div class="fdw">' + vwEsc(a) + (b ? '<small>' + vwEsc(b) + '</small>' : '') + '</div>'; $s.appendChild(d);
   }
   // the facts of the card on screen
-  function facts() {
-    const C = F.cats[F.c]; if (!C) return; const it = C.items[F.i], t = it.t, E = vwEsc;
+  // (28 Nov 2026) one list for both: the sheet a person opens and the answer an agent gets are made from the same rows and links
+  function sheet(C, it) {
+    const t = it.t;
     const rows = t.gal ? [['gallery', it.parent ? 'the parent of this collection' : 'piece ' + fmt(F.i) + ' of ' + count({items: {length: C.items.length - 1}, gal: true})]].concat(t.n != null ? [['number', '#' + fmt(t.n)]] : [], t.h != null ? [['made in block', fmt(t.h)]] : [])
       : [['block', fmt(F.h)], ['parcel', t.idx != null ? '#' + fmt(t.idx) : '?'], ['shelf', C.name]];
     if (it.id) { rows.push(['inscription', it.id]); const K = insKindOf(it.id), ty = (K && K.ct) || (it.of === 1 && t.art && !t.art.mdl && t.art.ct) || ''; if (ty) rows.push(['type', ty.split(';')[0]]); if (it.of > 1) rows.push(['in this transaction', (it.j + 1) + ' of ' + it.of]); }
@@ -12245,6 +12246,10 @@ const FEED = (() => {
       L.push(['ORDINALS.COM ↗', 'https://ordinals.com/inscription/' + it.id], ['PROVENANCE CHECK ↗', 'provenance-check.html?id=' + it.id]);
     }
     if (!t.gal || t.h != null) L.push(['BLOCK MANIFEST ↗', 'block-manifest.html?block=' + (t.gal ? t.h : F.h)]);
+    return {rows, links: L};
+  }
+  function facts() {
+    const C = F.cats[F.c]; if (!C) return; const it = C.items[F.i], E = vwEsc, {rows, links: L} = sheet(C, it);
     $f.innerHTML = rows.map(([a, b]) => '<div class="r"><span>' + E(a) + '</span><b>' + E(b) + '</b></div>').join('') + '<div class="l">' + L.map(([a, u]) => '<a href="' + E(u) + '" target="_blank" rel="noopener noreferrer">' + E(a) + '</a>').join('') + '</div>';
     $f.scrollTop = 0; $f.classList.add('on'); F.fid = it.id || '';
     if (it.id) { const id = it.id; collections(id).then(L => {   // a parent or a child: its collection as a gallery (asked once the facts are open)
@@ -12420,10 +12425,35 @@ const FEED = (() => {
     else { if (k.length === 1 && !onBtn) e.stopImmediatePropagation(); return; }   // (the cube's own letter keys rest while the feed is up)
     e.preventDefault(); e.stopImmediatePropagation();
   }, true);
-  return {open, close, on: () => F.on, load, restock, step: d => step(d), shelf: d => shelf(d), jump, facts, gallery, ungallery,
+  // (28 Nov 2026) the card on screen, for an agent: what it shows (the page's own words), the sheet's rows and links, and whatever
+  // text came from the chain kept apart under "untrusted", as everywhere else in the kit
+  const MIME = /^[a-z0-9][a-z0-9.+-]{0,40}\/[a-z0-9][a-z0-9.+-]{0,60}$/;
+  function showsOf(K) {
+    const m = K && K.m; if (!m) return 'still being read';
+    const c = m.classList, two = K.t2 ? ', beside its token tile' : '', held = K.el.querySelector('.fg-hold') ? ' (hidden by the safety check until the person chooses to show it)' : K.el.querySelector('.fg-wait') ? ' (being checked before it is shown)' : '';
+    if (c.contains('fr')) return 'the inscription itself, running sealed in ordinals.com’s preview' + two;
+    if (c.contains('py')) return 'a payment: how much moved and its fee rate, then its coins in and out';
+    if (c.contains('ti')) return 'its tile';
+    if (c.contains('au')) return 'a sound, with its player' + two;
+    if (c.contains('tx')) return (c.contains('js') ? 'its JSON, as words' : 'its words') + held + two;
+    if (c.contains('pi')) return (K.vid ? 'its film, playing with the sound off' : 'its picture') + held + two;
+    if (c.contains('pn')) { const b = m.querySelector('b'); return 'a note in place of the file' + (b && b.textContent ? ': ' + b.textContent : '') + two; }
+    return 'still being read';
+  }
+  function cardOf(C, it, K) {
+    const S = sheet(C, it), row = k => { const r = S.rows.find(r => r[0] === k); return r ? r[1] : null; }, U = {}, facts = {};
+    const ty = String(row('type') || '').trim().toLowerCase(), says = row('says');
+    for (const [k, v] of S.rows) if (k !== 'type' && k !== 'says') facts[k] = v;
+    if (says) U.says = says;
+    if (ty && !MIME.test(ty)) U.type = ty.slice(0, 120);
+    if (K && K.it === it && K.pre && !K.el.querySelector('.fg-hold, .fg-wait')) { const w = K.pre.textContent || ''; if (w && !/^reading its words/.test(w)) U.words = w.length > 600 ? w.slice(0, 600) + '…' : w; }
+    return Object.assign({parcel: it.t.idx, txid: it.t.id, withTile: !!(it.pair && !(K && K.alone)), inscription: it.id || null, type: MIME.test(ty) ? ty : null, shows: K && K.it === it ? showsOf(K) : 'still being read', facts,
+      links: S.links.map(([a, u]) => ({name: a.replace(/\s*↗$/, ''), url: new URL(u, location.href).href}))}, Object.keys(U).length ? {untrusted: U} : {});
+  }
+  return {open, close, on: () => F.on, load, restock, step: d => step(d), shelf: d => shelf(d), jump, facts, closeFacts, factsOn, gallery, ungallery,
     state: () => { const C = F.cats[F.c], it = C && C.items[F.i], K = F.cur, s = F.on ? $s.getBoundingClientRect() : null, P = K ? [...K.el.querySelectorAll('.fdm.in')].map(e => e.getBoundingClientRect()).filter(r => r.width > 0) : [], m = K && K.m && K.m.classList.contains('in') && P.length ? {left: Math.min(...P.map(r => r.left)), top: Math.min(...P.map(r => r.top)), width: Math.max(...P.map(r => r.right)) - Math.min(...P.map(r => r.left)), height: Math.max(...P.map(r => r.bottom)) - Math.min(...P.map(r => r.top))} : null;
       return {open: F.on, block: F.h, gallery: F.gal ? {parent: F.gal.pid, read: F.cats[0] ? F.cats[0].items.length : 0, more: !!F.gal.more} : null, shelves: F.cats.map(c => ({name: c.name, count: c.items.length})), shelf: C ? C.name : null, at: C ? F.i + 1 : 0, of: C ? C.items.length : 0,
-        card: it ? {parcel: it.t.idx, txid: it.t.id, withTile: !!(it.pair && !(K && K.alone)), inscription: it.id || null, type: it.id && insKindOf(it.id) ? (insKindOf(it.id).ct || null) : null, says: it.t.word ? [it.t.word.a, it.t.word.b].filter(Boolean).join(' · ') : null} : null,
+        card: it ? cardOf(C, it, K) : null, factsOpen: F.on && factsOn(),
         view: s ? {screen: [Math.round(s.width), Math.round(s.height)], shown: m ? [Math.round(m.left - s.left), Math.round(m.top - s.top), Math.round(m.width), Math.round(m.height)] : null} : null}; }};
 })();
 // the house button goes round: the cube, the block's hall, the feed, then the cube again
@@ -18270,7 +18300,8 @@ window.AgentKit = window.AgentKit || (() => {
   // the crew host can turn AI agents off: then an agent may only look, talk to the person at its screen, or leave
   const banned = () => { try { return window.top.__crewAgents === 0; } catch (e) { return false; } };
   const BANNED = 'The crew host has turned AI agents off in this crew. You can still look (read-only commands), talk() to the person at your screen, or leaveCrew().';
-  const visible = () => [...document.querySelectorAll(PICK)].filter(el => shown(el) && !el.closest('[data-agentbox]'));
+  // (28 Nov 2026) a full-screen layer (the block feed, the map) covers the buttons under it: the page may say which a person could still reach
+  const visible = () => { const top = typeof window.__agentTop === 'function' ? window.__agentTop() : null; return [...document.querySelectorAll(PICK)].filter(el => shown(el) && !el.closest('[data-agentbox]') && (!top || top(el))); };
   // ---------- talking with the person at this screen ----------
   // A small "AI agent" box, only on this device and only once an agent drives the page: the person types to the agent there,
   // and the agent answers there. It is not the crew chat (no one else sees it), and agents cannot press or type in it.
@@ -18634,6 +18665,13 @@ window.AgentKit = window.AgentKit || (() => {
       you: own.me.p, yourStand: tradeMyBase(), wallet: own.addr ? 'read status on' : 'none (a person connects UniSat on the play together page; an AI agent proves a wallet of its own there with walletProve())',
       stands: trade.list.map((o, k) => !o ? {stand: 'P' + (k + 1), player: null} : {stand: o.who.p, colour: o.who.c, player: o.who.me ? 'you' : {untrusted: o.who.name, ai: o.who.ai || undefined}, mutedByYou: !o.who.me && crewMuted.has(o.who.id) || undefined, block: o.s ? tradeBlockOf(k) : null, checking: o.wait ? 'they put a block here: the chain is being asked whether their wallet holds it' : undefined})};
   }
+  // (28 Nov 2026) the block feed and the map fill the screen: buttons() and press() keep to what a person could reach then (the layer's
+  // own buttons, the house button over the feed, and anything drawn on top of the layer), never the cube's buttons hidden behind it
+  window.__agentTop = () => {
+    let q = ''; try { q = HALLMAP.isOpen() ? '#mp' : FEED.on() ? '#fd, #th' : ''; } catch (e) {} if (!q) return null;
+    return el => { if (el.closest(q)) return true; const r = el.getBoundingClientRect(), h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!h && (h === el || el.contains(h)); };
+  };
+  const mapInfo = () => { const H3 = window.__hall3d; return Object.assign(HALLMAP.state(), H3 ? {flight: H3.state()} : {}); };
   function state() {
     const s0 = window.__bcFrameErr;
     const s = {frameError: s0 ? Object.assign({note: 'the game met an error while drawing and carried on'}, s0) : undefined, page: 'Agent Blockhall', where: !inRoom() ? 'block view (outside the cube)' : roomInfo().in, chain: chain()};
@@ -18648,6 +18686,8 @@ window.AgentKit = window.AgentKit || (() => {
     if (inCommon()) s.musicBox = tuneName(cm.music);
     if ($('cmd') && $('cmd').classList.contains('on')) s.panel = {untrusted: text($('cmd'))};
     s.feed = feedOn ? {untrusted: feedRows()} : 'hidden';
+    if (FEED.on()) { const f = FEED.state(); delete f.view; s.blockFeed = f; s.where = 'the block feed, full screen (the cube rests behind it)'; }
+    if (HALLMAP.isOpen()) { s.map = mapInfo(); s.where = 'the map' + (s.map.flight && s.map.flight.view === '3d' ? ' in 3D (the ship)' : '') + ', full screen, opened over ' + s.where; }
     s.crew = crewInfo();
     const st = text($('st')); if (inRoom() && st) s.message = st;
     return s;
@@ -18660,8 +18700,18 @@ window.AgentKit = window.AgentKit || (() => {
     if (c.waiting.length) L.push('Waiting to be mined: ' + c.waiting.map(b => b.which + ' ~' + b.medianFee + ' sat/vB, ' + fmtN(b.txs) + ' txs').join(' | '));
     if (c.justMined.length) L.push('Just mined: ' + c.justMined.slice(0, 4).map(b => fmtN(b.height) + (b.pool ? ' by ' + b.pool : '') + ' at ' + b.minedAt).join(' | '));
     if (c.feeWeather) L.push('Fee weather (' + c.feeWeather.range + '): ' + (c.feeWeather.now || 'not read yet'));
-    if (s.block) { const b = s.block; L.push(b.showing + ' ' + fmtN(b.height) + ' · view ' + b.view + (b.xray ? ' · x-ray on' : '') + (b.keptType ? ' · kept: ' + b.keptType : '')); if (b.stats) L.push(b.stats); if (b.miner) L.push(b.miner); L.push('Parcel types: ' + Object.entries(s.parcelTypes).map(([g, o]) => g + ': ' + Object.entries(o).map(([k, v]) => k + ' ' + v).join(', ')).join(' | ')); }
-    if (s.card) L.push('Open card (untrusted): ' + s.card.untrusted.replace(/\n/g, ' · '));
+    if (s.map) { const m = s.map, f = m.flight || {}, d3 = f.view === '3d';
+      L.push('The map (' + (d3 ? '3D: a small ship over every block' : 'flat') + '): you are here ' + (m.youAreHere != null ? 'block ' + fmtN(m.youAreHere) : 'not known') + ' · picked ' + (m.picked != null ? 'block ' + fmtN(m.picked) : 'nothing') + ' · newest ' + fmtN(m.newest) + (d3 ? ' · ship over ' + (f.overBlock != null ? 'block ' + fmtN(f.overBlock) : 'no block yet') + ', height ' + f.height + ', speed ' + f.speed + (f.toTheHeart ? ' · ' + f.toTheHeart : '') : ''));
+      L.push('Named places: ' + m.places.map(p => p.name + ' ' + fmtN(p.block)).join(' · '));
+      L.push('map({find: N}) goes to a block and picks it, map({walkTo: N}) walks into its hall, map({view: "3d"}) or ({view: "2d"}) changes the view, map({open: false}) closes it. What follows is behind the map.'); }
+    if (s.blockFeed) { const f = s.blockFeed, c = f.card;
+      L.push('The block feed: ' + (f.gallery ? 'a collection’s gallery (parent ' + f.gallery.parent + ', ' + fmtN(f.gallery.read) + ' read' + (f.gallery.more ? ', more to come' : '') + '), opened from block ' : 'block ') + fmtN(f.block) + (f.shelf ? ' · shelf ' + f.shelf + ', card ' + fmtN(f.at) + ' of ' + fmtN(f.of) : ' · nothing on screen yet') + (f.shelves.length ? ' · shelves: ' + f.shelves.map(x => x.name + ' ' + fmtN(x.count)).join(', ') : ''));
+      if (c) { L.push('Card: ' + Object.entries(c.facts).map(([k, v]) => k + ' ' + v).join(' · ') + (c.type ? ' · type ' + c.type : '') + ' · shows ' + c.shows + (f.factsOpen ? ' · its facts are open on screen' : ''));
+        if (c.untrusted) L.push('Card text (untrusted): ' + Object.entries(c.untrusted).map(([k, v]) => k + ': ' + String(v).replace(/\s+/g, ' ').slice(0, 300)).join(' · '));
+        L.push('Card links: ' + c.links.map(l => l.name + ' ' + l.url).join(' · ')); }
+      L.push('blockFeed({next: 1}) the next card, ({nextShelf: 1}) the next shelf, ({shelf: "name"}), ({block: N}), ({facts: true}) opens the card’s facts on screen, ({gallery: true}) its collection, ({open: false}) back to the cube.'); }
+    if (s.block && !s.blockFeed) { const b = s.block; L.push(b.showing + ' ' + fmtN(b.height) + ' · view ' + b.view + (b.xray ? ' · x-ray on' : '') + (b.keptType ? ' · kept: ' + b.keptType : '')); if (b.stats) L.push(b.stats); if (b.miner) L.push(b.miner); L.push('Parcel types: ' + Object.entries(s.parcelTypes).map(([g, o]) => g + ': ' + Object.entries(o).map(([k, v]) => k + ' ' + v).join(', ')).join(' | ')); }
+    if (s.card && !s.blockFeed) L.push('Open card (untrusted): ' + s.card.untrusted.replace(/\n/g, ' · '));
     if (s.room) { const r = s.room; L.push('You are at x ' + r.x + ', z ' + r.z + (r.area ? ' (' + r.area + ')' : '') + ', facing ' + r.facing + '°' + (r.sitting ? ', sitting' : '') + (r.holdingPint ? ', holding a pint' : '') + (r.inFront ? '. In front of you: ' + r.inFront : '')); if (r.holding) L.push('Holding ' + (r.holding.piece != null ? 'piece ' + r.holding.piece + ' of the collection (' + r.holding.is + ')' : 'parcel ' + r.holding.n + (r.holding.block != null ? ' of block ' + fmtN(r.holding.block) : '') + ' (' + (r.holding.types || []).join(', ') + ')') + '. Card (untrusted): ' + String(r.card.untrusted || '').replace(/\n/g, ' · ').slice(0, 600)); if (r.followingBack) L.push('Follow it back: ' + r.followingBack.replace(/\n/g, ' · ')); }
     if (inRoom() && room.at && room.at.cl) L.push('A collection\'s members\' club: look() says where each place is from where you stand; club() has the games (darts, draughts, four in a row), the show stand, the jukebox and the lights; clubTerminal() reads the collection\'s chain data.');
     if (inRoom() && room.at && room.at.gd) L.push('The bitmap garden of ' + room.at.gd.bm + '.bitmap: look() says where each place is from where you stand; garden() has the games (chess board, ping-pong, cornhole), the pool, and how to play each.');
@@ -19305,8 +19355,9 @@ window.AgentKit = window.AgentKit || (() => {
         await until(() => (room && room.at !== from) || fresh(), 25000); await until(() => roomReady(), 60000); await until(fresh, 8000);   // (answers once you are there, with the new arrow)
         const got = fresh() && srT; return {where: roomInfo(), arrow: got ? text($('sra')) : null, arrowTo: got ? arrowTo() || undefined : undefined}; }},
     {name: 'clearArrow', does: 'Take away the arrow left by a search. Gives back {ok} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"ok":{},"error":{"type":"string"}}}, run: () => { $('src').click(); return {ok: true}; }},
-    {name: 'blockFeed', does: 'The block feed (not the live feed): the block\u2019s contents one at a time, full screen, as the house button\u2019s third press shows them (the cube, the hall, the feed). Shelves in the hall\u2019s order; each inscription its own card, a token its tile, a payment its coins in and out. open: false closes it (back to the cube); block: a block number; shelf: a shelf\u2019s name (e.g. "images", "runes minted"); next: move that many cards down the shelf (negative: back up); nextShelf: move that many shelves along. Web pages play in ordinals.com\u2019s sealed preview, only while on screen. gallery: the card\u2019s parent/child collection as a feed of its own, from the top (the parent, then every child, read 100 at a time as you go; gallery{parent, read, more} says how far it has been read). Gives back {open, block, gallery, shelves[{name, count}], shelf, at, of, card{parcel, txid, withTile, inscription, type, says}, view{screen[w, h], shown[x, y, w, h]}} (withTile: a token that carries a picture or an inscription shows it with its tile beside it; view: the room a card has on the screen and where what it shows sits, in CSS pixels; shown is null while it loads) (or {ok: false, error} if it could not).', untrusted: true, out: {"type":"object","properties":{"open":{"type":"boolean"},"block":{},"gallery":{},"shelves":{"type":"array"},"shelf":{},"at":{},"of":{},"card":{},"view":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the feed (the default), false to close it'}, {name: 'gallery', type: 'string', does: 'true: the collection of the card on screen as a gallery (its parent\u2019s, else its own), read from the top; a parent inscription id: that collection; false: back to the block'}, {name: 'block', type: 'number', does: 'a block number to show'}, {name: 'shelf', type: 'string', does: 'a shelf to go to, by its name'}, {name: 'next', type: 'number', does: 'cards to move down the shelf (negative: up)'}, {name: 'nextShelf', type: 'number', does: 'shelves to move along (negative: back)'}],
-      run: async ({open, block, shelf, next, nextShelf, gallery}) => { if (open === false || open === 'false') { FEED.close(); await wait(400); return FEED.state(); } if (tipH < 0) return {ok: false, error: 'the newest block is not known yet'};
+    {name: 'blockFeed', does: 'The block feed (not the live feed): the block\u2019s contents one at a time, full screen, as the house button\u2019s third press shows them (the cube, the hall, the feed). Shelves in the hall\u2019s order; each inscription its own card, a token its tile, a payment its coins in and out. open: false closes it (back to the cube); block: a block number; shelf: a shelf\u2019s name (e.g. "images", "runes minted"); next: move that many cards down the shelf (negative: back up); nextShelf: move that many shelves along. Web pages play in ordinals.com\u2019s sealed preview, only while on screen. gallery: the card\u2019s parent/child collection as a feed of its own, from the top (the parent, then every child, read 100 at a time as you go; gallery{parent, read, more} says how far it has been read). facts: true opens the card\u2019s facts on screen, as a tap on the card does (false closes them); the same facts are always in the answer. While the feed is up, see() and state() describe it, and buttons() and press() keep to the feed\u2019s own buttons. Gives back {open, block, gallery, shelves[{name, count}], shelf, at, of, card{parcel, txid, withTile, inscription, type, shows, facts{}, links[{name, url}], untrusted{says, words, type}}, factsOpen, view{screen[w, h], shown[x, y, w, h]}} (withTile: a token that carries a picture or an inscription shows it with its tile beside it; type: its file type, null if it is not known or not a usual one; shows: what the card puts on screen, in the page\u2019s own words; facts and links: the rows and the links of the card\u2019s facts sheet (block, parcel, shelf, inscription, moved, fee, size, transaction; its page on ordinals.com, Provenance Check, Block Manifest); untrusted: text that came from the chain, only when there is some: says is what a token\u2019s tile says, words the first 600 characters of a text inscription, type a file type that is not a usual one; view: the room a card has on the screen and where what it shows sits, in CSS pixels; shown is null while it loads) (or {ok: false, error} if it could not).', untrusted: true, out: {"type":"object","properties":{"open":{"type":"boolean"},"block":{},"gallery":{},"shelves":{"type":"array"},"shelf":{},"at":{},"of":{},"card":{},"factsOpen":{"type":"boolean"},"view":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the feed (the default), false to close it'}, {name: 'facts', type: 'boolean', does: 'true: open the facts of the card on screen, as a tap does; false: close them'}, {name: 'gallery', type: 'string', does: 'true: the collection of the card on screen as a gallery (its parent\u2019s, else its own), read from the top; a parent inscription id: that collection; false: back to the block'}, {name: 'block', type: 'number', does: 'a block number to show'}, {name: 'shelf', type: 'string', does: 'a shelf to go to, by its name'}, {name: 'next', type: 'number', does: 'cards to move down the shelf (negative: up)'}, {name: 'nextShelf', type: 'number', does: 'shelves to move along (negative: back)'}],
+      run: async ({open, block, shelf, next, nextShelf, gallery, facts}) => { if (open === false || open === 'false') { FEED.close(); await wait(400); return FEED.state(); } if (tipH < 0) return {ok: false, error: 'the newest block is not known yet'};
+        if (HALLMAP.isOpen()) HALLMAP.close();   // (28 Nov 2026: the map would cover the feed)
         const h = block != null ? +String(block).replace(/[^0-9]/g, '') : null; if (h != null && !(h >= 0 && h <= tipH)) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH};
         if (!FEED.on()) { if (room) await roomExit(); FEED.open(h); } else if (h != null && h !== FEED.state().block) FEED.load(h);
         await until(() => FEED.state().shelves.length > 0, 60000);
@@ -19315,9 +19366,20 @@ window.AgentKit = window.AgentKit || (() => {
         if (shelf) { const S = FEED.state(), j = S.shelves.findIndex(c => c.name.toLowerCase() === String(shelf).toLowerCase()); if (j < 0) return Object.assign({ok: false, error: 'no shelf called ' + shelf + ' in this block'}, FEED.state()); FEED.jump(j, 0); }
         if (+nextShelf) { const S = FEED.state(), c0 = S.shelves.findIndex(c => c.name === S.shelf); FEED.jump(Math.max(0, Math.min(S.shelves.length - 1, c0 + Math.round(+nextShelf))), 0); }
         if (+next) { const S = FEED.state(); FEED.jump(null, Math.max(0, Math.min(S.of - 1, S.at - 1 + Math.round(+next)))); }
-        await wait(600); return FEED.state(); }},
-    {name: 'map', does: 'The map: every block on rings that grow (the first block at the heart, one ring for every 2,016 blocks), with you are here marked, as M or the map button opens it (on a phone, in the tablet). open: false closes it; walkTo: a block number walks into that block\u2019s hall from the map. view: "3d" flies a small ship over the same spiral in 3D (W A S D Q E, or the pad), "2d" goes back to the flat map. Gives back {open, youAreHere, here, picked, newest, flight{view, overBlock, picked, height, speed}} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"open":{"type":"boolean"},"youAreHere":{},"here":{},"picked":{},"newest":{},"flight":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the map (the default), false to close it'}, {name: 'walkTo', type: 'number', does: 'a block number to walk into from the map'}, {name: 'view', type: 'string', enum: ['2d', '3d'], does: '3d flies a small ship over every block (the same spiral, in 3D), 2d is the flat map'}],
-      run: async ({open, walkTo, view}) => { if (walkTo != null) { const h = +String(walkTo).replace(/[^0-9]/g, ''); if (!(h >= 0) || h > tipH) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH}; if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'}; HALLMAP.pick(h, true); await wait(600); await HALLMAP.walk(h); return HALLMAP.state(); } if (open === false || open === 'false') { HALLMAP.close(); return HALLMAP.state(); } if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'}; const H3 = window.__hall3d; if (H3 && view === '3d' && !H3.on() && !H3.show()) return {ok: false, error: 'the 3D map needs WebGL 2 in this browser'}; if (H3 && view === '2d' && H3.on()) document.getElementById('mp3').click(); return Object.assign(HALLMAP.state(), H3 ? {flight: H3.state()} : {}); }},
+        await wait(600); await until(() => { const c = FEED.state().card; return !c || c.shows !== 'still being read'; }, 5000);   // (28 Nov 2026: the card says what it shows once its file type is known; a slow one is given as "still being read")
+        if (facts === true) { if (!FEED.factsOn()) FEED.facts(); } else if (facts === false) FEED.closeFacts();
+        return FEED.state(); }},
+    {name: 'map', does: 'The map: every block on rings that grow (the first block at the heart, one ring for every 2,016 blocks), with you are here marked, as M or the map button opens it (on a phone, in the tablet). open: false closes it; walkTo: a block number walks into that block\u2019s hall from the map. view: "3d" flies a small ship over the same spiral in 3D (W A S D Q E, or the pad), "2d" goes back to the flat map. find: a block number goes to that block and picks it, as typing it and GO does (in 3D the ship flies there); then walkTo walks in. While the map is up, see() and state() describe it, and buttons() and press() keep to the map\u2019s own buttons. Gives back {open, youAreHere, here, picked, newest, places[{block, name}], flight{view, overBlock, picked, height, speed, line, toTheHeart}} (places: the named dots, Genesis to the newest halving; overBlock: the block under the ship, null until one is; line: the line at the bottom of the 3D map; toTheHeart: how far the ship is from the first block) (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"open":{"type":"boolean"},"youAreHere":{},"here":{},"picked":{},"newest":{},"places":{"type":"array"},"flight":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'open', type: 'boolean', does: 'true to open the map (the default), false to close it'}, {name: 'find', type: 'number', does: 'a block number to go to and pick on the map'}, {name: 'walkTo', type: 'number', does: 'a block number to walk into from the map'}, {name: 'view', type: 'string', enum: ['2d', '3d'], does: '3d flies a small ship over every block (the same spiral, in 3D), 2d is the flat map'}],
+      run: async ({open, walkTo, view, find}) => {
+        const num = v => +String(v).replace(/[^0-9]/g, ''), bad = h => !(h >= 0) || h > tipH, shut = open === false || open === 'false';
+        if (find != null && bad(num(find))) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH};
+        if (!shut && FEED.on()) { FEED.close(); await wait(400); }   // (28 Nov 2026: the map is not reached from the feed: back to the cube first, as a person goes)
+        if (walkTo != null) { const h = num(walkTo); if (bad(h)) return {ok: false, error: 'give a block number from 0 to the newest, ' + tipH}; if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'}; HALLMAP.pick(h, true); await wait(600); await HALLMAP.walk(h); return HALLMAP.state(); }
+        if (shut) { HALLMAP.close(); return HALLMAP.state(); }
+        if (!HALLMAP.isOpen() && !HALLMAP.open()) return {ok: false, error: 'the newest block is not known yet'};
+        const H3 = window.__hall3d; if (H3 && view === '3d' && !H3.on() && !H3.show()) return {ok: false, error: 'the 3D map needs WebGL 2 in this browser'}; if (H3 && view === '2d' && H3.on()) document.getElementById('mp3').click();
+        if (find != null) { const h = num(find); if (!(H3 && H3.on() && H3.pick(h))) HALLMAP.pick(h, true); await wait(600); }   // (28 Nov 2026: as typing a block and GO)
+        return mapInfo(); }},
     {name: 'travel', does: 'Fast travel: "common room", "newest block" or "genesis block". Gives back {in, ready, x, y, z, facing, pitch, sitting, roomX, roomD, area} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"in":{},"ready":{},"x":{},"y":{},"z":{},"facing":{},"pitch":{},"sitting":{},"roomX":{},"roomD":{},"area":{},"ok":{"type":"boolean"},"error":{"type":"string"}}}, args: [{name: 'to', enum: ['common room', 'newest block', 'genesis block'], does: 'where', req: true}],
       run: async ({to}) => { if (!/common|genesis|newest|latest|live|tip|now/i.test(String(to || ''))) return {ok: false, error: 'travel goes to "common room", "newest block" or "genesis block": for another block, use walkIn({height})'}; const h = /common/i.test(to) ? COMMON : /genesis/i.test(to) ? 0 : tipH; if (!inRoom()) await roomEnter(h); else await srTravel(h); await wait(300); await until(() => roomReady(), 60000); return roomInfo(); }},
     {name: 'bigScreen', ro: true, does: 'Read the Forum\'s big screen (live from the blockchain) in words, from anywhere in the common room (people walk up to it to see it). Gives back {waiting[{which, txs, vsizeMB, medianFee, feeRange[]}], justMined[{height, minedAt, txs, sizeMB, pool, medianFee}], nextHalving{atBlock, blocksToGo}, usualWait, bestTimeToGetIn, lowFee[], blockWeather} (or {ok: false, error} if it could not).', out: {"type":"object","properties":{"waiting":{"type":"array","items":{"type":"object","properties":{"which":{},"txs":{},"vsizeMB":{},"medianFee":{},"feeRange":{"type":"array"}}}},"justMined":{"type":"array","items":{"type":"object","properties":{"height":{},"minedAt":{},"txs":{},"sizeMB":{},"pool":{},"medianFee":{}}}},"nextHalving":{"type":"object","properties":{"atBlock":{},"blocksToGo":{}}},"usualWait":{},"bestTimeToGetIn":{},"lowFee":{"type":"array"},"blockWeather":{},"ok":{"type":"boolean"},"error":{"type":"string"}}},
