@@ -5681,11 +5681,30 @@ function lifeVAO(geo, ib) {
   [[4, 4, 0], [5, 4, 16], [6, 3, 32]].forEach(([l, s, o]) => { gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, s, gl.FLOAT, false, 44, o); gl.vertexAttribDivisor(l, 1); });
   gl.bindVertexArray(null); return vao;
 }
+// (28 Nov 2026, bitmap22: calmer halls) in a hall every thing is a miniature in two mirrored rows (the shader's "little avenue"), so the trees, cacti and
+// rocks that used to stay outside come in too, tiny. HALLN: how much of each kind a hall shows (the rest: all of it); HALLSLOW: a hall's life, specks and
+// floor move at half speed. A hall shows only the strip of the ring that runs along it, so each kind gets a list of just those (one for each of the
+// ring's two lays): a hall draws what can be seen and nothing else, which is far less than it drew before (the grass: about a tenth).
+const HALLN = {tuft: .25, flower: .25, fish: .5, bubble: .5, penguin: .5, butterfly: .5, tumbleweed: .6, icecrystal: .5, snowrock: .5, snowman: .6}, HALLSLOW = .5;
+const HALLX = [];   // the Christmas things a hall shows: [how far along the ring's lay, how far across, how wide], for walking round them
 const LGROUPS = LIFE.SEASONS.map(groups => groups.map(([mesh, inst]) => {
   const ib = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst.flat()), gl.STATIC_DRAW);
-  const fly = mesh === 'magma';
-  return {mesh, t: LTYPE[mesh], n: inst.length, vao: lifeVAO(lifeGeo[mesh], ib), sh: SHADOWR[mesh] && !fly ? lifeVAO(lifeGeo.shadow, ib) : null, sr: SHADOWR[mesh] || 0, under: mesh === 'fish'};
+  const fly = mesh === 'magma', shd = SHADOWR[mesh] && !fly, f = HALLN[mesh] || 1, all = mesh === 'fish' || mesh === 'tumbleweed';   // (the koi swim under the whole floor, and a tumbleweed rolls the length of the hall: those keep the whole list)
+  const hall = all ? null : [0, 1].map(q => {
+    let L = inst.filter(I => Math.abs(q ? I[2] : I[0]) < 3.6); L = L.slice(0, L.length ? Math.max(1, Math.round(L.length * f)) : 0);
+    if (mesh === 'xmastree' || mesh === 'snowman') for (const I of L) HALLX.push([((q ? 16 - I[0] : I[2]) % 32 + 32) % 32, q ? I[2] : I[0], (mesh === 'xmastree' ? .55 : .4) * I[4]]);
+    if (!L.length) return {n: 0};
+    const hb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, hb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L.flat()), gl.STATIC_DRAW);
+    return {n: L.length, vao: lifeVAO(lifeGeo[mesh], hb), sh: shd ? lifeVAO(lifeGeo.shadow, hb) : null};
+  });
+  return {mesh, t: LTYPE[mesh], n: inst.length, vao: lifeVAO(lifeGeo[mesh], ib), sh: shd ? lifeVAO(lifeGeo.shadow, ib) : null, sr: SHADOWR[mesh] || 0, under: mesh === 'fish', hall, hn: Math.max(1, Math.round(inst.length * f))};
 }));
+// what to draw of a kind just now: in a hall its own short list (the koi and the tumbleweeds: part of the whole one, and only once), else all of it
+function lifePick(g, shadow) {
+  if (LROOM[0] !== 1) return {vao: shadow ? g.sh : g.vao, n: g.n};
+  if (!g.hall) return LMIR < 0 || (g.mesh === 'tumbleweed' && LROOM[1]) ? null : {vao: shadow ? g.sh : g.vao, n: g.hn};
+  const h = g.hall[LROOM[1]]; return h.n ? {vao: shadow ? h.sh : h.vao, n: h.n} : null;
+}
 // specks: one buffer per season
 const LDUST = LIFE.DUST.map((n, k) => {
   const d = [], r = LIFE.rnd, SZ = [0.1, 0.34, 0.17, 0.12, 0.2, 0.14, 0.2][k];
@@ -5705,11 +5724,6 @@ function lifeWeights(h) {
   W[k] = 1 - b; if (k < 6) W[k + 1] = b; return W;
 }
 let LROOM = [0, 0, 0, 0], LWALL = [1e5, 1e5, -1e5, -1e5], LMIR = 1;   // in the rooms: [on, turned a quarter, moved on, where you are along the hall]; LMIR: which side of the hall's middle (1, or -1 for its mirror)
-// (28 Nov 2026, bitmap22: calmer halls) in a hall every thing is a miniature in two mirrored rows (the shader's "little avenue"), so the trees, cacti and
-// rocks that used to stay outside come in too, tiny. HALLN: how much of each kind a hall shows on each side (the rest: all of it). With two sides,
-// grass, flowers, lily pads, koi and bubbles come to half what a hall had; HALLSLOW: a hall's life, specks and floor move at half speed
-const HALLN = {tuft: .25, flower: .25, lilypad: .5, lily: .5, fish: .5, bubble: .5, penguin: .5, butterfly: .5, tumbleweed: .6, icecrystal: .5, snowrock: .5, snowman: .6}, HALLSLOW = .5;
-const hallN = g => LROOM[0] ? Math.max(1, Math.round(g.n * (HALLN[g.mesh] || 1))) : g.n;
 function lifeUniforms(VP, eye, tn) {
   gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform1f(lifeP.u.uMr, LMIR); gl.uniform4fv(lifeP.u.uWl, LWALL); gl.uniform2fv(lifeP.u.uCm, LCM); gl.uniform1f(lifeP.u.uEv, cmEv); gl.uniform4fv(lifeP.u.uBt, cmBt);
 }
@@ -5722,10 +5736,11 @@ function lifeDraw(VP, eye, tn, LW, under) {
   LW.forEach((w, k) => {
     if (w < 0.01) return;
     for (const g of LGROUPS[k]) {
-      if (g.under !== under || (LMIR < 0 && g.under)) continue;   // (the koi are not mirrored: they swim under the whole floor)
+      if (g.under !== under) continue;
+      const d = lifePick(g, false); if (!d) continue;
       if (!set) { lifeUniforms(VP, eye, tn); set = true; }
       gl.uniform1f(lifeP.u.uW, w); gl.uniform1i(lifeP.u.uT, g.t); gl.uniform1i(lifeP.u.uST, g.t);
-      gl.bindVertexArray(g.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo[g.mesh].n, hallN(g));
+      gl.bindVertexArray(d.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo[g.mesh].n, d.n);
     }
   });
 }
@@ -5736,9 +5751,10 @@ function lifeShadows(VP, eye, tn, LW) {
     if (w < 0.01) return;
     for (const g of LGROUPS[k]) {
       if (!g.sh) continue;
+      const d = lifePick(g, true); if (!d || !d.vao) continue;
       if (!set) { lifeUniforms(VP, eye, tn); set = true; }
       gl.uniform1f(lifeP.u.uW, w); gl.uniform1i(lifeP.u.uT, 99); gl.uniform1i(lifeP.u.uST, g.t); gl.uniform1f(lifeP.u.uSR, g.sr);
-      gl.bindVertexArray(g.sh); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo.shadow.n, hallN(g));
+      gl.bindVertexArray(d.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo.shadow.n, d.n);
     }
   });
 }
@@ -6647,7 +6663,7 @@ function rmStep(dt) {
   if (C && C.gd) { if (!C.ready || p.ride) { p.vx = p.vz = 0; return; } if (p.swim) { gdSwimMove(C, p, nx, nz); return; } if (p.sit && (f || s)) { gdStand(C, p); return; } if (p.sit) { p.vx = p.vz = 0; return; } p.y = 0; gdMove(C, p, nx, nz); return; }   // (in the garden: sitting, you stand up as you move)
   p.lv = 0; p.y = 0; p.sit = false;
   if (C && C.gal) { if (C.ready) galMove(C, p, nx, nz); else p.vx = p.vz = 0; return; }
-  if (lifeWeights(heatS)[0] > .5) for (const [hx0, hz, r] of LIFE.XMAS.slice(0, 3 + Math.round(5 * HALLN.snowman))) for (const hx of [1, -1].map(m => m * (1.24 + (hx0 + 3.55) / 7.1 * .48))) {   // (28 Nov 2026: miniatures, in the hall's two rows: the 3 trees and the snowmen a hall shows, on both sides)
+  if (lifeWeights(heatS)[0] > .5) for (const [hz, hx0, r] of HALLX) for (const hx of [1, -1].map(m => m * (1.24 + (hx0 + 3.55) / 7.1 * .48))) {   // (28 Nov 2026: miniatures, in the hall's two rows: the trees and snowmen a hall shows, on both sides)
     const z = hz + Math.round((nz - hz) / 32) * 32, rad = r * .25 + .2, dx = nx - hx, dz = nz - z, d = Math.hypot(dx, dz);
     if (d < rad && Math.min(...room.rooms.flatMap(R => R && R.z0 != null ? [Math.abs(z - R.z0), Math.abs(z - R.z0 + R.L)] : [9])) > 1.2) { const k = d > 1e-4 ? rad / d : 0; nx = hx + (k ? dx * k : rad); nz = z + dz * k; }
   }
