@@ -12162,8 +12162,8 @@ const FEED = (() => {
       d.append(b, w, a); panel(K, d);
     }, shut);
   }
-  // played in ordinals.com's preview, sealed, and only while on screen
-  const frame = (K, id, base) => { mount(K, 'square', 'fr'); K.src = (base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (K.live) play(K); };
+  // played in ordinals.com's preview, sealed, and only while on screen (not called "frame": that is the page's own drawing loop, which the feed starts again as it closes)
+  const seal3 = (K, id, base) => { mount(K, 'square', 'fr'); K.src = (base || 'https://ordinals.com') + '/preview/' + id; K.title = 'inscription ' + id.slice(0, 10) + ', in ordinals.com’s preview'; fit(K); ready(K); if (K.live) play(K); };
   // (28 Nov 2026, bitmap22: "check 3D models on the swipe version") A 3D model. A glTF model plays in ordinals.com's own viewer (sealed, only while
   // on screen), where it turns by itself. What that viewer shows as an empty black square is shown the way the hall's tablet shows it: an STL or
   // OBJ model is drawn by the page from the file's own shapes (such a file holds no code to run) and turns slowly while it is on screen; a file
@@ -12178,12 +12178,12 @@ const FEED = (() => {
     mdlKind(id).then(M => {
       if (K.dead) return; M = M || {};
       if (M.empty) return M.vrm && M.moves && PP.st !== -1 && typeof DecompressionStream === 'function' ? mover3(K, id) : panel(K, noShape3(M, id));
-      if (!M.ptr) return OWN3D.test(Kd.ct || '') ? drawn3(K, id) : frame(K, id, Kd.base);
+      if (!M.ptr) return OWN3D.test(Kd.ct || '') ? drawn3(K, id) : seal3(K, id, Kd.base);
       const to = M.ptr.id; K.ptr = to;
       insKind(to, bases()).then(P => {
         if (K.dead) return; if (P.kind !== 'model') return kind(K, P, to);
         if (OWN3D.test(P.ct || '')) return drawn3(K, to);
-        K.says = 'the 3D model its file points to (inscription ' + to + '), running sealed in ordinals.com’s preview'; frame(K, to, P.base);
+        K.says = 'the 3D model its file points to (inscription ' + to + '), running sealed in ordinals.com’s preview'; seal3(K, to, P.base);
       });
     });
   }
@@ -12218,15 +12218,15 @@ const FEED = (() => {
   }
   function mover3(K, id) {   // a VRM move (movements only): one of Block Hall's people does it, once its card is on screen
     const m = mount(K, 'square', 'md'), cv = document.createElement('canvas'); fit(K);
-    const side = parseFloat(m.style.width) || 320; cv.width = cv.height = Math.max(256, Math.min(448, Math.round(side * dpr() / 64) * 64)); m.appendChild(cv);   // (kept light: each picture of them is drawn off screen and copied over, as on the hall's tablet)
+    const side = parseFloat(m.style.width) || 320; cv.width = cv.height = Math.max(256, Math.min(F.W < 720 ? 448 : 768, Math.round(side * dpr() / 64) * 64)); m.appendChild(cv);   // (kept light on a phone: each picture of them is drawn off screen and copied over, as on the hall's tablet)
     K.mvp = {id, cv, on: false, drawn: false}; K.says = 'a VRM move (movements for a person, with no body of its own), done here by one of Block Hall’s people';
     if (K.live) play(K);
   }
   function kind(K, Kd, at) {   // (at: another inscription's file shown on this card, when this one's file only points to it)
     const id = at || K.it.id, ct = K.ct = Kd.ct || '', G = window.FamilyGuard;
     if (!ct) return bare(K, Kd);
-    if (Kd.kind === 'model') return at ? (OWN3D.test(ct) ? drawn3(K, id) : frame(K, id, Kd.base)) : model3(K, Kd);
-    if (/^text\/html\b/.test(ct)) { if (G && G.strict()) return panel(K, insClosedEl(Kd, id)); return frame(K, id, Kd.base); }
+    if (Kd.kind === 'model') return at ? (OWN3D.test(ct) ? drawn3(K, id) : seal3(K, id, Kd.base)) : model3(K, Kd);
+    if (/^text\/html\b/.test(ct)) { if (G && G.strict()) return panel(K, insClosedEl(Kd, id)); return seal3(K, id, Kd.base); }
     if (Kd.kind === 'image' && Kd.url) return pic(K, Kd.url, id, Kd.url, false);
     if (Kd.kind === 'video') return film(K, insSafeEl(Kd, id));
     if (Kd.kind === 'audio') return sound(K, insSafeEl(Kd, id));
