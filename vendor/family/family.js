@@ -291,7 +291,7 @@
       if (isShown()) return clear();
       if (v === 'adult') { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b class="fg-18">18+</b><b>Hidden: this may be adult content</b>Anyone can inscribe anything, and our checker thinks this ' + kind + ' may not be family friendly. Only show it if you are 18 or over.', 'Show it (I am 18 or over)'); }
       if (v === 'unchecked') { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b>Not checked</b>This ' + kind + ' could not be checked just now, so it is hidden.', 'Show it'); }
-      if (strict) { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b>Family mode</b>' + (kind === 'text' ? 'Words' : kind === 'film' ? 'Films' : 'Pictures') + ' from inscriptions stay hidden until you choose.', 'Show it'); }   // (21 Nov 2026: the note names what it hides)
+      if (strict) { el.classList.remove('fg-wait'); el.classList.add('fg-hold'); return say('<b>Family mode</b>' + (kind === 'text' ? 'Words' : kind === 'film' ? 'Films' : kind === '3D model' ? '3D models' : 'Pictures') + ' from inscriptions stay hidden until you choose.', 'Show it'); }   // (21 Nov 2026: the note names what it hides; 28 Nov 2026: a 3D model too)
       clear(); still(el, key, kind, o);
     });
     return el;
