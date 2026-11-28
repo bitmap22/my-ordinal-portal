@@ -12,7 +12,7 @@
   else root.ProvenanceCheck = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
 
   /* ---------- SHA-256 (for transaction ids and content fingerprints) ---------- */
   const K = new Uint32Array([0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -311,10 +311,13 @@
      Gives {ord[{site, agrees, differs[]}], block[{site, says, agrees}]} */
   const MORE_ORD = [];   // (24 Nov 2026: ordinals.com already gave the page its record, and no other ord site's terms allow
   //  it, so the record is not asked again: asking the same site twice proves nothing. Only which block it is in is asked.)
+  // (28 Nov 2026) a browser can't read ordpool.space's blocks and transactions any more: it sends the ask on to api.ordpool.space, whose
+  // answer gives other sites no permission to read it. So a browser leaves it out; the MCP tool, which is not a browser, still asks it
+  const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
   const MORE_TXB = [
     ['blockstream.info', t => 'https://blockstream.info/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
     ['mempool.space', t => 'https://mempool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null],
-    ['ordpool.space', t => 'https://ordpool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null]];   // (24 Nov 2026: only sites whose terms allow it)
+    ['ordpool.space', t => 'https://ordpool.space/api/tx/' + t + '/status', j => j.confirmed ? j.block_height : null]].filter(x => !(IN_BROWSER && x[0] === 'ordpool.space'));   // (24 Nov 2026: only sites whose terms allow it)
   async function moreSources(I, get) {
     const base = v => String(v || '').split(';')[0].trim().toLowerCase(), txid = String(I.id).slice(0, 64);
     const ord = await Promise.all(MORE_ORD.map(async b => { const site = b.replace('https://', '');

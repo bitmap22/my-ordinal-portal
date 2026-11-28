@@ -117,7 +117,7 @@ async function main() {
   await fact('code-read.html', 'Code Read', async () => {
     html = html || await example('HTML');
     const id = insOf(html.list[0]), r = await T.codeRead({id}), found = (r.kinds || []).filter(k => k.found).map(k => k.name.toLowerCase());
-    return {text: 'Inscription #' + n0(r.number) + ', a web page made yesterday, read without running it: ' + (found.length ? 'it ' + found.join(', ') + '.' : 'it asks no wallet for anything, loads nothing from outside the chain and sends nothing out.'),
+    return {text: 'Inscription #' + n0(r.number) + ', a web page made yesterday, read without running it: ' + (found.length ? 'it ' + found.join(', ') + '.' : r.complete === false ? 'in the part of its code that could be read, it asks no wallet for anything, loads nothing from outside the chain and sends nothing out (not all of it could be read).' : 'it asks no wallet for anything, loads nothing from outside the chain and sends nothing out.'),   // (28 Nov 2026: "nothing found" only covers what was read)
       link: PORTAL + 'code-read.html?id=' + id, linkText: 'See what it asks for', period: D};
   });
   await fact('recursion-map.html', 'Recursion Map', async () => {

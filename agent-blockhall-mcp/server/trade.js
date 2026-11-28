@@ -31,7 +31,7 @@
   else root.TradeCheck = make();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const VERSION = '1.2.0';
+  const VERSION = '1.2.1';
   const PORTAL = 'https://ordportal.com/';
   const MEANING = 'GO means each thing its words list was checked and agrees (where it came from, who holds it if an address was given, the collection given, and for code what it asks for and loads), and nothing needs care: no more than that. With no collection given the answer is NOT SURE at best, because anyone can make a parent. GO is never advice on what it is worth.';
   const fmt = n => typeof n === 'number' ? n.toLocaleString('en-GB') : String(n);
@@ -125,7 +125,7 @@
     const stop = reasons.filter(r => r.mark === 'stop'), care = reasons.filter(r => r.mark === 'care' || r.mark === 'unknown');
     const verdict = stop.length ? 'STOP' : care.length ? 'NOT SURE' : 'GO';
     const words = verdict === 'STOP' ? 'STOP: ' + stop[0].says.replace(/^Proven wrong: /, '') + (stop.length > 1 ? ' (and ' + (stop.length - 1) + ' more)' : '')
-      : verdict === 'NOT SURE' ? 'NOT SURE: ' + care.length + ' thing' + (care.length === 1 ? '' : 's') + ' could not be proven or need' + (care.length === 1 ? 's' : '') + ' care: ' + care.map(r => r.about).filter((v, i, a) => a.indexOf(v) === i).join(', ') + '.'
+      : verdict === 'NOT SURE' ? (n => 'NOT SURE: ' + n.length + ' thing' + (n.length === 1 ? '' : 's') + ' could not be proven or need' + (n.length === 1 ? 's' : '') + ' care: ' + n.join(', ') + '.')(care.map(r => r.about).filter((v, i, a) => a.indexOf(v) === i))   // (28 Nov 2026, 1.2.1: counted by the things named: it said "2 things … its collection")
       : 'GO: checked and agrees: ' + reasons.filter(r => r.mark === 'ok').map(r => r.about).filter((v, i, a) => a.indexOf(v) === i).join(', ') + '. Nothing found needs care. Not advice on what it is worth.';
     return {verdict, words};
   }
