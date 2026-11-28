@@ -5439,7 +5439,7 @@ const LIFE = (() => {
 const LTYPE = {xmastree: 16, snowman: 17, magma: 12, snowrock: 10, tuft: 0, flower: 1, tree: 2, pine: 3, penguin: 4, icecrystal: 5, fish: 6, lilypad: 7, lily: 8, butterfly: 9, cactus: 10, tumbleweed: 11, rock: 12, burnt: 13, bubble: 14, shard: 15};
 const lifeP = prog(V + `layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec3 aC;layout(location=3) in float aW;
 layout(location=4) in vec4 iP;layout(location=5) in vec4 iS;layout(location=6) in vec3 iC;
-uniform mat4 uVP;uniform float uNow,uW,uSR,uEv;uniform int uT,uST;uniform vec4 uRm,uWl,uBt;uniform vec3 uE;uniform vec2 uCm;
+uniform mat4 uVP;uniform float uNow,uW,uSR,uEv,uMr;uniform int uT,uST;uniform vec4 uRm,uWl,uBt;uniform vec3 uE;uniform vec2 uCm;
 out vec3 vN;out vec3 vC;out vec3 vP;out float vE;out float vA;out float vF;
 mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0.,-s,0.,1.,0.,s,0.,c);}
 mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1.,0.,0.,0.,c,s,0.,-s,c);}
@@ -5449,7 +5449,7 @@ float wr(float a){return mod(a+3.1416,6.2832)-3.1416;}
 vec2 bv(float f,float sd){float R=2.2*(1.+.25*sin(1.9*f+sd));vec2 q=R*vec2(cos(f*.62+sd),.8*sin(f*.62+sd));return fract(sd*.37)>.5?vec2(-q.x,q.y):q;}
 float wind(vec2 q,float t){return (.5+.5*sin(t*.9-q.x*.35+q.y*.08))*(.65+.35*sin(t*.21));}
 void main(){
-float t=uNow,ph=iS.y,g=smoothstep(0.,1.,uW),sc=iS.x*g,tn=aW>1.5?1.:0.,w=aW-tn*2.,em=0.,lift=0.;
+float t=uNow,ph=iS.y+(uMr<0.?2.7:0.),g=smoothstep(0.,1.,uW),sc=iS.x*g,tn=aW>1.5?1.:0.,w=aW-tn*2.,em=0.,lift=0.;
 int T=uT==99?uST:uT;
 vec3 p=aP,n=aN,c=tn>.5?iC:aC,b=iP.xyz;mat3 R=RY(iP.w),L=mat3(1.);
 if(T==4){
@@ -5492,7 +5492,7 @@ if(T==4){
  // tumbleweeds blow along with the wind, in gusts, hopping
  float tt=t+ph,a=iS.z,dd=a*(tt+.8*sin(tt*.31+ph)/.31),vel=1.+.8*cos(tt*.31+ph);
  float zl=(iP.z<0.?-1.:1.)*clamp(abs(iP.z),6.9,14.);
- b=vec3(mod(iP.x+dd+17.,34.)-17.,0.,zl+.4*sin(dd*.3+ph));
+ b=vec3(mod(iP.x+dd+17.,34.)-17.,0.,zl+.4*sin(dd*.3+ph));if(uRm.x>.5&&uRm.x<1.5)b.x=mod(iP.x+dd*.3+16.,32.)-16.;   // (in a hall: a slow roll, down the hall)
  R=mat3(1.);L=RZ(-dd/.47)*RX(.4*sin(ph*3.));lift=.47+abs(sin(dd*1.25+ph))*.32*clamp(vel,.2,1.6);
 }else if(T==12&&iS.z>.5){
  b.y+=.35*sin(t*.6+ph);R=RY(iP.w+t*.15)*RX(.3*sin(t*.4+ph));
@@ -5590,20 +5590,35 @@ if(T==4){
 }else if(T==32){   // turning slowly in its case
  R=RY(iP.w+t*.6);b.y+=.02*sin(t*1.3+ph);
 }
-float fd=smoothstep(15.2,12.8,length(b.xz));vF=exp(-pow(length(b.xz)/10.,2.)*.5);
+float fd=smoothstep(15.2,12.8,length(b.xz)),nr=0.;vF=exp(-pow(length(b.xz)/10.,2.)*.5);
 if(uRm.x>1.5){fd=1.;vF=1.;}else if(uRm.x>.5){   // in the walk-in rooms: the ring laid along the hall (twice: turned a quarter and moved on half a stretch, so there is no gap), the stretch nearest you
- if(uRm.y>.5){b=vec3(b.z,b.y,-b.x);R=RY(1.5708)*R;}
- b.z+=uRm.z;b.z+=floor((uRm.w-b.z)/32.+.5)*32.;
- fd=(T==6?1.:smoothstep(3.55,2.95,abs(b.x)))*smoothstep(16.,12.5,abs(b.z-uRm.w));vF=1.;if(b.z>uCm.x&&b.z<uCm.y)fd=0.;   // (and none of it in the common room)
- if(T==4||T==5||T==6||T==9||T==11||T==12||T==14||T==15)sc*=.25;
- if(T==16||T==17){sc*=.5;fd*=smoothstep(.95,1.45,min(min(abs(b.z-uWl.x),abs(b.z-uWl.y)),min(abs(b.z-uWl.z),abs(b.z-uWl.w))));}}   // (little ones indoors, and never in a wall or a doorway)   // (indoors the creatures and crystals are a quarter the size)
+ if(T==6){   // the koi swim under the whole floor, as they always have (a quarter the size)
+  if(uRm.y>.5){b=vec3(b.z,b.y,-b.x);R=RY(1.5708)*R;}
+  b.z+=uRm.z;b.z+=floor((uRm.w-b.z)/32.+.5)*32.;
+  fd=smoothstep(16.,12.5,abs(b.z-uRm.w));vF=1.;if(b.z>uCm.x&&b.z<uCm.y)fd=0.;sc*=.25;
+ }else{
+  // (28 Nov 2026, bitmap22: calmer halls) a little avenue. Every thing is a miniature, in two rows down the middle of the floor with a clear
+  // path between them (uMr: which side; the other side is its mirror), all of it lower than the lowest shelf. What floats (lava rocks, plasma
+  // crystals) drifts up above the bookcases. Nothing stands between knee height and the tops of the shelves, so no shelf is ever covered.
+  vec3 h=iP.xyz,dl=b-h;bool sky=(T==12&&iS.z>.5)||T==15;
+  if(T==11){h=vec3(0.,0.,-b.x);dl=vec3((fract(ph*.71)-.5)*2.6,0.,0.);R=RY(1.5708);}   // a tumbleweed rolls slowly down the path between the rows
+  else if(uRm.y>.5){h=vec3(h.z,h.y,-h.x);dl=vec3(dl.z,dl.y,-dl.x);R=RY(1.5708)*R;}
+  h.z+=uRm.z;h.z+=floor((uRm.w-h.z)/32.+.5)*32.;
+  float u=clamp((h.x+3.55)/7.1,0.,1.),X=T==11?0.:uMr*(sky?.3+u:.72+u);
+  float dw=min(min(abs(h.z-uWl.x),abs(h.z-uWl.y)),min(abs(h.z-uWl.z),abs(h.z-uWl.w)));   // (never in a wall or a doorway)
+  fd=(T==11?(uRm.y>.5||uMr<0.?0.:1.):smoothstep(3.55,2.95,abs(h.x)))*smoothstep(16.,12.5,abs(h.z-uRm.w))*(T==16||T==17?smoothstep(.95,1.45,dw):smoothstep(.45,.95,dw));vF=1.;if(h.z>uCm.x&&h.z<uCm.y)fd=0.;
+  b=vec3(X,sky?3.9+clamp((h.y-1.2)/4.3,0.,1.)*1.4:h.y,h.z)+dl*vec3(.3,sky?.5:.3,.3);
+  sc*=T==16?.24:T==17?.25:(T==2||T==3)?.11:T==10?.15:T==13?.13:T==12?(iS.z>.5?.15:.2):T==15?.15:(T==0||T==1||T==7||T==8)?.5:.25;   // (the tallest of them stands half a metre)
+  vec2 e=uE.xz-b.xz;float de=length(e);nr=smoothstep(5.,1.5,de);
+  if(T==17||(T==4&&iS.z<.5)){float bs=iP.w+(uRm.y>.5?1.5708:0.),k=smoothstep(10.,5.,de);R=RY(bs+wr(atan(e.x,e.y)-bs)*k+(T==4?(1.-k)*.5*sin(t*.13+ph):0.));}   // snowmen and standing penguins turn to watch you go by
+ }}
 sc*=fd;
 vec3 wp;
 if(uT==99){wp=vec3(b.x,0.,b.z)+vec3(p.x,.012,p.z)*uSR*sc;vA=w*g*fd;vF=1.;vN=vec3(0.,1.,0.);vC=vec3(0.);vE=0.;vP=wp;gl_Position=uVP*vec4(wp,1.);return;}
 wp=R*(L*p*sc)+b+vec3(0.,lift*sc,0.);vec3 wn=R*(L*n);
 if(T==0||T==1){float k=w*w,wd=wind(b.xz,t),f=T==0?1.:.7;wp.x+=k*(.05+.22*wd+.035*sin(t*3.3+ph))*sc*f;wp.z+=k*.045*sin(t*2.7+ph*1.7)*(.4+wd)*sc*f;if(T==0)c=iC.r>1.5?mix(vec3(.26,.16,.06),vec3(.78,.6,.28),w):aC*iC;}
 else if(T==2||T==3){float wd=wind(b.xz,t-.4),k=T==2?1.:.7;wp.x+=w*(.02+.07*wd+.012*sin(t*2.3+ph))*sc*k;wp.z+=w*.018*sin(t*1.37+ph)*(.4+wd)*sc*k;}
-if(T==5)em=.22+.16*sin(t*1.5+ph+aP.y*3.);
+if(T==5)em=.22+.16*sin(t*1.5+ph+aP.y*3.)+.55*nr;   // (in a hall an ice crystal glows as you come near)
 else if(T==12){if(iS.z>.5){c=tn>.5&&w>.5?iC*1.4:vec3(.045,.03,.028);em=w>.5?.75+.25*sin(t*2.+ph+aP.x*6.):0.;}else c=iC*(w>.5?.82:1.);}
 else if(T==13&&tn>.5)em=.65+.35*sin(t*2.6+ph+aP.y*5.);
 else if(T==14){float hy=aP.y/.41;em=.35+.75*hy*hy;c=mix(iC*vec3(.6,.25,.12),iC*1.25,hy);}
@@ -5637,8 +5652,18 @@ else if(uT==4){float lf=fract(t*(.25+aB.x*.35)+aA.z);bool fl=aB.w<.45;p=vec3(aA.
 else if(uT==5){if(aB.w<.55){float lf=fract(t*(.4+aB.x*.5)+aA.z);p=vec3(aA.x+sin(aA.z*30.)*lf*1.5,lf*(2.-lf)*4.,aA.y+cos(aA.z*30.)*lf*1.5);c=vec3(1.,.5,.1);a=1.-lf;sz*=.7;}
  else{p=vec3(aA.x+sin(t*.4+aA.z*6.)*.8,9.-mod(t*(.3+aB.x*.3)+aA.z*9.,9.),aA.y+cos(t*.3+aA.z*5.)*.8);c=vec3(.3,.28,.27);a=.55;sz*=.8;}}
 else{float an=aA.z*6.2832+t*(.15+.25*aB.x)*(aB.y>.5?1.:-1.),r=6.6+aB.z*8.4;p=vec3(cos(an)*r,.4+aB.w*6.+sin(t*.8+aA.z*12.)*.6,sin(an)*r);c=mix(vec3(.3,.9,1.),vec3(1.,.3,.9),aB.y);a=.75+.25*sin(t*3.+aA.z*20.);}
-if(uRm.x>.5){if(uRm.y>.5)p=vec3(p.z,p.y,-p.x);p.z+=uRm.z;p.z+=floor((uRm.w-p.z)/32.+.5)*32.;a*=uW*smoothstep(3.7,3.,abs(p.x))*smoothstep(16.,12.5,abs(p.z-uRm.w));if(p.z>uCm.x&&p.z<uCm.y)a=0.;}
-else a*=uW*smoothstep(17.,13.5,length(p.xz));vC=c;vA=a;gl_Position=uVP*vec4(p,1.);gl_PointSize=clamp(sz*uH*1.3/gl_Position.w,1.,56.);}`,
+if(uRm.x>.5){   // (28 Nov 2026, bitmap22: calmer halls) the weather keeps out of the way: up above the bookcases, or low over the middle of the floor, never at shelf height; and half the size
+ if(uRm.y>.5)p=vec3(p.z,p.y,-p.x);p.z+=uRm.z;p.z+=floor((uRm.w-p.z)/32.+.5)*32.;
+ float lo=1.;   // 1: a low speck, over the floor; 0: one up in the air
+ if(uT==0){lo=0.;p.y=3.5+p.y*.41;}   // snow falls above the bookcases, and is gone before it reaches them
+ else if(uT==2)p.y=.1+aB.y*.38+.05*sin(t*.7+aA.z);   // fireflies, low over the grass
+ else if(uT==3)p.y=.05+aB.y*.36;   // dust along the floor
+ else if(uT==4){if(aB.w<.45)p.y*=.3;else if(aB.w<.72)p.y*=.085;else{lo=0.;p.y=3.5+p.y*.6;}}   // flames lick low; some embers skim the floor, the rest rise far overhead
+ else if(uT==5){if(aB.w<.55)p.y*=.13;else{lo=0.;p.y=3.5+p.y*.5;}}   // sparks hop low; the ash falls overhead
+ else if(uT==6){if(aB.w<.4)p.y=.06+aB.w*1.1;else{lo=0.;p.y=3.6+(aB.w-.4)*6.;}}   // wisps: low, or overhead
+ if(lo>.5&&uT!=1)p.x*=.5;sz*=.5;   // (glints lie flat on the water, from wall to wall as before)
+ a*=uW*(lo<.5?smoothstep(3.7,3.,abs(p.x))*smoothstep(3.5,4.4,p.y):uT==1?smoothstep(3.7,3.,abs(p.x)):smoothstep(1.9,1.6,abs(p.x)))*smoothstep(16.,12.5,abs(p.z-uRm.w));if(p.z>uCm.x&&p.z<uCm.y)a=0.;}
+else a*=uW*smoothstep(17.,13.5,length(p.xz));vC=c;vA=a;gl_Position=uVP*vec4(p,1.);gl_PointSize=clamp(sz*uH*1.3/gl_Position.w,1.,uRm.x>.5?22.:56.);}`,
   V + `in vec3 vC;in float vA;uniform float uG;uniform highp int uT;out vec4 o;void main(){vec2 q=gl_PointCoord*2.-1.;float d=dot(q,q);if(d>1.)discard;float f=exp(-d*3.2);
 if(uT==1){vec2 a=abs(q);f=exp(-d*16.)+max(0.,1.-a.x*9.)*max(0.,1.-a.y)+max(0.,1.-a.y*9.)*max(0.,1.-a.x);}
 f*=vA;o=vec4(vC*f,f*uG);}`);
@@ -5678,10 +5703,14 @@ function lifeWeights(h) {
   const W = [0, 0, 0, 0, 0, 0, 0], hh = Math.max(0, Math.min(6, h)), k = Math.floor(hh), f = hh - k, b = k < 6 ? (f <= 0.3 ? 0 : f >= 0.7 ? 1 : (x => x * x * (3 - 2 * x))((f - 0.3) / 0.4)) : 0;
   W[k] = 1 - b; if (k < 6) W[k + 1] = b; return W;
 }
-let LROOM = [0, 0, 0, 0], LWALL = [1e5, 1e5, -1e5, -1e5];   // in the rooms: [on, turned a quarter, moved on, where you are along the hall]
-const LTALL = new Set(['pine', 'tree', 'cactus', 'rock', 'snowrock', 'burnt']);   // (trees and rocks stay outside: the rooms get what lives on and under the floor)
+let LROOM = [0, 0, 0, 0], LWALL = [1e5, 1e5, -1e5, -1e5], LMIR = 1;   // in the rooms: [on, turned a quarter, moved on, where you are along the hall]; LMIR: which side of the hall's middle (1, or -1 for its mirror)
+// (28 Nov 2026, bitmap22: calmer halls) in a hall every thing is a miniature in two mirrored rows (the shader's "little avenue"), so the trees, cacti and
+// rocks that used to stay outside come in too, tiny. HALLN: how much of each kind a hall shows on each side (the rest: all of it). With two sides,
+// grass, flowers, lily pads, koi and bubbles come to half what a hall had; HALLSLOW: a hall's life, specks and floor move at half speed
+const HALLN = {tuft: .25, flower: .25, lilypad: .25, lily: .5, fish: .5, bubble: .5, penguin: .5, butterfly: .5, tumbleweed: .6}, HALLSLOW = .5;
+const hallN = g => LROOM[0] ? Math.max(1, Math.round(g.n * (HALLN[g.mesh] || 1))) : g.n;
 function lifeUniforms(VP, eye, tn) {
-  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform4fv(lifeP.u.uWl, LWALL); gl.uniform2fv(lifeP.u.uCm, LCM); gl.uniform1f(lifeP.u.uEv, cmEv); gl.uniform4fv(lifeP.u.uBt, cmBt);
+  gl.useProgram(lifeP.p); gl.uniformMatrix4fv(lifeP.u.uVP, false, VP); gl.uniform1f(lifeP.u.uNow, tn); gl.uniform3fv(lifeP.u.uE, eye); gl.uniform4fv(lifeP.u.uRm, LROOM); gl.uniform1f(lifeP.u.uMr, LMIR); gl.uniform4fv(lifeP.u.uWl, LWALL); gl.uniform2fv(lifeP.u.uCm, LCM); gl.uniform1f(lifeP.u.uEv, cmEv); gl.uniform4fv(lifeP.u.uBt, cmBt);
 }
 let cmBtT = 0; const cmBt = [-1e6, 0, 0, 0];   // for the robots: when a pint was last poured; how far the music is on
 let cmEv = -1e6;   // when the newest block was mined (the Chain Keeper presses a new block into the chain)
@@ -5692,10 +5721,10 @@ function lifeDraw(VP, eye, tn, LW, under) {
   LW.forEach((w, k) => {
     if (w < 0.01) return;
     for (const g of LGROUPS[k]) {
-      if (g.under !== under || (LROOM[0] && LTALL.has(g.mesh))) continue;
+      if (g.under !== under || (LMIR < 0 && g.under)) continue;   // (the koi are not mirrored: they swim under the whole floor)
       if (!set) { lifeUniforms(VP, eye, tn); set = true; }
       gl.uniform1f(lifeP.u.uW, w); gl.uniform1i(lifeP.u.uT, g.t); gl.uniform1i(lifeP.u.uST, g.t);
-      gl.bindVertexArray(g.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo[g.mesh].n, g.n);
+      gl.bindVertexArray(g.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo[g.mesh].n, hallN(g));
     }
   });
 }
@@ -5705,10 +5734,10 @@ function lifeShadows(VP, eye, tn, LW) {
   LW.forEach((w, k) => {
     if (w < 0.01) return;
     for (const g of LGROUPS[k]) {
-      if (!g.sh || (LROOM[0] && LTALL.has(g.mesh))) continue;
+      if (!g.sh) continue;
       if (!set) { lifeUniforms(VP, eye, tn); set = true; }
       gl.uniform1f(lifeP.u.uW, w); gl.uniform1i(lifeP.u.uT, 99); gl.uniform1i(lifeP.u.uST, g.t); gl.uniform1f(lifeP.u.uSR, g.sr);
-      gl.bindVertexArray(g.sh); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo.shadow.n, g.n);
+      gl.bindVertexArray(g.sh); gl.drawArraysInstanced(gl.TRIANGLES, 0, lifeGeo.shadow.n, hallN(g));
     }
   });
 }
@@ -5719,7 +5748,7 @@ function lifeDust(VP, tn, LW, H) {
     if (w < 0.01) return;
     if (!set) { gl.useProgram(dustP.p); gl.uniformMatrix4fv(dustP.u.uVP, false, VP); gl.uniform1f(dustP.u.uNow, tn); gl.uniform1f(dustP.u.uH, H); gl.uniform4fv(dustP.u.uRm, LROOM); gl.uniform2fv(dustP.u.uCm, LCM); set = true; }
     gl.uniform1f(dustP.u.uW, w); gl.uniform1i(dustP.u.uT, k); gl.uniform1f(dustP.u.uG, [0.15, 0.6, 0.9, 0.05, 0.8, 0.7, 0.9][k]);
-    gl.bindVertexArray(LDUST[k].vao); gl.drawArrays(gl.POINTS, 0, LDUST[k].n);
+    gl.bindVertexArray(LDUST[k].vao); gl.drawArrays(gl.POINTS, 0, LROOM[0] ? LDUST[k].n >> 1 : LDUST[k].n);   // (a hall: half as many)
   });
 }
 
@@ -6617,8 +6646,8 @@ function rmStep(dt) {
   if (C && C.gd) { if (!C.ready || p.ride) { p.vx = p.vz = 0; return; } if (p.swim) { gdSwimMove(C, p, nx, nz); return; } if (p.sit && (f || s)) { gdStand(C, p); return; } if (p.sit) { p.vx = p.vz = 0; return; } p.y = 0; gdMove(C, p, nx, nz); return; }   // (in the garden: sitting, you stand up as you move)
   p.lv = 0; p.y = 0; p.sit = false;
   if (C && C.gal) { if (C.ready) galMove(C, p, nx, nz); else p.vx = p.vz = 0; return; }
-  if (lifeWeights(heatS)[0] > .5) for (const [hx, hz, r] of LIFE.XMAS) {
-    const z = hz + Math.round((nz - hz) / 32) * 32, rad = r * .5 + .22, dx = nx - hx, dz = nz - z, d = Math.hypot(dx, dz);
+  if (lifeWeights(heatS)[0] > .5) for (const [hx0, hz, r] of LIFE.XMAS) for (const hx of [1, -1].map(m => m * (.72 + (hx0 + 3.55) / 7.1))) {   // (28 Nov 2026: miniatures, in the hall's two rows)
+    const z = hz + Math.round((nz - hz) / 32) * 32, rad = r * .25 + .2, dx = nx - hx, dz = nz - z, d = Math.hypot(dx, dz);
     if (d < rad && Math.min(...room.rooms.flatMap(R => R && R.z0 != null ? [Math.abs(z - R.z0), Math.abs(z - R.z0 + R.L)] : [9])) > 1.2) { const k = d > 1e-4 ? rad / d : 0; nx = hx + (k ? dx * k : rad); nz = z + dz * k; }
   }
   if (C && C.ready && C.h === 0) {
@@ -6707,11 +6736,11 @@ function roomFrame(W, H, tn, dpr) {
   if (!SET.calm) all(1);   // (a carpet shows no reflection, so the mirrored hall is not drawn under it)
   gl.frontFace(gl.CCW); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
   // the floor's life: both copies of the ring, laid along the hall (fish first: they swim under the water)
-  const ft = flTime(tn);   // (the floor's own clock: it waits while a hall is built)
+  const ft = flTime(tn) * HALLSLOW;   // (the floor's own clock: it waits while a hall is built; and in a hall it runs at half speed)
   const [R0, R1, R2] = room.rooms, wz = (R, f, d) => R && R.z0 != null ? R.z0 - (f ? R.L : 0) : d;
   { const Rc = room.rooms.find(q => cmOn(q) && q.ready); LCM = Rc ? [Rc.z0 - Rc.L - .3, Rc.z0 + .3] : [1e9, -1e9]; }
-  const rings = f => { if (room.at && room.at.gal) return; LWALL = [wz(R0, 0, 1e5), wz(R1, 0, 1e5), wz(R1, 1, -1e5), wz(R2, 1, -1e5)]; for (const [q, z] of [[0, 0], [1, 16]]) { LROOM = [1, q, z, p.z]; f(); } LROOM = [0, 0, 0, 0]; LWALL = [1e5, 1e5, -1e5, -1e5]; };
-  if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, ft, LW, true));
+  const rings = (f, both) => { if (room.at && room.at.gal) return; LWALL = [wz(R0, 0, 1e5), wz(R1, 0, 1e5), wz(R1, 1, -1e5), wz(R2, 1, -1e5)]; for (const [q, z] of [[0, 0], [1, 16]]) for (const m of both ? [1, -1] : [1]) { LROOM = [1, q, z, p.z]; LMIR = m; f(); } LROOM = [0, 0, 0, 0]; LMIR = 1; LWALL = [1e5, 1e5, -1e5, -1e5]; };   // (both: each ring on both sides of the hall's middle, the second its mirror)
+  if (LW[1] > 0.01) rings(() => lifeDraw(VP, eye, ft, LW, true), true);
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND); gl.useProgram(mtP.p); gl.uniformMatrix4fv(mtP.u.uVP, false, VP);
   gl.uniform1f(mtP.u.uNow, ft); gl.uniform1f(mtP.u.uHeat, heatS); gl.uniform1f(mtP.u.uFlash, 0); gl.uniform1f(mtP.u.uCalm, SET.calm ? 1 : 0); cptBind();
@@ -6723,12 +6752,12 @@ function roomFrame(W, H, tn, dpr) {
   gl.colorMask(false, false, false, true); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(mtP.u.uPass, 1); gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.colorMask(true, true, true, true);
   gl.uniform1f(mtP.u.uFS, 1); gl.uniform2f(mtP.u.uFO, 0, 0); gl.uniform1f(mtP.u.uRm, 0);
-  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); rings(() => lifeShadows(VP, eye, ft, LW));
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA); rings(() => lifeShadows(VP, eye, ft, LW), true);
   gl.disable(gl.BLEND);
   gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.CULL_FACE);
   rmFloorDepth(VP);
   all(0);
-  gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, ft, LW, false));
+  gl.disable(gl.CULL_FACE); rings(() => lifeDraw(VP, eye, ft, LW, false), true);
   cmDraw(VP, eye, tn); cmQDraw(VP, eye, tn);
   folDraw(VP, eye, tn);
   i0Draw(VP, eye); if (typeof wpDraw === 'function') wpDraw(VP, eye);   // (the whitepaper's lectern, in block 0's hall)
