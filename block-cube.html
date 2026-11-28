@@ -337,7 +337,7 @@ body.room.rtag #top #h{font-size:16px;line-height:20px;height:20px;min-height:0;
 #vwc pre{margin:0;width:100%;height:100%;box-sizing:border-box;overflow:auto;padding:18px 22px 22px;color:#e9dccb;font:500 13px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
 #vwc .inf{width:min(560px,90%);max-height:100%;overflow:auto;padding:18px 0 20px;font:600 13px ui-monospace,Menlo,Consolas,monospace;color:#d8c6ad}
 #vwc .inf h3{margin:0 0 14px;text-align:center;font-size:15px;letter-spacing:.16em;color:#ffb04a}
-.inf.wpay{width:min(760px,96%)}.inf svg.pay{display:block;width:100%;height:auto;max-height:52vh;margin:0 auto 10px}
+.inf.wpay{width:min(760px,96%)}.inf svg.pay{display:block;width:100%;height:auto;max-height:52vh;margin:0 auto 10px}.inf svg.pay.tall{max-height:none}
 #vwc .inf div{display:flex;justify-content:space-between;gap:14px;padding:7px 2px;border-bottom:1px solid rgba(247,147,26,.12)}#vwc .inf span{color:#8a7258}#vwc .inf b{color:#f7efe3;text-align:right;word-break:break-word}
 #vwc .vh{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:calc(100% - 28px);padding:7px 12px;border-radius:10px;background:rgba(20,12,6,.88);border:1px solid rgba(247,147,26,.3);color:#d8c6ad;font:600 11.5px/1.4 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;text-align:center;pointer-events:none}
 #vwc .wait{color:#8a7258;font:700 12px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.16em}
@@ -9244,12 +9244,13 @@ function vwItems(t, tx) {
 function vwPay(t) {
   const x = t._x && t._x.tx; if (!x || !x.vin || !x.vout || !x.vout.length) return '';
   const cb = x.vin.length && x.vin[0].is_coinbase, NI = Math.min(6, x.vin.length), NO = Math.min(6, x.vout.length), IN = x.vin.slice(0, NI), OUT = x.vout.slice(0, NO), fee = cb ? 0 : x.fee || 0;
-  // (a phone gets a narrower picture with its words above and below each line, so they stay big enough to read)
-  const N = innerWidth < 640, W = N ? 420 : 640, H = N ? 340 : 300, mx = W / 2, bw = N ? 112 : 128, bh = 72, by = (H - 28) / 2 - bh / 2, cy = by + bh / 2, ix = N ? 22 : 150, ox = W - ix, f1 = N ? 15 : 12.5, f2 = N ? 12 : 10.5, E = s => vwEsc(s);
+  // (a phone gets a picture of its own, stood on end: vwPayTall, below)
+  const W = 640, H = 300, mx = W / 2, bw = 128, bh = 72, by = (H - 28) / 2 - bh / 2, cy = by + bh / 2, ix = 150, ox = W - ix, f1 = 12.5, f2 = 10.5, E = s => vwEsc(s);
   const vin = IN.map(i => cb ? x.vout.reduce((a, o) => a + o.value, 0) : i.prevout ? i.prevout.value : 0);
   const tot = Math.max(1, vin.reduce((a, b) => a + b, 0), x.vout.reduce((a, o) => a + o.value, 0) + fee), th = v => Math.max(1.5, Math.min(24, 30 * v / tot));
-  const Y = (k, n) => n <= 1 ? cy : 34 + k * (H - 68 - (N ? 10 : 0)) / (n - 1), ni = NI + (x.vin.length > NI ? 1 : 0), no = NO + (x.vout.length > NO ? 1 : 0);
-  const lab = (xx, y, a, b, an) => { const y1 = N ? y - 9 : y - 3, y2 = N ? y + 17 : y + 12; return '<text x="' + xx + '" y="' + y1 + '" fill="#ffe2b0" font-size="' + f1 + '" text-anchor="' + an + '">' + E(a) + '</text>' + (b ? '<text x="' + xx + '" y="' + y2 + '" fill="#9a8a72" font-size="' + f2 + '" text-anchor="' + an + '">' + E(b) + '</text>' : ''); };
+  if (innerWidth < 640) return vwPayTall(x, cb, IN, OUT, vin, fee, th);
+  const Y = (k, n) => n <= 1 ? cy : 34 + k * (H - 68) / (n - 1), ni = NI + (x.vin.length > NI ? 1 : 0), no = NO + (x.vout.length > NO ? 1 : 0);
+  const lab = (xx, y, a, b, an) => { const y1 = y - 3, y2 = y + 12; return '<text x="' + xx + '" y="' + y1 + '" fill="#ffe2b0" font-size="' + f1 + '" text-anchor="' + an + '">' + E(a) + '</text>' + (b ? '<text x="' + xx + '" y="' + y2 + '" fill="#9a8a72" font-size="' + f2 + '" text-anchor="' + an + '">' + E(b) + '</text>' : ''); };
   let s = '<svg class="pay" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,Menlo,Consolas,monospace">';
   IN.forEach((i, k) => { const y = Y(k, ni); s += '<path d="M' + ix + ' ' + y + ' C ' + (mx - 70) + ' ' + y + ', ' + (mx - 110) + ' ' + cy + ', ' + (mx - bw / 2) + ' ' + cy + '" stroke="#f7931a" stroke-opacity=".5" stroke-width="' + th(vin[k]).toFixed(1) + '" fill="none"/>'; });
   OUT.forEach((o, k) => { const y = Y(k, no), op = o.scriptpubkey_type === 'op_return'; s += '<path d="M' + (mx + bw / 2) + ' ' + cy + ' C ' + (mx + 110) + ' ' + cy + ', ' + (mx + 70) + ' ' + y + ', ' + ox + ' ' + y + '" stroke="' + (op ? '#8fd3ff' : '#ffc94a') + '" stroke-opacity=".5" stroke-width="' + th(op ? 0 : o.value).toFixed(1) + '" fill="none"/>'; });
@@ -9257,11 +9258,42 @@ function vwPay(t) {
   s += '<rect x="' + (mx - bw / 2) + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="9" fill="#1a1208" stroke="#f7931a" stroke-width="1.5"/>'
     + '<text x="' + mx + '" y="' + (by + 31) + '" fill="#ffc94a" font-size="' + (f1 + 1.5) + '" font-weight="700" text-anchor="middle">' + (cb ? 'NEW COINS' : 'PAYMENT') + '</text>'
     + '<text x="' + mx + '" y="' + (by + 52) + '" fill="#c9b79a" font-size="' + f2 + '" text-anchor="middle">' + E(fmt(x.vin.length) + ' in \u00b7 ' + fmt(x.vout.length) + ' out') + '</text>';
-  IN.forEach((i, k) => { const y = Y(k, ni); s += '<circle cx="' + ix + '" cy="' + y + '" r="5" fill="#f7931a"/>' + lab(N ? ix - 4 : ix - 10, y, cb ? 'new coins' : btc(vin[k]), cb ? 'the block reward and fees' : shortA(i.prevout && i.prevout.scriptpubkey_address) || typeName(i.prevout && i.prevout.scriptpubkey_type), N ? 'start' : 'end'); });
-  if (x.vin.length > NI) s += lab(N ? ix - 4 : ix - 10, Y(NI, ni), '+ ' + fmt(x.vin.length - NI) + ' more in', '', N ? 'start' : 'end');
-  OUT.forEach((o, k) => { const y = Y(k, no), op = o.scriptpubkey_type === 'op_return'; s += '<circle cx="' + ox + '" cy="' + y + '" r="5" fill="' + (op ? '#8fd3ff' : '#ffc94a') + '"/>' + lab(N ? ox + 4 : ox + 10, y, op ? 'a note (OP_RETURN)' : btc(o.value), op ? 'no coins' : shortA(o.scriptpubkey_address) || typeName(o.scriptpubkey_type), N ? 'end' : 'start'); });
-  if (x.vout.length > NO) s += lab(N ? ox + 4 : ox + 10, Y(NO, no), '+ ' + fmt(x.vout.length - NO) + ' more out', '', N ? 'end' : 'start');
+  IN.forEach((i, k) => { const y = Y(k, ni); s += '<circle cx="' + ix + '" cy="' + y + '" r="5" fill="#f7931a"/>' + lab(ix - 10, y, cb ? 'new coins' : btc(vin[k]), cb ? 'the block reward and fees' : shortA(i.prevout && i.prevout.scriptpubkey_address) || typeName(i.prevout && i.prevout.scriptpubkey_type), 'end'); });
+  if (x.vin.length > NI) s += lab(ix - 10, Y(NI, ni), '+ ' + fmt(x.vin.length - NI) + ' more in', '', 'end');
+  OUT.forEach((o, k) => { const y = Y(k, no), op = o.scriptpubkey_type === 'op_return'; s += '<circle cx="' + ox + '" cy="' + y + '" r="5" fill="' + (op ? '#8fd3ff' : '#ffc94a') + '"/>' + lab(ox + 10, y, op ? 'a note (OP_RETURN)' : btc(o.value), op ? 'no coins' : shortA(o.scriptpubkey_address) || typeName(o.scriptpubkey_type), 'start'); });
+  if (x.vout.length > NO) s += lab(ox + 10, Y(NO, no), '+ ' + fmt(x.vout.length - NO) + ' more out', '', 'start');
   if (fee) s += '<text x="' + mx + '" y="' + (H - 8) + '" fill="#ff8a6a" font-size="' + (f2 + .5) + '" text-anchor="middle">' + E('fee ' + fmt(fee) + ' sats \u00b7 to the miner') + '</text>';
+  return s + '</svg>';
+}
+// (28 Nov 2026) a phone: the same picture stood on end, so nothing lies on top of anything (side by side, the words ran over the
+// box, the ribbons and each other). Coins in at the top left, the box in the middle, coins out and the fee at the bottom right:
+// in on the left and out on the right, as on a computer. The words keep to the sides and the ribbons to the middle, each ribbon in
+// a lane of its own where it meets the box, so no ribbon crosses another or a word. As many rows as it has make it as tall as it needs.
+function vwPayTall(x, cb, IN, OUT, vin, fee, th) {
+  const E = vwEsc, W = 420, mx = W / 2, bw = 160, bh = 62, f1 = 15, f2 = 12, DI = mx - 20, DO = mx + 20, XI = mx + 44, XO = mx - 44, LW = DI - 26, GAP = 2, TOP = 28, RR = 40, K = .5523;
+  const I = IN.map((i, k) => ({a: cb ? 'new coins' : btc(vin[k]), b: cb ? 'block reward and fees' : shortA(i.prevout && i.prevout.scriptpubkey_address) || typeName(i.prevout && i.prevout.scriptpubkey_type), c: '#f7931a', w: th(vin[k])}));
+  if (x.vin.length > IN.length) I.push({a: '+ ' + fmt(x.vin.length - IN.length) + ' more in'});
+  const O = OUT.map(o => { const op = o.scriptpubkey_type === 'op_return'; return {a: op ? 'a note (OP_RETURN)' : btc(o.value), b: op ? 'no coins' : shortA(o.scriptpubkey_address) || typeName(o.scriptpubkey_type), c: op ? '#8fd3ff' : '#ffc94a', w: th(op ? 0 : o.value)}; });
+  if (x.vout.length > OUT.length) O.push({a: '+ ' + fmt(x.vout.length - OUT.length) + ' more out'});
+  if (fee) O.push({a: 'fee ' + fmt(fee) + ' sats', b: 'to the miner', c: '#ff5a3c', w: th(fee), ink: '#ff8a6a', op: .75});   // (the fee leaves the box like any coin out: the last row, in red)
+  const many = I.length + O.length > 9, P = many ? 36 : 40, G = many ? 48 : 56;   // (a long list stands a little closer, so it stays big enough to read on a short screen)
+  const by = TOP + (I.length - 1) * P + G, oy = by + bh + G, H = oy + (O.length - 1) * P + TOP;
+  I.forEach((r, k) => { r.y = TOP + k * P; }); O.forEach((r, k) => { r.y = oy + k * P; });
+  // the lanes: where the ribbons meet the box they stand side by side. The row nearest the box takes the lane nearest its own dot, so none has to cross another
+  const lanes = (L, x0, d) => { const R = L.filter(r => r.c), T = R.reduce((a, r) => a + r.w, 0) + (R.length - 1) * GAP; let p = x0 - d * T / 2; for (const r of R) { r.x = p + d * r.w / 2; p += d * (r.w + GAP); } };
+  lanes(I.slice().reverse(), XI, 1); lanes(O, XO, -1);
+  const n = v => +v.toFixed(1);
+  const txt = (xx, y, s, f, ink, an) => '<text x="' + xx + '" y="' + y + '" fill="' + ink + '" font-size="' + f + '" text-anchor="' + an + '"' + (s.length * f * .61 > LW ? ' textLength="' + LW + '" lengthAdjust="spacingAndGlyphs"' : '') + '>' + E(s) + '</text>';   // (words too long for their side are drawn narrower: never over a ribbon)
+  const lab = (r, xx, an) => r.b ? txt(xx, r.y - 4, r.a, f1, r.ink || '#ffe2b0', an) + txt(xx, r.y + 12, r.b, f2, '#9a8a72', an) : txt(xx, r.y + 5, r.a, f1, r.ink || '#ffe2b0', an);
+  let s = '<svg class="pay tall" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,Menlo,Consolas,monospace">';
+  // a ribbon: straight out from its dot, a round corner, then straight down into the box (and the same out of it, the other way up)
+  for (const r of I) if (r.c) { const R = Math.min(RR, r.x - DI, by - r.y); s += '<path d="M' + DI + ' ' + r.y + ' H' + n(r.x - R) + ' C ' + n(r.x - R + R * K) + ' ' + r.y + ', ' + n(r.x) + ' ' + n(r.y + R - R * K) + ', ' + n(r.x) + ' ' + n(r.y + R) + ' V' + by + '" stroke="' + r.c + '" stroke-opacity=".5" stroke-width="' + r.w.toFixed(1) + '" fill="none"/>'; }
+  for (const r of O) if (r.c) { const R = Math.min(RR, DO - r.x, r.y - by - bh); s += '<path d="M' + n(r.x) + ' ' + (by + bh) + ' V' + n(r.y - R) + ' C ' + n(r.x) + ' ' + n(r.y - R + R * K) + ', ' + n(r.x + R - R * K) + ' ' + r.y + ', ' + n(r.x + R) + ' ' + r.y + ' H' + DO + '" stroke="' + r.c + '" stroke-opacity="' + (r.op || .5) + '" stroke-width="' + r.w.toFixed(1) + '" fill="none"/>'; }
+  s += '<rect x="' + (mx - bw / 2) + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="9" fill="#1a1208" stroke="#f7931a" stroke-width="1.5"/>'
+    + '<text x="' + mx + '" y="' + (by + 27) + '" fill="#ffc94a" font-size="' + (f1 + 1.5) + '" font-weight="700" text-anchor="middle">' + (cb ? 'NEW COINS' : 'PAYMENT') + '</text>'
+    + '<text x="' + mx + '" y="' + (by + 46) + '" fill="#c9b79a" font-size="' + f2 + '" text-anchor="middle">' + E(fmt(x.vin.length) + ' in · ' + fmt(x.vout.length) + ' out') + '</text>';
+  for (const r of I) s += (r.c ? '<circle cx="' + DI + '" cy="' + r.y + '" r="5" fill="' + r.c + '"/>' : '') + lab(r, DI - 12, 'end');
+  for (const r of O) s += (r.c ? '<circle cx="' + DO + '" cy="' + r.y + '" r="5" fill="' + r.c + '"/>' : '') + lab(r, DO + 12, 'start');
   return s + '</svg>';
 }
 const vwEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
