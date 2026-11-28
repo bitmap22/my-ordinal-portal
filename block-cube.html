@@ -12228,8 +12228,10 @@ const FEED = (() => {
   function hold3(K, id, ct) {
     const G = window.FamilyGuard; if (!G || !K.m) return false;
     const m = K.m, held = () => m.classList.contains('fg-hold') || m.classList.contains('fg-wait');
-    ct = typeof ct === 'string' ? ct : ''; G.guard(m, mdlVerdict(id, ct), {key: id, kind: '3D model', quiet: /^model\/(stl|obj)\b/.test(ct)}); if (!held()) return false;   // (quiet: a file of shapes only is answered at once, so no "Checking" note)
+    ct = typeof ct === 'string' ? ct : ''; const v = mdlVerdict(id, ct), o = {key: id, kind: '3D model', quiet: /^model\/(stl|obj)\b/.test(ct)};   // (quiet: a file of shapes only is answered at once, so no "Checking" note)
+    G.guard(m, v, o); if (!held()) return false;
     K.hold = () => K.m === m && held();
+    K.again3 = () => { if (K.hold && K.hold()) G.guard(m, v, o); };   // (asked again as it comes on screen: a model the person has just chosen to show on another card, as the BRC-420 pieces that all point to one model do, is not asked about twice)
     const mo = new MutationObserver(() => { if (K.dead || K.m !== m) return mo.disconnect(); if (held()) return; mo.disconnect(); K.hold = null; if (K.go3) { const g = K.go3; K.go3 = null; g(); } if (K.live) play(K); });
     mo.observe(m, {attributes: true, attributeFilter: ['class']}); return true;
   }
@@ -12340,6 +12342,7 @@ const FEED = (() => {
   }
   // what only happens on screen: a web page or a 3D model starts (in ordinals.com's sealed preview), a film plays, a payment is read
   function play(K) {
+    if (K.again3) K.again3();
     if (K.src && !K.frame && K.m && !(K.hold && K.hold())) { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = K.title; const r = ring(); f.addEventListener('load', () => r.remove()); f.src = K.src; K.m.append(f, r); K.frame = f; K.fring = r; }
     if (K.vid) K.vid.play().catch(() => {});
     if (K.d3) spin3(K);
