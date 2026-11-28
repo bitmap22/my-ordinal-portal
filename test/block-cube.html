@@ -925,7 +925,9 @@ let lastDraw = performance.now(); (function drawn() { lastDraw = performance.now
 // (After waiting for a frame the next burst is a steady 8 ms: the wait itself says nothing about a slow device, and letting it
 // grow the burst made some bursts 100 ms long.)
 const yieldNow = () => new Promise(r => { const t = performance.now(), go = f => { const c = new MessageChannel(); c.port1.onmessage = () => { burst = room ? 4 : f ? 8 : Math.min(100, Math.max(6, (performance.now() - t) / 2)); r(); }; c.port2.postMessage(0); };
-  if (!document.hidden && t - lastDraw > 10) requestAnimationFrame(() => go(true)); else go(false); });
+  if (!document.hidden && t - lastDraw > 10) { let done = false; const once = f => { if (!done) { done = true; go(f); } }; requestAnimationFrame(() => once(true)); setTimeout(() => once(false), 100); } else go(false); });
+// (28 Nov 2026: a frame is waited for at most a tenth of a second. A browser can stop giving frames without saying the page is
+// hidden (a pane put away, a window behind others, an AI agent's own browser): halls then sat on "READING THE BLOCK" for minutes)
 // pack a whole block (a burst at a time); gives up (null) if alive() turns false, e.g. another block was picked meanwhile
 // If a block has many very big transactions, near-cube boxes can't stack inside (e.g. nine 59,000 vB boxes, 24 units a
 // side: only four fit across, so a third layer pokes out of the top). Then it is packed again with those big boxes
@@ -2144,6 +2146,7 @@ function picFail(el, key, src) {
     if (el._fgNote) { el._fgNote.remove(); el._fgNote = null; } el.replaceWith(d);
   }, {once: true});
 }
+function fgShowP(el, key, pSrc, o) { const G = window.FamilyGuard; if (!G || !el) return el; picFail(el, key, null); G.guard(el, pSrc.then(src => G.check(src, key, {soon: true, label: (o && o.label) || 'an inscription'})), Object.assign({key}, o || {})); return el; }   // (as fgShow, for a picture whose bytes are still coming: checked once they are in)
 function fgShow(el, key, src, o) { const G = window.FamilyGuard; if (!G || !el) return el; picFail(el, key, src); G.guard(el, G.check(src, key, {soon: true, label: (o && o.label) || 'an inscription'}), Object.assign({key}, o || {})); return el; }
 function fgWords(el, key, url) { const G = window.FamilyGuard; if (!G || !el) return el; G.guard(el, fetch(url).then(r => r.ok ? r.text() : Promise.reject()).then(t => G.checkWords(t.slice(0, 200000), key, {label: 'a text inscription'}), () => 'unchecked'), {key, kind: 'text'}); return el; }
 let artGen = 0;
@@ -2158,8 +2161,38 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texPara
 const artCv = document.createElement('canvas'); artCv.width = artCv.height = 128;
 const artCx = artCv.getContext('2d');
 // raster images decode off the main thread; SVG goes through an <img>
+// (28 Nov 2026) an SVG that draws other inscriptions' pictures (href="/content/<id>", as on-chain collections are built): shown as a
+// picture, an SVG can load nothing from outside itself, so those parts came out black (block 824,471's geese). Each picture it names
+// is read from ordinals.com (up to 12, each a plain picture of up to 1.5 MB, 6 MB in all; an SVG it names is filled the same way, one
+// level down) and written into it, so it shows whole, and Family mode checks it whole: the picture checked is the picture shown.
+// Only /content/ pictures are filled: code, pages and addresses off the chain stay out, and it is still shown only as a picture.
+const SVG_REF = /((?:xlink:)?href\s*=\s*["']\s*|url\(\s*["']?)\/content\/([0-9a-f]{64}i\d+)/gi, svgFilled = new WeakMap();
+function svgFill(bytes, depth) {
+  const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (u.length > 2e6) return Promise.resolve(u);
+  if (svgFilled.has(u)) return svgFilled.get(u);
+  const p = (async () => {
+    const txt = new TextDecoder().decode(u), ids = [...new Set([...txt.matchAll(SVG_REF)].map(m => m[2].toLowerCase()))].slice(0, 12);
+    if (!ids.length) return u;
+    const got = new Map(); let total = 0;
+    await Promise.all(ids.map(async id => {
+      let b; try { b = await galGet('/content/' + id, 'bytes'); } catch (e) { return; }
+      if (!b || !b.length || b.length > 1.5e6 || (total += b.length) > 6e6) return;
+      let ct = sniffImg(b); if (!ct) return;
+      if (ct === 'image/svg+xml') { if (depth) return; b = await svgFill(b, 1); }
+      let x = ''; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+      got.set(id, 'data:' + ct + ';base64,' + btoa(x));
+    }));
+    if (!got.size) return u;
+    return new TextEncoder().encode(txt.replace(SVG_REF, (m, pre, id) => got.has(id.toLowerCase()) ? pre + got.get(id.toLowerCase()) : m));
+  })().catch(() => u);
+  svgFilled.set(u, p); return p;
+}
+const svgNeedsFill = (bytes, ct) => /svg/i.test(ct || '') && bytes && bytes.length <= 2e6 && /\/content\/[0-9a-f]{64}i\d+/i.test(new TextDecoder().decode(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)));
 async function decodeArt(a) {
-  const blob = new Blob([a.bytes], {type: a.ct}); /* blob-ok: decoded off-screen into the cube's picture sheet, its address dropped at once */
+  let bytes = a.bytes;
+  if (/svg/.test(a.ct)) { const b = await svgFill(bytes); if (b !== bytes) { bytes = b; try { a.bytes = b; } catch (e) {} } }   // (an SVG that draws other inscriptions' pictures: filled first, so what is checked and shown is whole)
+  const blob = new Blob([bytes], {type: a.ct}); /* blob-ok: decoded off-screen into the cube's picture sheet, its address dropped at once */
   if (!/svg/.test(a.ct) && window.createImageBitmap) return createImageBitmap(blob);
   const url = URL.createObjectURL(blob), img = new Image(); img.src = url;
   try { await img.decode(); return img; } finally { URL.revokeObjectURL(url); }
@@ -5898,6 +5931,10 @@ function frame(ts) {
 function frameErr(e) { const m = String(e && e.message || e).slice(0, 300), o = window.__bcFrameErr; window.__bcFrameErr = {at: new Date().toISOString(), error: m, times: (o && o.error === m ? o.times : 0) + 1}; if (frameErr.last !== m) { frameErr.last = m; console.error('frame:', e); } }
 // one whole frame, drawn now (the frame loop's own drawing; an agent's picture can ask for one when the browser gives no frames)
 let lastDrawn = 0;
+// (28 Nov 2026) an AI agent's browser may give the page no frames at all (a hidden or background tab, a pane put away, a browser
+// with no screen). While the agent kit is in use and no frame has come for a quarter of a second, the game steps itself on a timer,
+// about 15 times a second, so walking, picking up and halls being built go on. A person's hidden tab still rests.
+setInterval(() => { if (!window.__agentOn || cmPaintShown || window.__feedOn || now() - lastDrawn < .25) return; try { drawFrame(); } catch (e) { frameErr(e); } }, 66);
 setInterval(() => { try { if (now() - lastDrawn > 1) { if (crew.on) crewSend(now()); tradeKeep(); } } catch (e) {} }, 1000);
 function drawFrame() {
   lastDrawn = now();
@@ -9444,6 +9481,12 @@ function insKind(id, bases) {
   P.set(id, pr); return pr;
 }
 function insSafeEl(K, id, cls) {   // the element that shows it, or null when it is not opened here
+  if (K.kind === 'image' && /^image\/svg\+xml/i.test(K.ct || '')) {   // (28 Nov 2026: an SVG is read, the pictures it names filled in (svgFill), and shown as a picture from its own bytes: checked as it is shown)
+    const im = new Image(); im.alt = ''; if (cls) im.className = cls; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320);
+    const got = fetch(K.url, {referrerPolicy: 'no-referrer'}).then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error('http ' + r.status))).then(b => svgFill(new Uint8Array(b)));
+    got.then(b => { im.src = shownPic(b, 'image/svg+xml'); }, () => { im.referrerPolicy = 'no-referrer'; im.src = K.url; });
+    return fgShowP(im, id, got.then(b => ({bytes: b, type: 'image/svg+xml'}), () => K.url), {below: cls === 'pa'});
+  }
   if (K.kind === 'image') { const im = new Image(); im.alt = ''; if (cls) im.className = cls; im.referrerPolicy = 'no-referrer'; im.onload = () => im.classList.toggle('px', im.naturalWidth > 0 && im.naturalWidth < 320); im.src = K.url; return fgShow(im, id, K.url, {below: cls === 'pa'}); }
   if (K.kind === 'audio') { const a = document.createElement('audio'); a.controls = true; a.preload = 'none'; a.src = K.url; return a; }
   if (K.kind === 'video') { const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.src = K.url; return fgShow(v, id, K.url, {below: cls === 'pa', kind: 'film', label: 'a film'}); }
@@ -12351,6 +12394,11 @@ const FEED = (() => {
     if (!ct) return bare(K, Kd);
     if (Kd.kind === 'model') return at ? (OWN3D.test(ct) ? drawn3(K, id) : seal3(K, id, Kd.base, ct || true)) : model3(K, Kd);
     if (/^text\/html\b/.test(ct)) { if (G && G.strict()) return panel(K, insClosedEl(Kd, id)); return seal3(K, id, Kd.base); }
+    if (Kd.kind === 'image' && Kd.url && /^image\/svg\+xml/i.test(ct)) {   // (28 Nov 2026: an SVG that names other inscriptions' pictures has them filled in, else they show black)
+      fetch(Kd.url, {referrerPolicy: 'no-referrer'}).then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(b => svgFill(new Uint8Array(b)))
+        .then(b => { if (!K.dead) pic(K, shownPic(b, 'image/svg+xml'), id, {bytes: b, type: 'image/svg+xml'}, true); }, () => { if (!K.dead) pic(K, Kd.url, id, Kd.url, false); });
+      return;
+    }
     if (Kd.kind === 'image' && Kd.url) return pic(K, Kd.url, id, Kd.url, false);
     if (Kd.kind === 'video') return film(K, insSafeEl(Kd, id));
     if (Kd.kind === 'audio') return sound(K, insSafeEl(Kd, id));
@@ -12359,7 +12407,8 @@ const FEED = (() => {
     panel(K, insClosedEl(Kd, id));
   }
   function build(K) {
-    const it = K.it, t = it.t, img = isPic, own = key => pic(K, shownPic(t.art.bytes, t.art.ct), key, {bytes: t.art.bytes, type: t.art.ct}, true);
+    const it = K.it, t = it.t, img = isPic, own = key => svgNeedsFill(t.art.bytes, t.art.ct) ? svgFill(t.art.bytes).then(b => { if (!K.dead) pic(K, shownPic(b, t.art.ct), key, {bytes: b, type: t.art.ct}, true); })   // (an SVG naming other pictures: filled first)
+      : pic(K, shownPic(t.art.bytes, t.art.ct), key, {bytes: t.art.bytes, type: t.art.ct}, true);
     if (t.need) return need(K);
     if (it.pair) twin(K);
     K.ring = ring(); (K.host || K.el).appendChild(K.ring);
@@ -19249,7 +19298,13 @@ window.AgentKit = window.AgentKit || (() => {
       }
     } else {
       const G = K.GRID.map(([nm, fx, fy]) => { const h = probe(fx, fy); return h ? nm + ' (x ' + fx + ', y ' + fy + '): ' + say(h) : null; }).filter(Boolean);
-      L.push(G.length ? 'Across your view: ' + G.join('; ') + '.' : 'Nothing to pick in your view.');
+      if (G.length) L.push('Across your view: ' + G.join('; ') + '.');
+      else {   // (28 Nov 2026: the nine points can all fall between parcels, on shelf boards and posts, while parcels are in view: a finer look finds them, with where to click)
+        const seen = new Map(); for (let j = 1; j < 14; j++) for (let i = 1; i < 24; i++) { const h = probe(i / 24, j / 14); if (h) { const k = JSON.stringify(h); if (!seen.has(k)) seen.set(k, [i / 24, j / 14, h]); } }
+        const F = [...seen.values()];
+        L.push(F.length ? 'None of the nine points across your view lands on something to pick, but ' + F.length + ' thing' + (F.length === 1 ? ' is' : 's are') + ' in view, e.g. ' + F.slice(0, 6).map(([x, y, h]) => say(h) + ' at x ' + r2(x) + ', y ' + r2(y)).join('; ') + ' (clickAt({x, y}) picks one).'
+          : 'Nothing to pick in your view (things can be picked up from as far as 7 m: walk closer, or turn).');
+      }
     }
     if (crew.on) { const A = [...crew.mates.values()].map(m => [m, mateInfo(m)]); const here = A.filter(([, o]) => o.withYou), away = A.filter(([, o]) => !o.withYou); if (here.length) L.push('Crewmates here (untrusted names): ' + here.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.withYou.where + ', ' + Math.round(o.withYou.metres) + ' m, ' + o.withYou.facing + ', ' + o.doing + (o.talking ? ', talking' : '')).join('; ') + '.'); if (away.length) L.push('Crewmates elsewhere: ' + away.map(([m, o]) => o.untrusted.name + ' (' + o.is.replace(/^an? /, '') + ') ' + o.where + ', ' + o.doing).join('; ') + '.'); }
     return L.join('\n');
