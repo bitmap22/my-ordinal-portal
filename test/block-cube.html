@@ -2690,9 +2690,10 @@ async function mdlDraw(bytes, S, o = {}) {
   const up = [s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0]];
   let x0 = 1e30, x1 = -1e30, y0 = 1e30, y1 = -1e30;
   for (const G of T.groups.values()) for (let i = 0; i < G.p.length; i += 3) { const dx = G.p[i] - ctr[0], dy = G.p[i + 1] - ctr[1], dz = G.p[i + 2] - ctr[2], x = dx * s[0] + dy * s[1] + dz * s[2], y = dx * up[0] + dy * up[1] + dz * up[2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  for (let a = 0; a < 3; a++) ctr[a] += s[a] * (x0 + x1) / 2 + up[a] * (y0 + y1) / 2;
+  if (!o.round) for (let a = 0; a < 3; a++) ctr[a] += s[a] * (x0 + x1) / 2 + up[a] * (y0 + y1) / 2;
   const fov = 28 * Math.PI / 180, tn = Math.tan(fov / 2) / 1.08; let dist = 0, zf = -1e30, zb = 1e30;
   for (const G of T.groups.values()) for (let i = 0; i < G.p.length; i += 3) { const dx = G.p[i] - ctr[0], dy = G.p[i + 1] - ctr[1], dz = G.p[i + 2] - ctr[2], x = dx * s[0] + dy * s[1] + dz * s[2], y = dx * up[0] + dy * up[1] + dz * up[2], z = dx * bk[0] + dy * bk[1] + dz * bk[2]; dist = Math.max(dist, Math.max(Math.abs(x), Math.abs(y)) / tn + z); zf = Math.max(zf, z); zb = Math.min(zb, z); }
+  if (o.round) { let R = 0; for (const G of T.groups.values()) for (let i = 0; i < G.p.length; i += 3) R = Math.max(R, Math.hypot(G.p[i] - ctr[0], G.p[i + 1] - ctr[1], G.p[i + 2] - ctr[2])); dist = R / Math.sin(fov / 2) * 1.03; zf = R; zb = -R; }   // (o.round, for a model that turns by itself in the block feed: framed as a ball round the middle of its box, so it stays one size and in one place all the way round; a tight fit to each view would make it swell and shrink as it turns)
   if (!(dist > 0)) return null;
   const eye = ctr.map((e, a) => e + bk[a] * dist);
   const V = Float32Array.from([s[0], up[0], -f[0], 0, s[1], up[1], -f[1], 0, s[2], up[2], -f[2], 0, -(s[0] * eye[0] + s[1] * eye[1] + s[2] * eye[2]), -(up[0] * eye[0] + up[1] * eye[1] + up[2] * eye[2]), f[0] * eye[0] + f[1] * eye[1] + f[2] * eye[2], 1]);
@@ -12195,7 +12196,7 @@ const FEED = (() => {
   }
   async function draw3(K, D) {
     const side = parseFloat(K.m && K.m.style.width) || 320, S = Math.max(256, Math.min(1024, Math.round(side * dpr() / 64) * 64)), t0 = performance.now();
-    let ok = false; try { ok = !!(await mdlPng(D.b, S, {yaw: D.yaw, pitch: 0, to: D.cv})); } catch (e) {}
+    let ok = false; try { ok = !!(await mdlPng(D.b, S, {yaw: D.yaw, pitch: 0, to: D.cv, round: true})); } catch (e) {}
     D.ms = performance.now() - t0; D.n++; return ok;
   }
   function spin3(K) {   // its first picture as soon as its file is read; then it turns, only while its card is the one on screen
